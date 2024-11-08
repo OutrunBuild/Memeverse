@@ -49,14 +49,14 @@ contract MemeLiquidProof is IMemeLiquidProof {
         transferWhiteList[account] = true;
     }
     
-    function approve(address spender, uint256 amount) public virtual returns (bool) {
+    function approve(address spender, uint256 amount) public returns (bool) {
         allowance[msg.sender][spender] = amount;
 
         emit Approval(msg.sender, spender, amount);
         return true;
     }
 
-    function transfer(address to, uint256 amount) public virtual returns (bool) {
+    function transfer(address to, uint256 amount) public returns (bool) {
         address msgSender = msg.sender;
         if (isTransferable || transferWhiteList[msgSender]) {
             balanceOf[msgSender] -= amount;
@@ -83,7 +83,7 @@ contract MemeLiquidProof is IMemeLiquidProof {
         address from,
         address to,
         uint256 amount
-    ) public virtual returns (bool) {
+    ) public returns (bool) {
         if (isTransferable || transferWhiteList[from]) {
             uint256 allowed = allowance[from][msg.sender];
 
@@ -118,7 +118,7 @@ contract MemeLiquidProof is IMemeLiquidProof {
         _burn(account, amount);
     }
 
-    function _mint(address to, uint256 amount) internal virtual {
+    function _mint(address to, uint256 amount) internal {
         totalSupply += amount;
 
         unchecked {
@@ -128,7 +128,7 @@ contract MemeLiquidProof is IMemeLiquidProof {
         emit Transfer(address(0), to, amount);
     }
 
-    function _burn(address from, uint256 amount) internal virtual {
+    function _burn(address from, uint256 amount) internal {
         balanceOf[from] -= amount;
 
         unchecked {

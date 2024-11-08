@@ -15,6 +15,7 @@ import { FixedPoint128 } from "../libraries/FixedPoint128.sol";
 import { Initializable } from "../libraries/Initializable.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
 import { AutoIncrementId } from "../libraries/AutoIncrementId.sol";
+import { IMemecoinVault, MemecoinVault } from "../yield/MemecoinVault.sol";
 import { MemeLiquidProof, IMemeLiquidProof } from "../token/MemeLiquidProof.sol";
 
 /**
@@ -57,6 +58,23 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
 
         _safeApproveInf(_UPT, _outrunAMMRouter);
+    }
+
+    /**
+     * @dev Preview transaction fees for owner(UPT) and vault(Memecoin)
+     * @param verseId - Memeverse id
+     */
+    function previewTransactionFees(uint256 verseId) external view override returns (uint256 UPTFee, uint256 memecoinYields) {
+        Memeverse storage verse = memeverses[verseId];
+        address memecoin = verse.memecoin;
+        IOutrunAMMPair pair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, memecoin, UPT, SWAP_FEERATE));
+
+        (uint256 amount0, uint256 amount1) = pair.previewMakerFee();
+        if (amount0 == 0 && amount1 == 0) return (0, 0);
+
+        address token0 = pair.token0();
+        UPTFee = token0 == UPT ? amount0 : amount1;
+        memecoinYields = token0 == memecoin ? amount0 : amount1;
     }
 
     function initialize(
@@ -258,25 +276,31 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
     }
 
     /**
-     * @dev Claim verse trade fee(Only UPT)
+     * @dev Redeem transaction fees and distribute them to the owner(UPT) and vault(Memecoin)
      * @param verseId - Memeverse id
      */
-    function claimTradeFees(uint256 verseId) external override {
-        address msgSender = msg.sender;
+    function redeemAndDistributeFees(uint256 verseId) external override returns (uint256 UPTFee, uint256 memecoinYields) {
         Memeverse storage verse = memeverses[verseId];
-        require(msgSender == ownerOf(verseId) && block.timestamp > verse.endTime, PermissionDenied());
+        require(verse.currentStage >= Stage.Locked, PermissionDenied());
 
         address memecoin = verse.memecoin;
-        address pairAddress = OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, memecoin, UPT, SWAP_FEERATE);
-        IOutrunAMMPair pair = IOutrunAMMPair(pairAddress);
+        IOutrunAMMPair pair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, memecoin, UPT, SWAP_FEERATE));
 
         (uint256 amount0, uint256 amount1) = pair.claimMakerFee();
-        address token0 = pair.token0();
-        uint256 UPTFee = token0 == UPT ? amount0 : amount1;
-        _transferOut(UPT, msgSender, UPTFee);
+        if (amount0 == 0 && amount1 == 0) return (0, 0);
 
-        // TODO Memecoin fee
-        emit ClaimTradeFees(verseId, msgSender, UPTFee);
+        address token0 = pair.token0();
+        UPTFee = token0 == UPT ? amount0 : amount1;
+        memecoinYields = token0 == memecoin ? amount0 : amount1;
+
+        address owner = ownerOf(verseId);
+        _transferOut(UPT, ownerOf(verseId), UPTFee);
+
+        address memecoinVault = verse.memecoinVault;
+        _safeApproveInf(memecoin, memecoinVault);
+        IMemecoinVault(memecoinVault).accumulateYields(memecoinYields);
+        
+        emit RedeemAndDistributeFees(verseId, owner, UPTFee, memecoinYields);
     }
 
     /**
@@ -342,11 +366,21 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
             address(this)
         ));
 
+        // Deploy memecoin vault
+        address memecoinVault = address(new MemecoinVault(
+            string(abi.encodePacked(_name, " Vault")),
+            string(abi.encodePacked(_name, " VAULT")),
+            memecoin,
+            address(this),
+            uniqueId
+        ));
+
         Memeverse memory verse = Memeverse(
             _name, 
             _symbol, 
             memecoin, 
             liquidProof, 
+            memecoinVault, 
             0, 
             maxFund,
             block.timestamp + durationDays * DAY,
@@ -354,10 +388,10 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
             omnichainIds,
             Stage.Genesis
         );
-        _safeMint(msgSender, uniqueId);
         memeverses[uniqueId] = verse;
+        _safeMint(msgSender, uniqueId);
 
-        emit RegisterMemeverse(uniqueId, msgSender, memecoin, liquidProof);
+        emit RegisterMemeverse(uniqueId, msgSender, memecoin, liquidProof, memecoinVault);
     }
 
     function updateSigner(address newSigner) external onlyOwner {

@@ -7,9 +7,9 @@ pragma solidity ^0.8.26;
 interface IMemeverse {
     enum Stage {
         Genesis, 
+        Refund, 
         Locked, 
-        Unlocked, 
-        Refund
+        Unlocked
     }
 
     struct Memeverse {
@@ -17,6 +17,7 @@ interface IMemeverse {
         string symbol;                  // Token symbol
         address memecoin;               // Memecoin address
         address liquidProof;            // Liquidity proof token address
+        address memecoinVault;          // Memecoin yield vault
         uint256 totalFund;              // Initial fundraising(UPT)
         uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
         uint256 endTime;                // EndTime of launchPool
@@ -24,6 +25,8 @@ interface IMemeverse {
         uint24[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
         Stage currentStage;             // Current stage 
     }
+
+    function previewTransactionFees(uint256 verseId) external view returns (uint256 UPTFee, uint256 memecoinYields);
 
     function initialize(
         uint256 genesisFee,
@@ -49,7 +52,7 @@ interface IMemeverse {
 
     function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external;
 
-    function claimTradeFees(uint256 verseId) external;
+    function redeemAndDistributeFees(uint256 verseId) external returns (uint256 UPTFee, uint256 memecoinYields);
 
     function registerMemeverse(
         string calldata _name,
@@ -118,17 +121,19 @@ interface IMemeverse {
         uint256 liquidity
     );
 
-    event ClaimTradeFees(
+    event RedeemAndDistributeFees(
         uint256 indexed verseId, 
         address indexed owner, 
-        uint256 UPTFee
+        uint256 UPTFee, 
+        uint256 memecoinYields
     );
 
     event RegisterMemeverse(
         uint256 indexed verseId, 
         address indexed owner, 
         address memecoin, 
-        address liquidProof
+        address liquidProof,
+        address memecoinVault
     );
 
     event UpdateSigner(

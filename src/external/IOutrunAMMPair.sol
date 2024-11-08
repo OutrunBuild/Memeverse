@@ -6,5 +6,7 @@ interface IOutrunAMMPair {
     
     function token1() external view returns (address);
 
+    function previewMakerFee() external view returns (uint256 amount0, uint256 amount1);
+
     function claimMakerFee() external returns (uint256 amount0, uint256 amount1);
 }

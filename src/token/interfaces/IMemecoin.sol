@@ -1,13 +1,15 @@
-//SPDX-License-Identifier: GPL-3.0
+// SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
- * @title Memeverse Liquidity proof Token Interface
+ * @title Memecoin interface
  */
-interface IMemeLiquidProof is IERC20 {
+interface IMemecoin is IERC20 {
     function memeverse() external view returns (address);
+
+    function isTransferable() external view returns (bool);
 
     function enableTransfer() external;
 
@@ -15,7 +17,7 @@ interface IMemeLiquidProof is IERC20 {
 
     function mint(address account, uint256 amount) external;
 
-    function burn(address account, uint256 amount) external;
+    function burn(uint256 amount) external;
 
     error PermissionDenied();
 

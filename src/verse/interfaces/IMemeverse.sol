@@ -1,0 +1,138 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity ^0.8.26;
+
+/**
+ * @title Memeverse interface
+ */
+interface IMemeverse {
+    enum Stage {
+        Genesis, 
+        Locked, 
+        Unlocked, 
+        Refund
+    }
+
+    struct Memeverse {
+        string name;                    // Token name
+        string symbol;                  // Token symbol
+        address memecoin;               // Memecoin address
+        address liquidProof;            // Liquidity proof token address
+        uint256 totalFund;              // Initial fundraising(UPT)
+        uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
+        uint256 endTime;                // EndTime of launchPool
+        uint256 lockupDays;             // LockupDays of liquidity
+        uint24[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
+        Stage currentStage;             // Current stage 
+    }
+
+    function initialize(
+        uint256 genesisFee,
+        uint256 minTotalFund,
+        uint256 fundBasedAmount,
+        uint128 minDurationDays,
+        uint128 maxDurationDays,
+        uint128 minLockupDays,
+        uint128 maxLockupDays
+    ) external;
+
+    function genesis(uint256 verseId, uint256 amountInUPT) external;
+
+    function genesisFailedRefund(uint256 verseId) external;
+
+    function changeStage(
+        uint256 verseId, 
+        uint256 deadline, 
+        uint8 v, 
+        bytes32 r, 
+        bytes32 s
+    ) external;
+
+    function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external;
+
+    function claimTradeFees(uint256 verseId) external;
+
+    function registerMemeverse(
+        string calldata _name,
+        string calldata _symbol,
+        uint256 uniqueId,
+        uint256 durationDays,
+        uint256 lockupDays,
+        uint256 maxFund,
+        uint24[] calldata omnichainIds,
+        uint256 deadline, 
+        uint8 v, 
+        bytes32 r, 
+        bytes32 s
+    ) external payable;
+
+    function setRevenuePool(address revenuePool) external;
+
+    function setGenesisFee(uint256 genesisFee) external;
+
+    function setMinTotalFund(uint256 minTotalFund) external;
+
+    function setFundBasedAmount(uint256 fundBasedAmount) external;
+
+    function setDurationDaysRange(uint128 minDurationDays, uint128 maxDurationDays) external;
+
+    function setLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays) external;
+    
+    error ZeroInput();
+
+    error ErrorInput();
+
+    error InvalidSigner();
+
+    error PermissionDenied();
+
+    error InvalidRegisterInfo();
+
+    error NotGenesisStage(uint256 endTime);
+
+    error ExpiredSignature(uint256 deadline);
+
+    error InTheGenesisStage(uint256 endTime);
+
+    error NotRefundStage(Stage currentStage);
+
+    error NotUnlockedStage(Stage currentStage);
+
+    error InsufficientGenesisFee(uint256 genesisFee);
+
+    event Deposit(
+        uint256 indexed verseId, 
+        address indexed depositer, 
+        uint256 amountInUPTWithMeme, 
+        uint256 amountInUPTWithLP
+    );
+
+    event GenesisFailsRefund(
+        uint256 indexed verseId, 
+        address indexed receiver, 
+        uint256 refundUPT
+    );
+
+    event RedeemLiquidity(
+        uint256 indexed verseId, 
+        address indexed receiver, 
+        uint256 liquidity
+    );
+
+    event ClaimTradeFees(
+        uint256 indexed verseId, 
+        address indexed owner, 
+        uint256 UPTFee
+    );
+
+    event RegisterMemeverse(
+        uint256 indexed verseId, 
+        address indexed owner, 
+        address memecoin, 
+        address liquidProof
+    );
+
+    event UpdateSigner(
+        address indexed oldSigner, 
+        address indexed newSigner
+    );
+}

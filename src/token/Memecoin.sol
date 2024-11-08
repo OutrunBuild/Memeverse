@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { IMemeLiquidProof } from "./interfaces/IMemeLiquidProof.sol";
+import { IMemecoin, IERC20 } from "./interfaces/IMemecoin.sol";
 
 /**
- * @title Memeverse Liquidity proof Token
+ * @title Memecoin contract
  */
-contract MemeLiquidProof is IMemeLiquidProof {
+contract Memecoin is IMemecoin {
+    uint256 internal constant DAY = 24 * 3600;
+
     string public name;
     string public symbol;
     uint8 public decimals;
     uint256 public totalSupply;
-    address public memecoin;
     address public memeverse;
     bool public isTransferable;
 
@@ -26,15 +27,13 @@ contract MemeLiquidProof is IMemeLiquidProof {
 
     constructor(
         string memory _name, 
-        string memory _symbol, 
+        string memory _symbol,
         uint8 _decimals, 
-        address _memecoin, 
         address _memeverse
     ) {
         name = _name;
         symbol = _symbol;
         decimals = _decimals;
-        memecoin = _memecoin;
         memeverse = _memeverse;
 
         transferWhiteList[_memeverse] = true;
@@ -48,7 +47,7 @@ contract MemeLiquidProof is IMemeLiquidProof {
     function addTransferWhiteList(address account) external override onlyMemeverse {
         transferWhiteList[account] = true;
     }
-    
+
     function approve(address spender, uint256 amount) public virtual returns (bool) {
         allowance[msg.sender][spender] = amount;
 
@@ -113,9 +112,10 @@ contract MemeLiquidProof is IMemeLiquidProof {
         _mint(account, amount);
     }
 
-    function burn(address account, uint256 amount) external onlyMemeverse {
-        require(balanceOf[account] >= amount, InsufficientBalance());
-        _burn(account, amount);
+    function burn(uint256 amount) external override {
+        address msgSender = msg.sender;
+        require(balanceOf[msgSender] >= amount, InsufficientBalance());
+        _burn(msgSender, amount);
     }
 
     function _mint(address to, uint256 amount) internal virtual {

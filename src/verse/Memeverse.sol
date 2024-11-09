@@ -116,12 +116,12 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         // Mint memecoin
         address memecoin = verse.memecoin;
         uint256 amountInUPTWithMemecoin;
-        uint256 deployMemeAmount;
+        uint256 memecoinLiquidityAmount;
         unchecked {
             amountInUPTWithMemecoin = 2 * amountInUPT / 3;
-            deployMemeAmount = amountInUPTWithMemecoin * fundBasedAmount;
+            memecoinLiquidityAmount = amountInUPTWithMemecoin * fundBasedAmount;
         }
-        IMemecoin(memecoin).mint(address(this), deployMemeAmount);
+        IMemecoin(memecoin).mint(address(this), memecoinLiquidityAmount);
 
         // Deploy memecoin liquidity
         _safeApproveInf(memecoin, OUTRUN_AMM_ROUTER);
@@ -130,9 +130,9 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
             UPT,
             memecoin,
             amountInUPTWithMemecoin,
-            deployMemeAmount,
+            memecoinLiquidityAmount,
             amountInUPTWithMemecoin,
-            deployMemeAmount,
+            memecoinLiquidityAmount,
             address(this),
             block.timestamp + 600
         );

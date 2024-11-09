@@ -18,15 +18,18 @@ interface IMemeverse {
         address memecoin;               // Memecoin address
         address liquidProof;            // Liquidity proof token address
         address memecoinVault;          // Memecoin yield vault
-        uint128 totalFund;              // Initial fundraising(UPT)
-        uint128 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
+        uint128 totalMemecoinFunds;      // Initial fundraising(UPT) for memecoin liquidity
+        uint128 totalLiquidProofFunds;   // Initial fundraising(UPT) for liquidProof liquidity
+        uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
         uint256 endTime;                // EndTime of launchPool
         uint256 lockupDays;             // LockupDays of liquidity
-        uint24[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
+        uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
         Stage currentStage;             // Current stage 
     }
 
     function getMemeverseUnlockTime(uint256 verseId) external view  returns (uint256 unlockTime);
+
+    function claimableLiquidProof(uint256 verseId) external view returns (uint256 claimableAmount);
 
     function previewTransactionFees(uint256 verseId) external view returns (uint256 UPTFee, uint256 memecoinYields);
 
@@ -42,7 +45,7 @@ interface IMemeverse {
 
     function genesis(uint256 verseId, uint256 amountInUPT) external;
 
-    function genesisFailedRefund(uint256 verseId) external;
+    function refund(uint256 verseId) external;
 
     function changeStage(
         uint256 verseId, 
@@ -51,6 +54,8 @@ interface IMemeverse {
         bytes32 r, 
         bytes32 s
     ) external;
+
+    function claimLiquidProof(uint256 verseId) external;
 
     function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external;
 
@@ -62,8 +67,21 @@ interface IMemeverse {
         uint256 uniqueId,
         uint256 durationDays,
         uint256 lockupDays,
+        uint256 deadline, 
+        uint8 v, 
+        bytes32 r, 
+        bytes32 s
+    ) external payable;
+
+    function registerOmnichainMemeverse(
+        string calldata _name,
+        string calldata _symbol,
+        address memecoin,
+        uint256 uniqueId,
+        uint256 durationDays,
+        uint256 lockupDays,
         uint128 maxFund,
-        uint24[] calldata omnichainIds,
+        uint32[] calldata omnichainIds,
         uint256 deadline, 
         uint8 v, 
         bytes32 r, 
@@ -100,6 +118,8 @@ interface IMemeverse {
 
     error NotRefundStage(Stage currentStage);
 
+    error NotLockedStage(Stage currentStage);
+
     error NotUnlockedStage(Stage currentStage);
 
     error InsufficientGenesisFee(uint256 genesisFee);
@@ -111,10 +131,16 @@ interface IMemeverse {
         uint256 amountInUPTWithLP
     );
 
-    event GenesisFailsRefund(
+    event Refund(
         uint256 indexed verseId, 
         address indexed receiver, 
-        uint256 refundUPT
+        uint256 refundAmount
+    );
+
+    event ClaimLiquidProof(
+        uint256 indexed verseId, 
+        address indexed receiver, 
+        uint256 claimedAmount
     );
 
     event RedeemLiquidity(

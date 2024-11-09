@@ -12,16 +12,9 @@ contract Memecoin is IMemecoin {
     uint8 public decimals;
     uint256 public totalSupply;
     address public memeverse;
-    bool public transferable;
 
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
-    mapping(address => bool) public transferWhiteList; // For MemeverseLauncher and pair
-
-    modifier onlyMemeverse() {
-        require(msg.sender == memeverse, PermissionDenied());
-        _;
-    }
 
     constructor(
         string memory _name, 
@@ -33,17 +26,6 @@ contract Memecoin is IMemecoin {
         symbol = _symbol;
         decimals = _decimals;
         memeverse = _memeverse;
-
-        transferWhiteList[_memeverse] = true;
-    }
-
-    function enableTransfer() external override onlyMemeverse {
-        require(!transferable, AlreadyEnableTransfer());
-        transferable = true;
-    }
-
-    function addTransferWhiteList(address account) external override onlyMemeverse {
-        transferWhiteList[account] = true;
     }
 
     function approve(address spender, uint256 amount) public returns (bool) {
@@ -72,7 +54,8 @@ contract Memecoin is IMemecoin {
         return true;
     }
 
-    function mint(address account, uint256 amount) external override onlyMemeverse {
+    function mint(address account, uint256 amount) external override {
+        require(msg.sender == memeverse, PermissionDenied());
         _mint(account, amount);
     }
 
@@ -83,8 +66,6 @@ contract Memecoin is IMemecoin {
     }
 
     function _transfer(address from, address to, uint256 amount) internal {
-        require(transferable || transferWhiteList[from], TransferNotEnable());
-
         balanceOf[from] -= amount;
 
         unchecked {

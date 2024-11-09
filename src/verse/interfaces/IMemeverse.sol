@@ -26,6 +26,8 @@ interface IMemeverse {
         Stage currentStage;             // Current stage 
     }
 
+    function getMemeverseUnlockTime(uint256 verseId) external view  returns (uint256 unlockTime);
+
     function previewTransactionFees(uint256 verseId) external view returns (uint256 UPTFee, uint256 memecoinYields);
 
     function initialize(

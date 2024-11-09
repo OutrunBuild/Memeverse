@@ -60,6 +60,11 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         _safeApproveInf(_UPT, _outrunAMMRouter);
     }
 
+    function getMemeverseUnlockTime(uint256 verseId) external view override returns (uint256 unlockTime) {
+        Memeverse storage verse = memeverses[verseId];
+        unlockTime = verse.endTime + verse.lockupDays * DAY;
+    }
+
     /**
      * @dev Preview transaction fees for owner(UPT) and vault(Memecoin)
      * @param verseId - Memeverse id

@@ -103,8 +103,8 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
      */
     function genesis(uint256 verseId, uint256 amountInUPT) external override {
         Memeverse storage verse = memeverses[verseId];
-        uint256 totalFund = verse.totalFund;
-        uint256 maxFund = verse.maxFund;
+        uint128 totalFund = verse.totalFund;
+        uint128 maxFund = verse.maxFund;
         address msgSender = msg.sender;
         if (maxFund !=0 && totalFund + amountInUPT > maxFund) amountInUPT = maxFund - totalFund;
         _transferIn(UPT, msgSender, amountInUPT);
@@ -163,7 +163,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         );
 
         unchecked {
-            verse.totalFund += amountInUPTWithMemecoin + amountInUPTWithLP;
+            verse.totalFund += uint128(amountInUPTWithMemecoin + amountInUPTWithLP);
             liquidProofliquiditys[verseId][msgSender] += liquidProofliquidity;
         }
 
@@ -319,7 +319,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         uint256 uniqueId,
         uint256 durationDays,
         uint256 lockupDays,
-        uint256 maxFund,
+        uint128 maxFund,
         uint24[] calldata omnichainIds,
         uint256 deadline, 
         uint8 v, 

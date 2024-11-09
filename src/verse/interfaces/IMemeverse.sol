@@ -18,8 +18,8 @@ interface IMemeverse {
         address memecoin;               // Memecoin address
         address liquidProof;            // Liquidity proof token address
         address memecoinVault;          // Memecoin yield vault
-        uint256 totalFund;              // Initial fundraising(UPT)
-        uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
+        uint128 totalFund;              // Initial fundraising(UPT)
+        uint128 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
         uint256 endTime;                // EndTime of launchPool
         uint256 lockupDays;             // LockupDays of liquidity
         uint24[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
@@ -60,7 +60,7 @@ interface IMemeverse {
         uint256 uniqueId,
         uint256 durationDays,
         uint256 lockupDays,
-        uint256 maxFund,
+        uint128 maxFund,
         uint24[] calldata omnichainIds,
         uint256 deadline, 
         uint8 v, 

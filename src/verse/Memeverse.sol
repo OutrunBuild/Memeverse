@@ -167,7 +167,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
             liquidProofliquiditys[verseId][msgSender] += liquidProofliquidity;
         }
 
-        emit Deposit(verseId, msgSender, amountInUPTWithMemecoin, amountInUPTWithLP);
+        emit Genesis(verseId, msgSender, amountInUPTWithMemecoin, amountInUPTWithLP);
     }
 
     /**

@@ -102,7 +102,7 @@ interface IMemeverse {
 
     error InsufficientGenesisFee(uint256 genesisFee);
 
-    event Deposit(
+    event Genesis(
         uint256 indexed verseId, 
         address indexed depositer, 
         uint256 amountInUPTWithMeme, 

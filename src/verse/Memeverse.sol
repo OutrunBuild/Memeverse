@@ -236,23 +236,23 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         Memeverse storage verse = memeverses[verseId];
         uint256 endTime = verse.endTime;
         require(currentTime > endTime, InTheGenesisStage(endTime));
-        uint256 unlockedTime = endTime + verse.lockupDays * DAY;
 
-        if (verse.currentStage == Stage.Genesis && currentTime > endTime + 14 * DAY) {
-            bytes32 messageHash = keccak256(abi.encode(verseId, Stage.Refund, block.chainid, deadline));
-            bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
-            require(signer != ECDSA.recover(ethSignedHash, v, r, s), InvalidSigner());
+        bytes32 refundSignedHash = MessageHashUtils.toEthSignedMessageHash(
+            keccak256(abi.encode(verseId, Stage.Refund, block.chainid, deadline))
+        );
+        bytes32 LockedSignedHash = MessageHashUtils.toEthSignedMessageHash(
+            keccak256(abi.encode(verseId, Stage.Locked, block.chainid, deadline))
+        );
 
-            verse.currentStage = Stage.Refund;
-        } else if (verse.currentStage == Stage.Genesis && currentTime < unlockedTime) {
-            bytes32 messageHash = keccak256(abi.encode(verseId, Stage.Locked, block.chainid, deadline));
-            bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
-            require(signer != ECDSA.recover(ethSignedHash, v, r, s), InvalidSigner());
-
-            IMemecoin(verse.memecoin).enableTransfer();
-            IMemeLiquidProof(verse.liquidProof).enableTransfer();
-            verse.currentStage = Stage.Locked;
-        } else if (verse.currentStage == Stage.Locked && currentTime > unlockedTime) {
+        if (verse.currentStage == Stage.Genesis) {
+            if (signer == ECDSA.recover(refundSignedHash, v, r, s)) {
+                verse.currentStage = Stage.Refund;
+            } else if (signer == ECDSA.recover(LockedSignedHash, v, r, s)) {
+                verse.currentStage = Stage.Locked;
+            } else {
+                revert InvalidSigner();
+            }
+        } else if (verse.currentStage == Stage.Locked && currentTime > endTime + verse.lockupDays * DAY) {
             verse.currentStage = Stage.Unlocked;
         }
     }

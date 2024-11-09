@@ -8,8 +8,8 @@ import { ERC721, ERC721Burnable } from "@openzeppelin/contracts/token/ERC721/ext
 
 import { Memecoin, IMemecoin, IERC20 } from "../token/Memecoin.sol";
 import { IMemeverse } from "./interfaces/IMemeverse.sol";
-import { IOutrunAMMPair } from "../external/IOutrunAMMPair.sol";
-import { IOutrunAMMRouter } from "../external/IOutrunAMMRouter.sol";
+import { IOutrunAMMPair } from "../libraries/IOutrunAMMPair.sol";
+import { IOutrunAMMRouter } from "../libraries/IOutrunAMMRouter.sol";
 import { TokenHelper } from "../libraries/TokenHelper.sol";
 import { FixedPoint128 } from "../libraries/FixedPoint128.sol";
 import { Initializable } from "../libraries/Initializable.sol";

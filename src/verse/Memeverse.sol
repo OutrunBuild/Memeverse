@@ -368,8 +368,8 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
 
         // Deploy memecoin vault
         address memecoinVault = address(new MemecoinVault(
-            string(abi.encodePacked(_name, " Vault")),
-            string(abi.encodePacked(_name, " VAULT")),
+            string(abi.encodePacked("Staked ", _name)),
+            string(abi.encodePacked("s", _symbol)),
             memecoin,
             address(this),
             uniqueId

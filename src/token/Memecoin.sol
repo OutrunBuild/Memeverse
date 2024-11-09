@@ -16,7 +16,7 @@ contract Memecoin is IMemecoin {
 
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
-    mapping(address => bool) public transferWhiteList; // For memeverse launcher and pair
+    mapping(address => bool) public transferWhiteList; // For MemeverseLauncher and pair
 
     modifier onlyMemeverse() {
         require(msg.sender == memeverse, PermissionDenied());

@@ -13,7 +13,7 @@ contract MemeLiquidProof is IMemeLiquidProof {
     uint256 public totalSupply;
     address public memecoin;
     address public memeverse;
-    bool public isTransferable;
+    bool public transferable;
 
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
@@ -41,8 +41,8 @@ contract MemeLiquidProof is IMemeLiquidProof {
     }
 
     function enableTransfer() external override onlyMemeverse {
-        require(!isTransferable, AlreadyEnableTransfer());
-        isTransferable = true;
+        require(!transferable, AlreadyEnableTransfer());
+        transferable = true;
     }
 
     function addTransferWhiteList(address account) external override onlyMemeverse {
@@ -58,7 +58,7 @@ contract MemeLiquidProof is IMemeLiquidProof {
 
     function transfer(address to, uint256 amount) public returns (bool) {
         address msgSender = msg.sender;
-        if (isTransferable || transferWhiteList[msgSender]) {
+        if (transferable || transferWhiteList[msgSender]) {
             balanceOf[msgSender] -= amount;
 
             unchecked {
@@ -84,7 +84,7 @@ contract MemeLiquidProof is IMemeLiquidProof {
         address to,
         uint256 amount
     ) public returns (bool) {
-        if (isTransferable || transferWhiteList[from]) {
+        if (transferable || transferWhiteList[from]) {
             uint256 allowed = allowance[from][msg.sender];
 
             if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;

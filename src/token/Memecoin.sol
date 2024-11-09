@@ -7,14 +7,12 @@ import { IMemecoin, IERC20 } from "./interfaces/IMemecoin.sol";
  * @title Memecoin contract
  */
 contract Memecoin is IMemecoin {
-    uint256 internal constant DAY = 24 * 3600;
-
     string public name;
     string public symbol;
     uint8 public decimals;
     uint256 public totalSupply;
     address public memeverse;
-    bool public isTransferable;
+    bool public transferable;
 
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
@@ -40,8 +38,8 @@ contract Memecoin is IMemecoin {
     }
 
     function enableTransfer() external override onlyMemeverse {
-        require(!isTransferable, AlreadyEnableTransfer());
-        isTransferable = true;
+        require(!transferable, AlreadyEnableTransfer());
+        transferable = true;
     }
 
     function addTransferWhiteList(address account) external override onlyMemeverse {
@@ -57,7 +55,7 @@ contract Memecoin is IMemecoin {
 
     function transfer(address to, uint256 amount) public returns (bool) {
         address msgSender = msg.sender;
-        if (isTransferable || transferWhiteList[msgSender]) {
+        if (transferable || transferWhiteList[msgSender]) {
             balanceOf[msgSender] -= amount;
 
             unchecked {
@@ -83,7 +81,7 @@ contract Memecoin is IMemecoin {
         address to,
         uint256 amount
     ) public returns (bool) {
-        if (isTransferable || transferWhiteList[from]) {
+        if (transferable || transferWhiteList[from]) {
             uint256 allowed = allowance[from][msg.sender];
 
             if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;

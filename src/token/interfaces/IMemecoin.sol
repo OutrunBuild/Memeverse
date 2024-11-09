@@ -9,7 +9,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 interface IMemecoin is IERC20 {
     function memeverse() external view returns (address);
 
-    function isTransferable() external view returns (bool);
+    function transferable() external view returns (bool);
 
     function enableTransfer() external;
 

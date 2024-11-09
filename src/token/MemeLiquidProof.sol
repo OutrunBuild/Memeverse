@@ -58,23 +58,8 @@ contract MemeLiquidProof is IMemeLiquidProof {
 
     function transfer(address to, uint256 amount) public returns (bool) {
         address msgSender = msg.sender;
-        if (transferable || transferWhiteList[msgSender]) {
-            balanceOf[msgSender] -= amount;
-
-            unchecked {
-                balanceOf[to] += amount;
-            }
-
-            if (to == address(0)) {
-                unchecked {
-                    totalSupply -= amount;
-                }
-            }
-
-            emit Transfer(msgSender, to, amount);
-        } else {
-            revert TransferNotEnable();
-        }
+        require(transferable || transferWhiteList[msgSender], TransferNotEnable());
+        _transfer(msgSender, to, amount);
 
         return true;
     }
@@ -84,27 +69,10 @@ contract MemeLiquidProof is IMemeLiquidProof {
         address to,
         uint256 amount
     ) public returns (bool) {
-        if (transferable || transferWhiteList[from]) {
-            uint256 allowed = allowance[from][msg.sender];
-
-            if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
-
-            balanceOf[from] -= amount;
-
-            unchecked {
-                balanceOf[to] += amount;
-            }
-
-            if (to == address(0)) {
-                unchecked {
-                    totalSupply -= amount;
-                }
-            }
-
-            emit Transfer(from, to, amount);
-        } else {
-            revert TransferNotEnable();
-        }
+        require(transferable || transferWhiteList[from], TransferNotEnable());
+        uint256 allowed = allowance[from][msg.sender];
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+        _transfer(from, to, amount);
 
         return true;
     }
@@ -116,6 +84,22 @@ contract MemeLiquidProof is IMemeLiquidProof {
     function burn(address account, uint256 amount) external onlyMemeverse {
         require(balanceOf[account] >= amount, InsufficientBalance());
         _burn(account, amount);
+    }
+
+    function _transfer(address from, address to, uint256 amount) internal {
+        balanceOf[from] -= amount;
+
+        unchecked {
+            balanceOf[to] += amount;
+        }
+
+        if (to == address(0)) {
+            unchecked {
+                totalSupply -= amount;
+            }
+        }
+
+        emit Transfer(from, to, amount);
     }
 
     function _mint(address to, uint256 amount) internal {

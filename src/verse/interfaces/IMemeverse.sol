@@ -18,13 +18,16 @@ interface IMemeverse {
         address memecoin;               // Memecoin address
         address liquidProof;            // Liquidity proof token address
         address memecoinVault;          // Memecoin yield vault
-        uint128 totalMemecoinFunds;      // Initial fundraising(UPT) for memecoin liquidity
-        uint128 totalLiquidProofFunds;   // Initial fundraising(UPT) for liquidProof liquidity
         uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
         uint256 endTime;                // EndTime of launchPool
         uint256 lockupDays;             // LockupDays of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
         Stage currentStage;             // Current stage 
+    }
+
+    struct GenesisFund {
+        uint128 totalMemecoinFunds;      // Initial fundraising(UPT) for memecoin liquidity
+        uint128 totalLiquidProofFunds;   // Initial fundraising(UPT) for liquidProof liquidity
     }
 
     function getMemeverseUnlockTime(uint256 verseId) external view  returns (uint256 unlockTime);
@@ -110,6 +113,8 @@ interface IMemeverse {
 
     error InvalidRegisterInfo();
 
+    error InsufficientUserFunds();
+
     error NotGenesisStage(uint256 endTime);
 
     error ExpiredSignature(uint256 deadline);
@@ -127,8 +132,8 @@ interface IMemeverse {
     event Genesis(
         uint256 indexed verseId, 
         address indexed depositer, 
-        uint256 amountInUPTWithMeme, 
-        uint256 amountInUPTWithLP
+        uint256 increasedMemecoinFund, 
+        uint256 increasedLiquidProofFund
     );
 
     event Refund(

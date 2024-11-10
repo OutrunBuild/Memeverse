@@ -40,7 +40,8 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
 
     mapping(uint256 verseId => Memeverse) public memeverses;
     mapping(uint256 verseId => uint256) public claimableLiquidProofs;
-    mapping(uint256 verseId => mapping(address account => uint256)) public genesisFunds;
+    mapping(uint256 verseId => GenesisFund) public genesisFunds;
+    mapping(uint256 verseId => mapping(address account => uint256)) public userTotalFunds;
 
     constructor(
         string memory _name,
@@ -67,7 +68,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
     }
 
     /**
-     * @dev Preview claimable liquidProof in stage Locked
+     * @dev Preview claimable liquidProof of user in stage Locked
      * @param verseId - Memeverse id
      */
     function claimableLiquidProof(uint256 verseId) public view override returns (uint256 claimableAmount) {
@@ -75,8 +76,8 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         Stage currentStage = verse.currentStage;
         require(verse.currentStage == Stage.Locked, NotLockedStage(currentStage));
 
-        uint256 totalFunds = verse.totalMemecoinFunds + verse.totalLiquidProofFunds;
-        uint256 userFunds = genesisFunds[verseId][msg.sender];
+        uint256 totalFunds = genesisFunds[verseId].totalMemecoinFunds + genesisFunds[verseId].totalLiquidProofFunds;
+        uint256 userFunds = userTotalFunds[verseId][msg.sender];
         uint256 totalUserLiquidProof = claimableLiquidProofs[verseId];
         claimableAmount = totalUserLiquidProof * userFunds / totalFunds;
     }
@@ -128,12 +129,14 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         uint256 currentTime = block.timestamp;
         require(currentTime < endTime, NotGenesisStage(endTime));
 
-        uint128 totalMemecoinFunds = verse.totalMemecoinFunds;
-        uint128 totalLiquidProofFunds = verse.totalLiquidProofFunds;
-        uint256 totalFund = totalMemecoinFunds + totalLiquidProofFunds;
+        
+        GenesisFund storage genesisFund = genesisFunds[verseId];
+        uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
+        uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
+        uint256 totalFunds = totalMemecoinFunds + totalLiquidProofFunds;
         uint256 maxFund = verse.maxFund;
         address msgSender = msg.sender;
-        if (maxFund !=0 && totalFund + amountInUPT > maxFund) amountInUPT = maxFund - totalFund;
+        if (maxFund !=0 && totalFunds + amountInUPT > maxFund) amountInUPT = maxFund - totalFunds;
         _transferIn(UPT, msgSender, amountInUPT);
 
         address memecoin = verse.memecoin;
@@ -141,16 +144,16 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         uint256 increasedLiquidProofFund;
         uint256 increasedMemecoinAmount;
         unchecked {
-            increasedMemecoinFund = 2 * amountInUPT / 3;
-            increasedLiquidProofFund = amountInUPT - increasedMemecoinFund;
+            increasedLiquidProofFund = amountInUPT / 3;
+            increasedMemecoinFund = amountInUPT - increasedLiquidProofFund;
             increasedMemecoinAmount = increasedMemecoinFund * fundBasedAmount;
         }
         IMemecoin(memecoin).mint(address(this), increasedMemecoinAmount);
 
         unchecked {
-            verse.totalMemecoinFunds = uint128(totalMemecoinFunds + increasedMemecoinFund);
-            verse.totalLiquidProofFunds = uint128(totalLiquidProofFunds + increasedLiquidProofFund);
-            genesisFunds[verseId][msgSender] += amountInUPT;
+            genesisFund.totalMemecoinFunds = uint128(totalMemecoinFunds + increasedMemecoinFund);
+            genesisFund.totalLiquidProofFunds = uint128(totalLiquidProofFunds + increasedLiquidProofFund);
+            userTotalFunds[verseId][msgSender] += amountInUPT;
         }
 
         emit Genesis(verseId, msgSender, increasedMemecoinFund, increasedLiquidProofFund);
@@ -166,7 +169,9 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         require(currentStage == Stage.Refund, NotRefundStage(currentStage));
         
         address msgSender = msg.sender;
-        uint256 userFunds = genesisFunds[verseId][msgSender];
+        uint256 userFunds = userTotalFunds[verseId][msgSender];
+        require(userFunds > 0, InsufficientUserFunds());
+        userTotalFunds[verseId][msgSender] = 0;
         _transferOut(UPT, msgSender, userFunds);
 
         address memecoin = verse.memecoin;
@@ -210,7 +215,9 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
 
                 // Deploy memecoin liquidity
                 address memecoin = verse.memecoin;
-                uint128 totalMemecoinFunds = verse.totalMemecoinFunds;
+                GenesisFund storage genesisFund = genesisFunds[verseId];
+                uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
+                uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
                 uint256 memecoinLiquidityAmount = _selfBalance(IERC20(memecoin));
                 _safeApproveInf(memecoin, OUTRUN_AMM_ROUTER);
                 _safeApproveInf(UPT, OUTRUN_AMM_ROUTER);
@@ -231,7 +238,6 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
                 
                 _safeApproveInf(liquidProof, OUTRUN_AMM_ROUTER);
                 _safeApproveInf(UPT, OUTRUN_AMM_ROUTER);
-                uint128 totalLiquidProofFunds = verse.totalLiquidProofFunds;
                 uint256 liquidProofLiquidityAmount = memecoinliquidity / 4;
                 IOutrunAMMRouter(OUTRUN_AMM_ROUTER).addLiquidity(
                     UPT,
@@ -262,7 +268,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
 
         address msgSender = msg.sender;
         _transferOut(memeverses[verseId].liquidProof, msgSender, claimableAmount);
-        genesisFunds[verseId][msgSender] = 0;
+        userTotalFunds[verseId][msgSender] = 0;
 
         emit ClaimLiquidProof(verseId, msgSender, claimableAmount);
     }
@@ -385,8 +391,6 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
             memecoin, 
             liquidProof, 
             memecoinVault, 
-            0, 
-            0, 
             0,
             block.timestamp + durationDays * DAY,
             lockupDays, 
@@ -479,8 +483,6 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
             memecoin, 
             liquidProof, 
             memecoinVault, 
-            0, 
-            0, 
             maxFund,
             block.timestamp + durationDays * DAY,
             lockupDays, 

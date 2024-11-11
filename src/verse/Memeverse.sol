@@ -173,10 +173,6 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         require(userFunds > 0, InsufficientUserFunds());
         userTotalFunds[verseId][msgSender] = 0;
         _transferOut(UPT, msgSender, userFunds);
-
-        address memecoin = verse.memecoin;
-        uint256 selfBalance = _selfBalance(IERC20(memecoin));
-        if (selfBalance != 0) IMemecoin(memecoin).burn(selfBalance);
         
         emit Refund(verseId, msgSender, userFunds);
     }
@@ -210,6 +206,9 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
             if (signer == ECDSA.recover(refundSignedHash, v, r, s)) {
                 // Total omnichain funds didn't meet the minimum funding requirement
                 verse.currentStage = Stage.Refund;
+                address memecoin = verse.memecoin;
+                uint256 selfBalance = _selfBalance(IERC20(memecoin));
+                IMemecoin(memecoin).burn(selfBalance);
             } else if (signer == ECDSA.recover(LockedSignedHash, v, r, s)) {
                 verse.currentStage = Stage.Locked;
 

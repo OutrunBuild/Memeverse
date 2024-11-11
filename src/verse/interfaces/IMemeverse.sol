@@ -133,7 +133,8 @@ interface IMemeverse {
         uint256 indexed verseId, 
         address indexed depositer, 
         uint256 increasedMemecoinFund, 
-        uint256 increasedLiquidProofFund
+        uint256 increasedLiquidProofFund,
+        uint256 increasedMemecoinAmount
     );
 
     event Refund(

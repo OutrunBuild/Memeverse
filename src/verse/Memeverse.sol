@@ -156,7 +156,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
             userTotalFunds[verseId][msgSender] += amountInUPT;
         }
 
-        emit Genesis(verseId, msgSender, increasedMemecoinFund, increasedLiquidProofFund);
+        emit Genesis(verseId, msgSender, increasedMemecoinFund, increasedLiquidProofFund, increasedMemecoinAmount);
     }
 
     /**

@@ -264,12 +264,13 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
      */
     function claimLiquidProof(uint256 verseId) external {
         uint256 claimableAmount = claimableLiquidProof(verseId);
+        if (claimableAmount != 0) {
+            address msgSender = msg.sender;
+            _transferOut(memeverses[verseId].liquidProof, msgSender, claimableAmount);
+            userTotalFunds[verseId][msgSender] = 0;
 
-        address msgSender = msg.sender;
-        _transferOut(memeverses[verseId].liquidProof, msgSender, claimableAmount);
-        userTotalFunds[verseId][msgSender] = 0;
-
-        emit ClaimLiquidProof(verseId, msgSender, claimableAmount);
+            emit ClaimLiquidProof(verseId, msgSender, claimableAmount);
+        }
     }
 
     /**

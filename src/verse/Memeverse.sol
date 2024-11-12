@@ -187,7 +187,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         uint8 v, 
         bytes32 r, 
         bytes32 s
-    ) external override returns (Stage) {
+    ) external override returns (Stage currentStage) {
         uint256 currentTime = block.timestamp;
         require(currentTime > deadline, ExpiredSignature(deadline));
 
@@ -205,15 +205,13 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         if (verse.currentStage == Stage.Genesis) {
             if (signer == ECDSA.recover(refundSignedHash, v, r, s)) {
                 // Total omnichain funds didn't meet the minimum funding requirement
-                verse.currentStage = Stage.Refund;
                 address memecoin = verse.memecoin;
                 uint256 selfBalance = _selfBalance(IERC20(memecoin));
                 IMemecoin(memecoin).burn(selfBalance);
 
-                return Stage.Refund;
+                verse.currentStage = Stage.Refund;
+                currentStage = Stage.Refund;
             } else if (signer == ECDSA.recover(LockedSignedHash, v, r, s)) {
-                verse.currentStage = Stage.Locked;
-
                 // Deploy memecoin liquidity
                 address memecoin = verse.memecoin;
                 GenesisFund storage genesisFund = genesisFunds[verseId];
@@ -252,13 +250,14 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
                 );
                 claimableLiquidProofs[verseId] = memecoinliquidity - liquidProofLiquidityAmount;
 
-                return Stage.Locked;
+                verse.currentStage = Stage.Locked;
+                currentStage = Stage.Locked;
             } else {
                 revert InvalidSigner();
             }
         } else if (verse.currentStage == Stage.Locked && currentTime > endTime + verse.lockupDays * DAY) {
             verse.currentStage = Stage.Unlocked;
-            return Stage.Unlocked;
+            currentStage = Stage.Unlocked;
         }
     }
 

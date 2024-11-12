@@ -163,13 +163,13 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
      * @dev Refund UPT after genesis Failed, total omnichain funds didn't meet the minimum funding requirement
      * @param verseId - Memeverse id
      */
-    function refund(uint256 verseId) external override {
+    function refund(uint256 verseId) external override returns (uint256 userFunds) {
         Memeverse storage verse = memeverses[verseId];
         Stage currentStage = verse.currentStage;
         require(currentStage == Stage.Refund, NotRefundStage(currentStage));
         
         address msgSender = msg.sender;
-        uint256 userFunds = userTotalFunds[verseId][msgSender];
+        userFunds = userTotalFunds[verseId][msgSender];
         require(userFunds > 0, InsufficientUserFunds());
         userTotalFunds[verseId][msgSender] = 0;
         _transferOut(UPT, msgSender, userFunds);
@@ -187,7 +187,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         uint8 v, 
         bytes32 r, 
         bytes32 s
-    ) external override {
+    ) external override returns (Stage) {
         uint256 currentTime = block.timestamp;
         require(currentTime > deadline, ExpiredSignature(deadline));
 
@@ -209,6 +209,8 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
                 address memecoin = verse.memecoin;
                 uint256 selfBalance = _selfBalance(IERC20(memecoin));
                 IMemecoin(memecoin).burn(selfBalance);
+
+                return Stage.Refund;
             } else if (signer == ECDSA.recover(LockedSignedHash, v, r, s)) {
                 verse.currentStage = Stage.Locked;
 
@@ -248,13 +250,15 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
                     address(0),
                     block.timestamp + 600
                 );
-
                 claimableLiquidProofs[verseId] = memecoinliquidity - liquidProofLiquidityAmount;
+
+                return Stage.Locked;
             } else {
                 revert InvalidSigner();
             }
         } else if (verse.currentStage == Stage.Locked && currentTime > endTime + verse.lockupDays * DAY) {
             verse.currentStage = Stage.Unlocked;
+            return Stage.Unlocked;
         }
     }
 
@@ -262,14 +266,14 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
      * @dev Claim liquidProof in stage Locked
      * @param verseId - Memeverse id
      */
-    function claimLiquidProof(uint256 verseId) external {
-        uint256 claimableAmount = claimableLiquidProof(verseId);
-        if (claimableAmount != 0) {
+    function claimLiquidProof(uint256 verseId) external returns (uint256 amount) {
+        amount = claimableLiquidProof(verseId);
+        if (amount != 0) {
             address msgSender = msg.sender;
-            _transferOut(memeverses[verseId].liquidProof, msgSender, claimableAmount);
             userTotalFunds[verseId][msgSender] = 0;
+            _transferOut(memeverses[verseId].liquidProof, msgSender, amount);
 
-            emit ClaimLiquidProof(verseId, msgSender, claimableAmount);
+            emit ClaimLiquidProof(verseId, msgSender, amount);
         }
     }
 

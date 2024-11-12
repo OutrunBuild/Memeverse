@@ -48,7 +48,7 @@ interface IMemeverse {
 
     function genesis(uint256 verseId, uint256 amountInUPT) external;
 
-    function refund(uint256 verseId) external;
+    function refund(uint256 verseId) external returns (uint256 userFunds);
 
     function changeStage(
         uint256 verseId, 
@@ -56,9 +56,9 @@ interface IMemeverse {
         uint8 v, 
         bytes32 r, 
         bytes32 s
-    ) external;
+    ) external returns (Stage);
 
-    function claimLiquidProof(uint256 verseId) external;
+    function claimLiquidProof(uint256 verseId) external returns (uint256 amount);
 
     function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external;
 

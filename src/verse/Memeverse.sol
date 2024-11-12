@@ -74,7 +74,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
     function claimableLiquidProof(uint256 verseId) public view override returns (uint256 claimableAmount) {
         Memeverse storage verse = memeverses[verseId];
         Stage currentStage = verse.currentStage;
-        require(verse.currentStage == Stage.Locked, NotLockedStage(currentStage));
+        require(currentStage == Stage.Locked, NotLockedStage(currentStage));
 
         uint256 totalFunds = genesisFunds[verseId].totalMemecoinFunds + genesisFunds[verseId].totalLiquidProofFunds;
         uint256 userFunds = userTotalFunds[verseId][msg.sender];
@@ -284,7 +284,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
     function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external {
         Memeverse storage verse = memeverses[verseId];
         Stage currentStage = verse.currentStage;
-        require(verse.currentStage == Stage.Unlocked, NotUnlockedStage(currentStage));
+        require(currentStage == Stage.Unlocked, NotUnlockedStage(currentStage));
 
         address msgSender = msg.sender;
         IMemeLiquidProof(verse.liquidProof).burn(msgSender, proofTokenAmount);

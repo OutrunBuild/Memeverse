@@ -56,7 +56,7 @@ interface IMemeverse {
         uint8 v, 
         bytes32 r, 
         bytes32 s
-    ) external returns (Stage);
+    ) external returns (Stage currentStage);
 
     function claimLiquidProof(uint256 verseId) external returns (uint256 amount);
 

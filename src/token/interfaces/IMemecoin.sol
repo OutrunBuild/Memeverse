@@ -7,7 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @title Memecoin interface
  */
 interface IMemecoin is IERC20 {
-    function memeverse() external view returns (address);
+    function memeverseLauncher() external view returns (address);
 
     function mint(address account, uint256 amount) external;
 

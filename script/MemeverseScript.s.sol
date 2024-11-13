@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "./BaseScript.s.sol";
-import "../src/verse/Memeverse.sol";
+import "../src/verse/MemeverseLauncher.sol";
 
 contract MemeverseScript is BaseScript {
     function run() public broadcaster {
@@ -13,8 +13,8 @@ contract MemeverseScript is BaseScript {
         address factory = vm.envAddress("OUTRUN_AMM_FACTORY");
         address router = vm.envAddress("OUTRUN_AMM_ROUTER");
         
-        Memeverse UBNBMemeverse = new Memeverse(
-            "UBNBMemeverse",
+        MemeverseLauncher UBNBMemeverseLauncher = new MemeverseLauncher(
+            "UBNBMemeverseLauncher",
             "MVS-UBNB",
             UBNB,
             owner,
@@ -23,8 +23,8 @@ contract MemeverseScript is BaseScript {
             factory,
             router
         );
-        address UBNBMemeverseAddr = address(UBNBMemeverse);
-        console.log("UBNBMemeverse deployed on %s", UBNBMemeverseAddr);
+        address UBNBMemeverseLauncherAddr = address(UBNBMemeverseLauncher);
+        console.log("UBNBMemeverseLauncher deployed on %s", UBNBMemeverseLauncherAddr);
 
         uint256 genesisFee = 0.001 ether;
         uint256 minTotalFund = 20 * 1e18;
@@ -34,7 +34,7 @@ contract MemeverseScript is BaseScript {
         uint128 minLockupDays = 365;
         uint128 maxLockupDays = 1095;
 
-        UBNBMemeverse.initialize(
+        UBNBMemeverseLauncher.initialize(
             genesisFee,
             minTotalFund,
             fundBasedAmount,

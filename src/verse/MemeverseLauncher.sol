@@ -7,7 +7,7 @@ import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/Mes
 import { ERC721, ERC721Burnable } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 
 import { Memecoin, IMemecoin, IERC20 } from "../token/Memecoin.sol";
-import { IMemeverse } from "./interfaces/IMemeverse.sol";
+import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
 import { IOutrunAMMPair } from "../libraries/IOutrunAMMPair.sol";
 import { IOutrunAMMRouter } from "../libraries/IOutrunAMMRouter.sol";
 import { TokenHelper } from "../libraries/TokenHelper.sol";
@@ -21,7 +21,7 @@ import { MemeLiquidProof, IMemeLiquidProof } from "../token/MemeLiquidProof.sol"
 /**
  * @title Trapping into the memeverse
  */
-contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initializable, AutoIncrementId {
+contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, Ownable, Initializable, AutoIncrementId {
     uint256 public constant DAY = 24 * 3600;
     uint256 public constant SWAP_FEERATE = 100;
     address public immutable OUTRUN_AMM_ROUTER;
@@ -340,7 +340,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         uint8 v, 
         bytes32 r, 
         bytes32 s
-    ) external payable override {
+    ) external payable virtual override {
         require(
             lockupDays >= minLockupDays && 
             lockupDays <= maxLockupDays && 
@@ -431,7 +431,7 @@ contract Memeverse is IMemeverse, ERC721Burnable, TokenHelper, Ownable, Initiali
         uint8 v, 
         bytes32 r, 
         bytes32 s
-    ) external payable override {
+    ) external payable virtual override {
         require(
             lockupDays >= minLockupDays && 
             lockupDays <= maxLockupDays && 

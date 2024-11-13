@@ -12,13 +12,13 @@ contract MemeLiquidProof is IMemeLiquidProof {
     uint8 public decimals;
     uint256 public totalSupply;
     address public memecoin;
-    address public memeverse;
+    address public memeverseLauncher;
 
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
-    modifier onlyMemeverse() {
-        require(msg.sender == memeverse, PermissionDenied());
+    modifier onlyMemeverseLauncher() {
+        require(msg.sender == memeverseLauncher, PermissionDenied());
         _;
     }
 
@@ -27,13 +27,13 @@ contract MemeLiquidProof is IMemeLiquidProof {
         string memory _symbol, 
         uint8 _decimals, 
         address _memecoin, 
-        address _memeverse
+        address _memeverseLauncher
     ) {
         name = _name;
         symbol = _symbol;
         decimals = _decimals;
         memecoin = _memecoin;
-        memeverse = _memeverse;
+        memeverseLauncher = _memeverseLauncher;
     }
     
     function approve(address spender, uint256 amount) public returns (bool) {
@@ -62,11 +62,11 @@ contract MemeLiquidProof is IMemeLiquidProof {
         return true;
     }
 
-    function mint(address account, uint256 amount) external override onlyMemeverse {
+    function mint(address account, uint256 amount) external override onlyMemeverseLauncher {
         _mint(account, amount);
     }
 
-    function burn(address account, uint256 amount) external onlyMemeverse {
+    function burn(address account, uint256 amount) external onlyMemeverseLauncher {
         require(balanceOf[account] >= amount, InsufficientBalance());
         _burn(account, amount);
     }

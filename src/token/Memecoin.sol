@@ -11,7 +11,7 @@ contract Memecoin is IMemecoin {
     string public symbol;
     uint8 public decimals;
     uint256 public totalSupply;
-    address public memeverse;
+    address public memeverseLauncher;
 
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
@@ -20,12 +20,12 @@ contract Memecoin is IMemecoin {
         string memory _name, 
         string memory _symbol,
         uint8 _decimals, 
-        address _memeverse
+        address _memeverseLauncher
     ) {
         name = _name;
         symbol = _symbol;
         decimals = _decimals;
-        memeverse = _memeverse;
+        memeverseLauncher = _memeverseLauncher;
     }
 
     function approve(address spender, uint256 amount) public returns (bool) {
@@ -55,7 +55,7 @@ contract Memecoin is IMemecoin {
     }
 
     function mint(address account, uint256 amount) external override {
-        require(msg.sender == memeverse, PermissionDenied());
+        require(msg.sender == memeverseLauncher, PermissionDenied());
         _mint(account, amount);
     }
 

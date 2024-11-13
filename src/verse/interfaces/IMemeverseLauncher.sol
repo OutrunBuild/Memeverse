@@ -2,9 +2,9 @@
 pragma solidity ^0.8.26;
 
 /**
- * @title Memeverse interface
+ * @title MemeverseLauncher interface
  */
-interface IMemeverse {
+interface IMemeverseLauncher {
     enum Stage {
         Genesis, 
         Refund, 

@@ -6,17 +6,17 @@ pragma solidity ^0.8.20;
 import { SafeERC20 } from "../libraries/SafeERC20.sol";
 import { IERC20, ERC20 } from "../libraries/ERC20.sol";
 import { IMemecoinVault } from "./interfaces/IMemecoinVault.sol";
-import { IMemeverse } from "../verse/interfaces/IMemeverse.sol";
+import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
 
 /**
- * @dev Yields mainly comes from memeverse transaction fees
+ * @dev Yields mainly comes from memeverseLauncher transaction fees
  */
 contract MemecoinVault is ERC20, IMemecoinVault {
     using SafeERC20 for IERC20;
 
     address public immutable asset;
 
-    address public memeverse;
+    address public memeverseLauncher;
     uint256 public totalAssets;
     uint256 public verseId;
 
@@ -24,11 +24,11 @@ contract MemecoinVault is ERC20, IMemecoinVault {
         string memory _name, 
         string memory _symbol,
         address _asset,
-        address _memeverse,
+        address _memeverseLauncher,
         uint256 _verseId
     ) ERC20(_name, _symbol, 18) {
         asset = _asset;
-        memeverse = _memeverse;
+        memeverseLauncher = _memeverseLauncher;
         verseId = _verseId;
     }
 
@@ -63,7 +63,7 @@ contract MemecoinVault is ERC20, IMemecoinVault {
     }
 
     /**
-     * @dev Accumulate yields from memeverse or others
+     * @dev Accumulate yields from memeverseLauncher or others
      */
     function accumulateYields(uint256 amount) external {
         address msgSender = msg.sender;
@@ -109,11 +109,11 @@ contract MemecoinVault is ERC20, IMemecoinVault {
     }
 
     function _previewTotalAssets() internal view returns (uint256) {
-        (, uint256 memecoinYields) = IMemeverse(memeverse).previewTransactionFees(verseId);
+        (, uint256 memecoinYields) = IMemeverseLauncher(memeverseLauncher).previewTransactionFees(verseId);
         return totalAssets + memecoinYields;
     }
 
     function _refreshTotalAssets() internal {
-        IMemeverse(memeverse).redeemAndDistributeFees(verseId);
+        IMemeverseLauncher(memeverseLauncher).redeemAndDistributeFees(verseId);
     }
 }

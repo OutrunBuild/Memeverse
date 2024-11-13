@@ -298,19 +298,27 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
      * @dev Redeem transaction fees and distribute them to the owner(UPT) and vault(Memecoin)
      * @param verseId - Memeverse id
      */
-    function redeemAndDistributeFees(uint256 verseId) external override returns (uint256 UPTFee, uint256 memecoinYields) {
+    function redeemAndDistributeFees(uint256 verseId) external override returns (uint256 UPTFee, uint256 memecoinYields, uint256 liquidProofFee) {
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage >= Stage.Locked, PermissionDenied());
 
+        // memecoin pair
         address memecoin = verse.memecoin;
-        IOutrunAMMPair pair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, memecoin, UPT, SWAP_FEERATE));
-
-        (uint256 amount0, uint256 amount1) = pair.claimMakerFee();
-        if (amount0 == 0 && amount1 == 0) return (0, 0);
-
-        address token0 = pair.token0();
+        IOutrunAMMPair memecoinPair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, memecoin, UPT, SWAP_FEERATE));
+        (uint256 amount0, uint256 amount1) = memecoinPair.claimMakerFee();
+        address token0 = memecoinPair.token0();
         UPTFee = token0 == UPT ? amount0 : amount1;
         memecoinYields = token0 == memecoin ? amount0 : amount1;
+
+        // liquidProof pair
+        address liquidProof = verse.liquidProof;
+        IOutrunAMMPair liquidProofPair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, liquidProof, UPT, SWAP_FEERATE));
+        (uint256 amount2, uint256 amount3) = liquidProofPair.claimMakerFee();
+        address token2 = memecoinPair.token0();
+        UPTFee = token2 == UPT ? UPTFee + amount2 : UPTFee + amount3;
+        liquidProofFee = token2 == liquidProof ? amount2 : amount3;
+
+        if (UPTFee == 0 && memecoinYields == 0 && liquidProofFee == 0) return (0, 0, 0);
 
         address owner = ownerOf(verseId);
         _transferOut(UPT, ownerOf(verseId), UPTFee);
@@ -318,8 +326,10 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
         address memecoinVault = verse.memecoinVault;
         _safeApproveInf(memecoin, memecoinVault);
         IMemecoinVault(memecoinVault).accumulateYields(memecoinYields);
+
+        _transferOut(liquidProof, revenuePool, liquidProofFee);
         
-        emit RedeemAndDistributeFees(verseId, owner, UPTFee, memecoinYields);
+        emit RedeemAndDistributeFees(verseId, owner, UPTFee, memecoinYields, liquidProofFee);
     }
 
     /**

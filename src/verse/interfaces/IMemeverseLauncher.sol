@@ -62,7 +62,7 @@ interface IMemeverseLauncher {
 
     function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external;
 
-    function redeemAndDistributeFees(uint256 verseId) external returns (uint256 UPTFee, uint256 memecoinYields);
+    function redeemAndDistributeFees(uint256 verseId) external returns (uint256 UPTFee, uint256 memecoinYields, uint256 liquidProofFee);
 
     function registerMemeverse(
         string calldata _name,
@@ -159,7 +159,8 @@ interface IMemeverseLauncher {
         uint256 indexed verseId, 
         address indexed owner, 
         uint256 UPTFee, 
-        uint256 memecoinYields
+        uint256 memecoinYields, 
+        uint256 liquidProofFee
     );
 
     event RegisterMemeverse(

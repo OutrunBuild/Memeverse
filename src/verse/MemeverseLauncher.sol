@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
+import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
@@ -21,7 +22,7 @@ import { MemeLiquidProof, IMemeLiquidProof } from "../token/MemeLiquidProof.sol"
 /**
  * @title Trapping into the memeverse
  */
-contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, Ownable, Initializable, AutoIncrementId {
+contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, Ownable, Initializable, Nonces {
     uint256 public constant DAY = 24 * 3600;
     uint256 public constant SWAP_FEERATE = 100;
     address public immutable OUTRUN_AMM_ROUTER;
@@ -334,15 +335,15 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
 
     /**
      * @dev register memeverse(single chain)
-     * @param _name - Name of memecoin
-     * @param _symbol - Symbol of memecoin
+     * @param name - Name of memecoin
+     * @param symbol - Symbol of memecoin
      * @param uniqueId - Unique verseId
      * @param durationDays - Duration days of launchpool
      * @param lockupDays - LockupDay of liquidity
      */
     function registerMemeverse(
-        string calldata _name,
-        string calldata _symbol,
+        string calldata name,
+        string calldata symbol,
         uint256 uniqueId,
         uint256 durationDays,
         uint256 lockupDays,
@@ -356,18 +357,18 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
             lockupDays <= maxLockupDays && 
             durationDays >= minDurationDays && 
             durationDays <= maxDurationDays && 
-            bytes(_name).length < 32 && 
-            bytes(_symbol).length < 32, 
+            bytes(name).length < 32 && 
+            bytes(symbol).length < 32, 
             InvalidRegisterInfo()
         );
-
         require(block.timestamp > deadline, ExpiredSignature(deadline));
+
+        address msgSender = msg.sender;
         bytes32 messageHash = keccak256(abi.encode(
-            _name, 
-            _symbol, 
+            symbol, 
             uniqueId, 
-            durationDays, 
-            lockupDays, 
+            msgSender,
+            _useNonce(msgSender),
             block.chainid, 
             deadline
         ));
@@ -379,10 +380,10 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
         _transferOut(NATIVE, revenuePool, msg.value);
 
         // Deploy memecoin and liquidProof token
-        address memecoin = address(new Memecoin(_name, _symbol, 18, address(this)));
+        address memecoin = address(new Memecoin(name, symbol, 18, address(this)));
         address liquidProof = address(new MemeLiquidProof(
-            string(abi.encodePacked(_name, " Liquid")),
-            string(abi.encodePacked(_symbol, " LIQUID")),
+            string(abi.encodePacked(name, " Liquid")),
+            string(abi.encodePacked(symbol, " LIQUID")),
             18,
             memecoin,
             address(this)
@@ -390,8 +391,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
 
         // Deploy memecoin vault
         address memecoinVault = address(new MemecoinVault(
-            string(abi.encodePacked("Staked ", _name)),
-            string(abi.encodePacked("s", _symbol)),
+            string(abi.encodePacked("Staked ", name)),
+            string(abi.encodePacked("s", symbol)),
             memecoin,
             address(this),
             uniqueId
@@ -399,8 +400,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
 
         uint32[] memory omnichainIds;
         Memeverse memory verse = Memeverse(
-            _name, 
-            _symbol, 
+            name, 
+            symbol, 
             memecoin, 
             liquidProof, 
             memecoinVault, 
@@ -411,7 +412,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
             Stage.Genesis
         );
         memeverses[uniqueId] = verse;
-        address msgSender = msg.sender;
         _safeMint(msgSender, uniqueId);
 
         emit RegisterMemeverse(uniqueId, msgSender, memecoin, liquidProof, memecoinVault);
@@ -419,8 +419,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
 
     /**
      * @dev register omnichain memeverse
-     * @param _name - Name of memecoin
-     * @param _symbol - Symbol of memecoin
+     * @param name - Name of memecoin
+     * @param symbol - Symbol of memecoin
      * @param memecoin - Already created omnichain memecoin address
      * @param uniqueId - Unique verseId
      * @param durationDays - Duration days of launchpool
@@ -429,8 +429,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
      * @param omnichainIds - ChainIds of the token's omnichain(EVM)
      */
     function registerOmnichainMemeverse(
-        string calldata _name,
-        string calldata _symbol,
+        string calldata name,
+        string calldata symbol,
         address memecoin,
         uint256 uniqueId,
         uint256 durationDays,
@@ -448,20 +448,18 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
             durationDays >= minDurationDays && 
             durationDays <= maxDurationDays && 
             maxFund > 0 && 
-            bytes(_name).length < 32 && 
-            bytes(_symbol).length < 32, 
+            bytes(name).length < 32 && 
+            bytes(symbol).length < 32, 
             InvalidRegisterInfo()
         );
 
         require(block.timestamp > deadline, ExpiredSignature(deadline));
+        address msgSender = msg.sender;
         bytes32 messageHash = keccak256(abi.encode(
-            _name, 
-            _symbol, 
+            symbol, 
             uniqueId, 
-            durationDays, 
-            lockupDays, 
-            maxFund, 
-            omnichainIds, 
+            msgSender,
+            _useNonce(msgSender),
             block.chainid, 
             deadline
         ));
@@ -474,8 +472,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
 
         // Deploy  liquidProof token
         address liquidProof = address(new MemeLiquidProof(
-            string(abi.encodePacked(_name, " Liquid")),
-            string(abi.encodePacked(_symbol, " LIQUID")),
+            string(abi.encodePacked(name, " Liquid")),
+            string(abi.encodePacked(symbol, " LIQUID")),
             18,
             memecoin,
             address(this)
@@ -483,16 +481,16 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
 
         // Deploy memecoin vault
         address memecoinVault = address(new MemecoinVault(
-            string(abi.encodePacked("Staked ", _name)),
-            string(abi.encodePacked("s", _symbol)),
+            string(abi.encodePacked("Staked ", name)),
+            string(abi.encodePacked("s", symbol)),
             memecoin,
             address(this),
             uniqueId
         ));
 
         Memeverse memory verse = Memeverse(
-            _name, 
-            _symbol, 
+            name, 
+            symbol, 
             memecoin, 
             liquidProof, 
             memecoinVault, 
@@ -503,7 +501,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
             Stage.Genesis
         );
         memeverses[uniqueId] = verse;
-        address msgSender = msg.sender;
         _safeMint(msgSender, uniqueId);
 
         emit RegisterMemeverse(uniqueId, msgSender, memecoin, liquidProof, memecoinVault);

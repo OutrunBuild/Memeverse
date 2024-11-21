@@ -13,7 +13,8 @@ contract MemecoinOnBlast is Memecoin, GasManagerable {
         string memory _symbol,
         uint8 _decimals, 
         address _memeverseLauncher, 
+        address _lzEndpoint, 
         address _gasManager
-    ) Memecoin(_name, _symbol, _decimals, _memeverseLauncher) GasManagerable(_gasManager) {
+    ) Memecoin(_name, _symbol, _decimals, _memeverseLauncher, _lzEndpoint) GasManagerable(_gasManager) {
     }
 }

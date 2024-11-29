@@ -1,37 +1,36 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import { ERC721, ERC721Burnable } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
+import { ERC721, ERC721URIStorage } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
 import { Memecoin, IMemecoin, IERC20 } from "../token/Memecoin.sol";
 import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
-import { IOutrunAMMPair } from "../libraries/IOutrunAMMPair.sol";
-import { IOutrunAMMRouter } from "../libraries/IOutrunAMMRouter.sol";
-import { TokenHelper } from "../libraries/TokenHelper.sol";
+import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
+import { IOutrunAMMRouter } from "../common/IOutrunAMMRouter.sol";
+import { TokenHelper } from "../common/TokenHelper.sol";
 import { FixedPoint128 } from "../libraries/FixedPoint128.sol";
-import { Initializable } from "../libraries/Initializable.sol";
+import { Initializable } from "../common/Initializable.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
-import { AutoIncrementId } from "../libraries/AutoIncrementId.sol";
+import { AutoIncrementId } from "../common/AutoIncrementId.sol";
 import { IMemecoinVault, MemecoinVault } from "../yield/MemecoinVault.sol";
 import { MemeLiquidProof, IMemeLiquidProof } from "../token/MemeLiquidProof.sol";
 
 /**
  * @title Trapping into the memeverse
  */
-contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, Ownable, Initializable, Nonces {
+contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper, Ownable, Initializable {
     uint256 public constant DAY = 24 * 3600;
     uint256 public constant SWAP_FEERATE = 100;
     address public immutable OUTRUN_AMM_ROUTER;
     address public immutable OUTRUN_AMM_FACTORY;
+    address public immutable MEMECOIN_DEPLOYER;
     address public immutable UPT;
 
     address public signer;
     address public revenuePool;
-    uint256 public genesisFee;
     uint256 public minTotalFunds;
     uint256 public fundBasedAmount;
     uint128 public minDurationDays;
@@ -101,7 +100,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
     }
 
     function initialize(
-        uint256 _genesisFee,
         uint256 _minTotalFunds,
         uint256 _fundBasedAmount,
         uint128 _minDurationDays,
@@ -109,7 +107,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
         uint128 _minLockupDays,
         uint128 _maxLockupDays
     ) external override initializer onlyOwner {
-        genesisFee = _genesisFee;
         minTotalFunds = _minTotalFunds;
         fundBasedAmount = _fundBasedAmount;
         minDurationDays = _minDurationDays;
@@ -334,94 +331,11 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
     }
 
     /**
-     * @dev register memeverse(single chain)
-     * @param name - Name of memecoin
-     * @param symbol - Symbol of memecoin
-     * @param uniqueId - Unique verseId
-     * @param durationDays - Duration days of launchpool
-     * @param lockupDays - LockupDay of liquidity
-     */
-    function registerMemeverse(
-        string calldata name,
-        string calldata symbol,
-        uint256 uniqueId,
-        uint256 durationDays,
-        uint256 lockupDays,
-        uint256 deadline, 
-        uint8 v, 
-        bytes32 r, 
-        bytes32 s
-    ) external payable virtual override {
-        require(
-            lockupDays >= minLockupDays && 
-            lockupDays <= maxLockupDays && 
-            durationDays >= minDurationDays && 
-            durationDays <= maxDurationDays && 
-            bytes(name).length < 32 && 
-            bytes(symbol).length < 32, 
-            InvalidRegisterInfo()
-        );
-        require(block.timestamp > deadline, ExpiredSignature(deadline));
-
-        address msgSender = msg.sender;
-        bytes32 messageHash = keccak256(abi.encode(
-            symbol, 
-            uniqueId, 
-            msgSender,
-            _useNonce(msgSender),
-            block.chainid, 
-            deadline
-        ));
-        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
-        require(signer != ECDSA.recover(ethSignedHash, v, r, s), InvalidSigner());
-
-        uint256 _genesisFee = genesisFee;
-        require(msg.value >= _genesisFee, InsufficientGenesisFee(_genesisFee));
-        _transferOut(NATIVE, revenuePool, msg.value);
-
-        // Deploy memecoin and liquidProof token
-        address memecoin = address(new Memecoin(name, symbol, 18, address(this)));
-        address liquidProof = address(new MemeLiquidProof(
-            string(abi.encodePacked(name, " Liquid")),
-            string(abi.encodePacked(symbol, " LIQUID")),
-            18,
-            memecoin,
-            address(this)
-        ));
-
-        // Deploy memecoin vault
-        address memecoinVault = address(new MemecoinVault(
-            string(abi.encodePacked("Staked ", name)),
-            string(abi.encodePacked("s", symbol)),
-            memecoin,
-            address(this),
-            uniqueId
-        ));
-
-        uint32[] memory omnichainIds;
-        Memeverse memory verse = Memeverse(
-            name, 
-            symbol, 
-            memecoin, 
-            liquidProof, 
-            memecoinVault, 
-            0,
-            block.timestamp + durationDays * DAY,
-            lockupDays, 
-            omnichainIds,
-            Stage.Genesis
-        );
-        memeverses[uniqueId] = verse;
-        _safeMint(msgSender, uniqueId);
-
-        emit RegisterMemeverse(uniqueId, msgSender, memecoin, liquidProof, memecoinVault);
-    }
-
-    /**
      * @dev register omnichain memeverse
      * @param name - Name of memecoin
      * @param symbol - Symbol of memecoin
      * @param memecoin - Already created omnichain memecoin address
+     * @param liquidProof - Already created omnichain liquidProof address
      * @param uniqueId - Unique verseId
      * @param durationDays - Duration days of launchpool
      * @param lockupDays - LockupDay of liquidity
@@ -431,16 +345,14 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
     function registerOmnichainMemeverse(
         string calldata name,
         string calldata symbol,
+        string calldata uri,
         address memecoin,
+        address liquidProof,
         uint256 uniqueId,
         uint256 durationDays,
         uint256 lockupDays,
-        uint128 maxFund,
-        uint32[] calldata omnichainIds,
-        uint256 deadline, 
-        uint8 v, 
-        bytes32 r, 
-        bytes32 s
+        uint256 maxFund,
+        uint32[] calldata omnichainIds
     ) external payable virtual override {
         require(
             lockupDays >= minLockupDays && 
@@ -452,32 +364,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
             bytes(symbol).length < 32, 
             InvalidRegisterInfo()
         );
-
-        require(block.timestamp > deadline, ExpiredSignature(deadline));
-        address msgSender = msg.sender;
-        bytes32 messageHash = keccak256(abi.encode(
-            symbol, 
-            uniqueId, 
-            msgSender,
-            _useNonce(msgSender),
-            block.chainid, 
-            deadline
-        ));
-        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
-        require(signer != ECDSA.recover(ethSignedHash, v, r, s), InvalidSigner());
-
-        uint256 _genesisFee = genesisFee;
-        require(msg.value >= _genesisFee, InsufficientGenesisFee(_genesisFee));
-        _transferOut(NATIVE, revenuePool, msg.value);
-
-        // Deploy  liquidProof token
-        address liquidProof = address(new MemeLiquidProof(
-            string(abi.encodePacked(name, " Liquid")),
-            string(abi.encodePacked(symbol, " LIQUID")),
-            18,
-            memecoin,
-            address(this)
-        ));
 
         // Deploy memecoin vault
         address memecoinVault = address(new MemecoinVault(
@@ -501,9 +387,11 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
             Stage.Genesis
         );
         memeverses[uniqueId] = verse;
+        address msgSender = msg.sender;
         _safeMint(msgSender, uniqueId);
+        _setTokenURI(uniqueId, uri);
 
-        emit RegisterMemeverse(uniqueId, msgSender, memecoin, liquidProof, memecoinVault);
+        emit RegisterMemeverse(uniqueId, msgSender, memecoin, liquidProof, memecoinVault, omnichainIds);
     }
 
     function updateSigner(address newSigner) external onlyOwner {
@@ -521,14 +409,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721Burnable, TokenHelper, O
         require(_revenuePool != address(0), ZeroInput());
 
         revenuePool = _revenuePool;
-    }
-
-    /**
-     * @dev Set genesis fee, prevent spam attacks
-     * @param _genesisFee - Genesis Fee
-     */
-    function setGenesisFee(uint256 _genesisFee) external override onlyOwner {
-        genesisFee = _genesisFee;
     }
 
     /**

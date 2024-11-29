@@ -4,7 +4,7 @@
 pragma solidity ^0.8.20;
 
 import { SafeERC20 } from "../libraries/SafeERC20.sol";
-import { IERC20, ERC20 } from "../libraries/ERC20.sol";
+import { IERC20, ERC20 } from "../common/ERC20.sol";
 import { IMemecoinVault } from "./interfaces/IMemecoinVault.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
 

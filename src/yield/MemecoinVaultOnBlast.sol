@@ -3,7 +3,7 @@
 pragma solidity ^0.8.20;
 
 import { MemecoinVault } from "./MemecoinVault.sol";
-import { GasManagerable } from "../blast/GasManagerable.sol";
+import { GasManagerable } from "../common/blast/GasManagerable.sol";
 
 /**
  * @dev Yields mainly comes from memeverse transaction fees

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { IERC20 } from "../../libraries/ERC20.sol";
+import { IERC20 } from "../../common/ERC20.sol";
 
 interface IMemecoinVault is IERC20 {
     function asset() external view returns (address assetTokenAddress);

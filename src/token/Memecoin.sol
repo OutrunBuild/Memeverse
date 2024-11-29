@@ -7,18 +7,19 @@ import { OutrunOFT } from "./OutrunOFT.sol";
 import { IMemecoin, IERC20 } from "./interfaces/IMemecoin.sol";
 
 /**
- * @title Memecoin contract
+ * @title Omnichain Memecoin
  */
 contract Memecoin is IMemecoin, OutrunOFT {
-    address public memeverseLauncher;
+    address public immutable memeverseLauncher;
 
     constructor(
         string memory _name, 
         string memory _symbol,
         uint8 _decimals, 
         address _memeverseLauncher, 
-        address _lzEndpoint
-    ) OutrunOFT(_name, _symbol, _decimals, _lzEndpoint, _memeverseLauncher) Ownable(_memeverseLauncher) {
+        address _lzEndpoint,
+        address _delegate
+    ) OutrunOFT(_name, _symbol, _decimals, _lzEndpoint, _delegate) Ownable(_delegate) {
         memeverseLauncher = _memeverseLauncher;
     }
 

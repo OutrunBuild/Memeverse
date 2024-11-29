@@ -13,7 +13,7 @@ import { IMemeverseRegistrar } from "./interfaces/IMemeverseRegistrar.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
 
 /**
- * @title Factory for deploying memecoin to deterministic addresses via CREATE3
+ * @title Omnichain Factory for deploying memecoin and liquidProof
  */ 
 contract MemeverseRegistrar is IMemeverseRegistrar, LzMessageConfig, Ownable {
     uint32 public constant BSC_CHAINID = 97;      // TODO update mainnet

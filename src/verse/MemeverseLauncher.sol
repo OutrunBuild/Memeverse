@@ -2,8 +2,6 @@
 pragma solidity ^0.8.26;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import { ERC721, ERC721URIStorage } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
 import { Memecoin, IMemecoin, IERC20 } from "../token/Memecoin.sol";
@@ -11,32 +9,24 @@ import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
 import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
 import { IOutrunAMMRouter } from "../common/IOutrunAMMRouter.sol";
 import { TokenHelper } from "../common/TokenHelper.sol";
-import { FixedPoint128 } from "../libraries/FixedPoint128.sol";
-import { Initializable } from "../common/Initializable.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
-import { AutoIncrementId } from "../common/AutoIncrementId.sol";
-import { IMemecoinVault, MemecoinVault } from "../yield/MemecoinVault.sol";
+import { MemecoinVault, IMemecoinVault } from "../yield/MemecoinVault.sol";
 import { MemeLiquidProof, IMemeLiquidProof } from "../token/MemeLiquidProof.sol";
+import { IMemeverseRegistrar } from "../token/interfaces/IMemeverseRegistrar.sol";
 
 /**
  * @title Trapping into the memeverse
  */
-contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper, Ownable, Initializable {
-    uint256 public constant DAY = 24 * 3600;
+contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper, Ownable {
     uint256 public constant SWAP_FEERATE = 100;
     address public immutable OUTRUN_AMM_ROUTER;
     address public immutable OUTRUN_AMM_FACTORY;
-    address public immutable MEMECOIN_DEPLOYER;
     address public immutable UPT;
 
-    address public signer;
+    address public memeverseRegistrar;
     address public revenuePool;
     uint256 public minTotalFunds;
     uint256 public fundBasedAmount;
-    uint128 public minDurationDays;
-    uint128 public maxDurationDays;
-    uint128 public minLockupDays;
-    uint128 public maxLockupDays;
 
     mapping(uint256 verseId => Memeverse) public memeverses;
     mapping(uint256 verseId => uint256) public claimableLiquidProofs;
@@ -48,23 +38,25 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         string memory _symbol,
         address _UPT,
         address _owner,
-        address _signer,
         address _revenuePool,
         address _outrunAMMFactory,
-        address _outrunAMMRouter
+        address _outrunAMMRouter,
+        uint256 _minTotalFunds,
+        uint256 _fundBasedAmount
     ) ERC721(_name, _symbol) Ownable(_owner) {
         UPT = _UPT;
-        signer = _signer;
         revenuePool = _revenuePool;
         OUTRUN_AMM_ROUTER = _outrunAMMRouter;
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
+        minTotalFunds = _minTotalFunds;
+        fundBasedAmount = _fundBasedAmount;
 
         _safeApproveInf(_UPT, _outrunAMMRouter);
     }
 
     function getMemeverseUnlockTime(uint256 verseId) external view override returns (uint256 unlockTime) {
         Memeverse storage verse = memeverses[verseId];
-        unlockTime = verse.endTime + verse.lockupDays * DAY;
+        unlockTime = verse.unlockTime;
     }
 
     /**
@@ -97,22 +89,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         address token0 = pair.token0();
         UPTFee = token0 == UPT ? amount0 : amount1;
         memecoinYields = token0 == memecoin ? amount0 : amount1;
-    }
-
-    function initialize(
-        uint256 _minTotalFunds,
-        uint256 _fundBasedAmount,
-        uint128 _minDurationDays,
-        uint128 _maxDurationDays,
-        uint128 _minLockupDays,
-        uint128 _maxLockupDays
-    ) external override initializer onlyOwner {
-        minTotalFunds = _minTotalFunds;
-        fundBasedAmount = _fundBasedAmount;
-        minDurationDays = _minDurationDays;
-        maxDurationDays = _maxDurationDays;
-        minLockupDays = _minLockupDays;
-        maxLockupDays = _maxLockupDays;
     }
 
     /**
@@ -179,42 +155,29 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
      * @dev Adaptively change the Memeverse stage
      * @param verseId - Memeverse id
      */
-    function changeStage(
-        uint256 verseId, 
-        uint256 deadline, 
-        uint8 v, 
-        bytes32 r, 
-        bytes32 s
-    ) external override returns (Stage currentStage) {
-        uint256 currentTime = block.timestamp;
-        require(currentTime > deadline, ExpiredSignature(deadline));
-
+    function changeStage(uint256 verseId) external payable override returns (Stage currentStage) {
         Memeverse storage verse = memeverses[verseId];
+        uint256 currentTime = block.timestamp;
         uint256 endTime = verse.endTime;
         require(currentTime > endTime, InTheGenesisStage(endTime));
 
-        bytes32 refundSignedHash = MessageHashUtils.toEthSignedMessageHash(
-            keccak256(abi.encode(verseId, Stage.Refund, block.chainid, deadline))
-        );
-        bytes32 LockedSignedHash = MessageHashUtils.toEthSignedMessageHash(
-            keccak256(abi.encode(verseId, Stage.Locked, block.chainid, deadline))
-        );
-
+        GenesisFund storage genesisFund = genesisFunds[verseId];
+        uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
+        uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
         if (verse.currentStage == Stage.Genesis) {
-            if (signer == ECDSA.recover(refundSignedHash, v, r, s)) {
-                // Total omnichain funds didn't meet the minimum funding requirement
+            if (totalMemecoinFunds + totalLiquidProofFunds < minTotalFunds) {
                 address memecoin = verse.memecoin;
                 uint256 selfBalance = _selfBalance(IERC20(memecoin));
                 IMemecoin(memecoin).burn(selfBalance);
 
                 verse.currentStage = Stage.Refund;
                 currentStage = Stage.Refund;
-            } else if (signer == ECDSA.recover(LockedSignedHash, v, r, s)) {
+
+                // Cancel registration
+                IMemeverseRegistrar(memeverseRegistrar).cancelRegistration{value: msg.value}(verseId, verse.symbol, msg.sender);
+            } else {
                 // Deploy memecoin liquidity
                 address memecoin = verse.memecoin;
-                GenesisFund storage genesisFund = genesisFunds[verseId];
-                uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
-                uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
                 uint256 memecoinLiquidityAmount = _selfBalance(IERC20(memecoin));
                 _safeApproveInf(memecoin, OUTRUN_AMM_ROUTER);
                 _safeApproveInf(UPT, OUTRUN_AMM_ROUTER);
@@ -250,10 +213,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
 
                 verse.currentStage = Stage.Locked;
                 currentStage = Stage.Locked;
-            } else {
-                revert InvalidSigner();
             }
-        } else if (verse.currentStage == Stage.Locked && currentTime > endTime + verse.lockupDays * DAY) {
+        } else if (verse.currentStage == Stage.Locked && currentTime > verse.unlockTime) {
             verse.currentStage = Stage.Unlocked;
             currentStage = Stage.Unlocked;
         }
@@ -337,8 +298,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
      * @param memecoin - Already created omnichain memecoin address
      * @param liquidProof - Already created omnichain liquidProof address
      * @param uniqueId - Unique verseId
-     * @param durationDays - Duration days of launchpool
-     * @param lockupDays - LockupDay of liquidity
+     * @param endTime - Genesis stage end time
+     * @param unlockTime - Unlock time of liquidity
      * @param maxFund - Max fundraising(UPT) limit, if 0 => no limit
      * @param omnichainIds - ChainIds of the token's omnichain(EVM)
      */
@@ -349,22 +310,11 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         address memecoin,
         address liquidProof,
         uint256 uniqueId,
-        uint256 durationDays,
-        uint256 lockupDays,
-        uint256 maxFund,
+        uint64 endTime,
+        uint64 unlockTime,
+        uint128 maxFund,
         uint32[] calldata omnichainIds
-    ) external payable virtual override {
-        require(
-            lockupDays >= minLockupDays && 
-            lockupDays <= maxLockupDays && 
-            durationDays >= minDurationDays && 
-            durationDays <= maxDurationDays && 
-            maxFund > 0 && 
-            bytes(name).length < 32 && 
-            bytes(symbol).length < 32, 
-            InvalidRegisterInfo()
-        );
-
+    ) external override {
         // Deploy memecoin vault
         address memecoinVault = address(new MemecoinVault(
             string(abi.encodePacked("Staked ", name)),
@@ -381,8 +331,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
             liquidProof, 
             memecoinVault, 
             maxFund,
-            block.timestamp + durationDays * DAY,
-            lockupDays, 
+            endTime,
+            unlockTime, 
             omnichainIds,
             Stage.Genesis
         );
@@ -394,11 +344,14 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         emit RegisterMemeverse(uniqueId, msgSender, memecoin, liquidProof, memecoinVault, omnichainIds);
     }
 
-    function updateSigner(address newSigner) external onlyOwner {
-        require(newSigner != address(0), ZeroInput());
-        address oldSigner = signer;
-        signer = newSigner;
-        emit UpdateSigner(oldSigner, newSigner);
+    /**
+     * @dev Set memeverse registrar
+     * @param _registrar - Memeverse registrar address
+     */
+    function setMemeverseRegistrar(address _registrar) external override onlyOwner {
+        require(_registrar != address(0), ZeroInput());
+
+        memeverseRegistrar = _registrar;
     }
 
     /**
@@ -429,39 +382,5 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         require(_fundBasedAmount != 0, ZeroInput());
 
         fundBasedAmount = _fundBasedAmount;
-    }
-
-    /**
-     * @dev Set launch verse duration days range
-     * @param _minDurationDays - Min launch verse duration days
-     * @param _maxDurationDays - Max launch verse duration days
-     */
-    function setDurationDaysRange(uint128 _minDurationDays, uint128 _maxDurationDays) external override onlyOwner {
-        require(
-            _minDurationDays != 0 && 
-            _maxDurationDays != 0 && 
-            _minDurationDays < _maxDurationDays, 
-            ErrorInput()
-        );
-
-        minDurationDays = _minDurationDays;
-        maxDurationDays = _maxDurationDays;
-    }
-
-    /**
-     * @dev Set liquidity lockup days range
-     * @param _minLockupDays - Min liquidity lockup days
-     * @param _maxLockupDays - Max liquidity lockup days
-     */
-    function setLockupDaysRange(uint128 _minLockupDays, uint128 _maxLockupDays) external override onlyOwner {
-        require(
-            _minLockupDays != 0 && 
-            _maxLockupDays != 0 && 
-            _minLockupDays < _maxLockupDays, 
-            ErrorInput()
-        );
-
-        minLockupDays = _minLockupDays;
-        maxLockupDays = _maxLockupDays;
     }
 }

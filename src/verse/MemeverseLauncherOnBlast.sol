@@ -13,13 +13,22 @@ contract MemeverseLauncherOnBlast is MemeverseLauncher, GasManagerable {
         string memory _symbol,
         address _UPT,
         address _owner,
-        address _signer,
         address _revenuePool,
         address _outrunAMMFactory,
         address _outrunAMMRouter,
+        uint256 _minTotalFunds,
+        uint256 _fundBasedAmount,
         address _gasManager
-    )
-        MemeverseLauncher(_name, _symbol, _UPT, _owner, _signer, _revenuePool, _outrunAMMFactory, _outrunAMMRouter)
-        GasManagerable(_gasManager)
-    {}
+    ) MemeverseLauncher(
+            _name,
+            _symbol,
+            _UPT,
+            _owner,
+            _revenuePool,
+            _outrunAMMFactory,
+            _outrunAMMRouter,
+            _minTotalFunds,
+            _fundBasedAmount
+    ) GasManagerable(_gasManager){
+    }
 }

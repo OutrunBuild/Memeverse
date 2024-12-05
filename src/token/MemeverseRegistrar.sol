@@ -3,7 +3,10 @@ pragma solidity ^0.8.26;
 
 import { CREATE3 } from "@solmate/utils/CREATE3.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { OApp, Origin } from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
+import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
+import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import { IMessageLibManager, SetConfigParam } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
 
 import { Memecoin } from "./Memecoin.sol";
@@ -11,20 +14,23 @@ import { MemeLiquidProof } from "./MemeLiquidProof.sol";
 import { LzMessageConfig } from "../common/LzMessageConfig.sol";
 import { IMemeverseRegistrar } from "./interfaces/IMemeverseRegistrar.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
+import { IMemeverseRegistrationCenter } from "../verse/interfaces/IMemeverseRegistrationCenter.sol";
 
 /**
  * @title Omnichain Factory for deploying memecoin and liquidProof
  */ 
-contract MemeverseRegistrar is IMemeverseRegistrar, LzMessageConfig, Ownable {
-    uint32 public constant BSC_CHAINID = 97;      // TODO update mainnet
+contract MemeverseRegistrar is IMemeverseRegistrar, OApp, LzMessageConfig {
+    using OptionsBuilder for bytes;
+
+    uint32 public constant REGISTRATION_CENTER_CHAINID = 97;      // TODO update mainnet
+    uint32 public constant REGISTRATION_CENTER_EID = 40102;          // TODO update mainnet
+    address public immutable REGISTRATION_CENTER;
     address public immutable LOCAL_LZ_ENDPOINT;
     address public immutable LOCAL_SEND_LIBRARY;
     address public immutable LOCAL_RECEIVE_LIBRARY;
     address public immutable MEMEVERSE_LAUNCHER;
+    uint128 public immutable CANCEL_REGISTER_GAS_LIMIT;
 
-    address public localLzExecutor;
-
-    mapping(address caller => bool) callers;
     mapping(uint32 chainId => uint32) endpointIds;
 
     constructor(
@@ -32,55 +38,93 @@ contract MemeverseRegistrar is IMemeverseRegistrar, LzMessageConfig, Ownable {
         address _localLzEndpoint, 
         address _localSendLibrary, 
         address _localReceiveLibrary, 
-        address _localLzExecutor,
         address _memeverseLauncher, 
-        address _localRegistrationCenter
-    ) Ownable(_owner) {
+        address _registrationCenter, 
+        uint128 _gasLimit
+    ) OApp(_localLzEndpoint, _owner) Ownable(_owner) {
+        REGISTRATION_CENTER = _registrationCenter;
         LOCAL_LZ_ENDPOINT = _localLzEndpoint;
         LOCAL_SEND_LIBRARY = _localSendLibrary;
         LOCAL_RECEIVE_LIBRARY = _localReceiveLibrary;
         MEMEVERSE_LAUNCHER = _memeverseLauncher;
-        localLzExecutor = _localLzExecutor;
-        
-        callers[_localLzExecutor] = true;
-        if (block.chainid == BSC_CHAINID) {
-            callers[_localRegistrationCenter] = true;
+        CANCEL_REGISTER_GAS_LIMIT = _gasLimit;
+
+        setPeer(REGISTRATION_CENTER_EID, bytes32(uint256(uint160(_registrationCenter))));
+    }
+
+    function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
+        for (uint256 i = 0; i < endpoints.length; i++) {
+            endpointIds[endpoints[i].chainId] = endpoints[i].endpointId;
         }
     }
 
-    function registerMemeverse(
-        string memory name, 
-        string memory symbol,
-        string memory uri,
-        uint8 decimals,
-        uint256 uniqueId,
-        uint256 durationDays,
-        uint256 lockupDays,
-        uint256 maxFund,
-        uint32[] calldata omnichainIds,
-        address creator
-    ) external override returns (address memecoin, address liquidProof) {
-        require(callers[msg.sender], PermissionDenied());
-
-        (memecoin, liquidProof) = _deployMemecoinAndLiquidProof(name, symbol, decimals, uniqueId, creator);
-        IMemeverseLauncher(MEMEVERSE_LAUNCHER).registerOmnichainMemeverse(
-            name, symbol, uri, memecoin, liquidProof, uniqueId, 
-            durationDays, lockupDays, maxFund, omnichainIds
+    /**
+     * @dev Register on the chain where the registration center is located.
+     */
+    function registerAtLocal(MemeverseParam calldata param) external returns (address memecoin, address liquidProof) {
+        require(
+            block.chainid == REGISTRATION_CENTER_CHAINID || 
+            msg.sender == REGISTRATION_CENTER, 
+            PermissionDenied()
         );
 
+        return _registerMemeverse(param);
+    }
+
+    function cancelRegistration(uint256 uniqueId, string memory symbol, address lzRefundAddress) external payable override {
+        require(msg.sender == MEMEVERSE_LAUNCHER, PermissionDenied());
+
+        if (block.chainid == REGISTRATION_CENTER_CHAINID) {
+            IMemeverseRegistrationCenter(REGISTRATION_CENTER).cancelRegistration(uniqueId, symbol);
+        } else {
+            bytes memory message = abi.encode(uniqueId, symbol);
+            bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(CANCEL_REGISTER_GAS_LIMIT , 0);
+            uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+            require(msg.value >= fee, InsufficientFee());
+
+            _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), lzRefundAddress);
+        }
+    }
+
+    /**
+     * @dev Internal function to implement lzReceive logic
+     */
+    function _lzReceive(
+        Origin calldata _origin,
+        bytes32 _guid,
+        bytes calldata _message,
+        address _executor,
+        bytes calldata _extraData
+    ) internal virtual override {
+        MemeverseParam memory param = abi.decode(_message, (MemeverseParam));
+        _registerMemeverse(param);
+    }
+
+    function _registerMemeverse(MemeverseParam memory param) internal returns (address memecoin, address liquidProof) {
+        string memory name = param.name;
+        string memory symbol = param.symbol;
+        uint256 uniqueId = param.uniqueId;
+        uint32[] memory omnichainIds = param.omnichainIds;
+
+        // deploy memecoin and liquidProof
+        (memecoin, liquidProof) = _deployMemecoinAndLiquidProof(name, symbol, uniqueId, param.creator);
         _lzConfigure(memecoin, liquidProof, omnichainIds);
 
+        // register
+        IMemeverseLauncher(MEMEVERSE_LAUNCHER).registerOmnichainMemeverse(
+            name, symbol, param.uri, memecoin, liquidProof, uniqueId, 
+            param.endTime, param.unlockTime, param.maxFund, omnichainIds
+        );
     }
 
     /// @dev Deploy Memecoin and LiquidProof on the current chain simultaneously
     function _deployMemecoinAndLiquidProof(
         string memory name, 
         string memory symbol,
-        uint8 decimals, 
         uint256 uniqueId,
         address creator
     ) internal returns (address memecoin, address liquidProof) {
-        bytes memory constructorArgs = abi.encode(name, symbol, decimals, MEMEVERSE_LAUNCHER, LOCAL_LZ_ENDPOINT, address(this));
+        bytes memory constructorArgs = abi.encode(name, symbol, 18, MEMEVERSE_LAUNCHER, LOCAL_LZ_ENDPOINT, address(this));
         bytes memory initCode = abi.encodePacked(type(Memecoin).creationCode, constructorArgs);
         bytes32 salt = keccak256(abi.encodePacked(symbol, creator, uniqueId, "Memeverse"));
         memecoin = CREATE3.deploy(salt, initCode, msg.value);
@@ -157,24 +201,5 @@ contract MemeverseRegistrar is IMemeverseRegistrar, LzMessageConfig, Ownable {
         }
         IMessageLibManager(LOCAL_LZ_ENDPOINT).setConfig(memecoin, LOCAL_RECEIVE_LIBRARY, receiveConfigParams);
         IMessageLibManager(LOCAL_LZ_ENDPOINT).setConfig(liquidProof, LOCAL_RECEIVE_LIBRARY, receiveConfigParams);
-    }
-
-    /*///////////////////////////////////////////////////////////////
-                               LAYERZERO-RELATED
-    //////////////////////////////////////////////////////////////*/
-
-    function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
-        for (uint256 i = 0; i < endpoints.length; i++) {
-            endpointIds[endpoints[i].chainId] = endpoints[i].endpointId;
-
-            emit SetLzEndpointId(endpoints[i].chainId, endpoints[i].endpointId);
-        }
-    }
-
-    function setLzExecutor(address executor) external override onlyOwner {
-        require(executor != address(0), ZeroAddress());
-        localLzExecutor = executor;
-
-        emit SetLzExecutor(executor);
     }
 }

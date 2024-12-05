@@ -2,34 +2,32 @@
 pragma solidity ^0.8.26;
 
 interface IMemeverseRegistrar {
+    struct MemeverseParam {
+        string name;                    // Token name
+        string symbol;                  // Token symbol
+        string uri;                     // Token icon uri
+        uint256 uniqueId;               // Memeverse uniqueId
+        uint128 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
+        uint64 endTime;                 // EndTime of launchPool
+        uint64 unlockTime;              // UnlockTime of liquidity
+        uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
+        address creator;                // Memeverse creator
+    }
+
     struct LzEndpointId {
         uint32 chainId;
         uint32 endpointId;
     }
 
-    function registerMemeverse(
-        string memory name, 
-        string memory symbol,
-        string memory uri,
-        uint8 decimals,
-        uint256 uniqueId,
-        uint256 durationDays,
-        uint256 lockupDays,
-        uint256 maxFund,
-        uint32[] calldata omnichainIds,
-        address creator
-    ) external returns (address memecoin, address liquidProof);
+    function registerAtLocal(MemeverseParam calldata param) external returns (address memecoin, address liquidProof);
+
+    function cancelRegistration(uint256 uniqueId, string memory symbol, address lzRefundAddress) external payable;
 
     function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
 
-    function setLzExecutor(address executor) external;
-
-
     error ZeroAddress();
+
+    error InsufficientFee();
     
     error PermissionDenied();
-
-    event SetLzExecutor(address executor);
-
-    event SetLzEndpointId(uint256 indexed chainId, uint256 indexed endpointId);
 }

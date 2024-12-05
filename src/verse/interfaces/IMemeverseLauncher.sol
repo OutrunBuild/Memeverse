@@ -18,9 +18,9 @@ interface IMemeverseLauncher {
         address memecoin;               // Memecoin address
         address liquidProof;            // Liquidity proof token address
         address memecoinVault;          // Memecoin yield vault
-        uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
-        uint256 endTime;                // EndTime of launchPool
-        uint256 lockupDays;             // LockupDays of liquidity
+        uint128 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
+        uint64 endTime;                 // EndTime of launchPool
+        uint64 unlockTime;              // UnlockTime of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
         Stage currentStage;             // Current stage 
     }
@@ -30,32 +30,18 @@ interface IMemeverseLauncher {
         uint128 totalLiquidProofFunds;   // Initial fundraising(UPT) for liquidProof liquidity
     }
 
+
     function getMemeverseUnlockTime(uint256 verseId) external view  returns (uint256 unlockTime);
 
     function claimableLiquidProof(uint256 verseId) external view returns (uint256 claimableAmount);
 
     function previewTransactionFees(uint256 verseId) external view returns (uint256 UPTFee, uint256 memecoinYields);
 
-    function initialize(
-        uint256 minTotalFund,
-        uint256 fundBasedAmount,
-        uint128 minDurationDays,
-        uint128 maxDurationDays,
-        uint128 minLockupDays,
-        uint128 maxLockupDays
-    ) external;
-
     function genesis(uint256 verseId, uint256 amountInUPT) external;
 
     function refund(uint256 verseId) external returns (uint256 userFunds);
 
-    function changeStage(
-        uint256 verseId, 
-        uint256 deadline, 
-        uint8 v, 
-        bytes32 r, 
-        bytes32 s
-    ) external returns (Stage currentStage);
+    function changeStage(uint256 verseId) external payable returns (Stage currentStage);
 
     function claimLiquidProof(uint256 verseId) external returns (uint256 amount);
 
@@ -70,27 +56,22 @@ interface IMemeverseLauncher {
         address memecoin,
         address liquidProof,
         uint256 uniqueId,
-        uint256 durationDays,
-        uint256 lockupDays,
-        uint256 maxFund,
+        uint64 endTime,
+        uint64 unlockTime,
+        uint128 maxFund,
         uint32[] calldata omnichainIds
-    ) external payable;
+    ) external;
+
+    function setMemeverseRegistrar(address _registrar) external;
 
     function setRevenuePool(address revenuePool) external;
 
     function setMinTotalFund(uint256 minTotalFund) external;
 
     function setFundBasedAmount(uint256 fundBasedAmount) external;
-
-    function setDurationDaysRange(uint128 minDurationDays, uint128 maxDurationDays) external;
-
-    function setLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays) external;
     
+
     error ZeroInput();
-
-    error ErrorInput();
-
-    error InvalidSigner();
 
     error PermissionDenied();
 
@@ -110,7 +91,6 @@ interface IMemeverseLauncher {
 
     error NotUnlockedStage(Stage currentStage);
 
-    error InsufficientGenesisFee(uint256 genesisFee);
 
     event Genesis(
         uint256 indexed verseId, 
@@ -153,10 +133,5 @@ interface IMemeverseLauncher {
         address liquidProof,
         address memecoinVault,
         uint32[] omnichainIds
-    );
-
-    event UpdateSigner(
-        address indexed oldSigner, 
-        address indexed newSigner
     );
 }

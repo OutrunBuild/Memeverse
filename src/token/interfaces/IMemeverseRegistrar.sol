@@ -29,9 +29,12 @@ interface IMemeverseRegistrar {
 
     function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
 
+
     error ZeroAddress();
 
     error InsufficientFee();
     
     error PermissionDenied();
+
+    error InvalidOmnichainId(uint32 omnichainId);
 }

@@ -190,32 +190,36 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp, LzMessageConfig {
         SetConfigParam[] memory sendConfigParams = new SetConfigParam[](0);
         SetConfigParam[] memory receiveConfigParams = new SetConfigParam[](0);
         for (uint256 i = 0; i < omnichainIds.length; i++) {
-            if (omnichainIds[i] == block.chainid) continue;
+            uint32 omnichainId = omnichainIds[i];
+            if (omnichainId == block.chainid) continue;
+
+            uint32 endpointId = endpointIds[omnichainId];
+            require(endpointId != 0, InvalidOmnichainId(omnichainId));
 
             append(sendConfigParams, SetConfigParam({
-                eid: endpointIds[omnichainIds[i]],
+                eid: endpointId,
                 configType: 1,
                 config: defaultExecutorConfig
             }));
 
             append(sendConfigParams, SetConfigParam({
-                eid: endpointIds[omnichainIds[i]],
+                eid: endpointId,
                 configType: 2,
                 config: defaultUlnConfig
             }));
 
             append(receiveConfigParams, SetConfigParam({
-                eid: endpointIds[omnichainIds[i]],
+                eid: endpointId,
                 configType: 2,
                 config: defaultUlnConfig
             }));
 
-            IOAppCore(memecoin).setPeer(endpointIds[omnichainIds[i]], bytes32(uint256(uint160(memecoin))));
-            IOAppCore(liquidProof).setPeer(endpointIds[omnichainIds[i]], bytes32(uint256(uint160(liquidProof))));
-            IMessageLibManager(LOCAL_LZ_ENDPOINT).setSendLibrary(memecoin, endpointIds[omnichainIds[i]], LOCAL_SEND_LIBRARY);
-            IMessageLibManager(LOCAL_LZ_ENDPOINT).setReceiveLibrary(memecoin, endpointIds[omnichainIds[i]], LOCAL_RECEIVE_LIBRARY, 0);
-            IMessageLibManager(LOCAL_LZ_ENDPOINT).setSendLibrary(liquidProof, endpointIds[omnichainIds[i]], LOCAL_SEND_LIBRARY);
-            IMessageLibManager(LOCAL_LZ_ENDPOINT).setReceiveLibrary(liquidProof, endpointIds[omnichainIds[i]], LOCAL_RECEIVE_LIBRARY, 0);
+            IOAppCore(memecoin).setPeer(endpointId, bytes32(uint256(uint160(memecoin))));
+            IOAppCore(liquidProof).setPeer(endpointId, bytes32(uint256(uint160(liquidProof))));
+            IMessageLibManager(LOCAL_LZ_ENDPOINT).setSendLibrary(memecoin, endpointId, LOCAL_SEND_LIBRARY);
+            IMessageLibManager(LOCAL_LZ_ENDPOINT).setReceiveLibrary(memecoin, endpointId, LOCAL_RECEIVE_LIBRARY, 0);
+            IMessageLibManager(LOCAL_LZ_ENDPOINT).setSendLibrary(liquidProof, endpointId, LOCAL_SEND_LIBRARY);
+            IMessageLibManager(LOCAL_LZ_ENDPOINT).setReceiveLibrary(liquidProof, endpointId, LOCAL_RECEIVE_LIBRARY, 0);
         }
 
         IMessageLibManager(LOCAL_LZ_ENDPOINT).setConfig(memecoin, LOCAL_SEND_LIBRARY, sendConfigParams);

@@ -136,7 +136,7 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp, LzMessageConfig {
         _lzConfigure(memecoin, liquidProof, omnichainIds);
 
         // register
-        IMemeverseLauncher(MEMEVERSE_LAUNCHER).registerOmnichainMemeverse(
+        IMemeverseLauncher(MEMEVERSE_LAUNCHER).registerMemeverse(
             name, symbol, param.uri, memecoin, liquidProof, uniqueId, 
             param.endTime, param.unlockTime, param.maxFund, omnichainIds
         );

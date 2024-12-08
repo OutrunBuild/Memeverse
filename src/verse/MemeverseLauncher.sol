@@ -282,7 +282,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
 
         if (UPTFee == 0 && memecoinYields == 0 && liquidProofFee == 0) return (0, 0, 0);
 
-        address owner = ownerOf(verseId);
+        address _owner = ownerOf(verseId);
         _transferOut(UPT, ownerOf(verseId), UPTFee);
 
         address memecoinVault = verse.memecoinVault;
@@ -291,13 +291,13 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
 
         _transferOut(liquidProof, revenuePool, liquidProofFee);
         
-        emit RedeemAndDistributeFees(verseId, owner, UPTFee, memecoinYields, liquidProofFee);
+        emit RedeemAndDistributeFees(verseId, _owner, UPTFee, memecoinYields, liquidProofFee);
     }
 
     /**
-     * @dev register omnichain memeverse
-     * @param name - Name of memecoin
-     * @param symbol - Symbol of memecoin
+     * @dev register memeverse
+     * @param _name - Name of memecoin
+     * @param _symbol - Symbol of memecoin
      * @param memecoin - Already created omnichain memecoin address
      * @param liquidProof - Already created omnichain liquidProof address
      * @param uniqueId - Unique verseId
@@ -306,9 +306,9 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
      * @param maxFund - Max fundraising(UPT) limit, if 0 => no limit
      * @param omnichainIds - ChainIds of the token's omnichain(EVM)
      */
-    function registerOmnichainMemeverse(
-        string calldata name,
-        string calldata symbol,
+    function registerMemeverse(
+        string calldata _name,
+        string calldata _symbol,
         string calldata uri,
         address memecoin,
         address liquidProof,
@@ -318,18 +318,20 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         uint128 maxFund,
         uint32[] calldata omnichainIds
     ) external override {
+        require(msg.sender == memeverseRegistrar, PermissionDenied());
+        
         // Deploy memecoin vault
         address memecoinVault = address(new MemecoinVault(
-            string(abi.encodePacked("Staked ", name)),
-            string(abi.encodePacked("s", symbol)),
+            string(abi.encodePacked("Staked ", _name)),
+            string(abi.encodePacked("s", _symbol)),
             memecoin,
             address(this),
             uniqueId
         ));
 
         Memeverse memory verse = Memeverse(
-            name, 
-            symbol, 
+            _name, 
+            _symbol, 
             memecoin, 
             liquidProof, 
             memecoinVault, 

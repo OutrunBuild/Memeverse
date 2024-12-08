@@ -49,7 +49,7 @@ interface IMemeverseLauncher {
 
     function redeemAndDistributeFees(uint256 verseId) external returns (uint256 UPTFee, uint256 memecoinYields, uint256 liquidProofFee);
 
-    function registerOmnichainMemeverse(
+    function registerMemeverse(
         string calldata name,
         string calldata symbol,
         string calldata uri,

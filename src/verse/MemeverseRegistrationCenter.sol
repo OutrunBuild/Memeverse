@@ -11,7 +11,7 @@ import { IMemeverseRegistrar } from "../token/interfaces/IMemeverseRegistrar.sol
 import { IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrationCenter.sol";
 
 /**
- * @title Memeverse Omnichain Registration Center (Deploy on BNB Chain)
+ * @title Memeverse Omnichain Registration Center
  */
 contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, TokenHelper {
     using OptionsBuilder for bytes;
@@ -130,16 +130,19 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         bytes memory options, 
         bytes memory message
     ) public view returns (uint256, uint256[] memory, uint32[] memory) {
-        uint256 len = omnichainIds.length;
+        uint256 length = omnichainIds.length;
         uint256 totalFee;
-        uint256[] memory fees = new uint256[](len);
-        uint32[] memory eids = new uint32[](len);
-        for (uint256 i = 0; i < len; i++) {
-            if (omnichainIds[i] == block.chainid) {
+        uint256[] memory fees = new uint256[](length);
+        uint32[] memory eids = new uint32[](length);
+        for (uint256 i = 0; i < length; i++) {
+            uint32 omnichainId = omnichainIds[i];
+            if (omnichainId == block.chainid) {
                 fees[i] = 0;
                 eids[i] = 0;
             } else {
-                uint32 eid = endpointIds[omnichainIds[i]];
+                uint32 eid = endpointIds[omnichainId];
+                require(eid != 0, InvalidOmnichainId(omnichainId));
+
                 uint256 fee = _quote(eid, message, options, false).nativeFee;
                 totalFee += fee;
                 fees[i] = fee;
@@ -156,41 +159,33 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         (uint256 totalFee, uint256[] memory fees, uint32[] memory eids) = quoteSend(omnichainIds, options, message);
         require(msg.value >= totalFee + registrationFee, InsufficientFee());
 
-        uint256 remainingValue = msg.value;
-        for (uint256 i = 0; i < omnichainIds.length; i++) {
-            if (omnichainIds[i] == block.chainid) {
+        uint256 remainingValue = msg.value - registrationFee;
+        for (uint256 i = 0; i < eids.length; i++) {
+            uint32 eid = eids[i];
+            if (eid == 0) {
                 IMemeverseRegistrar(LOCAL_MEMEVERSE_REGISTRAR).registerAtLocal(param);
             } else {
-                MessagingFee memory fee = _quote(eids[i], message, options, false);
-                remainingValue -= fee.nativeFee;
-                require(remainingValue >= registrationFee, InsufficientFee());
-
-                _lzSend(eids[i], message, options, MessagingFee({nativeFee: fees[i], lzTokenFee: 0}), param.creator);
+                _lzSend(eid, message, options, MessagingFee({nativeFee: fees[i], lzTokenFee: 0}), param.creator);
             }
         }
     }
 
     function _registrationParamValidation(RegistrationParam memory param) internal view {
-        require(
-            param.lockupDays >= minLockupDays && 
-            param.lockupDays <= maxLockupDays && 
-            param.durationDays >= minDurationDays && 
-            param.durationDays <= maxDurationDays && 
-            bytes(param.name).length > 0 && bytes(param.name).length < 32 && 
-            bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32 && 
-            bytes(param.uri).length > 0 && 
-            bytes(param.website).length < 32 && 
-            bytes(param.x).length < 32 && 
-            bytes(param.telegram).length < 32 && 
-            bytes(param.discord).length < 32 && 
-            bytes(param.description).length < 256 && 
-            param.omnichainIds.length > 0 && 
-            param.registrar != address(0), 
-            InvalidRegisterInfo()
-        );
+        require(param.lockupDays >= minLockupDays && param.lockupDays <= maxLockupDays, InvalidLockupDays());
+        require(param.durationDays >= minDurationDays && param.durationDays <= maxDurationDays, InvalidDurationDays());
+        require(bytes(param.name).length > 0 && bytes(param.name).length < 32, InvalidNameLength());
+        require(bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32, InvalidSymbolLength());
+        require(bytes(param.uri).length > 0, InvalidURILength());
+        require(bytes(param.website).length < 32, InvalidWebsiteLength());
+        require(bytes(param.x).length < 32, InvalidXLength());
+        require(bytes(param.telegram).length < 32, InvalidTelegramLength());
+        require(bytes(param.discord).length < 32, InvalidDiscordLength());
+        require(bytes(param.description).length < 256, InvalidDescriptionLength());
+        require(param.omnichainIds.length > 0, EmptyOmnichainIds());
+        require(param.registrar != address(0), ZeroRegistrarAddress());
 
         if (param.omnichainIds.length > 1) {
-            require(param.maxFund > 0 && param.maxFund < type(uint128).max, MaxFundNotSet());
+            require(param.maxFund > 0 && param.maxFund < type(uint128).max, MaxFundNotSetCorrectly());
         }
     }
 
@@ -251,7 +246,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             _minDurationDays != 0 && 
             _maxDurationDays != 0 && 
             _minDurationDays < _maxDurationDays, 
-            ErrorInput()
+            InvalidInput()
         );
 
         minDurationDays = _minDurationDays;
@@ -268,7 +263,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             _minLockupDays != 0 && 
             _maxLockupDays != 0 && 
             _minLockupDays < _maxLockupDays, 
-            ErrorInput()
+            InvalidInput()
         );
 
         minLockupDays = _minLockupDays;

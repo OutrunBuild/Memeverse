@@ -64,9 +64,9 @@ interface IMemeverseRegistrationCenter {
 
     error ZeroInput();
 
-    error ErrorInput();
+    error InvalidInput();
 
-    error MaxFundNotSet();
+    error InvalidXLength();
 
     error LengthMismatch();
 
@@ -74,11 +74,35 @@ interface IMemeverseRegistrationCenter {
 
     error PermissionDenied();
 
-    error InvalidRegisterInfo();
+    error InvalidURILength();
+
+    error EmptyOmnichainIds();
+
+    error InvalidLockupDays();
+
+    error InvalidNameLength();
+
+    error InvalidDurationDays();
+    
+    error InvalidSymbolLength();
+    
+    error InvalidWebsiteLength();
+    
+    error InvalidDiscordLength();
+
+    error ZeroRegistrarAddress();
+
+    error InvalidTelegramLength();
+
+    error MaxFundNotSetCorrectly();
+
+    error InvalidDescriptionLength();
 
     error UniqueIdMismatch(uint256 uniqueId);
 
     error SymbolNotUnlock(uint64 unlockTime);
+
+    error InvalidOmnichainId(uint32 omnichainId);
 
     error InsufficientRegistrationFee(uint256 registrationFee);
 }

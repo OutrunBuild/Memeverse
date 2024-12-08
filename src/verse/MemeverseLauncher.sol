@@ -13,6 +13,7 @@ import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
 import { MemecoinVault, IMemecoinVault } from "../yield/MemecoinVault.sol";
 import { MemeLiquidProof, IMemeLiquidProof } from "../token/MemeLiquidProof.sol";
 import { IMemeverseRegistrar } from "../token/interfaces/IMemeverseRegistrar.sol";
+import { IMemeverseRegistrationCenter } from "../verse/interfaces/IMemeverseRegistrationCenter.sol";
 
 /**
  * @title Trapping into the memeverse
@@ -174,7 +175,9 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
                 currentStage = Stage.Refund;
 
                 // Cancel registration
-                IMemeverseRegistrar(memeverseRegistrar).cancelRegistration{value: msg.value}(verseId, verse.symbol, msg.sender);
+                IMemeverseRegistrationCenter.RegistrationParam memory param;
+                param.symbol = verse.symbol;
+                IMemeverseRegistrar(memeverseRegistrar).cancelRegistration{value: msg.value}(verseId, param, msg.sender);
             } else {
                 // Deploy memecoin liquidity
                 address memecoin = verse.memecoin;

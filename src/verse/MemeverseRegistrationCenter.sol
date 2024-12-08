@@ -63,7 +63,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     /**
      * @dev Registration memeverse
      */
-    function registration(RegistrationParam calldata param) external payable override {
+    function registration(RegistrationParam memory param) public payable override {
         _registrationParamValidation(param);
 
         uint256 _registrationFee = registrationFee;
@@ -156,11 +156,16 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         (uint256 totalFee, uint256[] memory fees, uint32[] memory eids) = quoteSend(omnichainIds, options, message);
         require(msg.value >= totalFee + registrationFee, InsufficientFee());
 
+        uint256 remainingValue = msg.value;
         for (uint256 i = 0; i < omnichainIds.length; i++) {
             if (omnichainIds[i] == block.chainid) {
                 IMemeverseRegistrar(LOCAL_MEMEVERSE_REGISTRAR).registerAtLocal(param);
             } else {
-                _lzSend(eids[i], message, options, MessagingFee({nativeFee: fees[i], lzTokenFee: 0}), msg.sender);
+                MessagingFee memory fee = _quote(eids[i], message, options, false);
+                remainingValue -= fee.nativeFee;
+                require(remainingValue >= registrationFee, InsufficientFee());
+
+                _lzSend(eids[i], message, options, MessagingFee({nativeFee: fees[i], lzTokenFee: 0}), param.creator);
             }
         }
     }
@@ -199,8 +204,12 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         address _executor,
         bytes calldata _extraData
     ) internal virtual override {
-        (uint256 uniqueId, string memory symbol) = abi.decode(_message, (uint256, string));
-        _cancelRegistration(uniqueId, symbol);
+        (uint256 uniqueId, RegistrationParam memory param) = abi.decode(_message, (uint256, RegistrationParam));
+        if (uniqueId == 0) {
+            registration(param);
+        } else {
+            _cancelRegistration(uniqueId, param.symbol);
+        }
     }
 
     /**

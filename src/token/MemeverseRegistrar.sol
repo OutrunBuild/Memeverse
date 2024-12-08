@@ -12,9 +12,8 @@ import { IMessageLibManager, SetConfigParam } from "@layerzerolabs/lz-evm-protoc
 import { Memecoin } from "./Memecoin.sol";
 import { MemeLiquidProof } from "./MemeLiquidProof.sol";
 import { LzMessageConfig } from "../common/LzMessageConfig.sol";
-import { IMemeverseRegistrar } from "./interfaces/IMemeverseRegistrar.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
-import { IMemeverseRegistrationCenter } from "../verse/interfaces/IMemeverseRegistrationCenter.sol";
+import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.sol";
 
 /**
  * @title Omnichain Factory for deploying memecoin and liquidProof
@@ -22,14 +21,15 @@ import { IMemeverseRegistrationCenter } from "../verse/interfaces/IMemeverseRegi
 contract MemeverseRegistrar is IMemeverseRegistrar, OApp, LzMessageConfig {
     using OptionsBuilder for bytes;
 
-    uint32 public constant REGISTRATION_CENTER_CHAINID = 97;      // TODO update mainnet
-    uint32 public constant REGISTRATION_CENTER_EID = 40102;          // TODO update mainnet
     address public immutable REGISTRATION_CENTER;
     address public immutable LOCAL_LZ_ENDPOINT;
     address public immutable LOCAL_SEND_LIBRARY;
     address public immutable LOCAL_RECEIVE_LIBRARY;
     address public immutable MEMEVERSE_LAUNCHER;
+    uint128 public immutable REGISTER_GAS_LIMIT;
     uint128 public immutable CANCEL_REGISTER_GAS_LIMIT;
+    uint32 public immutable REGISTRATION_CENTER_EID;
+    uint32 public immutable REGISTRATION_CENTER_CHAINID;
 
     mapping(uint32 chainId => uint32) endpointIds;
 
@@ -40,16 +40,22 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp, LzMessageConfig {
         address _localReceiveLibrary, 
         address _memeverseLauncher, 
         address _registrationCenter, 
-        uint128 _gasLimit
+        uint128 _registerGasLimit,
+        uint128 _cancelRegisterGasLimit,
+        uint32 _registrationCenterEid,
+        uint32 _registrationCenterChainid
     ) OApp(_localLzEndpoint, _owner) Ownable(_owner) {
         REGISTRATION_CENTER = _registrationCenter;
         LOCAL_LZ_ENDPOINT = _localLzEndpoint;
         LOCAL_SEND_LIBRARY = _localSendLibrary;
         LOCAL_RECEIVE_LIBRARY = _localReceiveLibrary;
         MEMEVERSE_LAUNCHER = _memeverseLauncher;
-        CANCEL_REGISTER_GAS_LIMIT = _gasLimit;
+        REGISTER_GAS_LIMIT = _registerGasLimit;
+        CANCEL_REGISTER_GAS_LIMIT = _cancelRegisterGasLimit;
+        REGISTRATION_CENTER_EID = _registrationCenterEid;
+        REGISTRATION_CENTER_CHAINID = _registrationCenterChainid;
 
-        setPeer(REGISTRATION_CENTER_EID, bytes32(uint256(uint160(_registrationCenter))));
+        setPeer(_registrationCenterEid, bytes32(uint256(uint160(_registrationCenter))));
     }
 
     function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
@@ -59,7 +65,8 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp, LzMessageConfig {
     }
 
     /**
-     * @dev Register on the chain where the registration center is located.
+     * @dev Register on the chain where the registration center is located
+     * @notice Only RegistrationCenter can call
      */
     function registerAtLocal(MemeverseParam calldata param) external returns (address memecoin, address liquidProof) {
         require(
@@ -71,13 +78,31 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp, LzMessageConfig {
         return _registerMemeverse(param);
     }
 
-    function cancelRegistration(uint256 uniqueId, string memory symbol, address lzRefundAddress) external payable override {
+    /**
+     * @dev Register through cross-chain at the RegistrationCenter
+     */
+    function registerAtCenter(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable override {
+        require(block.chainid != REGISTRATION_CENTER_CHAINID, PermissionDenied());
+
+        if (block.chainid == REGISTRATION_CENTER_CHAINID) {
+            IMemeverseRegistrationCenter(REGISTRATION_CENTER).registration(param);
+        } else {
+            bytes memory message = abi.encode(uniqueId, param);
+            bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(REGISTER_GAS_LIMIT, value);
+            uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+            require(msg.value >= fee, InsufficientFee());
+
+            _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), msg.sender);
+        }
+    }
+
+    function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address lzRefundAddress) external payable override {
         require(msg.sender == MEMEVERSE_LAUNCHER, PermissionDenied());
 
         if (block.chainid == REGISTRATION_CENTER_CHAINID) {
-            IMemeverseRegistrationCenter(REGISTRATION_CENTER).cancelRegistration(uniqueId, symbol);
+            IMemeverseRegistrationCenter(REGISTRATION_CENTER).cancelRegistration(uniqueId, param.symbol);
         } else {
-            bytes memory message = abi.encode(uniqueId, symbol);
+            bytes memory message = abi.encode(uniqueId, param);
             bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(CANCEL_REGISTER_GAS_LIMIT , 0);
             uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
             require(msg.value >= fee, InsufficientFee());

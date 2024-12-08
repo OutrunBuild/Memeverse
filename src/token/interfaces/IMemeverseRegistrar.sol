@@ -1,6 +1,8 @@
 //SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
+import { IMemeverseRegistrationCenter } from "../../verse/interfaces/IMemeverseRegistrationCenter.sol";
+
 interface IMemeverseRegistrar {
     struct MemeverseParam {
         string name;                    // Token name
@@ -21,7 +23,9 @@ interface IMemeverseRegistrar {
 
     function registerAtLocal(MemeverseParam calldata param) external returns (address memecoin, address liquidProof);
 
-    function cancelRegistration(uint256 uniqueId, string memory symbol, address lzRefundAddress) external payable;
+    function registerAtCenter(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
+
+    function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address lzRefundAddress) external payable;
 
     function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
 

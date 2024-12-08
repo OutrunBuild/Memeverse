@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { IERC20 } from "../../common/ERC20.sol";
+import {IERC20} from "../../common/ERC20.sol";
 
 interface IMemecoinVault is IERC20 {
+    struct RedeemRequest {
+        uint192 amount;     // Requested redeem amount
+        uint64 requestTime; // Time when the redeem request was made
+    }
+
     function asset() external view returns (address assetTokenAddress);
 
     function totalAssets() external view returns (uint256 totalManagedAssets);
@@ -16,11 +21,29 @@ interface IMemecoinVault is IERC20 {
 
     function deposit(uint256 assets, address receiver) external returns (uint256 shares);
 
-    function redeem(uint256 shares, address receiver) external returns (uint256 assets);
+    function requestRedeem(uint256 shares, address receiver) external returns (uint256 assets);
+
+    function executeRedeem() external returns (uint256 redeemedAmount);
+
 
     event AccumulateYields(address indexed yieldSource, uint256 amount);
 
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
 
-    event Withdraw(address indexed sender, address indexed receiver, uint256 assets, uint256 shares);
+    event RedeemRequested(
+        address indexed sender, 
+        address indexed receiver, 
+        uint256 assets, 
+        uint256 shares, 
+        uint256 requestTime
+    );
+
+    event RedeemExecuted(address indexed receiver, uint256 amount);
+
+
+    error ZeroAddresss();
+
+    error ZeroRedeemRequest();
+
+    error MaxRedeemRequestsReached();
 }

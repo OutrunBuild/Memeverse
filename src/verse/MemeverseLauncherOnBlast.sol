@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import {MemeverseLauncher} from "./MemeverseLauncher.sol";
-import {GasManagerable} from "../common/blast/GasManagerable.sol";
+import { MemeverseLauncher } from "./MemeverseLauncher.sol";
+import { BlastGovernorable } from "../common/blast/BlastGovernorable.sol";
 
 /**
  * @title Trapping into the memeverse on blast
  */
-contract MemeverseLauncherOnBlast is MemeverseLauncher, GasManagerable {
+contract MemeverseLauncherOnBlast is MemeverseLauncher, BlastGovernorable {
     constructor(
         string memory _name,
         string memory _symbol,
@@ -18,7 +18,7 @@ contract MemeverseLauncherOnBlast is MemeverseLauncher, GasManagerable {
         address _outrunAMMRouter,
         uint256 _minTotalFunds,
         uint256 _fundBasedAmount,
-        address _gasManager
+        address _blastGovernor
     ) MemeverseLauncher(
             _name,
             _symbol,
@@ -29,6 +29,6 @@ contract MemeverseLauncherOnBlast is MemeverseLauncher, GasManagerable {
             _outrunAMMRouter,
             _minTotalFunds,
             _fundBasedAmount
-    ) GasManagerable(_gasManager){
+    ) BlastGovernorable(_blastGovernor){
     }
 }

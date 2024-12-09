@@ -5,6 +5,7 @@ interface IOutrunAMMRouter {
     function addLiquidity(
         address tokenA,
         address tokenB,
+        uint256 feeRate,
         uint256 amountADesired,
         uint256 amountBDesired,
         uint256 amountAMin,

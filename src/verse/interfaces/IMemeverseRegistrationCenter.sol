@@ -36,10 +36,6 @@ interface IMemeverseRegistrationCenter {
 
     function cancelRegistration(uint256 uniqueId, string calldata symbol) external;
 
-    function setRegistrationFee(uint256 registrationFee) external;
-
-    function setRevenuePool(address revenuePool) external;
-
     function setDurationDaysRange(uint128 minDurationDays, uint128 maxDurationDays) external;
 
     function setLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays) external;
@@ -58,8 +54,6 @@ interface IMemeverseRegistrationCenter {
         uint256 indexed uniqueId, 
         string indexed symbol
     );
-
-    event SetRegistrationFee(uint256 registrationFee);
 
 
     error ZeroInput();
@@ -103,6 +97,4 @@ interface IMemeverseRegistrationCenter {
     error SymbolNotUnlock(uint64 unlockTime);
 
     error InvalidOmnichainId(uint32 omnichainId);
-
-    error InsufficientRegistrationFee(uint256 registrationFee);
 }

@@ -20,8 +20,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     uint128 public immutable OMNICHAIN_REGISTER_GAS_LIMIT;
     address public immutable LOCAL_MEMEVERSE_REGISTRAR;
 
-    address public revenuePool;
-    uint256 public registrationFee;
     uint128 public minDurationDays;
     uint128 public maxDurationDays;
     uint128 public minLockupDays;
@@ -39,14 +37,10 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
     constructor(
         address _owner, 
-        address _revenuePool,
         address _lzEndpoint, 
         address _localMemeverseRegistrar, 
-        uint256 _registrationFee, 
         uint128 _registerGasLimit
     ) OApp(_lzEndpoint, _owner) Ownable(_owner) {
-        revenuePool = _revenuePool;
-        registrationFee = _registrationFee;
         LOCAL_MEMEVERSE_REGISTRAR = _localMemeverseRegistrar;
         OMNICHAIN_REGISTER_GAS_LIMIT = _registerGasLimit;
     }
@@ -65,10 +59,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
      */
     function registration(RegistrationParam memory param) public payable override {
         _registrationParamValidation(param);
-
-        uint256 _registrationFee = registrationFee;
-        require(msg.value >= _registrationFee, InsufficientRegistrationFee(_registrationFee));
-        _transferOut(NATIVE, revenuePool, msg.value);
 
         uint256 currentTime = block.timestamp;
         SymbolRegistration storage currentRegistration = symbolRegistry[param.symbol];
@@ -157,9 +147,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         bytes memory message = abi.encode(param);
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(OMNICHAIN_REGISTER_GAS_LIMIT , 0);
         (uint256 totalFee, uint256[] memory fees, uint32[] memory eids) = quoteSend(omnichainIds, options, message);
-        require(msg.value >= totalFee + registrationFee, InsufficientFee());
+        require(msg.value >= totalFee, InsufficientFee());
 
-        uint256 remainingValue = msg.value - registrationFee;
         for (uint256 i = 0; i < eids.length; i++) {
             uint32 eid = eids[i];
             if (eid == 0) {
@@ -193,11 +182,11 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
      * @dev Internal function to implement lzReceive logic(Cancel Registration)
      */
     function _lzReceive(
-        Origin calldata _origin,
-        bytes32 _guid,
+        Origin calldata /*_origin*/,
+        bytes32 /*_guid*/,
         bytes calldata _message,
-        address _executor,
-        bytes calldata _extraData
+        address /*_executor*/,
+        bytes calldata /*_extraData*/
     ) internal virtual override {
         (uint256 uniqueId, RegistrationParam memory param) = abi.decode(_message, (uint256, RegistrationParam));
         if (uniqueId == 0) {
@@ -226,15 +215,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     /*/////////////////////////////////////////////////////
                 Memeverse Registration Config
     /////////////////////////////////////////////////////*/
-
-    function setRegistrationFee(uint256 _registrationFee) external override onlyOwner {
-        registrationFee = _registrationFee;
-    }
-
-    function setRevenuePool(address _revenuePool) external override onlyOwner {
-        require(_revenuePool != address(0), ZeroInput());
-        revenuePool = _revenuePool;
-    }
 
     /**
      * @dev Set genesis stage duration days range

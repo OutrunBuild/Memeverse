@@ -12,7 +12,7 @@ import { TokenHelper } from "../common/TokenHelper.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
 import { MemecoinVault, IMemecoinVault } from "../yield/MemecoinVault.sol";
 import { MemeLiquidProof, IMemeLiquidProof } from "../token/MemeLiquidProof.sol";
-import { IMemeverseRegistrar } from "../token/interfaces/IMemeverseRegistrar.sol";
+import { IMemeverseRegistrar } from "../verse/interfaces/IMemeverseRegistrar.sol";
 import { IMemeverseRegistrationCenter } from "../verse/interfaces/IMemeverseRegistrationCenter.sol";
 
 /**

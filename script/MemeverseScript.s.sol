@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import "./BaseScript.s.sol";
 import { IOutrunDeployer } from "./IOutrunDeployer.sol";
-import { MemeverseRegistrar } from "../src/token/MemeverseRegistrar.sol";
+import { MemeverseRegistrar } from "../src/verse/MemeverseRegistrar.sol";
 import { MemeverseLauncher } from "../src/verse/MemeverseLauncher.sol";
 import { MemeverseLauncherOnBlast } from "../src/verse/MemeverseLauncherOnBlast.sol";
 

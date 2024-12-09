@@ -9,8 +9,8 @@ import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOA
 import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import { IMessageLibManager, SetConfigParam } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
 
-import { Memecoin } from "./Memecoin.sol";
-import { MemeLiquidProof } from "./MemeLiquidProof.sol";
+import { Memecoin } from "../token/Memecoin.sol";
+import { MemeLiquidProof } from "../token/MemeLiquidProof.sol";
 import { LzMessageConfig } from "../common/LzMessageConfig.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
 import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.sol";

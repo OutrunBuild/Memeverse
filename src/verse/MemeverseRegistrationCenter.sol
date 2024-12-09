@@ -7,7 +7,7 @@ import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/Opti
 import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
 import { TokenHelper } from "../common/TokenHelper.sol";
-import { IMemeverseRegistrar } from "../token/interfaces/IMemeverseRegistrar.sol";
+import { IMemeverseRegistrar } from "../verse/interfaces/IMemeverseRegistrar.sol";
 import { IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrationCenter.sol";
 
 /**

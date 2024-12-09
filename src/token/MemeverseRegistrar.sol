@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { CREATE3 } from "@solmate/utils/CREATE3.sol";
+import { CREATE3 } from "solmate/src/utils/CREATE3.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { OApp, Origin } from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
@@ -54,8 +54,6 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp, LzMessageConfig {
         CANCEL_REGISTER_GAS_LIMIT = _cancelRegisterGasLimit;
         REGISTRATION_CENTER_EID = _registrationCenterEid;
         REGISTRATION_CENTER_CHAINID = _registrationCenterChainid;
-
-        setPeer(_registrationCenterEid, bytes32(uint256(uint160(_registrationCenter))));
     }
 
     function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
@@ -115,11 +113,11 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp, LzMessageConfig {
      * @dev Internal function to implement lzReceive logic
      */
     function _lzReceive(
-        Origin calldata _origin,
-        bytes32 _guid,
+        Origin calldata /*_origin*/,
+        bytes32 /*_guid*/,
         bytes calldata _message,
-        address _executor,
-        bytes calldata _extraData
+        address /*_executor*/,
+        bytes calldata /*_extraData*/
     ) internal virtual override {
         MemeverseParam memory param = abi.decode(_message, (MemeverseParam));
         _registerMemeverse(param);

@@ -2,28 +2,47 @@
 pragma solidity ^0.8.24;
 
 import "./BaseScript.s.sol";
-import "../src/verse/MemeverseLauncher.sol";
+import { IOutrunDeployer } from "./IOutrunDeployer.sol";
+import { MemeverseLauncher } from "../src/verse/MemeverseLauncher.sol";
 
 contract MemeverseScript is BaseScript {
+    address internal UETH;
+    address internal OUTRUN_DEPLOYER;
+    address internal owner;
+    address internal revenuePool;
+    address internal factory;
+    address internal router;
+    
+
     function run() public broadcaster {
-        address UBNB = vm.envAddress("UBNB");
-        address owner = vm.envAddress("OWNER");
-        address revenuePool = vm.envAddress("REVENUPOOL");
-        address factory = vm.envAddress("OUTRUN_AMM_FACTORY");
-        address router = vm.envAddress("OUTRUN_AMM_ROUTER");
+        UETH = vm.envAddress("UETH");
+        owner = vm.envAddress("OWNER");
+        revenuePool = vm.envAddress("REVENUPOOL");
+        factory = vm.envAddress("OUTRUN_AMM_FACTORY");
+        router = vm.envAddress("OUTRUN_AMM_ROUTER");
+        OUTRUN_DEPLOYER = vm.envAddress("OUTRUN_DEPLOYER");
         
-        MemeverseLauncher UBNBMemeverseLauncher = new MemeverseLauncher(
-            "UBNBMemeverseLauncher",
-            "MVS-UBNB",
-            UBNB,
-            owner,
-            revenuePool,
-            factory,
-            router,
-            20 * 1e18,
-            1000
+        _deployUETHMemeverseLauncher(1);
+    }
+
+    function _deployUETHMemeverseLauncher(uint256 nonce) internal {
+        bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", UETH, nonce));
+        bytes memory creationCode = abi.encodePacked(
+            type(MemeverseLauncher).creationCode,
+            abi.encode(
+                "UETHMemeverseLauncher",
+                "MVS-UETH",
+                UETH,
+                owner,
+                revenuePool,
+                factory,
+                router,
+                1e16,
+                1000
+            )
         );
-        address UBNBMemeverseLauncherAddr = address(UBNBMemeverseLauncher);
-        console.log("UBNBMemeverseLauncher deployed on %s", UBNBMemeverseLauncherAddr);
+        address UETHMemeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+
+        console.log("UETHMemeverseLauncher deployed on %s", UETHMemeverseLauncherAddr);
     }
 }

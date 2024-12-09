@@ -4,9 +4,11 @@ pragma solidity ^0.8.24;
 import "./BaseScript.s.sol";
 import { IOutrunDeployer } from "./IOutrunDeployer.sol";
 import { MemeverseLauncher } from "../src/verse/MemeverseLauncher.sol";
+import { MemeverseLauncherOnBlast } from "../src/verse/MemeverseLauncherOnBlast.sol";
 
 contract MemeverseScript is BaseScript {
     address internal UETH;
+    address internal BLAST_GOVERNOR;
     address internal OUTRUN_DEPLOYER;
     address internal owner;
     address internal revenuePool;
@@ -20,9 +22,11 @@ contract MemeverseScript is BaseScript {
         revenuePool = vm.envAddress("REVENUPOOL");
         factory = vm.envAddress("OUTRUN_AMM_FACTORY");
         router = vm.envAddress("OUTRUN_AMM_ROUTER");
+        BLAST_GOVERNOR = vm.envAddress("BLAST_GOVERNOR");
         OUTRUN_DEPLOYER = vm.envAddress("OUTRUN_DEPLOYER");
         
-        _deployUETHMemeverseLauncher(1);
+        _deployUETHMemeverseLauncher(2);
+        // _deployUETHMemeverseLauncherOnBlast(2);
     }
 
     function _deployUETHMemeverseLauncher(uint256 nonce) internal {
@@ -44,5 +48,27 @@ contract MemeverseScript is BaseScript {
         address UETHMemeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
         console.log("UETHMemeverseLauncher deployed on %s", UETHMemeverseLauncherAddr);
+    }
+
+    function _deployUETHMemeverseLauncherOnBlast(uint256 nonce) internal {
+        bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", UETH, nonce));
+        bytes memory creationCode = abi.encodePacked(
+            type(MemeverseLauncherOnBlast).creationCode,
+            abi.encode(
+                "UETHMemeverseLauncher",
+                "MVS-UETH",
+                UETH,
+                owner,
+                BLAST_GOVERNOR,
+                revenuePool,
+                factory,
+                router,
+                1e16,
+                1000
+            )
+        );
+        address UETHMemeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+
+        console.log("UETHMemeverseLauncherOnBlast deployed on %s", UETHMemeverseLauncherAddr);
     }
 }

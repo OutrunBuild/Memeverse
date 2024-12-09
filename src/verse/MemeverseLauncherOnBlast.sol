@@ -13,12 +13,12 @@ contract MemeverseLauncherOnBlast is MemeverseLauncher, BlastGovernorable {
         string memory _symbol,
         address _UPT,
         address _owner,
+        address _blastGovernor,
         address _revenuePool,
         address _outrunAMMFactory,
         address _outrunAMMRouter,
         uint256 _minTotalFunds,
-        uint256 _fundBasedAmount,
-        address _blastGovernor
+        uint256 _fundBasedAmount
     ) MemeverseLauncher(
             _name,
             _symbol,

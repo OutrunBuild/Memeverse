@@ -262,7 +262,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         }
     }
 
-    function setLzEndpointId(IMemeverseRegistrar.LzEndpointId[] calldata endpoints) external override onlyOwner {
+    function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
         for (uint256 i = 0; i < endpoints.length; i++) {
             endpointIds[endpoints[i].chainId] = endpoints[i].endpointId;
         }

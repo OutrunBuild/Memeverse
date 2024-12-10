@@ -29,6 +29,11 @@ interface IMemeverseRegistrationCenter {
         uint64 unlockTime;              // Memeverse unlockTime
     }
 
+    struct LzEndpointId {
+        uint32 chainId;
+        uint32 endpointId;
+    }
+
 
     function previewRegistration(string calldata symbol) external view returns (bool);
 
@@ -40,7 +45,7 @@ interface IMemeverseRegistrationCenter {
 
     function setLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays) external;
 
-    function setLzEndpointId(IMemeverseRegistrar.LzEndpointId[] calldata endpoints) external;
+    function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
 
     function setPeer(uint32[] calldata _eids, bytes32[] calldata _peers) external;
 

@@ -14,22 +14,18 @@ contract MemecoinDeployer is TokenDeployer {
         address _owner,
         address _localLzEndpoint,
         address _memeverseLauncher, 
-        address _memeverseRegistrar,
-        address _localSendLibrary, 
-        address _localReceiveLibrary
-    ) TokenDeployer(_owner, _localLzEndpoint, _memeverseLauncher, _memeverseRegistrar, _localSendLibrary, _localReceiveLibrary) {
+        address _memeverseRegistrar
+    ) TokenDeployer(_owner, _localLzEndpoint, _memeverseLauncher, _memeverseRegistrar) {
     }
 
     function _deployToken(
-        string calldata name, 
-        string calldata symbol,
+        string memory name, 
+        string memory symbol,
         uint256 uniqueId,
         address creator,
-        address /*memecoin*/,
-        address memeverseLauncher,
-        address lzEndpoint
+        address /*memecoin*/
     ) internal virtual override returns (address token) {
-        bytes memory constructorArgs = abi.encode(name, symbol, 18, memeverseLauncher, lzEndpoint, address(this));
+        bytes memory constructorArgs = abi.encode(name, symbol, 18, MEMEVERSE_LAUNCHER, LOCAL_LZ_ENDPOINT, address(this));
         bytes memory initCode = abi.encodePacked(type(Memecoin).creationCode, constructorArgs);
         bytes32 salt = keccak256(abi.encodePacked(symbol, creator, uniqueId));
         token = CREATE3.deploy(salt, initCode, 0);

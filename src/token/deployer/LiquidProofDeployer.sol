@@ -14,28 +14,24 @@ contract LiquidProofDeployer is TokenDeployer {
         address _owner,
         address _localLzEndpoint,
         address _memeverseLauncher, 
-        address _memeverseRegistrar,
-        address _localSendLibrary, 
-        address _localReceiveLibrary
-    ) TokenDeployer(_owner, _localLzEndpoint, _memeverseLauncher, _memeverseRegistrar, _localSendLibrary, _localReceiveLibrary) {
+        address _memeverseRegistrar
+    ) TokenDeployer(_owner, _localLzEndpoint, _memeverseLauncher, _memeverseRegistrar) {
     }
 
     function _deployToken(
-        string calldata name, 
-        string calldata symbol,
+        string memory name, 
+        string memory symbol,
         uint256 uniqueId,
         address creator,
-        address memecoin,
-        address memeverseLauncher,
-        address lzEndpoint
+        address memecoin
     ) internal virtual override returns (address token) {
         bytes memory constructorArgs = abi.encode(
             string(abi.encodePacked(name, " Liquid")), 
             string(abi.encodePacked(symbol, " LIQUID")), 
             18, 
             memecoin, 
-            memeverseLauncher, 
-            lzEndpoint,
+            MEMEVERSE_LAUNCHER, 
+            LOCAL_LZ_ENDPOINT, 
             address(this)
         );
         bytes memory initCode = abi.encodePacked(type(MemeLiquidProof).creationCode, constructorArgs);

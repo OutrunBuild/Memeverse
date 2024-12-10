@@ -47,8 +47,6 @@ interface IMemeverseRegistrationCenter {
 
     function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
 
-    function setPeer(uint32[] calldata _eids, bytes32[] calldata _peers) external;
-
 
     event Registration(
         uint256 indexed uniqueId,

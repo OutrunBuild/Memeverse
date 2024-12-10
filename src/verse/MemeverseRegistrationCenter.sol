@@ -249,19 +249,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         minLockupDays = _minLockupDays;
         maxLockupDays = _maxLockupDays;
     }
-
-    /*////////////////////////////////////////////////
-                    Layerzero Config
-    ////////////////////////////////////////////////*/
-
-    function setPeer(uint32[] calldata _eids, bytes32[] calldata _peers) external override onlyOwner {
-        require(_eids.length == _peers.length, LengthMismatch());
-
-        for (uint256 i = 0; i < _eids.length; i++) {
-            setPeer(_eids[i], _peers[i]);
-        }
-    }
-
+    
     function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
         for (uint256 i = 0; i < endpoints.length; i++) {
             endpointIds[endpoints[i].chainId] = endpoints[i].endpointId;

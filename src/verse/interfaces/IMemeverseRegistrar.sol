@@ -16,25 +16,15 @@ interface IMemeverseRegistrar {
         address creator;                // Memeverse creator
     }
 
-    struct LzEndpointId {
-        uint32 chainId;
-        uint32 endpointId;
-    }
-
     function registerAtLocal(MemeverseParam calldata param) external returns (address memecoin, address liquidProof);
 
     function registerAtCenter(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
 
     function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address lzRefundAddress) external payable;
 
-    function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
-
-
     error ZeroAddress();
 
     error InsufficientFee();
     
     error PermissionDenied();
-
-    error InvalidOmnichainId(uint32 omnichainId);
 }

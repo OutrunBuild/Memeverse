@@ -18,8 +18,7 @@ contract MemeverseRegistrarOnBlast is MemeverseRegistrar, BlastGovernorable {
         address _registrationCenter, 
         uint128 _registerGasLimit,
         uint128 _cancelRegisterGasLimit,
-        uint32 _registrationCenterEid,
-        uint32 _registrationCenterChainid
+        uint32 _registrationCenterEid
     ) MemeverseRegistrar(
         _owner, 
         _localLzEndpoint, 
@@ -29,8 +28,7 @@ contract MemeverseRegistrarOnBlast is MemeverseRegistrar, BlastGovernorable {
         _registrationCenter, 
         _registerGasLimit,
         _cancelRegisterGasLimit,
-        _registrationCenterEid,
-        _registrationCenterChainid
+        _registrationCenterEid
     ) BlastGovernorable(_blastGovernor) {
     }
 }

@@ -16,9 +16,7 @@ interface IMemeverseRegistrar {
         address creator;                // Memeverse creator
     }
 
-    function registerAtLocal(MemeverseParam calldata param) external returns (address memecoin, address liquidProof);
-
-    function registerAtCenter(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
+    function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
 
     function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address lzRefundAddress) external payable;
 

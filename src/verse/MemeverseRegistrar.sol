@@ -23,7 +23,6 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp {
     uint128 public immutable REGISTER_GAS_LIMIT;
     uint128 public immutable CANCEL_REGISTER_GAS_LIMIT;
     uint32 public immutable REGISTRATION_CENTER_EID;
-    uint32 public immutable REGISTRATION_CENTER_CHAINID;
 
     constructor(
         address _owner, 
@@ -34,8 +33,7 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp {
         address _registrationCenter, 
         uint128 _registerGasLimit,
         uint128 _cancelRegisterGasLimit,
-        uint32 _registrationCenterEid,
-        uint32 _registrationCenterChainid
+        uint32 _registrationCenterEid
     ) OApp(_localLzEndpoint, _owner) Ownable(_owner) {
         MEMECOIN_DEPLOYER = _memecoinDeployer;
         LIQUID_PROOF_DEPLOYER = _liquidProofDeployer;
@@ -45,54 +43,29 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp {
         REGISTER_GAS_LIMIT = _registerGasLimit;
         CANCEL_REGISTER_GAS_LIMIT = _cancelRegisterGasLimit;
         REGISTRATION_CENTER_EID = _registrationCenterEid;
-        REGISTRATION_CENTER_CHAINID = _registrationCenterChainid;
-    }
-
-    /**
-     * @dev Register on the chain where the registration center is located
-     * @notice Only RegistrationCenter can call
-     */
-    function registerAtLocal(MemeverseParam calldata param) external returns (address memecoin, address liquidProof) {
-        require(
-            block.chainid == REGISTRATION_CENTER_CHAINID || 
-            msg.sender == REGISTRATION_CENTER, 
-            PermissionDenied()
-        );
-
-        return _registerMemeverse(param);
     }
 
     /**
      * @dev Register through cross-chain at the RegistrationCenter
      */
-    function registerAtCenter(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable override {
-        require(block.chainid != REGISTRATION_CENTER_CHAINID, PermissionDenied());
+    function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable override {
+        bytes memory message = abi.encode(0, param);
+        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(REGISTER_GAS_LIMIT, value);
+        uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+        require(msg.value >= fee, InsufficientFee());
 
-        if (block.chainid == REGISTRATION_CENTER_CHAINID) {
-            IMemeverseRegistrationCenter(REGISTRATION_CENTER).registration(param);
-        } else {
-            bytes memory message = abi.encode(uniqueId, param);
-            bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(REGISTER_GAS_LIMIT, value);
-            uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
-            require(msg.value >= fee, InsufficientFee());
-
-            _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), msg.sender);
-        }
+        _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), msg.sender);
     }
 
     function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address lzRefundAddress) external payable override {
         require(msg.sender == MEMEVERSE_LAUNCHER, PermissionDenied());
 
-        if (block.chainid == REGISTRATION_CENTER_CHAINID) {
-            IMemeverseRegistrationCenter(REGISTRATION_CENTER).cancelRegistration(uniqueId, param.symbol);
-        } else {
-            bytes memory message = abi.encode(uniqueId, param);
-            bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(CANCEL_REGISTER_GAS_LIMIT , 0);
-            uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
-            require(msg.value >= fee, InsufficientFee());
+        bytes memory message = abi.encode(uniqueId, param);
+        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(CANCEL_REGISTER_GAS_LIMIT , 0);
+        uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+        require(msg.value >= fee, InsufficientFee());
 
-            _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), lzRefundAddress);
-        }
+        _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), lzRefundAddress);
     }
 
     /**

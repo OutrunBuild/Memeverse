@@ -7,8 +7,8 @@ import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/Opti
 import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
 import { TokenHelper } from "../common/TokenHelper.sol";
-import { IMemeverseRegistrar } from "../verse/interfaces/IMemeverseRegistrar.sol";
 import { IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrationCenter.sol";
+import { IMemeverseRegistrarAtLocal, IMemeverseRegistrar } from "../verse/interfaces/IMemeverseRegistrarAtLocal.sol";
 
 /**
  * @title Memeverse Omnichain Registration Center
@@ -152,7 +152,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         for (uint256 i = 0; i < eids.length; i++) {
             uint32 eid = eids[i];
             if (eid == 0) {
-                IMemeverseRegistrar(LOCAL_MEMEVERSE_REGISTRAR).registerAtLocal(param);
+                IMemeverseRegistrarAtLocal(LOCAL_MEMEVERSE_REGISTRAR).registerAtLocal(param);
             } else {
                 _lzSend(eid, message, options, MessagingFee({nativeFee: fees[i], lzTokenFee: 0}), param.creator);
             }

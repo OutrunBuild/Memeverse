@@ -3,3 +3,19 @@
 ## MemeverseLauncher
 
 0xfd3bD817911107C650F95C7BB48F4e53a8a1b87a
+
+## MemeverseRegistrationCenter
+
+0xaEC2aFa0348154E248d129d2F3B8b9ef566652e2
+
+## MemeverseRegistrar
+
+0x44900A1859CD5808E6c8F2eb6C0f40372268dea6
+
+## MemecoinDeployer
+
+0xff33db242D0F89340A436D26964b9b8FE52fe152
+
+## LiquidProofDeployer
+
+0x9AE58a261C2381CD3fB4E8aCbbEc142D3126c129

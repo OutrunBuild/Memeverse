@@ -5,6 +5,7 @@ import "./BaseScript.s.sol";
 
 import { MemeverseLauncher } from "../src/verse/MemeverseLauncher.sol";
 import { IOutrunDeployer } from "./IOutrunDeployer.sol";
+import { ITokenDeployer } from "../src/token/deployer/interfaces/ITokenDeployer.sol";
 import { MemecoinDeployer } from "../src/token/deployer/MemecoinDeployer.sol";
 import { MemecoinDeployerOnBlast } from "../src/token/deployer/MemecoinDeployerOnBlast.sol";
 import { LiquidProofDeployer } from "../src/token/deployer/LiquidProofDeployer.sol";
@@ -12,6 +13,7 @@ import { LiquidProofDeployerOnBlast } from "../src/token/deployer/LiquidProofDep
 import { MemeverseRegistrar } from "../src/verse/MemeverseRegistrar.sol";
 import { MemeverseLauncherOnBlast } from "../src/verse/MemeverseLauncherOnBlast.sol";
 import { MemeverseRegistrarAtLocal } from "../src/verse/MemeverseRegistrarAtLocal.sol";
+import { IMemeverseRegistrationCenter } from "../src/verse/interfaces/IMemeverseRegistrationCenter.sol";
 
 
 contract MemeverseScript is BaseScript {
@@ -37,7 +39,14 @@ contract MemeverseScript is BaseScript {
         MEMEVERSE_LAUNCHER = vm.envAddress("MEMEVERSE_LAUNCHER");
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         
-        _deployMemeverseRegistrar(2);
+        ITokenDeployer.LzEndpointId[] memory endpoints1 = new ITokenDeployer.LzEndpointId[](2);
+        endpoints1[0] = ITokenDeployer.LzEndpointId({ chainId: 84532, endpointId: 40245});
+        endpoints1[1] = ITokenDeployer.LzEndpointId({ chainId: 168587773, endpointId: 40243});
+
+        ITokenDeployer(0xff33db242D0F89340A436D26964b9b8FE52fe152).setLzEndpointId(endpoints1);
+        ITokenDeployer(0x9AE58a261C2381CD3fB4E8aCbbEc142D3126c129).setLzEndpointId(endpoints1);
+
+        // _deployMemeverseRegistrar(2);
         // _getDeployedRegistrar(2);
         // _getDeployedRegistrationCenter(2);
         // _deployTokenDeployer(2);
@@ -116,6 +125,12 @@ contract MemeverseScript is BaseScript {
         bytes32 liquidProofSalt = keccak256(abi.encodePacked("TokenDeployer", "LiquidProof", nonce));
         address memecoinDeployerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, memecoinDeployerCreationCode);
         address liquidProofDeployerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(liquidProofSalt, liquidProofDeployerCreationCode);
+
+        ITokenDeployer.LzEndpointId[] memory endpoints = new ITokenDeployer.LzEndpointId[](2);
+        endpoints[0] = ITokenDeployer.LzEndpointId({ chainId: 84532, endpointId: 40245});
+        endpoints[1] = ITokenDeployer.LzEndpointId({ chainId: 168587773, endpointId: 40243});
+        ITokenDeployer(memecoinDeployerAddr).setLzEndpointId(endpoints);
+        ITokenDeployer(liquidProofDeployerAddr).setLzEndpointId(endpoints);
 
         console.log("MemecoinDeployer deployed on %s", memecoinDeployerAddr);
         console.log("LiquidProofDeployer deployed on %s", liquidProofDeployerAddr);

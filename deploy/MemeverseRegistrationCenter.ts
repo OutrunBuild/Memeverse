@@ -65,6 +65,23 @@ const deploy: DeployFunction = async (hre) => {
             console.error(`Contract: ${contractName} on ${hre.network.name} verification failed!, address: ${deployedAddress}`, err);
         }
     } while (count < 10);
+
+    const MemeverseRegistrationCenterABI = [
+        "function setDurationDaysRange(uint128 minDurationDays, uint128 maxDurationDays) external",
+        "function setLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays) external",
+        "function setLzEndpointId(LzEndpointId[] calldata endpoints) external"
+    ];
+
+    const memeverseRegistrationCenter = new hre.ethers.Contract(deployedAddress, MemeverseRegistrationCenterABI, signer);
+    await memeverseRegistrationCenter.setDurationDaysRange(1, 7);
+    await memeverseRegistrationCenter.setLockupDaysRange(180, 365);
+
+    const endpoints = [
+        { chainId: 84532, endpointId: 40245 },      // Base Sepolia
+        { chainId: 168587773, endpointId: 40243 }   // Blast Sepolia
+    ];
+
+    await memeverseRegistrationCenter.setLzEndpointId(endpoints);
 }
 
 deploy.tags = [contractName]

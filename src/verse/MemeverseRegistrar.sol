@@ -16,13 +16,13 @@ import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/
 contract MemeverseRegistrar is IMemeverseRegistrar, OApp {
     using OptionsBuilder for bytes;
     
-    address public immutable MEMECOIN_DEPLOYER;
-    address public immutable LIQUID_PROOF_DEPLOYER;
-    address public immutable REGISTRATION_CENTER;
-    address public immutable MEMEVERSE_LAUNCHER;
     uint128 public immutable REGISTER_GAS_LIMIT;
     uint128 public immutable CANCEL_REGISTER_GAS_LIMIT;
     uint32 public immutable REGISTRATION_CENTER_EID;
+
+    address public memecoinDeployer;
+    address public liquidProofDeployer;
+    address public memeverseLauncher;
 
     constructor(
         address _owner, 
@@ -30,15 +30,13 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp {
         address _memecoinDeployer,
         address _liquidProofDeployer,
         address _memeverseLauncher, 
-        address _registrationCenter, 
         uint128 _registerGasLimit,
         uint128 _cancelRegisterGasLimit,
         uint32 _registrationCenterEid
     ) OApp(_localLzEndpoint, _owner) Ownable(_owner) {
-        MEMECOIN_DEPLOYER = _memecoinDeployer;
-        LIQUID_PROOF_DEPLOYER = _liquidProofDeployer;
-        MEMEVERSE_LAUNCHER = _memeverseLauncher;
-        REGISTRATION_CENTER = _registrationCenter;
+        memecoinDeployer = _memecoinDeployer;
+        liquidProofDeployer = _liquidProofDeployer;
+        memeverseLauncher = _memeverseLauncher;
 
         REGISTER_GAS_LIMIT = _registerGasLimit;
         CANCEL_REGISTER_GAS_LIMIT = _cancelRegisterGasLimit;
@@ -58,7 +56,7 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp {
     }
 
     function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address lzRefundAddress) external payable override {
-        require(msg.sender == MEMEVERSE_LAUNCHER, PermissionDenied());
+        require(msg.sender == memeverseLauncher, PermissionDenied());
 
         bytes memory message = abi.encode(uniqueId, param);
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(CANCEL_REGISTER_GAS_LIMIT , 0);
@@ -89,11 +87,11 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp {
         uint32[] memory omnichainIds = param.omnichainIds;
 
         // deploy memecoin, liquidProof and configure layerzero
-        memecoin = ITokenDeployer(MEMECOIN_DEPLOYER).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
-        liquidProof = ITokenDeployer(LIQUID_PROOF_DEPLOYER).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
+        memecoin = ITokenDeployer(memecoinDeployer).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
+        liquidProof = ITokenDeployer(liquidProofDeployer).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
 
         // register
-        IMemeverseLauncher(MEMEVERSE_LAUNCHER).registerMemeverse(
+        IMemeverseLauncher(memeverseLauncher).registerMemeverse(
             name, symbol, param.uri, memecoin, liquidProof, uniqueId, 
             param.endTime, param.unlockTime, param.maxFund, omnichainIds
         );

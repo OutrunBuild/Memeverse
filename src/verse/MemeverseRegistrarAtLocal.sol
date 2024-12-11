@@ -10,10 +10,10 @@ import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/
  * @title Omnichain Factory for deploying memecoin and liquidProof (At registration center chain)
  */ 
 contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegistrar {
-    address public immutable MEMECOIN_DEPLOYER;
-    address public immutable LIQUID_PROOF_DEPLOYER;
-    address public immutable REGISTRATION_CENTER;
-    address public immutable MEMEVERSE_LAUNCHER;
+    address public memecoinDeployer;
+    address public liquidProofDeployer;
+    address public memeverseLauncher;
+    address public registrationCenter;
 
     constructor(
         address _memecoinDeployer,
@@ -21,10 +21,10 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegi
         address _memeverseLauncher, 
         address _registrationCenter
     ) {
-        MEMECOIN_DEPLOYER = _memecoinDeployer;
-        LIQUID_PROOF_DEPLOYER = _liquidProofDeployer;
-        MEMEVERSE_LAUNCHER = _memeverseLauncher;
-        REGISTRATION_CENTER = _registrationCenter;
+        memecoinDeployer = _memecoinDeployer;
+        liquidProofDeployer = _liquidProofDeployer;
+        memeverseLauncher = _memeverseLauncher;
+        registrationCenter = _registrationCenter;
     }
 
     /**
@@ -32,7 +32,7 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegi
      * @notice Only RegistrationCenter can call
      */
     function registerAtLocal(MemeverseParam calldata param) external override returns (address memecoin, address liquidProof) {
-        require(msg.sender == REGISTRATION_CENTER, PermissionDenied());
+        require(msg.sender == registrationCenter, PermissionDenied());
 
         return _registerMemeverse(param);
     }
@@ -41,13 +41,13 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegi
      * @dev Register through cross-chain at the RegistrationCenter
      */
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 /*value*/) external payable override {
-        IMemeverseRegistrationCenter(REGISTRATION_CENTER).registration(param);
+        IMemeverseRegistrationCenter(registrationCenter).registration(param);
     }
 
     function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address /*lzRefundAddress*/) external payable override {
-        require(msg.sender == MEMEVERSE_LAUNCHER, PermissionDenied());
+        require(msg.sender == memeverseLauncher, PermissionDenied());
 
-        IMemeverseRegistrationCenter(REGISTRATION_CENTER).cancelRegistration(uniqueId, param.symbol);
+        IMemeverseRegistrationCenter(registrationCenter).cancelRegistration(uniqueId, param.symbol);
     }
 
     function _registerMemeverse(MemeverseParam memory param) internal returns (address memecoin, address liquidProof) {
@@ -57,11 +57,11 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegi
         uint32[] memory omnichainIds = param.omnichainIds;
 
         // deploy memecoin, liquidProof and configure layerzero
-        memecoin = ITokenDeployer(MEMECOIN_DEPLOYER).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
-        liquidProof = ITokenDeployer(LIQUID_PROOF_DEPLOYER).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
+        memecoin = ITokenDeployer(memecoinDeployer).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
+        liquidProof = ITokenDeployer(liquidProofDeployer).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
 
         // register
-        IMemeverseLauncher(MEMEVERSE_LAUNCHER).registerMemeverse(
+        IMemeverseLauncher(memeverseLauncher).registerMemeverse(
             name, symbol, param.uri, memecoin, liquidProof, uniqueId, 
             param.endTime, param.unlockTime, param.maxFund, omnichainIds
         );

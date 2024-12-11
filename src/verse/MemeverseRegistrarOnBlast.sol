@@ -15,7 +15,6 @@ contract MemeverseRegistrarOnBlast is MemeverseRegistrar, BlastGovernorable {
         address _memecoinDeployer,
         address _liquidProofDeployer,
         address _memeverseLauncher, 
-        address _registrationCenter, 
         uint128 _registerGasLimit,
         uint128 _cancelRegisterGasLimit,
         uint32 _registrationCenterEid
@@ -25,7 +24,6 @@ contract MemeverseRegistrarOnBlast is MemeverseRegistrar, BlastGovernorable {
         _memecoinDeployer,
         _liquidProofDeployer,
         _memeverseLauncher, 
-        _registrationCenter, 
         _registerGasLimit,
         _cancelRegisterGasLimit,
         _registrationCenterEid

@@ -96,8 +96,7 @@ interface IMemeverseLauncher {
         uint256 indexed verseId, 
         address indexed depositer, 
         uint256 increasedMemecoinFund, 
-        uint256 increasedLiquidProofFund,
-        uint256 increasedMemecoinAmount
+        uint256 increasedLiquidProofFund
     );
 
     event Refund(

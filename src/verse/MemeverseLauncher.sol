@@ -104,7 +104,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         uint256 currentTime = block.timestamp;
         require(currentTime < endTime, NotGenesisStage(endTime));
 
-        
         GenesisFund storage genesisFund = genesisFunds[verseId];
         uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
         uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
@@ -114,16 +113,12 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         if (maxFund !=0 && totalFunds + amountInUPT > maxFund) amountInUPT = maxFund - totalFunds;
         _transferIn(UPT, msgSender, amountInUPT);
 
-        address memecoin = verse.memecoin;
         uint256 increasedMemecoinFund;
         uint256 increasedLiquidProofFund;
-        uint256 increasedMemecoinAmount;
         unchecked {
             increasedLiquidProofFund = amountInUPT / 3;
             increasedMemecoinFund = amountInUPT - increasedLiquidProofFund;
-            increasedMemecoinAmount = increasedMemecoinFund * fundBasedAmount;
         }
-        IMemecoin(memecoin).mint(address(this), increasedMemecoinAmount);
 
         unchecked {
             genesisFund.totalMemecoinFunds = uint128(totalMemecoinFunds + increasedMemecoinFund);
@@ -131,7 +126,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
             userTotalFunds[verseId][msgSender] += amountInUPT;
         }
 
-        emit Genesis(verseId, msgSender, increasedMemecoinFund, increasedLiquidProofFund, increasedMemecoinAmount);
+        emit Genesis(verseId, msgSender, increasedMemecoinFund, increasedLiquidProofFund);
     }
 
     /**
@@ -181,7 +176,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
             } else {
                 // Deploy memecoin liquidity
                 address memecoin = verse.memecoin;
-                uint256 memecoinLiquidityAmount = _selfBalance(IERC20(memecoin));
+                uint256 memecoinLiquidityAmount = genesisFunds[verseId].totalMemecoinFunds * fundBasedAmount;
+                IMemecoin(memecoin).mint(address(this), memecoinLiquidityAmount);
                 _safeApproveInf(memecoin, OUTRUN_AMM_ROUTER);
                 _safeApproveInf(UPT, OUTRUN_AMM_ROUTER);
                 (,, uint256 memecoinliquidity) = IOutrunAMMRouter(OUTRUN_AMM_ROUTER).addLiquidity(

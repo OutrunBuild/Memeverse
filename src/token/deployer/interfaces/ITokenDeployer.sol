@@ -10,8 +10,6 @@ interface ITokenDeployer {
         uint32 endpointId;
     }
 
-    function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
-
     function deployTokenAndConfigure(
         string calldata name, 
         string calldata symbol,
@@ -20,6 +18,14 @@ interface ITokenDeployer {
         address memecoin,
         uint32[] calldata omnichainIds
     ) external returns (address token);
+
+    function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
+
+    function setMemeverseLauncher(address memeverseLauncher) external;
+
+    function setMemeverseRegistrar(address _memeverseRegistrar) external;
+
+    error ZeroAddress();
 
     error PermissionDenied();
 

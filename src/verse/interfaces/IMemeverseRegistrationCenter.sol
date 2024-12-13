@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import { IMemeverseRegistrar } from "../../verse/interfaces/IMemeverseRegistrar.sol";
+import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
 /**
  * @title Memeverse Registration Center Interface
@@ -37,15 +38,31 @@ interface IMemeverseRegistrationCenter {
 
     function previewRegistration(string calldata symbol) external view returns (bool);
 
+    function quoteSend(
+        uint32[] memory omnichainIds, 
+        bytes memory options, 
+        bytes memory message
+    ) external view returns (uint256, uint256[] memory, uint32[] memory);
+
     function registration(RegistrationParam calldata param) external payable;
 
     function cancelRegistration(uint256 uniqueId, string calldata symbol) external;
+
+    function lzSend(
+        uint32 dstEid,
+        bytes memory message,
+        bytes memory options,
+        MessagingFee memory fee,
+        address refundAddress
+    ) external payable;
 
     function setDurationDaysRange(uint128 minDurationDays, uint128 maxDurationDays) external;
 
     function setLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays) external;
 
     function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
+
+    function setOmnchainRegisterGasLimit(uint256 omnchainRegisterGasLimit) external;
 
 
     event Registration(

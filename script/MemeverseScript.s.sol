@@ -22,6 +22,7 @@ contract MemeverseScript is BaseScript {
     address internal OUTRUN_DEPLOYER;
     address internal MEMEVERSE_LAUNCHER;
     address internal MEMEVERSE_REGISTRAR;
+    address internal MEMEVERSE_REGISTRATION_CENTER;
 
     address internal owner;
     address internal revenuePool;
@@ -38,18 +39,18 @@ contract MemeverseScript is BaseScript {
         OUTRUN_DEPLOYER = vm.envAddress("OUTRUN_DEPLOYER");
         MEMEVERSE_LAUNCHER = vm.envAddress("MEMEVERSE_LAUNCHER");
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
-        
-        ITokenDeployer.LzEndpointId[] memory endpoints1 = new ITokenDeployer.LzEndpointId[](2);
-        endpoints1[0] = ITokenDeployer.LzEndpointId({ chainId: 84532, endpointId: 40245});
-        endpoints1[1] = ITokenDeployer.LzEndpointId({ chainId: 168587773, endpointId: 40243});
+        MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
 
-        ITokenDeployer(0xff33db242D0F89340A436D26964b9b8FE52fe152).setLzEndpointId(endpoints1);
-        ITokenDeployer(0x9AE58a261C2381CD3fB4E8aCbbEc142D3126c129).setLzEndpointId(endpoints1);
+        // IMemeverseRegistrationCenter.LzEndpointId[] memory endpoints = new IMemeverseRegistrationCenter.LzEndpointId[](2);
+        // endpoints[0] = IMemeverseRegistrationCenter.LzEndpointId({ chainId: 84532, endpointId: 40245});
+        // endpoints[1] = IMemeverseRegistrationCenter.LzEndpointId({ chainId: 168587773, endpointId: 40243});
 
-        // _deployMemeverseRegistrar(2);
-        // _getDeployedRegistrar(2);
+        // IMemeverseRegistrationCenter(MEMEVERSE_REGISTRATION_CENTER).setLzEndpointId(endpoints);
+
+        _deployMemeverseRegistrarAtLocal(3);
+        // _getDeployedRegistrar(3);
         // _getDeployedRegistrationCenter(2);
-        // _deployTokenDeployer(2);
+        // _deployTokenDeployer(3);
         // _deployUETHMemeverseLauncher(2);
         // _deployUETHMemeverseLauncherOnBlast(2);
     }
@@ -61,15 +62,16 @@ contract MemeverseScript is BaseScript {
         console.log("MemeverseRegistrar deployed on %s", deployed);
     }
 
-    function _deployMemeverseRegistrar(uint256 nonce) internal {
+    function _deployMemeverseRegistrarAtLocal(uint256 nonce) internal {
         bytes32 salt = keccak256(abi.encodePacked("MemeverseRegistrar", nonce));
         bytes memory creationCode = abi.encodePacked(
             type(MemeverseRegistrarAtLocal).creationCode,
             abi.encode(
+                owner,
                 vm.envAddress("MEMECOIN_DEPLOYER"),
                 vm.envAddress("LIQUID_PROOF_DEPLOYER"),
                 MEMEVERSE_LAUNCHER,
-                MEMEVERSE_REGISTRAR
+                MEMEVERSE_REGISTRATION_CENTER
             )
         );
         address memeverseRegistrarAtLocalAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);

@@ -31,7 +31,7 @@ const deploy: DeployFunction = async (hre) => {
 
     const salt = hre.ethers.utils.keccak256(hre.ethers.utils.solidityPack(
         ["string", "uint256"],
-        ["MemeverseRegistrationCenter", 2]
+        ["MemeverseRegistrationCenter", 3]
     ));
     const creationCode = await hre.artifacts.readArtifact(contractName);
     const encodedArgs = hre.ethers.utils.defaultAbiCoder.encode(
@@ -59,7 +59,7 @@ const deploy: DeployFunction = async (hre) => {
                 constructorArguments: constructorArgs,
             });
             console.log(`Contract: ${contractName} on ${hre.network.name} verified!, address: ${deployedAddress}`);
-            count = 5;
+            count = 10;
         } catch (err) {
             count++;
             console.error(`Contract: ${contractName} on ${hre.network.name} verification failed!, address: ${deployedAddress}`, err);
@@ -81,7 +81,16 @@ const deploy: DeployFunction = async (hre) => {
         { chainId: 168587773, endpointId: 40243 }   // Blast Sepolia
     ];
 
-    await memeverseRegistrationCenter.setLzEndpointId(endpoints);
+    const encodedEndpoints = [];
+    for (const endpoint of endpoints) {
+        const encodedEndpoint = hre.ethers.utils.defaultAbiCoder.encode(
+            ["uint32", "uint32"],
+            [endpoint.chainId, endpoint.endpointId]
+        );
+        encodedEndpoints.push(encodedEndpoint);
+    }
+
+    await memeverseRegistrationCenter.setLzEndpointId(encodedEndpoints);
 }
 
 deploy.tags = [contractName]

@@ -172,7 +172,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
                 IMemeverseRegistrarAtLocal(LOCAL_MEMEVERSE_REGISTRAR).registerAtLocal(param);
             } else {
                 bytes memory functionSignature = abi.encodeWithSignature(
-                    "lzSend(uint32,bytes,bytes,MessagingFee,address)",
+                    "lzSend(uint32,bytes,bytes,(uint256,uint256),address)",
                     eid,
                     message,
                     options,

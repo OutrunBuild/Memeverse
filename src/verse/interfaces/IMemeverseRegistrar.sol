@@ -20,6 +20,12 @@ interface IMemeverseRegistrar {
 
     function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address lzRefundAddress) external payable;
 
+    function setMemecoinDeployer(address memecoinDeployer) external;
+
+    function setLiquidProofDeployer(address liquidProofDeployer) external;
+
+    function setMemeverseLauncher(address memeverseLauncher) external;
+
     error ZeroAddress();
 
     error InsufficientFee();

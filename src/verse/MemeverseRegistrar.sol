@@ -66,6 +66,24 @@ contract MemeverseRegistrar is IMemeverseRegistrar, OApp {
         _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), lzRefundAddress);
     }
 
+    function setMemecoinDeployer(address _memecoinDeployer) external override onlyOwner {
+        require(_memecoinDeployer != address(0), ZeroAddress());
+
+        memecoinDeployer = _memecoinDeployer;
+    }
+
+    function setLiquidProofDeployer(address _liquidProofDeployer) external override onlyOwner {
+        require(_liquidProofDeployer != address(0), ZeroAddress());
+        
+        liquidProofDeployer = _liquidProofDeployer;
+    }
+
+    function setMemeverseLauncher(address _memeverseLauncher) external override onlyOwner {
+        require(_memeverseLauncher != address(0), ZeroAddress());
+        
+        memeverseLauncher = _memeverseLauncher;
+    }
+
     /**
      * @dev Internal function to implement lzReceive logic
      */

@@ -12,8 +12,8 @@ import { ITokenDeployer } from "./interfaces/ITokenDeployer.sol";
  */
 abstract contract TokenDeployer is ITokenDeployer, Ownable {
     address public immutable LOCAL_LZ_ENDPOINT;
-    address public immutable MEMEVERSE_LAUNCHER;
-    address public immutable MEMEVERSE_REGISTRAR;
+    address public memeverseLauncher;
+    address public memeverseRegistrar;
 
     mapping(uint32 chainId => uint32) endpointIds;
 
@@ -24,14 +24,8 @@ abstract contract TokenDeployer is ITokenDeployer, Ownable {
         address _memeverseRegistrar
     ) Ownable(_owner) {
         LOCAL_LZ_ENDPOINT = _localLzEndpoint;
-        MEMEVERSE_LAUNCHER = _memeverseLauncher;
-        MEMEVERSE_REGISTRAR = _memeverseRegistrar;
-    }
-
-    function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
-        for (uint256 i = 0; i < endpoints.length; i++) {
-            endpointIds[endpoints[i].chainId] = endpoints[i].endpointId;
-        }
+        memeverseLauncher = _memeverseLauncher;
+        memeverseRegistrar = _memeverseRegistrar;
     }
 
     /**
@@ -45,10 +39,28 @@ abstract contract TokenDeployer is ITokenDeployer, Ownable {
         address memecoin,
         uint32[] calldata omnichainIds
     ) external override returns (address token) {
-        require(msg.sender == MEMEVERSE_REGISTRAR, PermissionDenied());
+        require(msg.sender == memeverseRegistrar, PermissionDenied());
         
         token = _deployToken(name, symbol, uniqueId, creator, memecoin);
         _lzConfigure(token, omnichainIds);
+    }
+
+    function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
+        for (uint256 i = 0; i < endpoints.length; i++) {
+            endpointIds[endpoints[i].chainId] = endpoints[i].endpointId;
+        }
+    }
+
+    function setMemeverseLauncher(address _memeverseLauncher) external override onlyOwner {
+        require(_memeverseLauncher != address(0), ZeroAddress());
+        
+        memeverseLauncher = _memeverseLauncher;
+    }
+
+    function setMemeverseRegistrar(address _memeverseRegistrar) external override onlyOwner {
+        require(_memeverseRegistrar != address(0), ZeroAddress());
+
+        memeverseRegistrar = _memeverseRegistrar;
     }
 
     /// @dev Layerzero configure. See: https://docs.layerzero.network/v2/developers/evm/create-lz-oapp/configuring-pathways

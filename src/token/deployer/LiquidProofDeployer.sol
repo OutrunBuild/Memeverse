@@ -30,7 +30,7 @@ contract LiquidProofDeployer is TokenDeployer {
             string(abi.encodePacked(symbol, " LIQUID")), 
             18, 
             memecoin, 
-            MEMEVERSE_LAUNCHER, 
+            memeverseLauncher, 
             LOCAL_LZ_ENDPOINT, 
             address(this)
         );

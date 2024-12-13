@@ -53,6 +53,7 @@ interface IMemeverseLauncher {
         string calldata name,
         string calldata symbol,
         string calldata uri,
+        address creator,
         address memecoin,
         address liquidProof,
         uint256 uniqueId,

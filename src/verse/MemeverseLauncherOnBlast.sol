@@ -17,6 +17,7 @@ contract MemeverseLauncherOnBlast is MemeverseLauncher, BlastGovernorable {
         address _revenuePool,
         address _outrunAMMFactory,
         address _outrunAMMRouter,
+        address _memeverseRegistrar,
         uint256 _minTotalFunds,
         uint256 _fundBasedAmount
     ) MemeverseLauncher(
@@ -27,6 +28,7 @@ contract MemeverseLauncherOnBlast is MemeverseLauncher, BlastGovernorable {
             _revenuePool,
             _outrunAMMFactory,
             _outrunAMMRouter,
+            _memeverseRegistrar,
             _minTotalFunds,
             _fundBasedAmount
     ) BlastGovernorable(_blastGovernor){

@@ -42,6 +42,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         address _revenuePool,
         address _outrunAMMFactory,
         address _outrunAMMRouter,
+        address _memeverseRegistrar,
         uint256 _minTotalFunds,
         uint256 _fundBasedAmount
     ) ERC721(_name, _symbol) Ownable(_owner) {
@@ -49,6 +50,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         revenuePool = _revenuePool;
         OUTRUN_AMM_ROUTER = _outrunAMMRouter;
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
+        memeverseRegistrar = _memeverseRegistrar;
         minTotalFunds = _minTotalFunds;
         fundBasedAmount = _fundBasedAmount;
 
@@ -296,6 +298,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
      * @dev register memeverse
      * @param _name - Name of memecoin
      * @param _symbol - Symbol of memecoin
+     * @param creator - The creator of memeverse
      * @param memecoin - Already created omnichain memecoin address
      * @param liquidProof - Already created omnichain liquidProof address
      * @param uniqueId - Unique verseId
@@ -308,6 +311,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         string calldata _name,
         string calldata _symbol,
         string calldata uri,
+        address creator,
         address memecoin,
         address liquidProof,
         uint256 uniqueId,
@@ -340,11 +344,10 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
             Stage.Genesis
         );
         memeverses[uniqueId] = verse;
-        address msgSender = msg.sender;
-        _safeMint(msgSender, uniqueId);
+        _safeMint(creator, uniqueId);
         _setTokenURI(uniqueId, uri);
 
-        emit RegisterMemeverse(uniqueId, msgSender, memecoin, liquidProof, memecoinVault, omnichainIds);
+        emit RegisterMemeverse(uniqueId, creator, memecoin, liquidProof, memecoinVault, omnichainIds);
     }
 
     /**

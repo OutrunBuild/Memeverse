@@ -27,8 +27,6 @@ interface IMemeverseRegistrar {
     function setMemeverseLauncher(address memeverseLauncher) external;
 
     error ZeroAddress();
-
-    error InsufficientFee();
     
     error PermissionDenied();
 }

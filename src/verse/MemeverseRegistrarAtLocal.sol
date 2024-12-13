@@ -89,7 +89,7 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegi
 
         // register
         IMemeverseLauncher(memeverseLauncher).registerMemeverse(
-            name, symbol, param.uri, memecoin, liquidProof, uniqueId, 
+            name, symbol, param.uri, param.creator, memecoin, liquidProof, uniqueId, 
             param.endTime, param.unlockTime, param.maxFund, omnichainIds
         );
     }

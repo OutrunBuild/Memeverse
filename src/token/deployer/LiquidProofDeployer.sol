@@ -37,5 +37,7 @@ contract LiquidProofDeployer is TokenDeployer {
         bytes memory initCode = abi.encodePacked(type(MemeLiquidProof).creationCode, constructorArgs);
         bytes32 salt = keccak256(abi.encodePacked(symbol, creator, uniqueId));
         token = CREATE3.deploy(salt, initCode, 0);
+
+        emit DeployLiquidProof(token, creator);
     }
 }

@@ -29,5 +29,7 @@ contract MemecoinDeployer is TokenDeployer {
         bytes memory initCode = abi.encodePacked(type(Memecoin).creationCode, constructorArgs);
         bytes32 salt = keccak256(abi.encodePacked(symbol, creator, uniqueId));
         token = CREATE3.deploy(salt, initCode, 0);
+
+        emit DeployMemecoin(token, creator);
     }
 }

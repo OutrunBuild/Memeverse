@@ -32,8 +32,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     // Symbol history mapping, storing all valid registration records
     mapping(string symbol => mapping(uint256 uniqueId => SymbolRegistration)) public symbolHistory;
 
-    mapping(uint256 uniqueId => mapping(string key => string)) public AdditionalInfo;
-
     mapping(uint32 chainId => uint32) endpointIds;
 
     constructor(
@@ -111,14 +109,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         currentRegistration.registrar = param.registrar;
         currentRegistration.unlockTime = unlockTime;
 
-        // Set additionalInfo
-        AdditionalInfo[uniqueId]["URI"] = param.uri;
-        if(bytes(param.website).length > 0) AdditionalInfo[uniqueId]["WEBSITE"] = param.website;
-        if(bytes(param.x).length > 0) AdditionalInfo[uniqueId]["X"] = param.x;
-        if(bytes(param.telegram).length > 0) AdditionalInfo[uniqueId]["TELEGRAM"] = param.telegram;
-        if(bytes(param.discord).length > 0) AdditionalInfo[uniqueId]["DISCORD"] = param.discord;
-        if(bytes(param.description).length > 0) AdditionalInfo[uniqueId]["DESCRIPTION"] = param.description;
-
         IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
             name: param.name,
             symbol: param.symbol,
@@ -190,11 +180,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(bytes(param.name).length > 0 && bytes(param.name).length < 32, InvalidNameLength());
         require(bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32, InvalidSymbolLength());
         require(bytes(param.uri).length > 0, InvalidURILength());
-        require(bytes(param.website).length < 32, InvalidWebsiteLength());
-        require(bytes(param.x).length < 32, InvalidXLength());
-        require(bytes(param.telegram).length < 32, InvalidTelegramLength());
-        require(bytes(param.discord).length < 32, InvalidDiscordLength());
-        require(bytes(param.description).length < 256, InvalidDescriptionLength());
         require(param.omnichainIds.length > 0, EmptyOmnichainIds());
         require(param.registrar != address(0), ZeroRegistrarAddress());
 

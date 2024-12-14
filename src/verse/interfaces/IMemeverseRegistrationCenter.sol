@@ -12,11 +12,6 @@ interface IMemeverseRegistrationCenter {
         string name;                    // Token name
         string symbol;                  // Token symbol
         string uri;                     // Token icon uri
-        string website;                 // Website link
-        string x;                       // X account
-        string telegram;                // Telegram account
-        string discord;                 // Discord link
-        string description;             // Memeverse description
         uint256 durationDays;           // DurationDays of genesis stage
         uint256 lockupDays;             // LockupDays of liquidity
         uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
@@ -80,8 +75,6 @@ interface IMemeverseRegistrationCenter {
 
     error InvalidInput();
 
-    error InvalidXLength();
-
     error LengthMismatch();
 
     error InsufficientFee();
@@ -100,17 +93,9 @@ interface IMemeverseRegistrationCenter {
     
     error InvalidSymbolLength();
     
-    error InvalidWebsiteLength();
-    
-    error InvalidDiscordLength();
-
     error ZeroRegistrarAddress();
 
-    error InvalidTelegramLength();
-
     error MaxFundNotSetCorrectly();
-
-    error InvalidDescriptionLength();
 
     error UniqueIdMismatch(uint256 uniqueId);
 

@@ -18,7 +18,18 @@ interface IMemeverseRegistrar {
 
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
 
-    function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address lzRefundAddress) external payable;
+    /**
+     * @dev The registration will be cancelled if the total liquidity of the Omnichain fails to meet the requirement.
+     */
+    function cancelRegistration( 
+        uint256 uniqueId, 
+        IMemeverseRegistrationCenter.RegistrationParam calldata param, 
+        address lzRefundAddress, 
+        uint256 deadline, 
+        uint8 v, 
+        bytes32 r, 
+        bytes32 s
+    ) external payable;
 
     function setMemecoinDeployer(address memecoinDeployer) external;
 
@@ -26,7 +37,11 @@ interface IMemeverseRegistrar {
 
     function setMemeverseLauncher(address memeverseLauncher) external;
 
+    function updateSigner(address signer) external;
+
     error ZeroAddress();
-    
-    error PermissionDenied();
+
+    error InvalidSigner();
+
+    error ExpiredSignature(uint256 deadline);
 }

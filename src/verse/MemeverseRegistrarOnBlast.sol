@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { MemeverseRegistrarOmnichain } from "./MemeverseRegistrarOmnichain.sol";
 import { BlastGovernorable } from "../common/blast/BlastGovernorable.sol";
+import { MemeverseRegistrarOmnichain } from "./MemeverseRegistrarOmnichain.sol";
 
 /**
  * @title Omnichain Factory for deploying memecoin and liquidProof
  */ 
 contract MemeverseRegistrarOnBlast is MemeverseRegistrarOmnichain, BlastGovernorable {
     constructor(
-        address _owner, 
+        address _owner,
+        address _signer,
         address _blastGovernor,
         address _localLzEndpoint, 
         address _memecoinDeployer,
@@ -20,6 +21,7 @@ contract MemeverseRegistrarOnBlast is MemeverseRegistrarOmnichain, BlastGovernor
         uint32 _registrationCenterEid
     ) MemeverseRegistrarOmnichain(
         _owner, 
+        _signer, 
         _localLzEndpoint, 
         _memecoinDeployer,
         _liquidProofDeployer,

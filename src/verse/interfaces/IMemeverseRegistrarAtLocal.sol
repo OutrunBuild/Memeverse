@@ -7,4 +7,6 @@ interface IMemeverseRegistrarAtLocal {
     function registerAtLocal(IMemeverseRegistrar.MemeverseParam calldata param) external returns (address memecoin, address liquidProof);
 
     function setRegistrationCenter(address registrationCenter) external;
+
+    error PermissionDenied();
 }

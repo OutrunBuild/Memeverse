@@ -2,6 +2,8 @@
 pragma solidity ^0.8.26;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 import { ITokenDeployer } from "../token/deployer/interfaces/ITokenDeployer.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
@@ -12,6 +14,7 @@ import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/
  * @title Omnichain Factory for deploying memecoin and liquidProof (At registration center chain)
  */ 
 contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegistrar, Ownable {
+    address public signer;
     address public memecoinDeployer;
     address public liquidProofDeployer;
     address public memeverseLauncher;
@@ -19,11 +22,13 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegi
 
     constructor(
         address _owner,
+        address _signer,
         address _memecoinDeployer,
         address _liquidProofDeployer,
         address _memeverseLauncher, 
         address _registrationCenter
     ) Ownable(_owner) {
+        signer = _signer;
         memecoinDeployer = _memecoinDeployer;
         liquidProofDeployer = _liquidProofDeployer;
         memeverseLauncher = _memeverseLauncher;
@@ -47,8 +52,22 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegi
         IMemeverseRegistrationCenter(registrationCenter).registration(param);
     }
 
-    function cancelRegistration(uint256 uniqueId, IMemeverseRegistrationCenter.RegistrationParam calldata param, address /*lzRefundAddress*/) external payable override {
-        require(msg.sender == memeverseLauncher, PermissionDenied());
+    function cancelRegistration(
+        uint256 uniqueId, 
+        IMemeverseRegistrationCenter.RegistrationParam calldata param, 
+        address /*lzRefundAddress*/, 
+        uint256 deadline, 
+        uint8 v, 
+        bytes32 r, 
+        bytes32 s
+    ) external payable override {
+        uint256 currentTime = block.timestamp;
+        require(currentTime > deadline, ExpiredSignature(deadline));
+
+        bytes32 signedHash = MessageHashUtils.toEthSignedMessageHash(
+            keccak256(abi.encode(uniqueId, deadline))
+        );
+        require(signer == ECDSA.recover(signedHash, v, r, s), InvalidSigner());
 
         IMemeverseRegistrationCenter(registrationCenter).cancelRegistration(uniqueId, param.symbol);
     }
@@ -75,6 +94,12 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, IMemeverseRegi
         require(_registrationCenter != address(0), ZeroAddress());
         
         registrationCenter = _registrationCenter;
+    }
+
+    function updateSigner(address _signer) external override onlyOwner {
+        require(_signer != address(0), ZeroAddress());
+        
+        signer = _signer;
     }
 
     function _registerMemeverse(MemeverseParam memory param) internal returns (address memecoin, address liquidProof) {

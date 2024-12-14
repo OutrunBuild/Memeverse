@@ -210,6 +210,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
             verse.currentStage = Stage.Unlocked;
             currentStage = Stage.Unlocked;
         }
+
+        emit ChangeStage(verseId, currentStage);
     }
 
     /**

@@ -106,6 +106,11 @@ interface IMemeverseLauncher {
         uint256 refundAmount
     );
 
+    event ChangeStage(
+        uint256 indexed verseId, 
+        Stage currentStage
+    );
+
     event ClaimLiquidProof(
         uint256 indexed verseId, 
         address indexed receiver, 

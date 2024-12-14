@@ -4,16 +4,14 @@ pragma solidity ^0.8.26;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ERC721, ERC721URIStorage } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
-import { Memecoin, IMemecoin, IERC20 } from "../token/Memecoin.sol";
-import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
+import { TokenHelper } from "../common/TokenHelper.sol";
+import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
 import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
 import { IOutrunAMMRouter } from "../common/IOutrunAMMRouter.sol";
-import { TokenHelper } from "../common/TokenHelper.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
+import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
 import { MemecoinVault, IMemecoinVault } from "../yield/MemecoinVault.sol";
-import { MemeLiquidProof, IMemeLiquidProof } from "../token/MemeLiquidProof.sol";
-import { IMemeverseRegistrar } from "../verse/interfaces/IMemeverseRegistrar.sol";
-import { IMemeverseRegistrationCenter } from "../verse/interfaces/IMemeverseRegistrationCenter.sol";
+import { IMemeLiquidProof } from "../token/interfaces/IMemeLiquidProof.sol";
 
 /**
  * @title Trapping into the memeverse
@@ -164,17 +162,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
         if (verse.currentStage == Stage.Genesis) {
             if (totalMemecoinFunds + totalLiquidProofFunds < minTotalFunds) {
-                address memecoin = verse.memecoin;
-                uint256 selfBalance = _selfBalance(IERC20(memecoin));
-                IMemecoin(memecoin).burn(selfBalance);
-
                 verse.currentStage = Stage.Refund;
                 currentStage = Stage.Refund;
-
-                // Cancel registration
-                IMemeverseRegistrationCenter.RegistrationParam memory param;
-                param.symbol = verse.symbol;
-                IMemeverseRegistrar(memeverseRegistrar).cancelRegistration{value: msg.value}(verseId, param, msg.sender);
             } else {
                 // Deploy memecoin liquidity
                 address memecoin = verse.memecoin;

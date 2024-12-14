@@ -41,7 +41,14 @@ interface IMemeverseLauncher {
 
     function refund(uint256 verseId) external returns (uint256 userFunds);
 
-    function changeStage(uint256 verseId) external payable returns (Stage currentStage);
+    function changeStage(
+        uint256 verseId, 
+        uint256 deadline, 
+        bool cancel, 
+        uint8 v, 
+        bytes32 r, 
+        bytes32 s
+    ) external payable returns (Stage currentStage);
 
     function claimLiquidProof(uint256 verseId) external returns (uint256 amount);
 
@@ -70,9 +77,13 @@ interface IMemeverseLauncher {
     function setMinTotalFund(uint256 minTotalFund) external;
 
     function setFundBasedAmount(uint256 fundBasedAmount) external;
+
+    function setSigner(address signer) external;
     
 
     error ZeroInput();
+
+    error InvalidSigner();
 
     error PermissionDenied();
 

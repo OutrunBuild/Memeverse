@@ -2,6 +2,8 @@
 pragma solidity ^0.8.26;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import { ERC721, ERC721URIStorage } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
 import { TokenHelper } from "../common/TokenHelper.sol";
@@ -12,6 +14,7 @@ import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
 import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
 import { MemecoinVault, IMemecoinVault } from "../yield/MemecoinVault.sol";
 import { IMemeLiquidProof } from "../token/interfaces/IMemeLiquidProof.sol";
+import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.sol";
 
 /**
  * @title Trapping into the memeverse
@@ -22,6 +25,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
     address public immutable OUTRUN_AMM_FACTORY;
     address public immutable UPT;
 
+    address public signer;
     address public memeverseRegistrar;
     address public revenuePool;
     uint256 public minTotalFunds;
@@ -37,6 +41,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         string memory _symbol,
         address _UPT,
         address _owner,
+        address _signer,
         address _revenuePool,
         address _outrunAMMFactory,
         address _outrunAMMRouter,
@@ -45,6 +50,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         uint256 _fundBasedAmount
     ) ERC721(_name, _symbol) Ownable(_owner) {
         UPT = _UPT;
+        signer = _signer;
         revenuePool = _revenuePool;
         OUTRUN_AMM_ROUTER = _outrunAMMRouter;
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
@@ -151,9 +157,16 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
      * @dev Adaptively change the Memeverse stage
      * @param verseId - Memeverse id
      */
-    function changeStage(uint256 verseId) external payable override returns (Stage currentStage) {
-        Memeverse storage verse = memeverses[verseId];
+    function changeStage(
+        uint256 verseId, 
+        uint256 deadline, 
+        bool cancel, 
+        uint8 v, 
+        bytes32 r, 
+        bytes32 s
+    ) external payable override returns (Stage currentStage) {
         uint256 currentTime = block.timestamp;
+        Memeverse storage verse = memeverses[verseId];
         uint256 endTime = verse.endTime;
         require(currentTime > endTime, InTheGenesisStage(endTime));
 
@@ -164,6 +177,19 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
             if (totalMemecoinFunds + totalLiquidProofFunds < minTotalFunds) {
                 verse.currentStage = Stage.Refund;
                 currentStage = Stage.Refund;
+
+                // All chains have entered the refund stage, and the current chain is the last one
+                if (!cancel) {
+                    require(currentTime > deadline, ExpiredSignature(deadline));
+                    bytes32 signedHash = MessageHashUtils.toEthSignedMessageHash(
+                        keccak256(abi.encode(verseId, cancel, block.chainid, deadline))
+                    );
+                    require(signer == ECDSA.recover(signedHash, v, r, s), InvalidSigner());
+
+                    IMemeverseRegistrationCenter.RegistrationParam memory param;
+                    param.symbol = verse.symbol;
+                    IMemeverseRegistrar(memeverseRegistrar).cancelRegistration(verseId, param, msg.sender);
+                }
             } else {
                 // Deploy memecoin liquidity
                 address memecoin = verse.memecoin;
@@ -379,5 +405,15 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         require(_fundBasedAmount != 0, ZeroInput());
 
         fundBasedAmount = _fundBasedAmount;
+    }
+
+    /**
+     * @dev Set off-chain signer
+     * @param _signer - Address of new signer
+     */
+    function setSigner(address _signer) external override onlyOwner {
+        require(_signer != address(0), ZeroInput());
+
+        signer = _signer;
     }
 }

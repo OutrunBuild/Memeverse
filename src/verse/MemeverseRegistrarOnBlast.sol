@@ -10,7 +10,6 @@ import { MemeverseRegistrarOmnichain } from "./MemeverseRegistrarOmnichain.sol";
 contract MemeverseRegistrarOnBlast is MemeverseRegistrarOmnichain, BlastGovernorable {
     constructor(
         address _owner,
-        address _signer,
         address _blastGovernor,
         address _localLzEndpoint, 
         address _memecoinDeployer,
@@ -21,7 +20,6 @@ contract MemeverseRegistrarOnBlast is MemeverseRegistrarOmnichain, BlastGovernor
         uint32 _registrationCenterEid
     ) MemeverseRegistrarOmnichain(
         _owner, 
-        _signer, 
         _localLzEndpoint, 
         _memecoinDeployer,
         _liquidProofDeployer,

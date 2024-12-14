@@ -2,8 +2,6 @@
 pragma solidity ^0.8.26;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import { OApp, Origin } from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
@@ -23,14 +21,12 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, IMemeverse
     
     uint128 public registerGasLimit;
     uint128 public cancelRegisterGasLimit;
-    address public signer;
     address public memecoinDeployer;
     address public liquidProofDeployer;
     address public memeverseLauncher;
 
     constructor(
         address _owner, 
-        address _signer,
         address _localLzEndpoint, 
         address _memecoinDeployer,
         address _liquidProofDeployer,
@@ -39,7 +35,6 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, IMemeverse
         uint128 _cancelRegisterGasLimit,
         uint32 _registrationCenterEid
     ) OApp(_localLzEndpoint, _owner) Ownable(_owner) {
-        signer = _signer;
         memecoinDeployer = _memecoinDeployer;
         liquidProofDeployer = _liquidProofDeployer;
         memeverseLauncher = _memeverseLauncher;
@@ -64,20 +59,10 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, IMemeverse
     function cancelRegistration(
         uint256 uniqueId, 
         IMemeverseRegistrationCenter.RegistrationParam calldata param, 
-        address lzRefundAddress,
-        uint256 deadline, 
-        uint8 v, 
-        bytes32 r, 
-        bytes32 s
+        address lzRefundAddress
     ) external payable override {
-        uint256 currentTime = block.timestamp;
-        require(currentTime > deadline, ExpiredSignature(deadline));
-
-        bytes32 signedHash = MessageHashUtils.toEthSignedMessageHash(
-            keccak256(abi.encode(uniqueId, deadline))
-        );
-        require(signer == ECDSA.recover(signedHash, v, r, s), InvalidSigner());
-
+        require(msg.sender == memeverseLauncher, PermissionDenied());
+        
         bytes memory message = abi.encode(uniqueId, param);
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(cancelRegisterGasLimit , 0);
         uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
@@ -110,12 +95,6 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, IMemeverse
         require(_memeverseLauncher != address(0), ZeroAddress());
         
         memeverseLauncher = _memeverseLauncher;
-    }
-
-    function updateSigner(address _signer) external override onlyOwner {
-        require(_signer != address(0), ZeroAddress());
-        
-        signer = _signer;
     }
 
     /**

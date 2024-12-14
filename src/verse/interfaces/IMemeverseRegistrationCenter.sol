@@ -97,8 +97,6 @@ interface IMemeverseRegistrationCenter {
 
     error MaxFundNotSetCorrectly();
 
-    error UniqueIdMismatch(uint256 uniqueId);
-
     error SymbolNotUnlock(uint64 unlockTime);
 
     error InvalidOmnichainId(uint32 omnichainId);

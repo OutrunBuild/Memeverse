@@ -212,12 +212,17 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     function _cancelRegistration(uint256 uniqueId, string memory symbol) internal {
         SymbolRegistration storage currentRegistration = symbolRegistry[symbol];
         uint256 currentUniqueId = currentRegistration.uniqueId;
-        require(currentUniqueId == uniqueId, UniqueIdMismatch(currentUniqueId));
+        if (currentUniqueId == uniqueId) {
+            currentRegistration.uniqueId = 0;
+            currentRegistration.registrar = address(0);
+            currentRegistration.unlockTime = 0;
+        } else {
+            SymbolRegistration storage history = symbolHistory[symbol][uniqueId];
+            history.uniqueId = 0;
+            history.registrar = address(0);
+            history.unlockTime = 0;
+        }
         
-        currentRegistration.uniqueId = 0;
-        currentRegistration.registrar = address(0);
-        currentRegistration.unlockTime = 0;
-
         emit CancelRegistration(uniqueId, symbol);
     }
 

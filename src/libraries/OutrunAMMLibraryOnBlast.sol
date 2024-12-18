@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-library OutrunAMMLibrary {
+library OutrunAMMLibraryOnBlast {
     error ZeroAddress();
 
     error IdenticalAddresses();
@@ -25,7 +25,7 @@ library OutrunAMMLibrary {
                             factory,
                             keccak256(abi.encodePacked(token0, token1, swapFeeRate)),
                             /* bytes32 public constant INIT_CODE_PAIR_HASH = keccak256(abi.encodePacked(type(OutrunAMMPair).creationCode)); */
-                            hex"a58ad475e701be79d9249869ef70f65d00f95494f156d3674a1a54cd9fca2a08" // init code hash
+                            hex"fda29c73255a350af28c887aa19536249d338bf2041c89bb825676fb14490c06" // init code hash
                         )
                     )
                 )

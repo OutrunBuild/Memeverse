@@ -14,7 +14,7 @@ abstract contract TokenDeployer is ITokenDeployer, Ownable {
     address public immutable LOCAL_LZ_ENDPOINT;
     address public memeverseRegistrar;
 
-    mapping(uint32 chainId => uint32) endpointIds;
+    mapping(uint32 chainId => uint32) public endpointIds;
 
     constructor(
         address _owner, 
@@ -43,9 +43,12 @@ abstract contract TokenDeployer is ITokenDeployer, Ownable {
         _lzConfigure(token, omnichainIds);
     }
 
-    function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
-        for (uint256 i = 0; i < endpoints.length; i++) {
-            endpointIds[endpoints[i].chainId] = endpoints[i].endpointId;
+    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external override onlyOwner {
+        for (uint256 i = 0; i < pairs.length; i++) {
+            LzEndpointIdPair calldata pair = pairs[i];
+            if (pair.chainId == 0 || pair.endpointId == 0) continue;
+
+            endpointIds[pair.chainId] = pair.endpointId;
         }
     }
 

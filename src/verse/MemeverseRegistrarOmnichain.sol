@@ -6,38 +6,34 @@ import { OApp, Origin } from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
-import { ITokenDeployer } from "../token/deployer/interfaces/ITokenDeployer.sol";
-import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
+import { MemeverseRegistrarAbstract } from "./MemeverseRegistrarAbstract.sol";
+import { IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.sol";
 import { IMemeverseRegistrarOmnichain } from "./interfaces/IMemeverseRegistrarOmnichain.sol";
-import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.sol";
 
 /**
- * @title Omnichain Factory for deploying memecoin and liquidProof
+ * @title Omnichain MemeverseRegistrar for deploying memecoin, liquidProof and registering memeverse
  */ 
-contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, IMemeverseRegistrar, OApp {
+contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseRegistrarAbstract, OApp {
     using OptionsBuilder for bytes;
 
     uint32 public immutable REGISTRATION_CENTER_EID;
     
     uint128 public registerGasLimit;
     uint128 public cancelRegisterGasLimit;
-    address public memecoinDeployer;
-    address public liquidProofDeployer;
-    address public memeverseLauncher;
 
     constructor(
         address _owner, 
         address _localLzEndpoint, 
-        address _memecoinDeployer,
-        address _liquidProofDeployer,
-        address _memeverseLauncher, 
+        address _memecoinDeployer, 
+        address _liquidProofDeployer, 
         uint128 _registerGasLimit,
         uint128 _cancelRegisterGasLimit,
         uint32 _registrationCenterEid
-    ) OApp(_localLzEndpoint, _owner) Ownable(_owner) {
-        memecoinDeployer = _memecoinDeployer;
-        liquidProofDeployer = _liquidProofDeployer;
-        memeverseLauncher = _memeverseLauncher;
+    ) MemeverseRegistrarAbstract(
+        _owner,
+        _memecoinDeployer,
+        _liquidProofDeployer
+    ) OApp(_localLzEndpoint, _owner) {
         registerGasLimit = _registerGasLimit;
         cancelRegisterGasLimit = _cancelRegisterGasLimit;
 
@@ -61,7 +57,7 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, IMemeverse
         IMemeverseRegistrationCenter.RegistrationParam calldata param, 
         address lzRefundAddress
     ) external payable override {
-        require(msg.sender == memeverseLauncher, PermissionDenied());
+        require(launcherToUPT[msg.sender] != address(0), PermissionDenied());
         
         bytes memory message = abi.encode(uniqueId, param);
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(cancelRegisterGasLimit , 0);
@@ -79,24 +75,6 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, IMemeverse
         cancelRegisterGasLimit = _cancelRegisterGasLimit;
     }
 
-    function setMemecoinDeployer(address _memecoinDeployer) external override onlyOwner {
-        require(_memecoinDeployer != address(0), ZeroAddress());
-
-        memecoinDeployer = _memecoinDeployer;
-    }
-
-    function setLiquidProofDeployer(address _liquidProofDeployer) external override onlyOwner {
-        require(_liquidProofDeployer != address(0), ZeroAddress());
-        
-        liquidProofDeployer = _liquidProofDeployer;
-    }
-
-    function setMemeverseLauncher(address _memeverseLauncher) external override onlyOwner {
-        require(_memeverseLauncher != address(0), ZeroAddress());
-        
-        memeverseLauncher = _memeverseLauncher;
-    }
-
     /**
      * @dev Internal function to implement lzReceive logic
      */
@@ -109,22 +87,5 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, IMemeverse
     ) internal virtual override {
         MemeverseParam memory param = abi.decode(_message, (MemeverseParam));
         _registerMemeverse(param);
-    }
-
-    function _registerMemeverse(MemeverseParam memory param) internal returns (address memecoin, address liquidProof) {
-        string memory name = param.name;
-        string memory symbol = param.symbol;
-        uint256 uniqueId = param.uniqueId;
-        uint32[] memory omnichainIds = param.omnichainIds;
-
-        // deploy memecoin, liquidProof and configure layerzero
-        memecoin = ITokenDeployer(memecoinDeployer).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
-        liquidProof = ITokenDeployer(liquidProofDeployer).deployTokenAndConfigure(name, symbol, uniqueId, param.creator, memecoin, omnichainIds);
-
-        // register
-        IMemeverseLauncher(memeverseLauncher).registerMemeverse(
-            name, symbol, param.uri, param.creator, memecoin, liquidProof, uniqueId, 
-            param.endTime, param.unlockTime, param.maxFund, omnichainIds
-        );
     }
 }

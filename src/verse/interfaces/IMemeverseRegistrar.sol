@@ -14,8 +14,17 @@ interface IMemeverseRegistrar {
         uint64 unlockTime;              // UnlockTime of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
         address creator;                // Memeverse creator
+        address upt;                    // UPT of Memeverse
     }
 
+    struct UPTLauncherPair {
+        address upt;
+        address memeverseLauncher;
+    }
+
+    /**
+     * @dev Register through cross-chain at the RegistrationCenter
+     */
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
 
     function cancelRegistration( 
@@ -28,13 +37,9 @@ interface IMemeverseRegistrar {
 
     function setLiquidProofDeployer(address liquidProofDeployer) external;
 
-    function setMemeverseLauncher(address memeverseLauncher) external;
+    function setUPTLauncher(UPTLauncherPair[] calldata pairs) external;
 
     error ZeroAddress();
 
-    error InvalidSigner();
-
     error PermissionDenied();
-
-    error ExpiredSignature(uint256 deadline);
 }

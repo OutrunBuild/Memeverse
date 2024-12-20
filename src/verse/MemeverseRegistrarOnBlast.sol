@@ -12,18 +12,16 @@ contract MemeverseRegistrarOnBlast is MemeverseRegistrarOmnichain, BlastGovernor
         address _owner,
         address _blastGovernor,
         address _localLzEndpoint, 
-        address _memecoinDeployer,
-        address _liquidProofDeployer,
-        address _memeverseLauncher, 
+        address _memecoinDeployer, 
+        address _liquidProofDeployer, 
         uint128 _registerGasLimit,
         uint128 _cancelRegisterGasLimit,
         uint32 _registrationCenterEid
     ) MemeverseRegistrarOmnichain(
         _owner, 
         _localLzEndpoint, 
-        _memecoinDeployer,
-        _liquidProofDeployer,
-        _memeverseLauncher, 
+        _memecoinDeployer, 
+        _liquidProofDeployer, 
         _registerGasLimit,
         _cancelRegisterGasLimit,
         _registrationCenterEid

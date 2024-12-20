@@ -17,6 +17,7 @@ interface IMemeverseRegistrationCenter {
         uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
         address registrar;              // Memeverse registrar
+        address upt;                    // UPT of Memeverse
     }
 
     struct SymbolRegistration {
@@ -74,6 +75,8 @@ interface IMemeverseRegistrationCenter {
     error ZeroInput();
 
     error InvalidInput();
+
+    error ZeroUPTAddress();
 
     error LengthMismatch();
 

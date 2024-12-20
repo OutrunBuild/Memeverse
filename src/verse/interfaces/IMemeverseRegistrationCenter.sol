@@ -26,9 +26,14 @@ interface IMemeverseRegistrationCenter {
         uint64 unlockTime;              // Memeverse unlockTime
     }
 
-    struct LzEndpointId {
+    struct LzEndpointIdPair {
         uint32 chainId;
         uint32 endpointId;
+    }
+
+    struct RegisterGasLimitPair {
+        uint32 chainId;
+        uint128 gasLimit;
     }
 
 
@@ -36,7 +41,6 @@ interface IMemeverseRegistrationCenter {
 
     function quoteSend(
         uint32[] memory omnichainIds, 
-        bytes memory options, 
         bytes memory message
     ) external view returns (uint256, uint256[] memory, uint32[] memory);
 
@@ -56,9 +60,9 @@ interface IMemeverseRegistrationCenter {
 
     function setLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays) external;
 
-    function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
+    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 
-    function setOmnchainRegisterGasLimit(uint256 omnchainRegisterGasLimit) external;
+    function setRegisterGasLimits(RegisterGasLimitPair[] calldata pairs) external;
 
 
     event Registration(

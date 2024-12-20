@@ -24,7 +24,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     uint128 public maxDurationDays;
     uint128 public minLockupDays;
     uint128 public maxLockupDays;
-    uint256 public omnchainRegisterGasLimit;
 
     // Main symbol mapping, recording the latest registration information
     mapping(string symbol => SymbolRegistration) public symbolRegistry;
@@ -32,16 +31,16 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     // Symbol history mapping, storing all valid registration records
     mapping(string symbol => mapping(uint256 uniqueId => SymbolRegistration)) public symbolHistory;
 
-    mapping(uint32 chainId => uint32) endpointIds;
+    mapping(uint32 chainId => uint32) public endpointIds;
+
+    mapping(uint32 chainId => uint128) public registerGasLimits;
 
     constructor(
         address _owner, 
         address _lzEndpoint, 
-        address _localMemeverseRegistrar, 
-        uint128 _registerGasLimit
+        address _localMemeverseRegistrar
     ) OApp(_lzEndpoint, _owner) Ownable(_owner) {
         LOCAL_MEMEVERSE_REGISTRAR = _localMemeverseRegistrar;
-        omnchainRegisterGasLimit = _registerGasLimit;
     }
 
     /**
@@ -58,7 +57,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
      */
     function quoteSend(
         uint32[] memory omnichainIds, 
-        bytes memory options, 
         bytes memory message
     ) public view override returns (uint256, uint256[] memory, uint32[] memory) {
         uint256 length = omnichainIds.length;
@@ -74,6 +72,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
                 uint32 eid = endpointIds[omnichainId];
                 require(eid != 0, InvalidOmnichainId(omnichainId));
 
+                bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimits[omnichainId] , 0);
                 uint256 fee = _quote(eid, message, options, false).nativeFee;
                 totalFee += fee;
                 fees[i] = fee;
@@ -152,8 +151,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
     function _omnichainSend(uint32[] memory omnichainIds, IMemeverseRegistrar.MemeverseParam memory param) internal {
         bytes memory message = abi.encode(param);
-        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(omnchainRegisterGasLimit) , 0);
-        (uint256 totalFee, uint256[] memory fees, uint32[] memory eids) = quoteSend(omnichainIds, options, message);
+        (uint256 totalFee, uint256[] memory fees, uint32[] memory eids) = quoteSend(omnichainIds, message);
         require(msg.value >= totalFee, InsufficientFee());
 
         for (uint256 i = 0; i < eids.length; i++) {
@@ -162,6 +160,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             if (eid == 0) {
                 IMemeverseRegistrarAtLocal(LOCAL_MEMEVERSE_REGISTRAR).registerAtLocal(param);
             } else {
+                bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimits[omnichainIds[i]] , 0);
                 bytes memory functionSignature = abi.encodeWithSignature(
                     "lzSend(uint32,bytes,bytes,(uint256,uint256),address)",
                     eid,
@@ -267,13 +266,21 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         maxLockupDays = _maxLockupDays;
     }
     
-    function setLzEndpointId(LzEndpointId[] calldata endpoints) external override onlyOwner {
-        for (uint256 i = 0; i < endpoints.length; i++) {
-            endpointIds[endpoints[i].chainId] = endpoints[i].endpointId;
+    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external override onlyOwner {
+        for (uint256 i = 0; i < pairs.length; i++) {
+            LzEndpointIdPair calldata pair = pairs[i];
+            if (pair.chainId == 0 || pair.endpointId == 0) continue;
+
+            endpointIds[pair.chainId] = pair.endpointId;
         }
     }
 
-    function setOmnchainRegisterGasLimit(uint256 _omnchainRegisterGasLimit) external override onlyOwner {
-        omnchainRegisterGasLimit = _omnchainRegisterGasLimit;
+    function setRegisterGasLimits(RegisterGasLimitPair[] calldata pairs) external override onlyOwner {
+        for (uint256 i = 0; i < pairs.length; i++) {
+            RegisterGasLimitPair calldata pair = pairs[i];
+            if (pair.chainId == 0 || pair.gasLimit == 0) continue;
+
+            registerGasLimits[pair.chainId] = pair.gasLimit;
+        }
     }
 }

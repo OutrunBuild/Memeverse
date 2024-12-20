@@ -182,7 +182,7 @@ contract MemeverseLauncherOnBlast is IMemeverseLauncher, ERC721URIStorage, Token
 
                 // All chains have entered the refund stage, and the current chain is the last one
                 if (!cancel) {
-                    require(currentTime > deadline, ExpiredSignature(deadline));
+                    require(currentTime < deadline, ExpiredSignature(deadline));
                     bytes32 signedHash = MessageHashUtils.toEthSignedMessageHash(
                         keccak256(abi.encode(verseId, cancel, block.chainid, deadline))
                     );

@@ -87,8 +87,6 @@ interface IMemeverseLauncher {
 
     error PermissionDenied();
 
-    error InvalidRegisterInfo();
-
     error InsufficientUserFunds();
 
     error NotGenesisStage(uint256 endTime);

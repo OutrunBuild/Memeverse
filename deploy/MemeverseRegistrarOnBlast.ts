@@ -28,7 +28,6 @@ const deploy: DeployFunction = async (hre) => {
         process.env.BLAST_SEPOLIA_ENDPOINT,
         process.env.MEMECOIN_DEPLOYER,
         process.env.LIQUID_PROOF_DEPLOYER,
-        process.env.MEMEVERSE_LAUNCHER,
         20000000, 
         2000000,
         process.env.BLAST_SEPOLIA_EID

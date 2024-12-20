@@ -14,7 +14,8 @@ import { LiquidProofDeployer } from "../src/token/deployer/LiquidProofDeployer.s
 import { LiquidProofDeployerOnBlast } from "../src/token/deployer/LiquidProofDeployerOnBlast.sol";
 import { MemeverseRegistrarOmnichain, MemeverseRegistrarOnBlast } from "../src/verse/MemeverseRegistrarOnBlast.sol";
 import { MemeverseLauncherOnBlast } from "../src/verse/MemeverseLauncherOnBlast.sol";
-import { MemeverseRegistrarAtLocal, IMemeverseRegistrar } from "../src/verse/MemeverseRegistrarAtLocal.sol";
+import { IMemeverseRegistrar } from "../src/verse/interfaces/IMemeverseRegistrar.sol";
+import { MemeverseRegistrarAtLocal } from "../src/verse/MemeverseRegistrarAtLocal.sol";
 import { MemeverseRegistrationCenter } from "../src/verse/MemeverseRegistrationCenter.sol";
 import { IMemeverseRegistrationCenter } from "../src/verse/interfaces/IMemeverseRegistrationCenter.sol";
 
@@ -27,11 +28,12 @@ contract MemeverseScript is BaseScript {
     address internal UETH;
     address internal BLAST_GOVERNOR;
     address internal OUTRUN_DEPLOYER;
-    address internal MEMEVERSE_LAUNCHER;
+    address internal UETH_MEMEVERSE_LAUNCHER;
     address internal MEMEVERSE_REGISTRAR;
     address internal MEMEVERSE_REGISTRATION_CENTER;
 
     address internal owner;
+    address internal signer;
     address internal revenuePool;
     address internal factory;
     address internal router;
@@ -39,54 +41,54 @@ contract MemeverseScript is BaseScript {
     function run() public broadcaster {
         UETH = vm.envAddress("UETH");
         owner = vm.envAddress("OWNER");
+        signer = vm.envAddress("SIGNER");
         revenuePool = vm.envAddress("REVENUE_POOL");
         factory = vm.envAddress("OUTRUN_AMM_FACTORY");
         router = vm.envAddress("OUTRUN_AMM_ROUTER");
         BLAST_GOVERNOR = vm.envAddress("BLAST_GOVERNOR");
         OUTRUN_DEPLOYER = vm.envAddress("OUTRUN_DEPLOYER");
-        MEMEVERSE_LAUNCHER = vm.envAddress("MEMEVERSE_LAUNCHER");
+        UETH_MEMEVERSE_LAUNCHER = vm.envAddress("UETH_MEMEVERSE_LAUNCHER");
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
         
-        // _getDeployedTokenDeployer(4);
-        // _getDeployedMemeverseRegistrar(4);
-        // _getDeployedRegistrationCenter(4);
-        // _getDeployedUETHMemeverseLauncher(4);
+        _getDeployedTokenDeployer(2);
+        _getDeployedMemeverseRegistrar(2);
+        _getDeployedRegistrationCenter(2);
+        _getDeployedUETHMemeverseLauncher(2);
 
-        // _deployRegistrationCenter(4);
+        // _deployRegistrationCenter(2);
 
-        // _deployTokenDeployer(4);
-        // _deployMemeverseRegistrar(4);
-        // _deployUETHMemeverseLauncher(4);
+        // _deployTokenDeployer(2);
+        // _deployMemeverseRegistrar(2);
+        // _deployUETHMemeverseLauncher(2);
 
-        IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "abcd";
-        param.symbol = "abcd";
-        param.uri = "abcd";
-        param.durationDays = 3;
-        param.lockupDays = 200;
-        param.maxFund = 1 ether;
-        uint32[] memory ids = new uint32[](2);
-        ids[0] = 84532;
-        ids[1] = 168587773;
-        param.omnichainIds = ids;
-        param.registrar = owner;
+        // IMemeverseRegistrationCenter.RegistrationParam memory param;
+        // param.name = "abcc";
+        // param.symbol = "abcc";
+        // param.uri = "abcc";
+        // param.durationDays = 3;
+        // param.lockupDays = 200;
+        // param.maxFund = 1 ether;
+        // uint32[] memory ids = new uint32[](1);
+        // ids[0] = 168587773;
+        // param.omnichainIds = ids;
+        // param.registrar = owner;
 
-        IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
-            name: param.name,
-            symbol: param.symbol,
-            uri: param.uri,
-            uniqueId: uint256(keccak256(abi.encodePacked(param.symbol, block.timestamp, msg.sender))),
-            maxFund: uint128(param.maxFund),
-            endTime: uint64(block.timestamp + param.durationDays * DAY),
-            unlockTime: uint64(block.timestamp + param.lockupDays * DAY),
-            omnichainIds: param.omnichainIds,
-            creator: param.registrar
-        });
-        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(8000000) , 0);
-        (uint256 totalFee, , ) = IMemeverseRegistrationCenter(MEMEVERSE_REGISTRATION_CENTER).quoteSend(ids, options, abi.encode(memeverseParam));
+        // IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
+        //     name: param.name,
+        //     symbol: param.symbol,
+        //     uri: param.uri,
+        //     uniqueId: uint256(keccak256(abi.encodePacked(param.symbol, block.timestamp, msg.sender))),
+        //     maxFund: uint128(param.maxFund),
+        //     endTime: uint64(block.timestamp + param.durationDays * DAY),
+        //     unlockTime: uint64(block.timestamp + param.lockupDays * DAY),
+        //     omnichainIds: param.omnichainIds,
+        //     creator: param.registrar
+        // });
+        // bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(8000000) , 0);
+        // (uint256 totalFee, , ) = IMemeverseRegistrationCenter(MEMEVERSE_REGISTRATION_CENTER).quoteSend(ids, options, abi.encode(memeverseParam));
 
-        IMemeverseRegistrationCenter(MEMEVERSE_REGISTRATION_CENTER).registration{value: totalFee}(param);
+        // IMemeverseRegistrationCenter(MEMEVERSE_REGISTRATION_CENTER).registration{value: totalFee}(param);
     }
 
     function _getDeployedUETHMemeverseLauncher(uint256 nonce) internal view {
@@ -133,14 +135,24 @@ contract MemeverseScript is BaseScript {
         );
         address centerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
-        IMemeverseRegistrationCenter.LzEndpointId[] memory endpoints = new IMemeverseRegistrationCenter.LzEndpointId[](2);
-        endpoints[0] = IMemeverseRegistrationCenter.LzEndpointId({ chainId: 84532, endpointId: 40245});
-        endpoints[1] = IMemeverseRegistrationCenter.LzEndpointId({ chainId: 168587773, endpointId: 40243});
-        IMemeverseRegistrationCenter(centerAddr).setLzEndpointId(endpoints);
+        IMemeverseRegistrationCenter.LzEndpointIdPair[] memory endpointPairs = new IMemeverseRegistrationCenter.LzEndpointIdPair[](3);
+        endpointPairs[0] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: 84532, endpointId: 40245});
+        endpointPairs[1] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: 168587773, endpointId: 40243});
+        endpointPairs[2] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: 5003, endpointId: 40246});
+        IMemeverseRegistrationCenter(centerAddr).setLzEndpointIds(endpointPairs);
+
+        IMemeverseRegistrationCenter.RegisterGasLimitPair[] memory gasLimitPairs = new IMemeverseRegistrationCenter.RegisterGasLimitPair[](3);
+        gasLimitPairs[0] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 84532, gasLimit: 8000000});
+        gasLimitPairs[1] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 168587773, gasLimit: 8000000});
+        gasLimitPairs[2] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 5003, gasLimit: 40000000000});
+        IMemeverseRegistrationCenter(centerAddr).setRegisterGasLimits(gasLimitPairs);
+
         IMemeverseRegistrationCenter(centerAddr).setDurationDaysRange(1, 7);
         IMemeverseRegistrationCenter(centerAddr).setLockupDaysRange(180, 365);
+
         IOAppCore(centerAddr).setPeer(uint32(vm.envUint("BASE_SEPOLIA_EID")), bytes32(abi.encode(MEMEVERSE_REGISTRAR)));
         IOAppCore(centerAddr).setPeer(uint32(vm.envUint("BLAST_SEPOLIA_EID")), bytes32(abi.encode(MEMEVERSE_REGISTRAR)));
+        IOAppCore(centerAddr).setPeer(uint32(vm.envUint("MANTLE_SEPOLIA_EID")), bytes32(abi.encode(MEMEVERSE_REGISTRAR)));
 
         console.log("MemeverseRegistrationCenter deployed on %s", centerAddr);
     }
@@ -154,7 +166,6 @@ contract MemeverseScript is BaseScript {
                 owner,
                 BLAST_GOVERNOR,
                 vm.envAddress("BLAST_SEPOLIA_ENDPOINT"),
-                MEMEVERSE_LAUNCHER,
                 MEMEVERSE_REGISTRAR
             );
             memecoinDeployercreationBytecode = type(MemecoinDeployerOnBlast).creationCode;
@@ -163,7 +174,6 @@ contract MemeverseScript is BaseScript {
             encodedArgs = abi.encode(
                 owner,
                 vm.envAddress("BSC_TESTNET_ENDPOINT"),
-                MEMEVERSE_LAUNCHER,
                 MEMEVERSE_REGISTRAR
             );
             memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
@@ -172,7 +182,6 @@ contract MemeverseScript is BaseScript {
             encodedArgs = abi.encode(
                 owner,
                 vm.envAddress("BASE_SEPOLIA_ENDPOINT"),
-                MEMEVERSE_LAUNCHER,
                 MEMEVERSE_REGISTRAR
             );
             memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
@@ -194,11 +203,12 @@ contract MemeverseScript is BaseScript {
         address memecoinDeployerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, memecoinDeployerCreationCode);
         address liquidProofDeployerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(liquidProofSalt, liquidProofDeployerCreationCode);
 
-        ITokenDeployer.LzEndpointId[] memory endpoints = new ITokenDeployer.LzEndpointId[](2);
-        endpoints[0] = ITokenDeployer.LzEndpointId({ chainId: 84532, endpointId: 40245});
-        endpoints[1] = ITokenDeployer.LzEndpointId({ chainId: 168587773, endpointId: 40243});
-        ITokenDeployer(memecoinDeployerAddr).setLzEndpointId(endpoints);
-        ITokenDeployer(liquidProofDeployerAddr).setLzEndpointId(endpoints);
+        ITokenDeployer.LzEndpointIdPair[] memory endpointPairs = new ITokenDeployer.LzEndpointIdPair[](3);
+        endpointPairs[0] = ITokenDeployer.LzEndpointIdPair({ chainId: 84532, endpointId: 40245});
+        endpointPairs[1] = ITokenDeployer.LzEndpointIdPair({ chainId: 168587773, endpointId: 40243});
+        endpointPairs[2] = ITokenDeployer.LzEndpointIdPair({ chainId: 5003, endpointId: 40246});
+        ITokenDeployer(memecoinDeployerAddr).setLzEndpointIds(endpointPairs);
+        ITokenDeployer(liquidProofDeployerAddr).setLzEndpointIds(endpointPairs);
 
         console.log("MemecoinDeployer deployed on %s", memecoinDeployerAddr);
         console.log("LiquidProofDeployer deployed on %s", liquidProofDeployerAddr);
@@ -210,10 +220,9 @@ contract MemeverseScript is BaseScript {
         if (block.chainid == vm.envUint("BSC_TESTNET_CHAINID")) {
             encodedArgs = abi.encode(
                 owner,
+                MEMEVERSE_REGISTRATION_CENTER,
                 vm.envAddress("MEMECOIN_DEPLOYER"),
-                vm.envAddress("LIQUID_PROOF_DEPLOYER"),
-                MEMEVERSE_LAUNCHER,
-                MEMEVERSE_REGISTRATION_CENTER
+                vm.envAddress("LIQUID_PROOF_DEPLOYER")
             );
             creationBytecode = type(MemeverseRegistrarAtLocal).creationCode;
         } else if (block.chainid == vm.envUint("BLAST_SEPOLIA_CHAINID")) {
@@ -223,7 +232,6 @@ contract MemeverseScript is BaseScript {
                 vm.envAddress("BLAST_SEPOLIA_ENDPOINT"),
                 vm.envAddress("MEMECOIN_DEPLOYER"),
                 vm.envAddress("LIQUID_PROOF_DEPLOYER"),
-                MEMEVERSE_LAUNCHER,
                 12000000,
                 2000000,
                 uint32(vm.envUint("BSC_TESTNET_EID"))
@@ -235,7 +243,6 @@ contract MemeverseScript is BaseScript {
                 vm.envAddress("BASE_SEPOLIA_ENDPOINT"),
                 vm.envAddress("MEMECOIN_DEPLOYER"),
                 vm.envAddress("LIQUID_PROOF_DEPLOYER"),
-                MEMEVERSE_LAUNCHER,
                 12000000,
                 2000000,
                 uint32(vm.envUint("BSC_TESTNET_EID"))
@@ -250,6 +257,10 @@ contract MemeverseScript is BaseScript {
         );
         address memeverseRegistrarAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
         console.log("MemeverseRegistrar deployed on %s", memeverseRegistrarAddr);
+
+        IMemeverseRegistrar.UPTLauncherPair[] memory pairs = new IMemeverseRegistrar.UPTLauncherPair[](1);
+        pairs[0] = IMemeverseRegistrar.UPTLauncherPair({ upt: UETH, memeverseLauncher: UETH_MEMEVERSE_LAUNCHER});
+        IMemeverseRegistrar(memeverseRegistrarAddr).setUPTLauncher(pairs);
 
         if (block.chainid != vm.envUint("BSC_TESTNET_CHAINID")) {
             IOAppCore(memeverseRegistrarAddr).setPeer(
@@ -268,6 +279,7 @@ contract MemeverseScript is BaseScript {
                 "MVS-UETH",
                 UETH,
                 owner,
+                signer,
                 BLAST_GOVERNOR,
                 revenuePool,
                 factory,
@@ -283,6 +295,7 @@ contract MemeverseScript is BaseScript {
                 "MVS-UETH",
                 UETH,
                 owner,
+                signer,
                 revenuePool,
                 factory,
                 router,

@@ -15,12 +15,10 @@ contract LiquidProofDeployerOnBlast is LiquidProofDeployer, BlastGovernorable {
         address _owner,
         address _blastGovernor,
         address _localLzEndpoint,
-        address _memeverseLauncher, 
         address _memeverseRegistrar
     ) LiquidProofDeployer(
         _owner, 
         _localLzEndpoint, 
-        _memeverseLauncher, 
         _memeverseRegistrar
     ) BlastGovernorable(_blastGovernor) {
     }

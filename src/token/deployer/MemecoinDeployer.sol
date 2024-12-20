@@ -13,9 +13,8 @@ contract MemecoinDeployer is TokenDeployer {
     constructor(
         address _owner,
         address _localLzEndpoint,
-        address _memeverseLauncher, 
         address _memeverseRegistrar
-    ) TokenDeployer(_owner, _localLzEndpoint, _memeverseLauncher, _memeverseRegistrar) {
+    ) TokenDeployer(_owner, _localLzEndpoint, _memeverseRegistrar) {
     }
 
     function _deployToken(
@@ -23,7 +22,8 @@ contract MemecoinDeployer is TokenDeployer {
         string memory symbol,
         uint256 uniqueId,
         address creator,
-        address /*memecoin*/
+        address /*memecoin*/,
+        address memeverseLauncher
     ) internal virtual override returns (address token) {
         bytes memory constructorArgs = abi.encode(name, symbol, 18, memeverseLauncher, LOCAL_LZ_ENDPOINT, address(this));
         bytes memory initCode = abi.encodePacked(type(Memecoin).creationCode, constructorArgs);

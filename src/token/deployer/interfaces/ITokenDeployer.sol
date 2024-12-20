@@ -16,12 +16,11 @@ interface ITokenDeployer {
         uint256 uniqueId,
         address creator,
         address memecoin,
+        address memecoinDeployer,
         uint32[] calldata omnichainIds
     ) external returns (address token);
 
     function setLzEndpointId(LzEndpointId[] calldata endpoints) external;
-
-    function setMemeverseLauncher(address memeverseLauncher) external;
 
     function setMemeverseRegistrar(address _memeverseRegistrar) external;
 

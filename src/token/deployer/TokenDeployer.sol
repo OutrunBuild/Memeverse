@@ -12,7 +12,6 @@ import { ITokenDeployer } from "./interfaces/ITokenDeployer.sol";
  */
 abstract contract TokenDeployer is ITokenDeployer, Ownable {
     address public immutable LOCAL_LZ_ENDPOINT;
-    address public memeverseLauncher;
     address public memeverseRegistrar;
 
     mapping(uint32 chainId => uint32) endpointIds;
@@ -20,11 +19,9 @@ abstract contract TokenDeployer is ITokenDeployer, Ownable {
     constructor(
         address _owner, 
         address _localLzEndpoint,
-        address _memeverseLauncher, 
         address _memeverseRegistrar
     ) Ownable(_owner) {
         LOCAL_LZ_ENDPOINT = _localLzEndpoint;
-        memeverseLauncher = _memeverseLauncher;
         memeverseRegistrar = _memeverseRegistrar;
     }
 
@@ -37,11 +34,12 @@ abstract contract TokenDeployer is ITokenDeployer, Ownable {
         uint256 uniqueId,
         address creator,
         address memecoin,
+        address memecoinDeployer,
         uint32[] calldata omnichainIds
     ) external override returns (address token) {
         require(msg.sender == memeverseRegistrar, PermissionDenied());
         
-        token = _deployToken(name, symbol, uniqueId, creator, memecoin);
+        token = _deployToken(name, symbol, uniqueId, creator, memecoin, memecoinDeployer);
         _lzConfigure(token, omnichainIds);
     }
 
@@ -49,12 +47,6 @@ abstract contract TokenDeployer is ITokenDeployer, Ownable {
         for (uint256 i = 0; i < endpoints.length; i++) {
             endpointIds[endpoints[i].chainId] = endpoints[i].endpointId;
         }
-    }
-
-    function setMemeverseLauncher(address _memeverseLauncher) external override onlyOwner {
-        require(_memeverseLauncher != address(0), ZeroAddress());
-        
-        memeverseLauncher = _memeverseLauncher;
     }
 
     function setMemeverseRegistrar(address _memeverseRegistrar) external override onlyOwner {
@@ -82,6 +74,7 @@ abstract contract TokenDeployer is ITokenDeployer, Ownable {
         string memory symbol,
         uint256 uniqueId,
         address creator,
-        address memecoin
+        address memecoin,
+        address memeverseLauncher
     ) internal virtual returns (address token);
 }

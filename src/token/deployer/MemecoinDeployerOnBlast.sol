@@ -15,12 +15,10 @@ contract MemecoinDeployerOnBlast is MemecoinDeployer, BlastGovernorable {
         address _owner,
         address _blastGovernor,
         address _localLzEndpoint,
-        address _memeverseLauncher, 
         address _memeverseRegistrar
     ) MemecoinDeployer(
         _owner, 
         _localLzEndpoint, 
-        _memeverseLauncher, 
         _memeverseRegistrar
     ) BlastGovernorable(_blastGovernor) {
     }

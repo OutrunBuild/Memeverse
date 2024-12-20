@@ -51,16 +51,16 @@ contract MemeverseScript is BaseScript {
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
         
-        _getDeployedTokenDeployer(2);
-        _getDeployedMemeverseRegistrar(2);
-        _getDeployedRegistrationCenter(2);
-        _getDeployedUETHMemeverseLauncher(2);
+        // _getDeployedTokenDeployer(3);
+        // _getDeployedMemeverseRegistrar(3);
+        // _getDeployedRegistrationCenter(3);
+        // _getDeployedUETHMemeverseLauncher(3);
 
-        // _deployRegistrationCenter(2);
+        // _deployRegistrationCenter(3);
 
-        // _deployTokenDeployer(2);
-        // _deployMemeverseRegistrar(2);
-        // _deployUETHMemeverseLauncher(2);
+        // _deployTokenDeployer(3);
+        // _deployMemeverseRegistrar(3);
+        _deployUETHMemeverseLauncher(99999);
 
         // IMemeverseRegistrationCenter.RegistrationParam memory param;
         // param.name = "abcc";
@@ -129,8 +129,7 @@ contract MemeverseScript is BaseScript {
             abi.encode(
                 owner,
                 vm.envAddress("BSC_TESTNET_ENDPOINT"),
-                MEMEVERSE_REGISTRAR,
-                8000000
+                MEMEVERSE_REGISTRAR
             )
         );
         address centerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
@@ -186,6 +185,14 @@ contract MemeverseScript is BaseScript {
             );
             memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
             liquidProofDeployercreationBytecode = type(LiquidProofDeployer).creationCode;
+        } else if (block.chainid == vm.envUint("MANTLE_SEPOLIA_CHAINID")) {
+            encodedArgs = abi.encode(
+                owner,
+                vm.envAddress("MANTLE_SEPOLIA_ENDPOINT"),
+                MEMEVERSE_REGISTRAR
+            );
+            memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
+            liquidProofDeployercreationBytecode = type(LiquidProofDeployer).creationCode;
         }
 
         bytes memory memecoinDeployerCreationCode = abi.encodePacked(
@@ -232,7 +239,7 @@ contract MemeverseScript is BaseScript {
                 vm.envAddress("BLAST_SEPOLIA_ENDPOINT"),
                 vm.envAddress("MEMECOIN_DEPLOYER"),
                 vm.envAddress("LIQUID_PROOF_DEPLOYER"),
-                12000000,
+                10000000,
                 2000000,
                 uint32(vm.envUint("BSC_TESTNET_EID"))
             );
@@ -243,7 +250,18 @@ contract MemeverseScript is BaseScript {
                 vm.envAddress("BASE_SEPOLIA_ENDPOINT"),
                 vm.envAddress("MEMECOIN_DEPLOYER"),
                 vm.envAddress("LIQUID_PROOF_DEPLOYER"),
-                12000000,
+                10000000,
+                2000000,
+                uint32(vm.envUint("BSC_TESTNET_EID"))
+            );
+            creationBytecode = type(MemeverseRegistrarOmnichain).creationCode;
+        } else if (block.chainid == vm.envUint("MANTLE_SEPOLIA_CHAINID")) {
+            encodedArgs = abi.encode(
+                owner,
+                vm.envAddress("MANTLE_SEPOLIA_ENDPOINT"),
+                vm.envAddress("MEMECOIN_DEPLOYER"),
+                vm.envAddress("LIQUID_PROOF_DEPLOYER"),
+                10000000,
                 2000000,
                 uint32(vm.envUint("BSC_TESTNET_EID"))
             );
@@ -271,48 +289,61 @@ contract MemeverseScript is BaseScript {
     }
 
     function _deployUETHMemeverseLauncher(uint256 nonce) internal {
-        bytes memory encodedArgs;
-        bytes memory creationBytecode;
-        if (block.chainid == vm.envUint("BLAST_SEPOLIA_CHAINID")) {
-            encodedArgs = abi.encode(
-                "UETHMemeverseLauncher",
-                "MVS-UETH",
-                UETH,
-                owner,
-                signer,
-                BLAST_GOVERNOR,
-                revenuePool,
-                factory,
-                router,
-                MEMEVERSE_REGISTRAR,
-                1e16,
-                1000
-            );
-            creationBytecode = type(MemeverseLauncherOnBlast).creationCode;
-        } else {
-            encodedArgs = abi.encode(
-                "UETHMemeverseLauncher",
-                "MVS-UETH",
-                UETH,
-                owner,
-                signer,
-                revenuePool,
-                factory,
-                router,
-                MEMEVERSE_REGISTRAR,
-                1e16,
-                1000
-            );
-            creationBytecode = type(MemeverseLauncher).creationCode;
-        }
+        // bytes memory encodedArgs;
+        // bytes memory creationBytecode;
+        // if (block.chainid == vm.envUint("BLAST_SEPOLIA_CHAINID")) {
+        //     encodedArgs = abi.encode(
+        //         "UETHMemeverseLauncher",
+        //         "MVS-UETH",
+        //         UETH,
+        //         owner,
+        //         signer,
+        //         BLAST_GOVERNOR,
+        //         revenuePool,
+        //         factory,
+        //         router,
+        //         MEMEVERSE_REGISTRAR,
+        //         1e16,
+        //         100000
+        //     );
+        //     creationBytecode = type(MemeverseLauncherOnBlast).creationCode;
+        // } else {
+        //     encodedArgs = abi.encode(
+        //         "UETHMemeverseLauncher",
+        //         "MVS-UETH",
+        //         UETH,
+        //         owner,
+        //         signer,
+        //         revenuePool,
+        //         factory,
+        //         router,
+        //         MEMEVERSE_REGISTRAR,
+        //         1e16,
+        //         100000
+        //     );
+        //     creationBytecode = type(MemeverseLauncher).creationCode;
+        // }
 
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", UETH, nonce));
-        bytes memory creationCode = abi.encodePacked(
-            creationBytecode,
-            encodedArgs
+        // bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
+        // bytes memory creationCode = abi.encodePacked(
+        //     creationBytecode,
+        //     encodedArgs
+        // );
+        // address UETHMemeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+        MemeverseLauncher launcher = new MemeverseLauncher(
+            "UETHMemeverseLauncher",
+            "MVS-UETH",
+            UETH,
+            owner,
+            signer,
+            revenuePool,
+            factory,
+            router,
+            MEMEVERSE_REGISTRAR,
+            1e16,
+            100000
         );
-        address UETHMemeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
-        console.log("UETHMemeverseLauncher deployed on %s", UETHMemeverseLauncherAddr);
+        console.log("UETHMemeverseLauncher deployed on %s", address(launcher));
     }
 }

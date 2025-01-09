@@ -7,7 +7,7 @@ import { OutrunOFT } from "./OutrunOFT.sol";
 import { IMemeLiquidProof } from "./interfaces/IMemeLiquidProof.sol";
 
 /**
- * @title Omnichain Memeverse Liquidity Proof Token
+ * @title Omnichain Memeverse Proof Of Liquidity Token
  */
 contract MemeLiquidProof is IMemeLiquidProof, OutrunOFT {
     address public immutable memecoin;

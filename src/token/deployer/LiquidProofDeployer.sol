@@ -26,8 +26,8 @@ contract LiquidProofDeployer is TokenDeployer {
         address memeverseLauncher
     ) internal virtual override returns (address token) {
         bytes memory constructorArgs = abi.encode(
-            string(abi.encodePacked(name, " Liquid")), 
-            string(abi.encodePacked(symbol, " LIQUID")), 
+            string(abi.encodePacked("POL-", name)), 
+            string(abi.encodePacked("POL-", symbol)), 
             18, 
             memecoin, 
             memeverseLauncher, 

@@ -315,6 +315,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
      * @dev register memeverse
      * @param _name - Name of memecoin
      * @param _symbol - Symbol of memecoin
+     * @param uri - IPFS URI of memecoin icon
      * @param creator - The creator of memeverse
      * @param memecoin - Already created omnichain memecoin address
      * @param liquidProof - Already created omnichain liquidProof address

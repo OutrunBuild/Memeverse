@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-
-import { OutrunOFT } from "./OutrunOFT.sol";
-import { IMemecoin, IERC20 } from "./interfaces/IMemecoin.sol";
+import { IMemecoin } from "./interfaces/IMemecoin.sol";
+import { OutrunOFTInit } from "../common/layerzero/oft/OutrunOFTInit.sol";
 
 /**
  * @title Omnichain Memecoin
  */
-contract Memecoin is IMemecoin, OutrunOFT {
-    address public immutable memeverseLauncher;
+contract Memecoin is IMemecoin, OutrunOFTInit {
+    address public memeverseLauncher;
 
-    constructor(
+    function initialize(
         string memory _name, 
         string memory _symbol,
         uint8 _decimals, 
         address _memeverseLauncher, 
         address _lzEndpoint,
         address _delegate
-    ) OutrunOFT(_name, _symbol, _decimals, _lzEndpoint, _delegate) Ownable(_delegate) {
+    ) external override initializer {
+        __OutrunOFT_init(_name, _symbol, _decimals, _lzEndpoint, _delegate);
+        __OutrunOwnable_init(_delegate);
+
         memeverseLauncher = _memeverseLauncher;
     }
 

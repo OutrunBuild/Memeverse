@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
+import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 
@@ -11,18 +12,23 @@ import { ITokenDeployer } from "./interfaces/ITokenDeployer.sol";
  * @title Token deployer
  */
 abstract contract TokenDeployer is ITokenDeployer, Ownable {
+    using Clones for address;
+
     address public immutable LOCAL_LZ_ENDPOINT;
     address public memeverseRegistrar;
+    address public implementation;
 
     mapping(uint32 chainId => uint32) public endpointIds;
 
     constructor(
         address _owner, 
         address _localLzEndpoint,
-        address _memeverseRegistrar
+        address _memeverseRegistrar,
+        address _implementation
     ) Ownable(_owner) {
         LOCAL_LZ_ENDPOINT = _localLzEndpoint;
         memeverseRegistrar = _memeverseRegistrar;
+        implementation = _implementation;
     }
 
     /**

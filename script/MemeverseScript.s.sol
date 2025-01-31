@@ -9,10 +9,8 @@ import { MemeverseLauncher } from "../src/verse/MemeverseLauncher.sol";
 import { IOutrunDeployer } from "./IOutrunDeployer.sol";
 import { ITokenDeployer } from "../src/token/deployer/interfaces/ITokenDeployer.sol";
 import { MemecoinDeployer } from "../src/token/deployer/MemecoinDeployer.sol";
-import { MemecoinDeployerOnBlast } from "../src/token/deployer/MemecoinDeployerOnBlast.sol";
 import { LiquidProofDeployer } from "../src/token/deployer/LiquidProofDeployer.sol";
-import { LiquidProofDeployerOnBlast } from "../src/token/deployer/LiquidProofDeployerOnBlast.sol";
-import { MemeverseRegistrarOmnichain, MemeverseRegistrarOnBlast } from "../src/verse/MemeverseRegistrarOnBlast.sol";
+import { MemeverseRegistrarOmnichain } from "../src/verse/MemeverseRegistrarOmnichain.sol";
 import { MemeverseLauncherOnBlast } from "../src/verse/MemeverseLauncherOnBlast.sol";
 import { IMemeverseRegistrar } from "../src/verse/interfaces/IMemeverseRegistrar.sol";
 import { MemeverseRegistrarAtLocal } from "../src/verse/MemeverseRegistrarAtLocal.sol";
@@ -167,8 +165,8 @@ contract MemeverseScript is BaseScript {
                 vm.envAddress("BLAST_SEPOLIA_ENDPOINT"),
                 MEMEVERSE_REGISTRAR
             );
-            memecoinDeployercreationBytecode = type(MemecoinDeployerOnBlast).creationCode;
-            liquidProofDeployercreationBytecode = type(LiquidProofDeployerOnBlast).creationCode;
+            memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
+            liquidProofDeployercreationBytecode = type(LiquidProofDeployer).creationCode;
         } else if (block.chainid == vm.envUint("BSC_TESTNET_CHAINID")) {
             encodedArgs = abi.encode(
                 owner,
@@ -181,14 +179,6 @@ contract MemeverseScript is BaseScript {
             encodedArgs = abi.encode(
                 owner,
                 vm.envAddress("BASE_SEPOLIA_ENDPOINT"),
-                MEMEVERSE_REGISTRAR
-            );
-            memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
-            liquidProofDeployercreationBytecode = type(LiquidProofDeployer).creationCode;
-        } else if (block.chainid == vm.envUint("MANTLE_SEPOLIA_CHAINID")) {
-            encodedArgs = abi.encode(
-                owner,
-                vm.envAddress("MANTLE_SEPOLIA_ENDPOINT"),
                 MEMEVERSE_REGISTRAR
             );
             memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
@@ -243,22 +233,11 @@ contract MemeverseScript is BaseScript {
                 2000000,
                 uint32(vm.envUint("BSC_TESTNET_EID"))
             );
-            creationBytecode = type(MemeverseRegistrarOnBlast).creationCode;
+            creationBytecode = type(MemeverseRegistrarOmnichain).creationCode;
         } else if (block.chainid == vm.envUint("BASE_SEPOLIA_CHAINID")) {
             encodedArgs = abi.encode(
                 owner,
                 vm.envAddress("BASE_SEPOLIA_ENDPOINT"),
-                vm.envAddress("MEMECOIN_DEPLOYER"),
-                vm.envAddress("LIQUID_PROOF_DEPLOYER"),
-                10000000,
-                2000000,
-                uint32(vm.envUint("BSC_TESTNET_EID"))
-            );
-            creationBytecode = type(MemeverseRegistrarOmnichain).creationCode;
-        } else if (block.chainid == vm.envUint("MANTLE_SEPOLIA_CHAINID")) {
-            encodedArgs = abi.encode(
-                owner,
-                vm.envAddress("MANTLE_SEPOLIA_ENDPOINT"),
                 vm.envAddress("MEMECOIN_DEPLOYER"),
                 vm.envAddress("LIQUID_PROOF_DEPLOYER"),
                 10000000,

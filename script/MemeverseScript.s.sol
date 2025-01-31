@@ -29,7 +29,9 @@ contract MemeverseScript is BaseScript {
     address internal UETH_MEMEVERSE_LAUNCHER;
     address internal MEMEVERSE_REGISTRAR;
     address internal MEMEVERSE_REGISTRATION_CENTER;
-
+    address internal MEMECOIN_IMPLEMENTATION;
+    address internal POL_IMPLEMENTATION;
+    
     address internal owner;
     address internal signer;
     address internal revenuePool;
@@ -48,7 +50,9 @@ contract MemeverseScript is BaseScript {
         UETH_MEMEVERSE_LAUNCHER = vm.envAddress("UETH_MEMEVERSE_LAUNCHER");
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
-        
+        MEMECOIN_IMPLEMENTATION = vm.envAddress("MEMECOIN_IMPLEMENTATION");
+        POL_IMPLEMENTATION = vm.envAddress("POL_IMPLEMENTATION");
+
         // _getDeployedTokenDeployer(3);
         // _getDeployedMemeverseRegistrar(3);
         // _getDeployedRegistrationCenter(3);
@@ -135,13 +139,13 @@ contract MemeverseScript is BaseScript {
         IMemeverseRegistrationCenter.LzEndpointIdPair[] memory endpointPairs = new IMemeverseRegistrationCenter.LzEndpointIdPair[](3);
         endpointPairs[0] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: 84532, endpointId: 40245});
         endpointPairs[1] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: 168587773, endpointId: 40243});
-        endpointPairs[2] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: 5003, endpointId: 40246});
+        endpointPairs[2] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: 534351, endpointId: 40170});
         IMemeverseRegistrationCenter(centerAddr).setLzEndpointIds(endpointPairs);
 
         IMemeverseRegistrationCenter.RegisterGasLimitPair[] memory gasLimitPairs = new IMemeverseRegistrationCenter.RegisterGasLimitPair[](3);
-        gasLimitPairs[0] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 84532, gasLimit: 8000000});
-        gasLimitPairs[1] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 168587773, gasLimit: 8000000});
-        gasLimitPairs[2] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 5003, gasLimit: 40000000000});
+        gasLimitPairs[0] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 84532, gasLimit: 1000000});
+        gasLimitPairs[1] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 168587773, gasLimit: 1000000});
+        gasLimitPairs[2] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 534351, gasLimit: 1000000});
         IMemeverseRegistrationCenter(centerAddr).setRegisterGasLimits(gasLimitPairs);
 
         IMemeverseRegistrationCenter(centerAddr).setDurationDaysRange(1, 7);
@@ -149,52 +153,44 @@ contract MemeverseScript is BaseScript {
 
         IOAppCore(centerAddr).setPeer(uint32(vm.envUint("BASE_SEPOLIA_EID")), bytes32(abi.encode(MEMEVERSE_REGISTRAR)));
         IOAppCore(centerAddr).setPeer(uint32(vm.envUint("BLAST_SEPOLIA_EID")), bytes32(abi.encode(MEMEVERSE_REGISTRAR)));
-        IOAppCore(centerAddr).setPeer(uint32(vm.envUint("MANTLE_SEPOLIA_EID")), bytes32(abi.encode(MEMEVERSE_REGISTRAR)));
+        IOAppCore(centerAddr).setPeer(uint32(vm.envUint("SCROLL_SEPOLIA_EID")), bytes32(abi.encode(MEMEVERSE_REGISTRAR)));
 
         console.log("MemeverseRegistrationCenter deployed on %s", centerAddr);
     }
 
     function _deployTokenDeployer(uint256 nonce) internal {
-        bytes memory encodedArgs;
-        bytes memory memecoinDeployercreationBytecode;
-        bytes memory liquidProofDeployercreationBytecode;
+        address endpoint;
         if (block.chainid == vm.envUint("BLAST_SEPOLIA_CHAINID")) {
-            encodedArgs = abi.encode(
-                owner,
-                BLAST_GOVERNOR,
-                vm.envAddress("BLAST_SEPOLIA_ENDPOINT"),
-                MEMEVERSE_REGISTRAR
-            );
-            memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
-            liquidProofDeployercreationBytecode = type(LiquidProofDeployer).creationCode;
+            endpoint = vm.envAddress("BLAST_SEPOLIA_ENDPOINT");
         } else if (block.chainid == vm.envUint("BSC_TESTNET_CHAINID")) {
-            encodedArgs = abi.encode(
-                owner,
-                vm.envAddress("BSC_TESTNET_ENDPOINT"),
-                MEMEVERSE_REGISTRAR
-            );
-            memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
-            liquidProofDeployercreationBytecode = type(LiquidProofDeployer).creationCode;
+            endpoint = vm.envAddress("BSC_TESTNET_ENDPOINT");
         } else if (block.chainid == vm.envUint("BASE_SEPOLIA_CHAINID")) {
-            encodedArgs = abi.encode(
-                owner,
-                vm.envAddress("BASE_SEPOLIA_ENDPOINT"),
-                MEMEVERSE_REGISTRAR
-            );
-            memecoinDeployercreationBytecode = type(MemecoinDeployer).creationCode;
-            liquidProofDeployercreationBytecode = type(LiquidProofDeployer).creationCode;
+            endpoint = vm.envAddress("BASE_SEPOLIA_ENDPOINT");
+        } else if (block.chainid == vm.envUint("SCROLL_SEPOLIA_CHAINID")) {
+            endpoint = vm.envAddress("SCROLL_SEPOLIA_ENDPOINT");
         }
 
+        bytes memory memecoinEncodedArgs = abi.encode(
+            owner,
+            endpoint,
+            MEMEVERSE_REGISTRAR,
+            MEMECOIN_IMPLEMENTATION
+        );
+        bytes memory liquidProofEncodedArgs = abi.encode(
+            owner,
+            endpoint,
+            MEMEVERSE_REGISTRAR,
+            POL_IMPLEMENTATION
+        );
+
         bytes memory memecoinDeployerCreationCode = abi.encodePacked(
-            memecoinDeployercreationBytecode,
-            encodedArgs
+            type(MemecoinDeployer).creationCode,
+            memecoinEncodedArgs
         );
-
         bytes memory liquidProofDeployerCreationCode = abi.encodePacked(
-            liquidProofDeployercreationBytecode,
-            encodedArgs
+            type(LiquidProofDeployer).creationCode,
+            liquidProofEncodedArgs
         );
-
         bytes32 memecoinSalt = keccak256(abi.encodePacked("TokenDeployer", "Memecoin", nonce));
         bytes32 liquidProofSalt = keccak256(abi.encodePacked("TokenDeployer", "LiquidProof", nonce));
         address memecoinDeployerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, memecoinDeployerCreationCode);
@@ -203,7 +199,7 @@ contract MemeverseScript is BaseScript {
         ITokenDeployer.LzEndpointIdPair[] memory endpointPairs = new ITokenDeployer.LzEndpointIdPair[](3);
         endpointPairs[0] = ITokenDeployer.LzEndpointIdPair({ chainId: 84532, endpointId: 40245});
         endpointPairs[1] = ITokenDeployer.LzEndpointIdPair({ chainId: 168587773, endpointId: 40243});
-        endpointPairs[2] = ITokenDeployer.LzEndpointIdPair({ chainId: 5003, endpointId: 40246});
+        endpointPairs[2] = ITokenDeployer.LzEndpointIdPair({ chainId: 534351, endpointId: 40170});
         ITokenDeployer(memecoinDeployerAddr).setLzEndpointIds(endpointPairs);
         ITokenDeployer(liquidProofDeployerAddr).setLzEndpointIds(endpointPairs);
 
@@ -214,6 +210,7 @@ contract MemeverseScript is BaseScript {
     function _deployMemeverseRegistrar(uint256 nonce) internal {
         bytes memory encodedArgs;
         bytes memory creationBytecode;
+        address endpoint;
         if (block.chainid == vm.envUint("BSC_TESTNET_CHAINID")) {
             encodedArgs = abi.encode(
                 owner,
@@ -222,26 +219,21 @@ contract MemeverseScript is BaseScript {
                 vm.envAddress("LIQUID_PROOF_DEPLOYER")
             );
             creationBytecode = type(MemeverseRegistrarAtLocal).creationCode;
-        } else if (block.chainid == vm.envUint("BLAST_SEPOLIA_CHAINID")) {
+        } else {
+            if (block.chainid == vm.envUint("BLAST_SEPOLIA_CHAINID")) {
+                endpoint = vm.envAddress("BLAST_SEPOLIA_ENDPOINT");
+            } else if (block.chainid == vm.envUint("BASE_SEPOLIA_CHAINID")) {
+                endpoint = vm.envAddress("BASE_SEPOLIA_ENDPOINT");
+            } else if (block.chainid == vm.envUint("SCROLL_SEPOLIA_CHAINID")) {
+                endpoint = vm.envAddress("SCROLL_SEPOLIA_ENDPOINT");
+            }
             encodedArgs = abi.encode(
                 owner,
-                BLAST_GOVERNOR,
-                vm.envAddress("BLAST_SEPOLIA_ENDPOINT"),
+                endpoint,
                 vm.envAddress("MEMECOIN_DEPLOYER"),
                 vm.envAddress("LIQUID_PROOF_DEPLOYER"),
-                10000000,
-                2000000,
-                uint32(vm.envUint("BSC_TESTNET_EID"))
-            );
-            creationBytecode = type(MemeverseRegistrarOmnichain).creationCode;
-        } else if (block.chainid == vm.envUint("BASE_SEPOLIA_CHAINID")) {
-            encodedArgs = abi.encode(
-                owner,
-                vm.envAddress("BASE_SEPOLIA_ENDPOINT"),
-                vm.envAddress("MEMECOIN_DEPLOYER"),
-                vm.envAddress("LIQUID_PROOF_DEPLOYER"),
-                10000000,
-                2000000,
+                800000,
+                300000,
                 uint32(vm.envUint("BSC_TESTNET_EID"))
             );
             creationBytecode = type(MemeverseRegistrarOmnichain).creationCode;
@@ -268,61 +260,48 @@ contract MemeverseScript is BaseScript {
     }
 
     function _deployUETHMemeverseLauncher(uint256 nonce) internal {
-        // bytes memory encodedArgs;
-        // bytes memory creationBytecode;
-        // if (block.chainid == vm.envUint("BLAST_SEPOLIA_CHAINID")) {
-        //     encodedArgs = abi.encode(
-        //         "UETHMemeverseLauncher",
-        //         "MVS-UETH",
-        //         UETH,
-        //         owner,
-        //         signer,
-        //         BLAST_GOVERNOR,
-        //         revenuePool,
-        //         factory,
-        //         router,
-        //         MEMEVERSE_REGISTRAR,
-        //         1e16,
-        //         100000
-        //     );
-        //     creationBytecode = type(MemeverseLauncherOnBlast).creationCode;
-        // } else {
-        //     encodedArgs = abi.encode(
-        //         "UETHMemeverseLauncher",
-        //         "MVS-UETH",
-        //         UETH,
-        //         owner,
-        //         signer,
-        //         revenuePool,
-        //         factory,
-        //         router,
-        //         MEMEVERSE_REGISTRAR,
-        //         1e16,
-        //         100000
-        //     );
-        //     creationBytecode = type(MemeverseLauncher).creationCode;
-        // }
+        bytes memory encodedArgs;
+        bytes memory creationBytecode;
+        if (block.chainid == vm.envUint("BLAST_SEPOLIA_CHAINID")) {
+            encodedArgs = abi.encode(
+                "UETHMemeverseLauncher",
+                "MVS-UETH",
+                UETH,
+                owner,
+                signer,
+                BLAST_GOVERNOR,
+                revenuePool,
+                factory,
+                router,
+                MEMEVERSE_REGISTRAR,
+                1e16,
+                100000
+            );
+            creationBytecode = type(MemeverseLauncherOnBlast).creationCode;
+        } else {
+            encodedArgs = abi.encode(
+                "UETHMemeverseLauncher",
+                "MVS-UETH",
+                UETH,
+                owner,
+                signer,
+                revenuePool,
+                factory,
+                router,
+                MEMEVERSE_REGISTRAR,
+                1e16,
+                100000
+            );
+            creationBytecode = type(MemeverseLauncher).creationCode;
+        }
 
-        // bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
-        // bytes memory creationCode = abi.encodePacked(
-        //     creationBytecode,
-        //     encodedArgs
-        // );
-        // address UETHMemeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
-        MemeverseLauncher launcher = new MemeverseLauncher(
-            "UETHMemeverseLauncher",
-            "MVS-UETH",
-            UETH,
-            owner,
-            signer,
-            revenuePool,
-            factory,
-            router,
-            MEMEVERSE_REGISTRAR,
-            1e16,
-            100000
+        bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
+        bytes memory creationCode = abi.encodePacked(
+            creationBytecode,
+            encodedArgs
         );
+        address UETHMemeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
-        console.log("UETHMemeverseLauncher deployed on %s", address(launcher));
+        console.log("UETHMemeverseLauncher deployed on %s", UETHMemeverseLauncherAddr);
     }
 }

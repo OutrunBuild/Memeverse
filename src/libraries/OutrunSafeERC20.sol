@@ -4,12 +4,12 @@ pragma solidity ^0.8.26;
 
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 
-import { IERC20 } from "../common/ERC20.sol";
+import { IERC20 } from "../common/OutrunERC20Init.sol";
 
 /**
- * @dev SafeERC20, adapted from @openzeppelin
+ * @dev OutrunSafeERC20, adapted from @openzeppelin
  */
-library SafeERC20 {
+library OutrunSafeERC20 {
     using Address for address;
 
     /**

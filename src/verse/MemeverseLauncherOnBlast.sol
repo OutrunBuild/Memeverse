@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
+import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
@@ -21,10 +22,13 @@ import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/
  * @title Trapping into the memeverse
  */
 contract MemeverseLauncherOnBlast is IMemeverseLauncher, ERC721URIStorage, TokenHelper, Ownable, BlastGovernorable {
+    using Clones for address;
+
     uint256 public constant SWAP_FEERATE = 100;
+    address public immutable UPT;
     address public immutable OUTRUN_AMM_ROUTER;
     address public immutable OUTRUN_AMM_FACTORY;
-    address public immutable UPT;
+    address public immutable MEMECOIN_VAULT_IMPLEMENTATION;
 
     address public signer;
     address public memeverseRegistrar;
@@ -48,6 +52,7 @@ contract MemeverseLauncherOnBlast is IMemeverseLauncher, ERC721URIStorage, Token
         address _outrunAMMFactory,
         address _outrunAMMRouter,
         address _memeverseRegistrar,
+        address _implementation,
         uint256 _minTotalFunds,
         uint256 _fundBasedAmount
     ) ERC721(_name, _symbol) Ownable(_owner) BlastGovernorable(_blastGovernor) {
@@ -57,6 +62,7 @@ contract MemeverseLauncherOnBlast is IMemeverseLauncher, ERC721URIStorage, Token
         OUTRUN_AMM_ROUTER = _outrunAMMRouter;
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
         memeverseRegistrar = _memeverseRegistrar;
+        MEMECOIN_VAULT_IMPLEMENTATION = _implementation;
         minTotalFunds = _minTotalFunds;
         fundBasedAmount = _fundBasedAmount;
 
@@ -343,13 +349,15 @@ contract MemeverseLauncherOnBlast is IMemeverseLauncher, ERC721URIStorage, Token
         require(msg.sender == memeverseRegistrar, PermissionDenied());
         
         // Deploy memecoin vault
-        address memecoinVault = address(new MemecoinVault(
+        bytes32 salt = keccak256(abi.encodePacked(_symbol, creator, uniqueId));
+        address memecoinVault = MEMECOIN_VAULT_IMPLEMENTATION.cloneDeterministic(salt);
+        IMemecoinVault(memecoinVault).initialize(
             string(abi.encodePacked("Staked ", _name)),
             string(abi.encodePacked("s", _symbol)),
             memecoin,
             address(this),
             uniqueId
-        ));
+        );
 
         Memeverse memory verse = Memeverse(
             _name, 

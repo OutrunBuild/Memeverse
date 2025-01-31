@@ -1,34 +1,36 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { SafeERC20 } from "../libraries/SafeERC20.sol";
-import { IERC20, ERC20 } from "../common/ERC20.sol";
 import { IMemecoinVault } from "./interfaces/IMemecoinVault.sol";
+import { OutrunSafeERC20 } from "../libraries/OutrunSafeERC20.sol";
+import { OutrunERC20Init, IERC20 } from "../common/OutrunERC20Init.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
 
 /**
  * @dev Yields mainly comes from memeverseLauncher transaction fees
  */
-contract MemecoinVault is ERC20, IMemecoinVault {
-    using SafeERC20 for IERC20;
+contract MemecoinVault is OutrunERC20Init, IMemecoinVault {
+    using OutrunSafeERC20 for IERC20;
 
     uint256 public constant MAX_REDEEM_REQUESTS = 5;
     uint256 public constant REDEEM_DELAY = 1 days;  // Preventing flash attacks
-    address public immutable asset;
-
+    
+    address public asset;
     address public memeverseLauncher;
     uint256 public totalAssets;
     uint256 public verseId;
 
     mapping(address account => RedeemRequest[]) public redeemRequestQueues;
 
-    constructor(
+    function initialize(
         string memory _name, 
         string memory _symbol,
         address _asset,
         address _memeverseLauncher,
         uint256 _verseId
-    ) ERC20(_name, _symbol, 18) {
+    ) external override initializer {
+        __OutrunERC20_init(_name, _symbol, 18);
+
         asset = _asset;
         memeverseLauncher = _memeverseLauncher;
         verseId = _verseId;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import {IERC20} from "../../common/ERC20.sol";
+import { IERC20 } from "../../common/OutrunERC20Init.sol";
 
 interface IMemecoinVault is IERC20 {
     struct RedeemRequest {
@@ -16,6 +16,14 @@ interface IMemecoinVault is IERC20 {
     function previewDeposit(uint256 assets) external view returns (uint256 shares);
 
     function previewRedeem(uint256 shares) external view returns (uint256 assets);
+
+    function initialize(
+        string memory _name, 
+        string memory _symbol,
+        address _asset,
+        address _memeverseLauncher,
+        uint256 _verseId
+    ) external;
 
     function accumulateYields(uint256 amount) external;
 

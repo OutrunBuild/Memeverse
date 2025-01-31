@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import { IOFT, OutrunOFTCoreInit } from "./OutrunOFTCoreInit.sol";
-import { OutrunERC20Init } from "../../../token/OutrunERC20Init.sol";
+import { OutrunERC20Init } from "../../../common/OutrunERC20Init.sol";
 
 /**
  * @title Outrun OFT Init Contract

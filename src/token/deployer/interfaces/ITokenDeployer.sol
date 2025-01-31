@@ -24,6 +24,8 @@ interface ITokenDeployer {
 
     function setMemeverseRegistrar(address _memeverseRegistrar) external;
 
+    function setImplementation(address _implementation) external;
+
     event DeployMemecoin(address indexed token, address indexed creator);
 
     event DeployLiquidProof(address indexed token, address indexed creator);

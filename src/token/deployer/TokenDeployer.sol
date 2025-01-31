@@ -64,6 +64,12 @@ abstract contract TokenDeployer is ITokenDeployer, Ownable {
         memeverseRegistrar = _memeverseRegistrar;
     }
 
+    function setImplementation(address _implementation) external override onlyOwner {
+        require(_implementation != address(0), ZeroAddress());
+
+        implementation = _implementation;
+    }
+
     /// @dev Layerzero configure. See: https://docs.layerzero.network/v2/developers/evm/create-lz-oapp/configuring-pathways
     function _lzConfigure(address token, uint32[] memory omnichainIds) internal {
         // Use default config

@@ -7,8 +7,8 @@ forge clean
 #     --broadcast --ffi -vvvv \
 #     --verify
 
-forge script MemeverseScript.s.sol:MemeverseScript --rpc-url mantle_sepolia \
-    --priority-gas-price 0 --with-gas-price 20000000 --gas-limit 100000000000 \
+forge script MemeverseScript.s.sol:MemeverseScript --rpc-url scroll_sepolia \
+    --priority-gas-price 100 --with-gas-price 50000000 \
     --optimize --optimizer-runs 10000 \
     --via-ir \
     --broadcast --ffi -vvvv \

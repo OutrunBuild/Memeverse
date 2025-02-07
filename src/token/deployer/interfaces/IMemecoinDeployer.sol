@@ -2,23 +2,22 @@
 pragma solidity ^0.8.26;
 
 /**
- * @title Memecoin interface
+ * @title MemecoinDeployer interface
  */
-interface ITokenDeployer {
+interface IMemecoinDeployer {
     struct LzEndpointIdPair {
         uint32 chainId;
         uint32 endpointId;
     }
 
-    function deployTokenAndConfigure(
+    function deployMemecoinAndConfigure(
         string calldata name, 
         string calldata symbol,
         uint256 uniqueId,
         address creator,
-        address memecoin,
-        address memecoinDeployer,
+        address memecoinLauncher,
         uint32[] calldata omnichainIds
-    ) external returns (address token);
+    ) external returns (address memecoin);
 
     function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 
@@ -27,8 +26,6 @@ interface ITokenDeployer {
     function setImplementation(address _implementation) external;
 
     event DeployMemecoin(address indexed token, address indexed creator);
-
-    event DeployLiquidProof(address indexed token, address indexed creator);
 
     error ZeroAddress();
 

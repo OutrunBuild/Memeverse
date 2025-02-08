@@ -1,22 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { IMemecoinVault } from "./interfaces/IMemecoinVault.sol";
-import { OutrunSafeERC20 } from "../libraries/OutrunSafeERC20.sol";
-import { OutrunERC20Init, IERC20 } from "../common/OutrunERC20Init.sol";
-import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
+import { IMemecoinYieldVault } from "./interfaces/IMemecoinYieldVault.sol";
+import { OutrunSafeERC20 , IERC20} from "../libraries/OutrunSafeERC20.sol";
+import { OutrunERC20Init, OutrunERC20Votes } from "../common/governance/OutrunERC20Votes.sol";
 
 /**
- * @dev Yields mainly comes from memeverseLauncher transaction fees
+ * @dev Memecoin Yield Vault
  */
-contract MemecoinVault is OutrunERC20Init, IMemecoinVault {
+contract MemecoinYieldVault is OutrunERC20Votes, IMemecoinYieldVault {
     using OutrunSafeERC20 for IERC20;
 
     uint256 public constant MAX_REDEEM_REQUESTS = 5;
     uint256 public constant REDEEM_DELAY = 1 days;  // Preventing flash attacks
     
     address public asset;
-    address public memeverseLauncher;
     uint256 public totalAssets;
     uint256 public verseId;
 
@@ -26,26 +24,24 @@ contract MemecoinVault is OutrunERC20Init, IMemecoinVault {
         string memory _name, 
         string memory _symbol,
         address _asset,
-        address _memeverseLauncher,
         uint256 _verseId
     ) external override initializer {
         __OutrunERC20_init(_name, _symbol, 18);
 
         asset = _asset;
-        memeverseLauncher = _memeverseLauncher;
         verseId = _verseId;
     }
 
     function previewDeposit(uint256 assets) external view override returns (uint256) {
-        return _convertToShares(assets, _previewTotalAssets());
+        return _convertToShares(assets, totalAssets);
     }
 
     function previewRedeem(uint256 shares) external view override returns (uint256) {
-        return _convertToAssets(shares, _previewTotalAssets());
+        return _convertToAssets(shares, totalAssets);
     }
 
     /**
-     * @dev Accumulate yields from memeverseLauncher or others
+     * @dev Accumulate yields
      */
     function accumulateYields(uint256 amount) external {
         address msgSender = msg.sender;
@@ -62,7 +58,6 @@ contract MemecoinVault is OutrunERC20Init, IMemecoinVault {
      * @dev Mints shares Vault shares to receiver by depositing exactly amount of underlying tokens
      */
     function deposit(uint256 assets, address receiver) external override returns (uint256) {
-        _refreshTotalAssets();
         uint256 shares = _convertToShares(assets, totalAssets);
         _deposit(msg.sender, receiver, assets, shares);
 
@@ -75,7 +70,6 @@ contract MemecoinVault is OutrunERC20Init, IMemecoinVault {
     function requestRedeem(uint256 shares, address receiver) external override returns (uint256) {
         require(receiver != address(0), ZeroAddresss());
 
-        _refreshTotalAssets();
         uint256 assets = _convertToAssets(shares, totalAssets);
         require(assets > 0, ZeroRedeemRequest());
 
@@ -143,14 +137,5 @@ contract MemecoinVault is OutrunERC20Init, IMemecoinVault {
         _mint(receiver, shares);
 
         emit Deposit(sender, receiver, assets, shares);
-    }
-
-    function _previewTotalAssets() internal view returns (uint256) {
-        (, uint256 memecoinYields) = IMemeverseLauncher(memeverseLauncher).previewTransactionFees(verseId);
-        return totalAssets + memecoinYields;
-    }
-
-    function _refreshTotalAssets() internal {
-        IMemeverseLauncher(memeverseLauncher).redeemAndDistributeFees(verseId);
     }
 }

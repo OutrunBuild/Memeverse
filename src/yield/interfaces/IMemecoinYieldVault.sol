@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import { IERC20 } from "../../common/OutrunERC20Init.sol";
 
-interface IMemecoinVault is IERC20 {
+interface IMemecoinYieldVault is IERC20 {
     struct RedeemRequest {
         uint192 amount;     // Requested redeem amount
         uint64 requestTime; // Time when the redeem request was made
@@ -21,7 +21,6 @@ interface IMemecoinVault is IERC20 {
         string memory _name, 
         string memory _symbol,
         address _asset,
-        address _memeverseLauncher,
         uint256 _verseId
     ) external;
 

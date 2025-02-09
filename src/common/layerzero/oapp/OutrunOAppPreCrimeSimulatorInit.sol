@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity ^0.8.28;
 
 import { IPreCrime } from "@layerzerolabs/oapp-evm/contracts/precrime/interfaces/IPreCrime.sol";
 import { IOAppPreCrimeSimulator, InboundPacket, Origin } from "@layerzerolabs/oapp-evm/contracts/precrime/interfaces/IOAppPreCrimeSimulator.sol";

@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL3.0
 // OpenZeppelin Contracts (last updated v5.0.0) (token/ERC20/utils/SafeERC20.sol)
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
 
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 

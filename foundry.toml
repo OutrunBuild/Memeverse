@@ -4,7 +4,7 @@ out = "out"
 test = 'test'
 cache_path = 'cache'
 libs = ["lib"]
-solc = "0.8.26"
+solc = "0.8.28"
 
 
 via_ir = true

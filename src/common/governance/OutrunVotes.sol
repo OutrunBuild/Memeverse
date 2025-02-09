@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // OpenZeppelin Contracts (last updated v5.2.0) (governance/utils/Votes.sol)
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.28;
 
 import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
 import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";

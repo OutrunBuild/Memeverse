@@ -1,6 +1,6 @@
 // SPDX-License-Identifier:GPL-3.0
 // OpenZeppelin Contracts (last updated v5.1.0) (token/ERC20/extensions/ERC20Votes.sol)
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
 
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 

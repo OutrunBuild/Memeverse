@@ -97,16 +97,18 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     function executeRedeem() external override returns (uint256 redeemedAmount) {
         RedeemRequest[] storage requestQueue = redeemRequestQueues[msg.sender];
         
-        for (uint256 i = 0; i < requestQueue.length; i++) {
+        for (uint256 i = requestQueue.length - 1 ; i >= 0; i--) {
             if (block.timestamp >= requestQueue[i].requestTime + REDEEM_DELAY) {
                 uint256 amount = requestQueue[i].amount;
                 IERC20(asset).safeTransfer(msg.sender, amount);
                 redeemedAmount += amount;
 
                 // Remove redeemed request
-                requestQueue[i] = requestQueue[requestQueue.length - 1];
-                requestQueue[requestQueue.length - 1].amount = 0;
-                requestQueue[requestQueue.length - 1].requestTime = 0;
+                if (i != requestQueue.length - 1) {
+                    requestQueue[i] = requestQueue[requestQueue.length - 1];
+                    requestQueue[requestQueue.length - 1].amount = 0;
+                    requestQueue[requestQueue.length - 1].requestTime = 0;
+                }
                 requestQueue.pop();
                 
                 emit RedeemExecuted(msg.sender, amount);

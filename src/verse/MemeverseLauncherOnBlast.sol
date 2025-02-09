@@ -391,7 +391,7 @@ contract MemeverseLauncherOnBlast is IMemeverseLauncher, TokenHelper, Ownable {
         address liquidProof = verse.liquidProof;
         IOutrunAMMPair liquidProofPair = IOutrunAMMPair(OutrunAMMLibraryOnBlast.pairFor(OUTRUN_AMM_FACTORY, liquidProof, UPT, SWAP_FEERATE));
         (uint256 amount2, uint256 amount3) = liquidProofPair.claimMakerFee();
-        address token2 = memecoinPair.token0();
+        address token2 = liquidProofPair.token0();
         UPTFee = token2 == UPT ? UPTFee + amount2 : UPTFee + amount3;
         liquidProofFee = token2 == liquidProof ? amount2 : amount3;
 

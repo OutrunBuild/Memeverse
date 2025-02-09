@@ -8,7 +8,7 @@ import { IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.s
 import { IMemeverseRegistrarAtLocal } from "./interfaces/IMemeverseRegistrarAtLocal.sol";
 
 /**
- * @title Local MemeverseRegistrar for deploying memecoin, liquidProof and registering memeverse
+ * @title Local MemeverseRegistrar for deploying memecoin and registering memeverse
  */ 
 contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegistrarAbstract {
     address public registrationCenter;
@@ -16,21 +16,19 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
     constructor(
         address _owner, 
         address _registrationCenter, 
-        address _memecoinDeployer, 
-        address _liquidProofDeployer
+        address _memecoinDeployer
     ) MemeverseRegistrarAbstract(
         _owner,
-        _memecoinDeployer,
-        _liquidProofDeployer
+        _memecoinDeployer
     ) {
         registrationCenter = _registrationCenter;
     }
 
     /**
-     * @dev Register on the chain where the registration center is located
+     * @dev On the same chain, the registration center directly calls this method
      * @notice Only RegistrationCenter can call
      */
-    function registerAtLocal(MemeverseParam calldata param) external override returns (address memecoin, address liquidProof) {
+    function localRegistration(MemeverseParam calldata param) external override returns (address memecoin) {
         require(msg.sender == registrationCenter, PermissionDenied());
 
         return _registerMemeverse(param);
@@ -38,9 +36,14 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
 
     /**
      * @dev Register through cross-chain at the RegistrationCenter
+     * @param value - The gas cost required for omni-chain registration at the registration center, 
+     *                can be estimated through the LayerZero API on the registration center contract.
+     *                The value must be sufficient, otherwise, the registration will fail, and the 
+     *                consumed gas will not be refunded.
+     * @notice Only users can call this method.
      */
-    function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 /*value*/) external payable override {
-        IMemeverseRegistrationCenter(registrationCenter).registration(param);
+    function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable override {
+        IMemeverseRegistrationCenter(registrationCenter).registration{value: value}(param);
     }
 
     function cancelRegistration(

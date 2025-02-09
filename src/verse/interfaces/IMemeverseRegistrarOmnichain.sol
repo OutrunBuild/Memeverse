@@ -8,5 +8,5 @@ interface IMemeverseRegistrarOmnichain {
 
     function setCancelRegisterGasLimit(uint128 cancelRegisterGasLimit) external;
 
-    error InsufficientFee();
+    error InsufficientLzFee();
 }

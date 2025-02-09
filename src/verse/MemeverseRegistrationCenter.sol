@@ -143,7 +143,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         bytes memory options,
         MessagingFee memory fee,
         address refundAddress
-    ) external payable override {
+    ) public payable override {
         require(msg.sender == address(this), PermissionDenied());
         
         _lzSend(dstEid, message, options, fee, refundAddress);
@@ -152,13 +152,13 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     function _omnichainSend(uint32[] memory omnichainIds, IMemeverseRegistrar.MemeverseParam memory param) internal {
         bytes memory message = abi.encode(param);
         (uint256 totalFee, uint256[] memory fees, uint32[] memory eids) = quoteSend(omnichainIds, message);
-        require(msg.value >= totalFee, InsufficientFee());
+        require(msg.value >= totalFee, InsufficientLzFee());
 
         for (uint256 i = 0; i < eids.length; i++) {
             uint256 fee = fees[i];
             uint32 eid = eids[i];
             if (eid == 0) {
-                IMemeverseRegistrarAtLocal(LOCAL_MEMEVERSE_REGISTRAR).registerAtLocal(param);
+                IMemeverseRegistrarAtLocal(LOCAL_MEMEVERSE_REGISTRAR).localRegistration(param);
             } else {
                 bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimits[omnichainIds[i]] , 0);
                 bytes memory functionSignature = abi.encodeWithSignature(

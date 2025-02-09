@@ -84,8 +84,6 @@ interface IMemeverseRegistrationCenter {
 
     error LengthMismatch();
 
-    error InsufficientFee();
-
     error PermissionDenied();
 
     error InvalidURILength();
@@ -95,6 +93,8 @@ interface IMemeverseRegistrationCenter {
     error InvalidLockupDays();
 
     error InvalidNameLength();
+
+    error InsufficientLzFee();
 
     error InvalidDurationDays();
     

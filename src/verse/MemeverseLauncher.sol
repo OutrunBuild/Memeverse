@@ -2,10 +2,14 @@
 pragma solidity ^0.8.26;
 
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
+import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import { ERC721, ERC721URIStorage } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
+import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
 import { TokenHelper } from "../common/TokenHelper.sol";
 import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
@@ -13,36 +17,44 @@ import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
 import { IOutrunAMMRouter } from "../common/IOutrunAMMRouter.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
 import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
-import { MemecoinVault, IMemecoinVault } from "../yield/MemecoinVault.sol";
 import { IMemeLiquidProof } from "../token/interfaces/IMemeLiquidProof.sol";
+import { IMemecoinDaoGovernor } from "../governance/interfaces/IMemecoinDaoGovernor.sol";
+import { MemecoinYieldVault, IMemecoinYieldVault } from "../yield/MemecoinYieldVault.sol";
 import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.sol";
 
 /**
  * @title Trapping into the memeverse
  */
-contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper, Ownable {
+contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     using Clones for address;
+    using OptionsBuilder for bytes;
 
+    uint256 public constant RATIO = 10000;
     uint256 public constant SWAP_FEERATE = 100;
     address public immutable UPT;
     address public immutable OUTRUN_AMM_ROUTER;
     address public immutable OUTRUN_AMM_FACTORY;
-    address public immutable MEMECOIN_VAULT_IMPLEMENTATION;
 
     address public signer;
     address public memeverseRegistrar;
     address public revenuePool;
+    address public polImplementation;
+    address public vaultImplementation;
+    address public yieldDispatcher;
+    address public governorImplementation;
     uint256 public minTotalFunds;
     uint256 public fundBasedAmount;
+    uint256 public autoBotFeeRate;
+    uint128 public oftReceiveGasLimit;
+    uint128 public yieldDispatcherGasLimit;
 
+    mapping(address memecoin => uint256) public memecoinToIds;
     mapping(uint256 verseId => Memeverse) public memeverses;
     mapping(uint256 verseId => uint256) public claimableLiquidProofs;
     mapping(uint256 verseId => GenesisFund) public genesisFunds;
     mapping(uint256 verseId => mapping(address account => uint256)) public userTotalFunds;
 
     constructor(
-        string memory _name,
-        string memory _symbol,
         address _UPT,
         address _owner,
         address _signer,
@@ -50,26 +62,53 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         address _outrunAMMFactory,
         address _outrunAMMRouter,
         address _memeverseRegistrar,
-        address _implementation,
+        address _polImplementation,
+        address _vaultImplementation,
+        address _governorImplementation,
+        address _yieldDispatcher,
         uint256 _minTotalFunds,
-        uint256 _fundBasedAmount
-    ) ERC721(_name, _symbol) Ownable(_owner) {
+        uint256 _fundBasedAmount,
+        uint256 _autoBotFeeRate,
+        uint128 _oftReceiveGasLimit,
+        uint128 _yieldDispatcherGasLimit
+    ) Ownable(_owner) {
         UPT = _UPT;
         signer = _signer;
         revenuePool = _revenuePool;
         OUTRUN_AMM_ROUTER = _outrunAMMRouter;
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
         memeverseRegistrar = _memeverseRegistrar;
-        MEMECOIN_VAULT_IMPLEMENTATION = _implementation;
+        polImplementation = _polImplementation;
+        vaultImplementation = _vaultImplementation;
+        governorImplementation = _governorImplementation;
+        yieldDispatcher = _yieldDispatcher;
         minTotalFunds = _minTotalFunds;
         fundBasedAmount = _fundBasedAmount;
+        autoBotFeeRate =_autoBotFeeRate;
+        oftReceiveGasLimit = _oftReceiveGasLimit;
+        yieldDispatcherGasLimit = _yieldDispatcherGasLimit;
 
         _safeApproveInf(_UPT, _outrunAMMRouter);
     }
 
-    function getMemeverseUnlockTime(uint256 verseId) external view override returns (uint256 unlockTime) {
-        Memeverse storage verse = memeverses[verseId];
-        unlockTime = verse.unlockTime;
+    function getVerseIdByMemecoin(address memecoin) external view override returns (uint256 verseId) {
+        verseId = memecoinToIds[memecoin];
+    }
+
+    function getMemeverseByVerseId(uint256 verseId) external view override returns (Memeverse memory verse) {
+        verse = memeverses[verseId];
+    }
+
+    function getMemeverseByMemecoin(address memecoin) external view override returns (Memeverse memory verse) {
+        verse = memeverses[memecoinToIds[memecoin]];
+    }
+
+    function getYieldVaultByVerseId(uint256 verseId) external view override returns (address yieldVault) {
+        yieldVault = memeverses[verseId].yieldVault;
+    }
+
+    function getYieldVaultByMemecoin(address memecoin) external view override returns (address yieldVault) {
+        yieldVault = memeverses[memecoinToIds[memecoin]].yieldVault;
     }
 
     /**
@@ -88,10 +127,10 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
     }
 
     /**
-     * @dev Preview transaction fees for owner(UPT) and vault(Memecoin)
+     * @dev Preview transaction fees for DAO Treasury (UPT) and Yield Vault(Memecoin)
      * @param verseId - Memeverse id
      */
-    function previewTransactionFees(uint256 verseId) external view override returns (uint256 UPTFee, uint256 memecoinYields) {
+    function previewTransactionFees(uint256 verseId) external view override returns (uint256 UPTFee, uint256 memecoinFee) {
         Memeverse storage verse = memeverses[verseId];
         address memecoin = verse.memecoin;
         IOutrunAMMPair pair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, memecoin, UPT, SWAP_FEERATE));
@@ -101,7 +140,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
 
         address token0 = pair.token0();
         UPTFee = token0 == UPT ? amount0 : amount1;
-        memecoinYields = token0 == memecoin ? amount0 : amount1;
+        memecoinFee = token0 == memecoin ? amount0 : amount1;
     }
 
     /**
@@ -142,6 +181,144 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
     }
 
     /**
+     * @dev Adaptively change the Memeverse stage
+     * @param verseId - Memeverse id
+     * @param cancel - true: Cross-chain cancellation of registration, false: No cancellation of registration
+     * @notice Only when all chains have entered the refund stage and the symbol in the registration center is
+     *         in an unregistrable state, will the "cancel" be true. In the non-refund stage, parameters  such 
+     *         as deadline, cancel, v, r, and s are not required.
+     */
+    function changeStage(
+        uint256 verseId, 
+        uint256 deadline, 
+        bool cancel, 
+        uint8 v, 
+        bytes32 r, 
+        bytes32 s
+    ) external payable override returns (Stage currentStage) {
+        uint256 currentTime = block.timestamp;
+        Memeverse storage verse = memeverses[verseId];
+        uint256 endTime = verse.endTime;
+        require(endTime != 0 && currentTime > endTime, InTheGenesisStage(endTime));
+
+        GenesisFund storage genesisFund = genesisFunds[verseId];
+        uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
+        uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
+        address yieldVault;
+        if (verse.currentStage == Stage.Genesis) {
+            if (totalMemecoinFunds + totalLiquidProofFunds < minTotalFunds) {
+                verse.currentStage = Stage.Refund;
+                currentStage = Stage.Refund;
+
+                // All chains have entered the refund stage
+                require(currentTime < deadline, ExpiredSignature(deadline));
+                bytes32 signedHash = MessageHashUtils.toEthSignedMessageHash(
+                    keccak256(abi.encode(verseId, cancel, block.chainid, deadline))
+                );
+                require(signer == ECDSA.recover(signedHash, v, r, s), InvalidSigner());
+
+                IMemeverseRegistrationCenter.RegistrationParam memory param;
+                param.symbol = verse.symbol;
+                IMemeverseRegistrar(memeverseRegistrar).cancelRegistration(verseId, param, msg.sender);
+            } else {
+                string memory name = verse.name;
+                string memory symbol = verse.symbol;
+                address creator = verse.creator;
+                address memecoin = verse.memecoin;
+                bytes32 salt = keccak256(abi.encodePacked(symbol, creator, verseId));
+
+                // Deploy POL
+                address liquidProof = polImplementation.cloneDeterministic(salt);
+                IMemeLiquidProof(liquidProof).initialize(
+                    string(abi.encodePacked("POL-", name)), 
+                    string(abi.encodePacked("POL-", symbol)), 
+                    18, 
+                    memecoin, 
+                    address(this)
+                );
+                verse.liquidProof = liquidProof;
+
+                // Deploy Memecoin Yield Vault on Governance Chain
+                address _vaultImplementation = vaultImplementation;
+                yieldVault = _vaultImplementation.predictDeterministicAddress(salt);
+                if (verse.omnichainIds[0] == block.chainid) {
+                    _vaultImplementation.cloneDeterministic(salt);
+                    IMemecoinYieldVault(yieldVault).initialize(
+                        string(abi.encodePacked("Staked ", name)),
+                        string(abi.encodePacked("s", symbol)),
+                        memecoin,
+                        verseId
+                    );
+                }
+                verse.yieldVault = yieldVault;
+
+                // Deploy Memecoin DAO Governor on Governance Chain
+                bytes memory initData = abi.encodeWithSelector(
+                    IMemecoinDaoGovernor.initialize.selector,
+                    string(abi.encodePacked(name, " DAO")),
+                    IVotes(yieldVault),  // voting token
+                    1 days,              // voting delay
+                    1 weeks,             // voting period
+                    10000e18,            // proposal threshold (10000 tokens)
+                    30                   // quorum (30%)
+                );
+                bytes memory proxyBytecode = abi.encodePacked(
+                    type(ERC1967Proxy).creationCode,
+                    abi.encode(governorImplementation, initData)
+                );
+                if (verse.omnichainIds[0] == block.chainid) {
+                    verse.governor = Create2.deploy(0, salt, proxyBytecode);
+                } else {
+                    verse.governor = Create2.computeAddress(salt, keccak256(proxyBytecode));
+                }
+
+                // Deploy memecoin liquidity
+                uint256 memecoinLiquidityAmount = genesisFunds[verseId].totalMemecoinFunds * fundBasedAmount;
+                IMemecoin(memecoin).mint(address(this), memecoinLiquidityAmount);
+                _safeApproveInf(memecoin, OUTRUN_AMM_ROUTER);
+                _safeApproveInf(UPT, OUTRUN_AMM_ROUTER);
+                (,, uint256 memecoinLiquidity) = IOutrunAMMRouter(OUTRUN_AMM_ROUTER).addLiquidity(
+                    UPT,
+                    memecoin,
+                    SWAP_FEERATE,
+                    totalMemecoinFunds,
+                    memecoinLiquidityAmount,
+                    totalMemecoinFunds,
+                    memecoinLiquidityAmount,
+                    address(this),
+                    block.timestamp + 600
+                );
+
+                // Mint liquidity proof token and deploy liquid proof liquidity
+                IMemeLiquidProof(liquidProof).mint(address(this), memecoinLiquidity);
+                _safeApproveInf(liquidProof, OUTRUN_AMM_ROUTER);
+                _safeApproveInf(UPT, OUTRUN_AMM_ROUTER);
+                uint256 liquidProofLiquidityAmount = memecoinLiquidity / 4;
+                IOutrunAMMRouter(OUTRUN_AMM_ROUTER).addLiquidity(
+                    UPT,
+                    liquidProof,
+                    SWAP_FEERATE,
+                    totalLiquidProofFunds,
+                    liquidProofLiquidityAmount,
+                    totalLiquidProofFunds,
+                    liquidProofLiquidityAmount,
+                    address(0),
+                    block.timestamp + 600
+                );
+                claimableLiquidProofs[verseId] = memecoinLiquidity - liquidProofLiquidityAmount;
+
+                verse.currentStage = Stage.Locked;
+                currentStage = Stage.Locked;
+            }
+        } else if (verse.currentStage == Stage.Locked && currentTime > verse.unlockTime) {
+            verse.currentStage = Stage.Unlocked;
+            currentStage = Stage.Unlocked;
+        }
+
+        emit ChangeStage(verseId, currentStage, yieldVault);
+    }
+
+    /**
      * @dev Refund UPT after genesis Failed, total omnichain funds didn't meet the minimum funding requirement
      * @param verseId - Memeverse id
      */
@@ -157,93 +334,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         _transferOut(UPT, msgSender, userFunds);
         
         emit Refund(verseId, msgSender, userFunds);
-    }
-
-    /**
-     * @dev Adaptively change the Memeverse stage
-     * @param verseId - Memeverse id
-     */
-    function changeStage(
-        uint256 verseId, 
-        uint256 deadline, 
-        bool cancel, 
-        uint8 v, 
-        bytes32 r, 
-        bytes32 s
-    ) external payable override returns (Stage currentStage) {
-        uint256 currentTime = block.timestamp;
-        Memeverse storage verse = memeverses[verseId];
-        uint256 endTime = verse.endTime;
-        require(currentTime > endTime, InTheGenesisStage(endTime));
-
-        GenesisFund storage genesisFund = genesisFunds[verseId];
-        uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
-        uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
-        if (verse.currentStage == Stage.Genesis) {
-            if (totalMemecoinFunds + totalLiquidProofFunds < minTotalFunds) {
-                verse.currentStage = Stage.Refund;
-                currentStage = Stage.Refund;
-
-                // All chains have entered the refund stage, and the current chain is the last one
-                if (!cancel) {
-                    require(currentTime < deadline, ExpiredSignature(deadline));
-                    bytes32 signedHash = MessageHashUtils.toEthSignedMessageHash(
-                        keccak256(abi.encode(verseId, cancel, block.chainid, deadline))
-                    );
-                    require(signer == ECDSA.recover(signedHash, v, r, s), InvalidSigner());
-
-                    IMemeverseRegistrationCenter.RegistrationParam memory param;
-                    param.symbol = verse.symbol;
-                    IMemeverseRegistrar(memeverseRegistrar).cancelRegistration(verseId, param, msg.sender);
-                }
-            } else {
-                // Deploy memecoin liquidity
-                address memecoin = verse.memecoin;
-                uint256 memecoinLiquidityAmount = genesisFunds[verseId].totalMemecoinFunds * fundBasedAmount;
-                IMemecoin(memecoin).mint(address(this), memecoinLiquidityAmount);
-                _safeApproveInf(memecoin, OUTRUN_AMM_ROUTER);
-                _safeApproveInf(UPT, OUTRUN_AMM_ROUTER);
-                (,, uint256 memecoinliquidity) = IOutrunAMMRouter(OUTRUN_AMM_ROUTER).addLiquidity(
-                    UPT,
-                    memecoin,
-                    SWAP_FEERATE,
-                    totalMemecoinFunds,
-                    memecoinLiquidityAmount,
-                    totalMemecoinFunds,
-                    memecoinLiquidityAmount,
-                    address(this),
-                    block.timestamp + 600
-                );
-
-                // Mint liquidity proof token and deploy liquid proof liquidity
-                address liquidProof = verse.liquidProof;
-                IMemeLiquidProof(liquidProof).mint(address(this), memecoinliquidity);
-                
-                _safeApproveInf(liquidProof, OUTRUN_AMM_ROUTER);
-                _safeApproveInf(UPT, OUTRUN_AMM_ROUTER);
-                uint256 liquidProofLiquidityAmount = memecoinliquidity / 4;
-                IOutrunAMMRouter(OUTRUN_AMM_ROUTER).addLiquidity(
-                    UPT,
-                    liquidProof,
-                    SWAP_FEERATE,
-                    totalLiquidProofFunds,
-                    liquidProofLiquidityAmount,
-                    totalLiquidProofFunds,
-                    liquidProofLiquidityAmount,
-                    address(0),
-                    block.timestamp + 600
-                );
-                claimableLiquidProofs[verseId] = memecoinliquidity - liquidProofLiquidityAmount;
-
-                verse.currentStage = Stage.Locked;
-                currentStage = Stage.Locked;
-            }
-        } else if (verse.currentStage == Stage.Locked && currentTime > verse.unlockTime) {
-            verse.currentStage = Stage.Unlocked;
-            currentStage = Stage.Unlocked;
-        }
-
-        emit ChangeStage(verseId, currentStage);
     }
 
     /**
@@ -282,8 +372,10 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
     /**
      * @dev Redeem transaction fees and distribute them to the owner(UPT) and vault(Memecoin)
      * @param verseId - Memeverse id
+     * @param botFeeReceiver - Address of AutoBotFee receiver
+     * @notice Anyone who calls this method will be rewarded with AutoBotFee.
      */
-    function redeemAndDistributeFees(uint256 verseId) external override returns (uint256 UPTFee, uint256 memecoinYields, uint256 liquidProofFee) {
+    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable override returns (uint256 govFee, uint256 memecoinFee, uint256 liquidProofFee, uint256 autoBotFee) {
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage >= Stage.Locked, PermissionDenied());
 
@@ -292,8 +384,8 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         IOutrunAMMPair memecoinPair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, memecoin, UPT, SWAP_FEERATE));
         (uint256 amount0, uint256 amount1) = memecoinPair.claimMakerFee();
         address token0 = memecoinPair.token0();
-        UPTFee = token0 == UPT ? amount0 : amount1;
-        memecoinYields = token0 == memecoin ? amount0 : amount1;
+        uint256 UPTFee = token0 == UPT ? amount0 : amount1;
+        memecoinFee = token0 == memecoin ? amount0 : amount1;
 
         // liquidProof pair
         address liquidProof = verse.liquidProof;
@@ -303,18 +395,59 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         UPTFee = token2 == UPT ? UPTFee + amount2 : UPTFee + amount3;
         liquidProofFee = token2 == liquidProof ? amount2 : amount3;
 
-        if (UPTFee == 0 && memecoinYields == 0 && liquidProofFee == 0) return (0, 0, 0);
+        if (UPTFee == 0 && memecoinFee == 0 && liquidProofFee == 0) return (0, 0, 0, 0);
 
-        address _owner = ownerOf(verseId);
-        _transferOut(UPT, ownerOf(verseId), UPTFee);
+        // Protocol fee(liquidProofFee)
+        if (liquidProofFee != 0) _transferOut(liquidProof, revenuePool, liquidProofFee);
 
-        address memecoinVault = verse.memecoinVault;
-        _safeApproveInf(memecoin, memecoinVault);
-        IMemecoinVault(memecoinVault).accumulateYields(memecoinYields);
-
-        _transferOut(liquidProof, revenuePool, liquidProofFee);
+        // AutoBot Fee
+        autoBotFee = UPTFee * autoBotFeeRate / RATIO;
+        if (autoBotFee != 0) _transferOut(UPT, botFeeReceiver, autoBotFee);
         
-        emit RedeemAndDistributeFees(verseId, _owner, UPTFee, memecoinYields, liquidProofFee);
+        uint32 govEndpointId = IMemeverseRegistrar(memeverseRegistrar).getEndpointId(verse.omnichainIds[0]);
+        // Memecoin DAO Treasury income(UPTFee)
+        govFee = UPTFee - autoBotFee;
+
+        SendParam memory sendUPTParam;
+        MessagingFee memory govMessagingFee;
+        if (govFee != 0) {
+            bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(oftReceiveGasLimit, 0);
+            sendUPTParam = SendParam({
+                dstEid: govEndpointId,
+                to: bytes32(uint256(uint160(verse.governor))),
+                amountLD: govFee,
+                minAmountLD: 0,
+                extraOptions: receiveOptions,
+                composeMsg: abi.encode(),
+                oftCmd: abi.encode()
+            });
+            govMessagingFee = IOFT(UPT).quoteSend(sendUPTParam, false);
+        }
+
+        // Memecoin Yield Vault income(memecoinFee)
+        SendParam memory sendYieldParam;
+        MessagingFee memory yieldMessagingFee;
+        if (memecoinFee != 0) {
+            bytes memory yieldDispatcherOptions = OptionsBuilder.newOptions()
+                .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
+                .addExecutorLzComposeOption(0, yieldDispatcherGasLimit, 0);
+            sendYieldParam = SendParam({
+                dstEid: govEndpointId,
+                to: bytes32(uint256(uint160(yieldDispatcher))),
+                amountLD: memecoinFee,
+                minAmountLD: 0,
+                extraOptions: yieldDispatcherOptions,
+                composeMsg: hex"01",
+                oftCmd: abi.encode()
+            });
+            yieldMessagingFee = IOFT(memecoin).quoteSend(sendYieldParam, false);
+        }
+
+        require(msg.value >= govMessagingFee.nativeFee + yieldMessagingFee.nativeFee, InsufficientLzFee());
+        if (govFee != 0) IOFT(UPT).send(sendUPTParam, govMessagingFee, msg.sender);
+        if (memecoinFee != 0) IOFT(memecoin).send(sendYieldParam, yieldMessagingFee, msg.sender);
+        
+        emit RedeemAndDistributeFees(verseId, botFeeReceiver, govFee, memecoinFee, liquidProofFee, autoBotFee);
     }
 
     /**
@@ -323,8 +456,7 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
      * @param _symbol - Symbol of memecoin
      * @param uri - IPFS URI of memecoin icon
      * @param creator - The creator of memeverse
-     * @param memecoin - Already created omnichain memecoin address
-     * @param liquidProof - Already created omnichain liquidProof address
+     * @param memecoin - Omnichain memecoin address
      * @param uniqueId - Unique verseId
      * @param endTime - Genesis stage end time
      * @param unlockTime - Unlock time of liquidity
@@ -337,7 +469,6 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         string calldata uri,
         address creator,
         address memecoin,
-        address liquidProof,
         uint256 uniqueId,
         uint64 endTime,
         uint64 unlockTime,
@@ -345,24 +476,16 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         uint32[] calldata omnichainIds
     ) external override {
         require(msg.sender == memeverseRegistrar, PermissionDenied());
-        
-        // Deploy memecoin vault
-        bytes32 salt = keccak256(abi.encodePacked(_symbol, creator, uniqueId));
-        address memecoinVault = MEMECOIN_VAULT_IMPLEMENTATION.cloneDeterministic(salt);
-        IMemecoinVault(memecoinVault).initialize(
-            string(abi.encodePacked("Staked ", _name)),
-            string(abi.encodePacked("s", _symbol)),
-            memecoin,
-            address(this),
-            uniqueId
-        );
 
         Memeverse memory verse = Memeverse(
             _name, 
             _symbol, 
+            uri, 
+            creator, 
             memecoin, 
-            liquidProof, 
-            memecoinVault, 
+            address(0), 
+            address(0), 
+            address(0),
             maxFund,
             endTime,
             unlockTime, 
@@ -370,10 +493,9 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
             Stage.Genesis
         );
         memeverses[uniqueId] = verse;
-        _safeMint(creator, uniqueId);
-        _setTokenURI(uniqueId, uri);
+        memecoinToIds[memecoin] = uniqueId;
 
-        emit RegisterMemeverse(uniqueId, creator, memecoin, liquidProof, memecoinVault, omnichainIds);
+        emit RegisterMemeverse(uniqueId, verse);
     }
 
     /**
@@ -417,6 +539,16 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
     }
 
     /**
+     * @dev Set AutoBot fee rate 
+     * @param _autoBotFeeRate - AutoBot fee rate
+     */
+    function setAutoBotFeeRate(uint256 _autoBotFeeRate) external override onlyOwner {
+        require(_autoBotFeeRate < RATIO, FeeRateOverFlow());
+
+        autoBotFeeRate = _autoBotFeeRate;
+    }
+
+    /**
      * @dev Set off-chain signer
      * @param _signer - Address of new signer
      */
@@ -424,5 +556,57 @@ contract MemeverseLauncher is IMemeverseLauncher, ERC721URIStorage, TokenHelper,
         require(_signer != address(0), ZeroInput());
 
         signer = _signer;
+    }
+
+    /**
+     * @dev Set POL implementation logic contract
+     * @param _polImplementation - Address of polImplementation
+     */
+    function setPolImplementation(address _polImplementation) external override onlyOwner {
+        require(_polImplementation != address(0), ZeroInput());
+
+        polImplementation = _polImplementation;
+    }
+
+    /**
+     * @dev Set Vault implementation logic contract
+     * @param _vaultImplementation - Address of vaultImplementation
+     */
+    function setVaultImplementation(address _vaultImplementation) external override onlyOwner {
+        require(_vaultImplementation != address(0), ZeroInput());
+
+        vaultImplementation = _vaultImplementation;
+    }
+
+    /**
+     * @dev Set memecoin DAO governor implementation logic contract
+     * @param _governorImplementation - Address of governorImplementation
+     */
+    function setGovernorImplementation(address _governorImplementation) external override onlyOwner {
+        require(_governorImplementation != address(0), ZeroInput());
+
+        governorImplementation = _governorImplementation;
+    }
+
+    /**
+     * @dev Set memecoin _yieldDispatcher contract
+     * @param _yieldDispatcher - Address of _yieldDispatcher
+     */
+    function setYieldDispatcher(address _yieldDispatcher) external override onlyOwner {
+        require(_yieldDispatcher != address(0), ZeroInput());
+
+        yieldDispatcher = _yieldDispatcher;
+    }
+
+    /**
+     * @dev Set gas limits for OFT receive and yield dispatcher
+     * @param _oftReceiveGasLimit - Gas limit for OFT receive
+     * @param _yieldDispatcherGasLimit - Gas limit for yield dispatcher
+     */
+    function setGasLimits(uint128 _oftReceiveGasLimit, uint128 _yieldDispatcherGasLimit) external override onlyOwner {
+        require(_oftReceiveGasLimit > 0 && _yieldDispatcherGasLimit > 0, ZeroInput());
+
+        oftReceiveGasLimit = _oftReceiveGasLimit;
+        yieldDispatcherGasLimit = _yieldDispatcherGasLimit;
     }
 }

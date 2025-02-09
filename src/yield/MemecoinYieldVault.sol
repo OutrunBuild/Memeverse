@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
+import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
+
 import { IMemecoinYieldVault } from "./interfaces/IMemecoinYieldVault.sol";
 import { OutrunSafeERC20 , IERC20} from "../libraries/OutrunSafeERC20.sol";
+import { OutrunERC20PermitInit } from "../common/OutrunERC20PermitInit.sol";
 import { OutrunERC20Init, OutrunERC20Votes } from "../common/governance/OutrunERC20Votes.sol";
 
 /**
  * @dev Memecoin Yield Vault
  */
-contract MemecoinYieldVault is OutrunERC20Votes, IMemecoinYieldVault {
+contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, OutrunERC20Votes {
     using OutrunSafeERC20 for IERC20;
 
     uint256 public constant MAX_REDEEM_REQUESTS = 5;
@@ -27,9 +30,19 @@ contract MemecoinYieldVault is OutrunERC20Votes, IMemecoinYieldVault {
         uint256 _verseId
     ) external override initializer {
         __OutrunERC20_init(_name, _symbol, 18);
+        __OutrunERC20Permit_init(_name);
 
         asset = _asset;
         verseId = _verseId;
+    }
+
+    function clock() public view override returns (uint48) {
+        return uint48(block.timestamp);
+    }
+
+    // solhint-disable-next-line func-name-mixedcase
+    function CLOCK_MODE() public pure override returns (string memory) {
+        return "mode=timestamp";
     }
 
     function previewDeposit(uint256 assets) external view override returns (uint256) {
@@ -68,7 +81,7 @@ contract MemecoinYieldVault is OutrunERC20Votes, IMemecoinYieldVault {
      * @dev Burns exactly shares from owner and request sends assets of underlying tokens to receiver.
      */
     function requestRedeem(uint256 shares, address receiver) external override returns (uint256) {
-        require(receiver != address(0), ZeroAddresss());
+        require(receiver != address(0), ZeroAddress());
 
         uint256 assets = _convertToAssets(shares, totalAssets);
         require(assets > 0, ZeroRedeemRequest());
@@ -115,7 +128,7 @@ contract MemecoinYieldVault is OutrunERC20Votes, IMemecoinYieldVault {
     }
 
     function _convertToShares(uint256 assets, uint256 latestTotalAssets) internal view returns (uint256) {
-        uint256 _totalSupply = totalSupply;
+        uint256 _totalSupply = totalSupply();
         _totalSupply = _totalSupply == 0 ? 1 : _totalSupply;
         uint256 _totalAssets = latestTotalAssets;
         _totalAssets = _totalAssets == 0 ? 1 : _totalAssets;
@@ -124,7 +137,7 @@ contract MemecoinYieldVault is OutrunERC20Votes, IMemecoinYieldVault {
     }
 
     function _convertToAssets(uint256 shares, uint256 latestTotalAssets) internal view returns (uint256) {
-        uint256 _totalSupply = totalSupply;
+        uint256 _totalSupply = totalSupply();
         _totalSupply = _totalSupply == 0 ? 1 : _totalSupply;
         uint256 _totalAssets = latestTotalAssets;
         _totalAssets = _totalAssets == 0 ? 1 : _totalAssets;
@@ -137,5 +150,21 @@ contract MemecoinYieldVault is OutrunERC20Votes, IMemecoinYieldVault {
         _mint(receiver, shares);
 
         emit Deposit(sender, receiver, assets, shares);
+    }
+
+    function _update(address from, address to, uint256 value)
+        internal
+        override(OutrunERC20Init, OutrunERC20Votes)
+    {
+        super._update(from, to, value);
+    }
+
+    function nonces(address owner)
+        public
+        view
+        override(OutrunERC20PermitInit, Nonces)
+        returns (uint256)
+    {
+        return super.nonces(owner);
     }
 }

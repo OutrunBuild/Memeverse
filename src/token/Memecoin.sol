@@ -11,14 +11,14 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
     address public memeverseLauncher;
 
     function initialize(
-        string memory _name, 
-        string memory _symbol,
-        uint8 _decimals, 
+        string memory name_, 
+        string memory symbol_,
+        uint8 decimals_, 
         address _memeverseLauncher, 
         address _lzEndpoint,
         address _delegate
     ) external override initializer {
-        __OutrunOFT_init(_name, _symbol, _decimals, _lzEndpoint, _delegate);
+        __OutrunOFT_init(name_, symbol_, decimals_, _lzEndpoint, _delegate);
         __OutrunOwnable_init(_delegate);
 
         memeverseLauncher = _memeverseLauncher;
@@ -31,7 +31,7 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
 
     function burn(uint256 amount) external override {
         address msgSender = msg.sender;
-        require(balanceOf[msgSender] >= amount, InsufficientBalance());
+        require(balanceOf(msgSender) >= amount, InsufficientBalance());
         _burn(msgSender, amount);
     }
 }

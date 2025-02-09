@@ -4,6 +4,11 @@ pragma solidity ^0.8.26;
 import { IMemeverseRegistrationCenter } from "../../verse/interfaces/IMemeverseRegistrationCenter.sol";
 
 interface IMemeverseRegistrar {
+    struct LzEndpointIdPair {
+        uint32 chainId;
+        uint32 endpointId;
+    }
+
     struct MemeverseParam {
         string name;                    // Token name
         string symbol;                  // Token symbol
@@ -22,6 +27,8 @@ interface IMemeverseRegistrar {
         address memeverseLauncher;
     }
 
+    function getEndpointId(uint32 chainId) external view returns (uint32 endpointId);
+
     /**
      * @dev Register through cross-chain at the RegistrationCenter
      */
@@ -33,13 +40,15 @@ interface IMemeverseRegistrar {
         address lzRefundAddress
     ) external payable;
 
-    function setMemecoinDeployer(address memecoinDeployer) external;
+    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 
-    function setLiquidProofDeployer(address liquidProofDeployer) external;
+    function setMemecoinDeployer(address memecoinDeployer) external;
 
     function setUPTLauncher(UPTLauncherPair[] calldata pairs) external;
 
     error ZeroAddress();
 
     error PermissionDenied();
+
+    error InvalidOmnichainId(uint32 omnichainId);
 }

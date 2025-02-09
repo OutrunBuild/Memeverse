@@ -11,7 +11,7 @@ import { IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.s
 import { IMemeverseRegistrarOmnichain } from "./interfaces/IMemeverseRegistrarOmnichain.sol";
 
 /**
- * @title Omnichain MemeverseRegistrar for deploying memecoin, liquidProof and registering memeverse
+ * @title Omnichain MemeverseRegistrar for deploying memecoin and registering memeverse
  */ 
 contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseRegistrarAbstract, OApp {
     using OptionsBuilder for bytes;
@@ -25,14 +25,12 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         address _owner, 
         address _localLzEndpoint, 
         address _memecoinDeployer, 
-        address _liquidProofDeployer, 
         uint128 _registerGasLimit,
         uint128 _cancelRegisterGasLimit,
         uint32 _registrationCenterEid
     ) MemeverseRegistrarAbstract(
         _owner,
-        _memecoinDeployer,
-        _liquidProofDeployer
+        _memecoinDeployer
     ) OApp(_localLzEndpoint, _owner) {
         registerGasLimit = _registerGasLimit;
         cancelRegisterGasLimit = _cancelRegisterGasLimit;
@@ -42,12 +40,18 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
 
     /**
      * @dev Register through cross-chain at the RegistrationCenter
+     * @param value - The gas cost required for omni-chain registration at the registration center, 
+     *                can be estimated through the LayerZero API on the registration center contract.
+     *                The value must be sufficient, otherwise, the registration will fail, and the 
+     *                consumed gas will not be refunded.
      */
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable override {
         bytes memory message = abi.encode(0, param);
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimit, value);
+
+        // This is the gas fee consumed by the registration center itself.
         uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
-        require(msg.value >= fee, InsufficientFee());
+        require(msg.value - value >= fee, InsufficientLzFee());
 
         _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), msg.sender);
     }
@@ -62,7 +66,7 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         bytes memory message = abi.encode(uniqueId, param);
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(cancelRegisterGasLimit , 0);
         uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
-        require(msg.value >= fee, InsufficientFee());
+        require(msg.value >= fee, InsufficientLzFee());
 
         _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), lzRefundAddress);
     }

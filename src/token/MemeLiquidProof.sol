@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
-import { OutrunOFTInit } from "../common/layerzero/oft/OutrunOFTInit.sol";
 import { IMemeLiquidProof } from "./interfaces/IMemeLiquidProof.sol";
+import { OutrunERC20Votes } from "../common/governance/OutrunERC20Votes.sol";
 
 /**
  * @title Omnichain Memeverse Proof Of Liquidity Token
  */
-contract MemeLiquidProof is IMemeLiquidProof, OutrunOFTInit {
+contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20Votes {
     address public memecoin;
     address public memeverseLauncher;
 
@@ -17,27 +17,36 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunOFTInit {
     }
 
     function initialize(
-        string memory _name, 
-        string memory _symbol, 
-        uint8 _decimals, 
+        string memory name_, 
+        string memory symbol_, 
+        uint8 decimals_, 
         address _memecoin, 
-        address _memeverseLauncher,
-        address _lzEndpoint,
-        address _delegate
+        address _memeverseLauncher
     ) external override initializer {
-        __OutrunOFT_init(_name, _symbol, _decimals, _lzEndpoint, _delegate);
-        __OutrunOwnable_init(_delegate);
+        __OutrunERC20_init(name_, symbol_, decimals_);
 
         memecoin = _memecoin;
         memeverseLauncher = _memeverseLauncher;
     }
     
+    function clock() public view override returns (uint48) {
+        return uint48(block.timestamp);
+    }
+
+    function CLOCK_MODE() public pure override returns (string memory) {
+        return "mode=timestamp";
+    }
+
+    function _update(address from, address to, uint256 value) internal override {
+        super._update(from, to, value);
+    }
+
     function mint(address account, uint256 amount) external override onlyMemeverseLauncher {
         _mint(account, amount);
     }
 
     function burn(address account, uint256 amount) external onlyMemeverseLauncher {
-        require(balanceOf[account] >= amount, InsufficientBalance());
+        require(balanceOf(account) >= amount, InsufficientBalance());
         _burn(account, amount);
     }
 }

@@ -48,7 +48,7 @@ interface IMemecoinYieldVault is IERC20 {
     event RedeemExecuted(address indexed receiver, uint256 amount);
 
 
-    error ZeroAddresss();
+    error ZeroAddress();
 
     error ZeroRedeemRequest();
 

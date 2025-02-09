@@ -14,9 +14,7 @@ interface IMemeLiquidProof is IERC20 {
         string memory _symbol, 
         uint8 _decimals, 
         address _memecoin, 
-        address _memeverseLauncher,
-        address _lzEndpoint,
-        address _delegate
+        address _memeverseLauncher
     ) external;
 
     function mint(address account, uint256 amount) external;

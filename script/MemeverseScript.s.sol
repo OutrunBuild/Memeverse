@@ -199,12 +199,7 @@ contract MemeverseScript is BaseScript {
         endpointPairs[2] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: 534351, endpointId: 40170});
         IMemeverseRegistrationCenter(centerAddr).setLzEndpointIds(endpointPairs);
 
-        IMemeverseRegistrationCenter.RegisterGasLimitPair[] memory gasLimitPairs = new IMemeverseRegistrationCenter.RegisterGasLimitPair[](3);
-        gasLimitPairs[0] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 84532, gasLimit: 1000000});
-        gasLimitPairs[1] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 168587773, gasLimit: 1000000});
-        gasLimitPairs[2] = IMemeverseRegistrationCenter.RegisterGasLimitPair({ chainId: 534351, gasLimit: 1000000});
-        IMemeverseRegistrationCenter(centerAddr).setRegisterGasLimits(gasLimitPairs);
-
+        IMemeverseRegistrationCenter(centerAddr).setRegisterGasLimit(1000000);
         IMemeverseRegistrationCenter(centerAddr).setDurationDaysRange(1, 7);
         IMemeverseRegistrationCenter(centerAddr).setLockupDaysRange(180, 365);
 

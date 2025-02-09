@@ -24,6 +24,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     uint128 public maxDurationDays;
     uint128 public minLockupDays;
     uint128 public maxLockupDays;
+    uint256 public registerGasLimit;
 
     // Main symbol mapping, recording the latest registration information
     mapping(string symbol => SymbolRegistration) public symbolRegistry;
@@ -32,8 +33,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     mapping(string symbol => mapping(uint256 uniqueId => SymbolRegistration)) public symbolHistory;
 
     mapping(uint32 chainId => uint32) public endpointIds;
-
-    mapping(uint32 chainId => uint128) public registerGasLimits;
 
     constructor(
         address _owner, 
@@ -59,25 +58,28 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         uint32[] memory omnichainIds, 
         bytes memory message
     ) public view override returns (uint256, uint256[] memory, uint32[] memory) {
-        uint256 length = omnichainIds.length;
         uint256 totalFee;
+        uint256 length = omnichainIds.length;
         uint256[] memory fees = new uint256[](length);
         uint32[] memory eids = new uint32[](length);
+        uint32 currentChainId = uint32(block.chainid); 
+        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(registerGasLimit) , 0);
+        
         for (uint256 i = 0; i < length; i++) {
             uint32 omnichainId = omnichainIds[i];
-            if (omnichainId == block.chainid) {
+            if (omnichainId == currentChainId) {
                 fees[i] = 0;
                 eids[i] = 0;
-            } else {
-                uint32 eid = endpointIds[omnichainId];
-                require(eid != 0, InvalidOmnichainId(omnichainId));
-
-                bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimits[omnichainId] , 0);
-                uint256 fee = _quote(eid, message, options, false).nativeFee;
-                totalFee += fee;
-                fees[i] = fee;
-                eids[i] = eid;
+                continue;
             }
+
+            uint32 eid = endpointIds[omnichainId];
+            require(eid != 0, InvalidOmnichainId(omnichainId));
+
+            uint256 fee = _quote(eid, message, options, false).nativeFee;
+            totalFee += fee;
+            fees[i] = fee;
+            eids[i] = eid;
         }
 
         return (totalFee, fees, eids);
@@ -154,23 +156,24 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         (uint256 totalFee, uint256[] memory fees, uint32[] memory eids) = quoteSend(omnichainIds, message);
         require(msg.value >= totalFee, InsufficientLzFee());
 
+        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(registerGasLimit) , 0);
         for (uint256 i = 0; i < eids.length; i++) {
             uint256 fee = fees[i];
             uint32 eid = eids[i];
             if (eid == 0) {
                 IMemeverseRegistrarAtLocal(LOCAL_MEMEVERSE_REGISTRAR).localRegistration(param);
-            } else {
-                bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimits[omnichainIds[i]] , 0);
-                bytes memory functionSignature = abi.encodeWithSignature(
-                    "lzSend(uint32,bytes,bytes,(uint256,uint256),address)",
-                    eid,
-                    message,
-                    options,
-                    MessagingFee({nativeFee: fee, lzTokenFee: 0}),
-                    param.creator
-                );
-                address(this).functionCallWithValue(functionSignature, fee);
+                continue;
             }
+            
+            bytes memory functionSignature = abi.encodeWithSignature(
+                "lzSend(uint32,bytes,bytes,(uint256,uint256),address)",
+                eid,
+                message,
+                options,
+                MessagingFee({nativeFee: fee, lzTokenFee: 0}),
+                param.creator
+            );
+            address(this).functionCallWithValue(functionSignature, fee);
         }
     }
 
@@ -275,12 +278,9 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         }
     }
 
-    function setRegisterGasLimits(RegisterGasLimitPair[] calldata pairs) external override onlyOwner {
-        for (uint256 i = 0; i < pairs.length; i++) {
-            RegisterGasLimitPair calldata pair = pairs[i];
-            if (pair.chainId == 0 || pair.gasLimit == 0) continue;
+    function setRegisterGasLimit(uint256 _registerGasLimit) external override onlyOwner {
+        require(_registerGasLimit > 0, ZeroInput());
 
-            registerGasLimits[pair.chainId] = pair.gasLimit;
-        }
+        registerGasLimit = _registerGasLimit;
     }
 }

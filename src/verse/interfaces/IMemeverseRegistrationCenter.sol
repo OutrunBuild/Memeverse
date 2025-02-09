@@ -62,7 +62,7 @@ interface IMemeverseRegistrationCenter {
 
     function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 
-    function setRegisterGasLimits(RegisterGasLimitPair[] calldata pairs) external;
+    function setRegisterGasLimit(uint256 registerGasLimit) external;
 
 
     event Registration(

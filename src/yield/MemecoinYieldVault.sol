@@ -154,19 +154,11 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         emit Deposit(sender, receiver, assets, shares);
     }
 
-    function _update(address from, address to, uint256 value)
-        internal
-        override(OutrunERC20Init, OutrunERC20Votes)
-    {
+    function _update(address from, address to, uint256 value) internal override(OutrunERC20Init, OutrunERC20Votes) {
         super._update(from, to, value);
     }
 
-    function nonces(address owner)
-        public
-        view
-        override(OutrunERC20PermitInit, Nonces)
-        returns (uint256)
-    {
+    function nonces(address owner) public view override(OutrunERC20PermitInit, Nonces) returns (uint256) {
         return super.nonces(owner);
     }
 }

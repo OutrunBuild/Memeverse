@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.26;
 
+import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
+
 import { IMemeLiquidProof } from "./interfaces/IMemeLiquidProof.sol";
-import { OutrunERC20Votes } from "../common/governance/OutrunERC20Votes.sol";
+import { OutrunERC20PermitInit } from "../common/OutrunERC20PermitInit.sol";
+import { OutrunERC20Init, OutrunERC20Votes } from "../common/governance/OutrunERC20Votes.sol";
 
 /**
  * @title Omnichain Memeverse Proof Of Liquidity Token
  */
-contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20Votes {
+contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20Votes {
     address public memecoin;
     address public memeverseLauncher;
 
@@ -37,10 +40,6 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20Votes {
         return "mode=timestamp";
     }
 
-    function _update(address from, address to, uint256 value) internal override {
-        super._update(from, to, value);
-    }
-
     function mint(address account, uint256 amount) external override onlyMemeverseLauncher {
         _mint(account, amount);
     }
@@ -48,5 +47,13 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20Votes {
     function burn(address account, uint256 amount) external onlyMemeverseLauncher {
         require(balanceOf(account) >= amount, InsufficientBalance());
         _burn(account, amount);
+    }
+
+    function _update(address from, address to, uint256 value) internal override(OutrunERC20Init, OutrunERC20Votes) {
+        super._update(from, to, value);
+    }
+
+    function nonces(address owner) public view override(OutrunERC20PermitInit, Nonces) returns (uint256) {
+        return super.nonces(owner);
     }
 }

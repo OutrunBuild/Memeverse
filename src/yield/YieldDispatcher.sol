@@ -21,7 +21,7 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
     using SafeERC20 for IERC20;
 
     uint256 public constant RATIO = 10000;
-    address public immutable endpoint;
+    address public immutable localEndpoint;
     address public immutable memeverseLauncher;
 
     address public revenuePool;
@@ -29,12 +29,12 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
 
     constructor(
         address _owner, 
-        address _endpoint, 
+        address _localEndpoint, 
         address _memeverseLauncher, 
         address _revenuePool, 
         uint256 _protocolFeeRate
     ) Ownable(_owner) {
-        endpoint = _endpoint;
+        localEndpoint = _localEndpoint;
         memeverseLauncher = _memeverseLauncher;
         revenuePool = _revenuePool;
         protocolFeeRate = _protocolFeeRate;
@@ -52,7 +52,7 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
         address /*_executor*/,
         bytes calldata /*_extraData*/
     ) external payable override {
-        require(msg.sender == endpoint, PermissionDenied());
+        require(msg.sender == localEndpoint, PermissionDenied());
 
         address yieldVault = IMemeverseLauncher(memeverseLauncher).getYieldVaultByMemecoin(_memecoin);
         _safeApproveInf(_memecoin, yieldVault);

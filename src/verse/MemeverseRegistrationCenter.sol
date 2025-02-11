@@ -65,21 +65,23 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         uint32 currentChainId = uint32(block.chainid); 
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(registerGasLimit) , 0);
         
-        for (uint256 i = 0; i < length; i++) {
-            uint32 omnichainId = omnichainIds[i];
-            if (omnichainId == currentChainId) {
-                fees[i] = 0;
-                eids[i] = 0;
-                continue;
+        unchecked {
+            for (uint256 i = 0; i < length; i++) {
+                uint32 omnichainId = omnichainIds[i];
+                if (omnichainId == currentChainId) {
+                    fees[i] = 0;
+                    eids[i] = 0;
+                    continue;
+                }
+
+                uint32 eid = endpointIds[omnichainId];
+                require(eid != 0, InvalidOmnichainId(omnichainId));
+
+                uint256 fee = _quote(eid, message, options, false).nativeFee;
+                totalFee += fee;
+                fees[i] = fee;
+                eids[i] = eid;
             }
-
-            uint32 eid = endpointIds[omnichainId];
-            require(eid != 0, InvalidOmnichainId(omnichainId));
-
-            uint256 fee = _quote(eid, message, options, false).nativeFee;
-            totalFee += fee;
-            fees[i] = fee;
-            eids[i] = eid;
         }
 
         return (totalFee, fees, eids);

@@ -197,9 +197,10 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @dev Genesis memeverse, deposit UPT to mint memecoin
      * @param verseId - Memeverse id
      * @param amountInUPT - Amount of UPT
+     * @param user - Address of user participating in the genesis
      * @notice Approve fund token first
      */
-    function genesis(uint256 verseId, uint256 amountInUPT) external override {
+    function genesis(uint256 verseId, uint256 amountInUPT, address user) external override {
         Memeverse storage verse = memeverses[verseId];
         uint256 endTime = verse.endTime;
         uint256 currentTime = block.timestamp;
@@ -210,9 +211,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
         uint256 totalFunds = totalMemecoinFunds + totalLiquidProofFunds;
         uint256 maxFund = verse.maxFund;
-        address msgSender = msg.sender;
         if (maxFund !=0 && totalFunds + amountInUPT > maxFund) amountInUPT = maxFund - totalFunds;
-        _transferIn(UPT, msgSender, amountInUPT);
+        _transferIn(UPT, msg.sender, amountInUPT);
 
         uint256 increasedMemecoinFund;
         uint256 increasedLiquidProofFund;
@@ -224,10 +224,10 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         unchecked {
             genesisFund.totalMemecoinFunds = uint128(totalMemecoinFunds + increasedMemecoinFund);
             genesisFund.totalLiquidProofFunds = uint128(totalLiquidProofFunds + increasedLiquidProofFund);
-            userTotalFunds[verseId][msgSender] += amountInUPT;
+            userTotalFunds[verseId][user] += amountInUPT;
         }
 
-        emit Genesis(verseId, msgSender, increasedMemecoinFund, increasedLiquidProofFund);
+        emit Genesis(verseId, user, increasedMemecoinFund, increasedLiquidProofFund);
     }
 
     /**

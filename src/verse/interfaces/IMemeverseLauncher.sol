@@ -49,7 +49,7 @@ interface IMemeverseLauncher {
 
     function quoteLzFee(uint256 verseId) external view returns (uint256 lzFee);
 
-    function genesis(uint256 verseId, uint256 amountInUPT) external;
+    function genesis(uint256 verseId, uint256 amountInUPT, address user) external;
 
     function refund(uint256 verseId) external returns (uint256 userFunds);
 

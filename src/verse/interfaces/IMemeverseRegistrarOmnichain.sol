@@ -9,9 +9,13 @@ interface IMemeverseRegistrarOmnichain {
         uint128 value
     ) external view returns (uint256 lzFee);
 
-    function setRegisterGasLimit(uint128 registerGasLimit) external;
+    function setBaseRegisterGasLimit(uint64 baseRegisterGasLimit) external;
 
-    function setCancelRegisterGasLimit(uint128 cancelRegisterGasLimit) external;
+    function setLocalRegisterGasLimit(uint64 localRegisterGasLimit) external;
+
+    function setOmnichainRegisterGasLimit(uint64 omnichainRegisterGasLimit) external;
+
+    function setCancelRegisterGasLimit(uint64 cancelRegisterGasLimit) external;
 
     error InsufficientLzFee();
 }

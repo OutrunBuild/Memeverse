@@ -17,25 +17,34 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
     using OptionsBuilder for bytes;
 
     uint32 public immutable REGISTRATION_CENTER_EID;
+    uint32 public immutable REGISTRATION_CENTER_CHAINID;
     
-    uint128 public registerGasLimit;
-    uint128 public cancelRegisterGasLimit;
+    uint64 public baseRegisterGasLimit;
+    uint64 public localRegisterGasLimit;
+    uint64 public omnichainRegisterGasLimit;
+    uint64 public cancelRegisterGasLimit;
 
     constructor(
-        address _owner, 
-        address _localLzEndpoint, 
-        address _memecoinDeployer, 
-        uint128 _registerGasLimit,
-        uint128 _cancelRegisterGasLimit,
-        uint32 _registrationCenterEid
+        address _owner,
+        address _localLzEndpoint,
+        address _memecoinDeployer,
+        uint32 _registrationCenterEid,
+        uint32 _registrationCenterChainid,
+        uint64 _baseRegisterGasLimit,
+        uint64 _localRegisterGasLimit,
+        uint64 _omnichainRegisterGasLimit,
+        uint64 _cancelRegisterGasLimit
     ) MemeverseRegistrarAbstract(
         _owner,
         _memecoinDeployer
     ) OApp(_localLzEndpoint, _owner) {
-        registerGasLimit = _registerGasLimit;
-        cancelRegisterGasLimit = _cancelRegisterGasLimit;
-
         REGISTRATION_CENTER_EID = _registrationCenterEid;
+        REGISTRATION_CENTER_CHAINID = _registrationCenterChainid;
+
+        baseRegisterGasLimit = _baseRegisterGasLimit;
+        localRegisterGasLimit = _localRegisterGasLimit;
+        omnichainRegisterGasLimit = _omnichainRegisterGasLimit;
+        cancelRegisterGasLimit = _cancelRegisterGasLimit;
     }
 
     /**
@@ -50,7 +59,17 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         uint128 value
     ) external view override returns (uint256 lzFee) {
         bytes memory message = abi.encode(0, param);
-        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimit, value);
+        uint256 length = param.omnichainIds.length;
+        uint64 gasLimit = baseRegisterGasLimit;
+        for (uint256 i = 0; i < length; i++) {
+            if (param.omnichainIds[i] == REGISTRATION_CENTER_CHAINID) {
+                gasLimit += localRegisterGasLimit;
+            } else {
+                gasLimit += omnichainRegisterGasLimit;
+            }
+        }
+        
+        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, value);
         lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
     }
 
@@ -79,8 +98,17 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
      */
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable override {
         bytes memory message = abi.encode(0, param);
-        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimit, value);
+        uint256 length = param.omnichainIds.length;
+        uint64 gasLimit = baseRegisterGasLimit;
+        for (uint256 i = 0; i < length; i++) {
+            if (param.omnichainIds[i] == REGISTRATION_CENTER_CHAINID) {
+                gasLimit += localRegisterGasLimit;
+            } else {
+                gasLimit += omnichainRegisterGasLimit;
+            }
+        }
 
+        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, value);
         uint256 lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
         require(msg.value >= lzFee, InsufficientLzFee());
 
@@ -100,11 +128,19 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: msg.value, lzTokenFee: 0}), lzRefundAddress);
     }
 
-    function setRegisterGasLimit(uint128 _registerGasLimit) external override onlyOwner {
-        registerGasLimit = _registerGasLimit;
+    function setBaseRegisterGasLimit(uint64 _baseRegisterGasLimit) external override onlyOwner {
+        baseRegisterGasLimit = _baseRegisterGasLimit;
     }
 
-    function setCancelRegisterGasLimit(uint128 _cancelRegisterGasLimit) external override onlyOwner {
+    function setLocalRegisterGasLimit(uint64 _localRegisterGasLimit) external override onlyOwner {
+        localRegisterGasLimit = _localRegisterGasLimit;
+    }
+    
+    function setOmnichainRegisterGasLimit(uint64 _omnichainRegisterGasLimit) external override onlyOwner {
+        omnichainRegisterGasLimit = _omnichainRegisterGasLimit;
+    }
+
+    function setCancelRegisterGasLimit(uint64 _cancelRegisterGasLimit) external override onlyOwner {
         cancelRegisterGasLimit = _cancelRegisterGasLimit;
     }
 

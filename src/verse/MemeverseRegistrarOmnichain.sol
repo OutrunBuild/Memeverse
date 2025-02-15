@@ -39,6 +39,19 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
     }
 
     /**
+     * @dev Quote the LayerZero fee for the registration at the registration center.
+     * @param param - The registration parameter.
+     * @param value - The gas cost required for omni-chain registration at the registration center, 
+     *                can be estimated through the LayerZero API on the registration center contract.
+     * @return lzFee - The LayerZero fee for the registration at the registration center.
+         */
+    function quoteSend(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) public view override returns (uint256 lzFee) {
+        bytes memory message = abi.encode(0, param);
+        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimit, value);
+        lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+    }
+
+    /**
      * @dev Register through cross-chain at the RegistrationCenter
      * @param value - The gas cost required for omni-chain registration at the registration center, 
      *                can be estimated through the LayerZero API on the registration center contract.
@@ -49,11 +62,10 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         bytes memory message = abi.encode(0, param);
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimit, value);
 
-        // This is the gas fee consumed by the registration center itself.
-        uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
-        require(msg.value - value >= fee, InsufficientLzFee());
+        uint256 lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+        require(msg.value >= lzFee, InsufficientLzFee());
 
-        _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), msg.sender);
+        _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: lzFee, lzTokenFee: 0}), msg.sender);
     }
 
     function cancelRegistration(

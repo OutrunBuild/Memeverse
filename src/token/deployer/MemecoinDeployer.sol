@@ -42,7 +42,7 @@ contract MemecoinDeployer is IMemecoinDeployer, Ownable {
         
         bytes32 salt = keccak256(abi.encodePacked(symbol, creator, uniqueId));
         memecoin = implementation.cloneDeterministic(salt);
-        IMemecoin(memecoin).initialize(name, symbol, 18, memeverseLauncher, LOCAL_LZ_ENDPOINT, address(this));
+        IMemecoin(memecoin).initialize(name, symbol, 18, memeverseLauncher, LOCAL_LZ_ENDPOINT, memeverseRegistrar);
 
         emit DeployMemecoin(memecoin, creator);
     }

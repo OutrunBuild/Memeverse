@@ -25,6 +25,17 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
     }
 
     /**
+     * @dev Quote the LayerZero fee for the cancellation of the registration at the registration center.
+     * @return lzFee - The LayerZero fee for the cancellation of the registration at the registration center.
+     */
+    function quoteCancel(
+        uint256 /*uniqueId*/, 
+        IMemeverseRegistrationCenter.RegistrationParam calldata /*param*/
+    ) external view onlyMemeverseLauncher returns (uint256 lzFee) {
+        return 0;
+    }
+
+    /**
      * @dev On the same chain, the registration center directly calls this method
      * @notice Only RegistrationCenter can call
      */
@@ -50,9 +61,7 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
         uint256 uniqueId, 
         IMemeverseRegistrationCenter.RegistrationParam calldata param, 
         address /*lzRefundAddress*/
-    ) external payable override {
-        require(launcherToUPT[msg.sender] != address(0), PermissionDenied());
-
+    ) external payable onlyMemeverseLauncher override {
         IMemeverseRegistrationCenter(registrationCenter).cancelRegistration(uniqueId, param.symbol);
     }
 

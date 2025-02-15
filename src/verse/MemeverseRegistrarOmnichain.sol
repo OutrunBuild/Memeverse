@@ -45,9 +45,27 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
      *                can be estimated through the LayerZero API on the registration center contract.
      * @return lzFee - The LayerZero fee for the registration at the registration center.
          */
-    function quoteSend(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) public view override returns (uint256 lzFee) {
+    function quoteRegister(
+        IMemeverseRegistrationCenter.RegistrationParam calldata param, 
+        uint128 value
+    ) external view override returns (uint256 lzFee) {
         bytes memory message = abi.encode(0, param);
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimit, value);
+        lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+    }
+
+    /**
+     * @dev Quote the LayerZero fee for the cancellation of the registration at the registration center.
+     * @param uniqueId - The unique identifier of the registration.
+     * @param param - The registration parameter.
+     * @return lzFee - The LayerZero fee for the cancellation of the registration at the registration center.
+     */
+    function quoteCancel(
+        uint256 uniqueId, 
+        IMemeverseRegistrationCenter.RegistrationParam calldata param
+    ) external view onlyMemeverseLauncher returns (uint256 lzFee) {
+        bytes memory message = abi.encode(uniqueId, param);
+        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(cancelRegisterGasLimit , 0);
         lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
     }
 
@@ -55,8 +73,9 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
      * @dev Register through cross-chain at the RegistrationCenter
      * @param value - The gas cost required for omni-chain registration at the registration center, 
      *                can be estimated through the LayerZero API on the registration center contract.
-     *                The value must be sufficient, otherwise, the registration will fail, and the 
-     *                consumed gas will not be refunded.
+     *                The value must be sufficient, it is recommended that the value be slightly higher
+     *                than the quote value, otherwise, the registration may fail, and the consumed gas
+     *                will not be refunded.
      */
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable override {
         bytes memory message = abi.encode(0, param);
@@ -65,22 +84,20 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         uint256 lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
         require(msg.value >= lzFee, InsufficientLzFee());
 
-        _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: lzFee, lzTokenFee: 0}), msg.sender);
+        _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: msg.value, lzTokenFee: 0}), msg.sender);
     }
 
     function cancelRegistration(
         uint256 uniqueId, 
         IMemeverseRegistrationCenter.RegistrationParam calldata param, 
         address lzRefundAddress
-    ) external payable override {
-        require(launcherToUPT[msg.sender] != address(0), PermissionDenied());
-        
+    ) external payable onlyMemeverseLauncher override {
         bytes memory message = abi.encode(uniqueId, param);
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(cancelRegisterGasLimit , 0);
-        uint256 fee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
-        require(msg.value >= fee, InsufficientLzFee());
+        uint256 lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+        require(msg.value >= lzFee, InsufficientLzFee());
 
-        _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: fee, lzTokenFee: 0}), lzRefundAddress);
+        _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: msg.value, lzTokenFee: 0}), lzRefundAddress);
     }
 
     function setRegisterGasLimit(uint128 _registerGasLimit) external override onlyOwner {

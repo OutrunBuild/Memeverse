@@ -1,13 +1,13 @@
 //SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
-import {IMemeverseRegistrationCenter} from "../../verse/interfaces/IMemeverseRegistrationCenter.sol";
+import { IMemeverseRegistrationCenter } from "../../verse/interfaces/IMemeverseRegistrationCenter.sol";
 
 interface IMemeverseRegistrarOmnichain {
-    function quoteSend(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value)
-        external
-        view
-        returns (uint256 lzFee);
+    function quoteRegister(
+        IMemeverseRegistrationCenter.RegistrationParam calldata param, 
+        uint128 value
+    ) external view returns (uint256 lzFee);
 
     function setRegisterGasLimit(uint128 registerGasLimit) external;
 

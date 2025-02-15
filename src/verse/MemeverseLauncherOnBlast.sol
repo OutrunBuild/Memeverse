@@ -269,7 +269,8 @@ contract MemeverseLauncherOnBlast is IMemeverseLauncher, TokenHelper, Ownable {
 
                 IMemeverseRegistrationCenter.RegistrationParam memory param;
                 param.symbol = verse.symbol;
-                IMemeverseRegistrar(memeverseRegistrar).cancelRegistration(verseId, param, msg.sender);
+                uint256 lzFee = IMemeverseRegistrar(memeverseRegistrar).quoteCancel(verseId, param);
+                IMemeverseRegistrar(memeverseRegistrar).cancelRegistration{value: lzFee}(verseId, param, msg.sender);
             } else {
                 string memory name = verse.name;
                 string memory symbol = verse.symbol;
@@ -506,9 +507,11 @@ contract MemeverseLauncherOnBlast is IMemeverseLauncher, TokenHelper, Ownable {
                 yieldMessagingFee = IOFT(memecoin).quoteSend(sendYieldParam, false);
             }
 
-            require(msg.value >= govMessagingFee.nativeFee + yieldMessagingFee.nativeFee, InsufficientLzFee());
-            if (govFee != 0) IOFT(UPT).send(sendUPTParam, govMessagingFee, msg.sender);
-            if (memecoinFee != 0) IOFT(memecoin).send(sendYieldParam, yieldMessagingFee, msg.sender);
+            uint256 govMessagingNativeFee = govMessagingFee.nativeFee;
+            uint256 yieldMessagingNativeFee = yieldMessagingFee.nativeFee;
+            require(msg.value >= govMessagingNativeFee + yieldMessagingNativeFee, InsufficientLzFee());
+            if (govFee != 0) IOFT(UPT).send{value: govMessagingNativeFee}(sendUPTParam, govMessagingFee, msg.sender);
+            if (memecoinFee != 0) IOFT(memecoin).send{value: yieldMessagingNativeFee}(sendYieldParam, yieldMessagingFee, msg.sender);
         }
         
         emit RedeemAndDistributeFees(verseId, botFeeReceiver, govFee, memecoinFee, liquidProofFee, autoBotFee);

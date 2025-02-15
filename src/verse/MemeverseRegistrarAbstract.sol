@@ -18,6 +18,11 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
     mapping(address UPT => address memeverseLauncher) public uptToLauncher;
     mapping(address memeverseLauncher => address UPT) public launcherToUPT;
 
+    modifier onlyMemeverseLauncher() {
+        require(launcherToUPT[msg.sender] != address(0), PermissionDenied());
+        _;
+    }
+
     constructor(
         address _owner,
         address _memecoinDeployer

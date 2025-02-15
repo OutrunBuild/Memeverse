@@ -29,6 +29,11 @@ interface IMemeverseRegistrar {
 
     function getEndpointId(uint32 chainId) external view returns (uint32 endpointId);
 
+    function quoteCancel(
+        uint256 uniqueId, 
+        IMemeverseRegistrationCenter.RegistrationParam calldata param
+    ) external view returns (uint256 lzFee);
+
     /**
      * @dev Register through cross-chain at the RegistrationCenter
      */

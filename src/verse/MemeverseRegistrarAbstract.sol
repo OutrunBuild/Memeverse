@@ -91,8 +91,8 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
     /**
      * @dev Memecoin Layerzero configure. See: https://docs.layerzero.network/v2/developers/evm/create-lz-oapp/configuring-pathways
      */
-    function _lzConfigure(address token, uint32[] memory omnichainIds) internal {
-        bytes32 peer = bytes32(uint256(uint160(token)));
+    function _lzConfigure(address memecoin, uint32[] memory omnichainIds) internal {
+        bytes32 peer = bytes32(uint256(uint160(memecoin)));
         uint32 currentChainId = uint32(block.chainid);
 
         // Use default config
@@ -103,7 +103,7 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
             uint32 endpointId = endpointIds[omnichainId];
             require(endpointId != 0, InvalidOmnichainId(omnichainId));
 
-            IOAppCore(token).setPeer(endpointId, peer);
+            IOAppCore(memecoin).setPeer(endpointId, peer);
         }
     }
 }

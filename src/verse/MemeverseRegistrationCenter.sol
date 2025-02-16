@@ -106,7 +106,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             });
         }
         
-        uint64 unlockTime = uint64(currentTime + param.lockupDays * DAY);
+        uint64 endTime = uint64(currentTime + param.durationDays * DAY);
+        uint64 unlockTime = endTime + uint64(param.lockupDays * DAY);
         uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentTime, msg.sender)));
         currentRegistration.uniqueId = uniqueId;
         currentRegistration.creator = param.creator;
@@ -117,7 +118,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             symbol: param.symbol,
             uri: param.uri,
             uniqueId: uniqueId,
-            endTime: uint64(currentTime + param.durationDays * DAY),
+            endTime: endTime,
             unlockTime: unlockTime,
             omnichainIds: param.omnichainIds,
             creator: param.creator,

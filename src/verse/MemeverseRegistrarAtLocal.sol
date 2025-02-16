@@ -35,13 +35,15 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
         IMemeverseRegistrationCenter.RegistrationParam calldata param, 
         uint128 /*value*/
     ) external view override returns (uint256 lzFee) {
+        uint64 endTime = uint64(block.timestamp + param.durationDays * DAY);
+        uint64 unlockTime = endTime + uint64(param.lockupDays * DAY);
         IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
             name: param.name,
             symbol: param.symbol,
             uri: param.uri,
             uniqueId: uint256(keccak256(abi.encodePacked(param.symbol, block.timestamp, msg.sender))),
-            endTime: uint64(block.timestamp + param.durationDays * DAY),
-            unlockTime: uint64(block.timestamp + param.lockupDays * DAY),
+            endTime: endTime,
+            unlockTime: unlockTime,
             omnichainIds: param.omnichainIds,
             creator: param.creator,
             upt: param.upt

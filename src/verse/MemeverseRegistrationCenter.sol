@@ -101,7 +101,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         if (currentUnlockTime != 0) {
             symbolHistory[param.symbol][currentRegistration.uniqueId] = SymbolRegistration({
                 uniqueId: currentRegistration.uniqueId,
-                registrar: currentRegistration.registrar,
+                creator: currentRegistration.creator,
                 unlockTime: currentUnlockTime
             });
         }
@@ -109,7 +109,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         uint64 unlockTime = uint64(currentTime + param.lockupDays * DAY);
         uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentTime, msg.sender)));
         currentRegistration.uniqueId = uniqueId;
-        currentRegistration.registrar = param.registrar;
+        currentRegistration.creator = param.creator;
         currentRegistration.unlockTime = unlockTime;
 
         IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
@@ -121,7 +121,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             endTime: uint64(currentTime + param.durationDays * DAY),
             unlockTime: unlockTime,
             omnichainIds: param.omnichainIds,
-            creator: param.registrar,
+            creator: param.creator,
             upt: param.upt
         });
         _omnichainSend(param.omnichainIds,  memeverseParam);
@@ -186,7 +186,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32, InvalidSymbolLength());
         require(bytes(param.uri).length > 0, InvalidURILength());
         require(param.omnichainIds.length > 0, EmptyOmnichainIds());
-        require(param.registrar != address(0), ZeroRegistrarAddress());
+        require(param.creator != address(0), ZeroCreatorAddress());
         require(param.upt != address(0), ZeroUPTAddress());
 
         if (param.omnichainIds.length > 1) {
@@ -220,12 +220,12 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         uint256 currentUniqueId = currentRegistration.uniqueId;
         if (currentUniqueId == uniqueId) {
             currentRegistration.uniqueId = 0;
-            currentRegistration.registrar = address(0);
+            currentRegistration.creator = address(0);
             currentRegistration.unlockTime = 0;
         } else {
             SymbolRegistration storage history = symbolHistory[symbol][uniqueId];
             history.uniqueId = 0;
-            history.registrar = address(0);
+            history.creator = address(0);
             history.unlockTime = 0;
         }
         

@@ -16,13 +16,13 @@ interface IMemeverseRegistrationCenter {
         uint256 lockupDays;             // LockupDays of liquidity
         uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
-        address registrar;              // Memeverse registrar
+        address creator;                // Memeverse creator
         address upt;                    // UPT of Memeverse
     }
 
     struct SymbolRegistration {
         uint256 uniqueId;               // unique verseId
-        address registrar;              // registrar address
+        address creator;                // creator address
         uint64 unlockTime;              // Memeverse unlockTime
     }
 
@@ -100,7 +100,7 @@ interface IMemeverseRegistrationCenter {
     
     error InvalidSymbolLength();
     
-    error ZeroRegistrarAddress();
+    error ZeroCreatorAddress();
 
     error MaxFundNotSetCorrectly();
 

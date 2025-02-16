@@ -117,7 +117,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             symbol: param.symbol,
             uri: param.uri,
             uniqueId: uniqueId,
-            maxFund: uint128(param.maxFund),
             endTime: uint64(currentTime + param.durationDays * DAY),
             unlockTime: unlockTime,
             omnichainIds: param.omnichainIds,
@@ -188,10 +187,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(param.omnichainIds.length > 0, EmptyOmnichainIds());
         require(param.creator != address(0), ZeroCreatorAddress());
         require(param.upt != address(0), ZeroUPTAddress());
-
-        if (param.omnichainIds.length > 1) {
-            require(param.maxFund > 0 && param.maxFund < type(uint128).max, MaxFundNotSetCorrectly());
-        }
     }
 
     /**

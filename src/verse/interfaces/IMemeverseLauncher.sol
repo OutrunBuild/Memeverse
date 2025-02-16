@@ -21,9 +21,8 @@ interface IMemeverseLauncher {
         address liquidProof; // POL token address
         address yieldVault; // Memecoin yield vault
         address governor; // Memecoin DAO governor
-        uint128 maxFund; // Max fundraising(UPT) limit, if 0 => no limit
-        uint64 endTime; // EndTime of launchPool
-        uint64 unlockTime; // UnlockTime of liquidity
+        uint128 endTime; // EndTime of launchPool
+        uint128 unlockTime; // UnlockTime of liquidity
         uint32[] omnichainIds; // ChainIds of the token's omnichain(EVM),The first chainId is main governance chain
         Stage currentStage; // Current stage
     }
@@ -73,9 +72,8 @@ interface IMemeverseLauncher {
         address creator,
         address memecoin,
         uint256 uniqueId,
-        uint64 endTime,
-        uint64 unlockTime,
-        uint128 maxFund,
+        uint128 endTime,
+        uint128 unlockTime,
         uint32[] calldata omnichainIds
     ) external;
 

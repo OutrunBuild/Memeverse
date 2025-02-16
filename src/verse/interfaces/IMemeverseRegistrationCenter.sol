@@ -14,7 +14,6 @@ interface IMemeverseRegistrationCenter {
         string uri;                     // Token icon uri
         uint256 durationDays;           // DurationDays of genesis stage
         uint256 lockupDays;             // LockupDays of liquidity
-        uint256 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
         address creator;                // Memeverse creator
         address upt;                    // UPT of Memeverse

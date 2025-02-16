@@ -84,7 +84,7 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
         // register
         IMemeverseLauncher(memeverseLauncher).registerMemeverse(
             name, symbol, param.uri, param.creator, memecoin, uniqueId, 
-            param.endTime, param.unlockTime, param.maxFund, omnichainIds
+            param.endTime, param.unlockTime, omnichainIds
         );
     }
 

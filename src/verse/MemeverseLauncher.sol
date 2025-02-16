@@ -209,9 +209,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         GenesisFund storage genesisFund = genesisFunds[verseId];
         uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
         uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
-        uint256 totalFunds = totalMemecoinFunds + totalLiquidProofFunds;
-        uint256 maxFund = verse.maxFund;
-        if (maxFund !=0 && totalFunds + amountInUPT > maxFund) amountInUPT = maxFund - totalFunds;
         _transferIn(UPT, msg.sender, amountInUPT);
 
         uint256 increasedMemecoinFund;
@@ -527,7 +524,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @param uniqueId - Unique verseId
      * @param endTime - Genesis stage end time
      * @param unlockTime - Unlock time of liquidity
-     * @param maxFund - Max fundraising(UPT) limit, if 0 => no limit
      * @param omnichainIds - ChainIds of the token's omnichain(EVM)
      */
     function registerMemeverse(
@@ -537,9 +533,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         address creator,
         address memecoin,
         uint256 uniqueId,
-        uint64 endTime,
-        uint64 unlockTime,
-        uint128 maxFund,
+        uint128 endTime,
+        uint128 unlockTime,
         uint32[] calldata omnichainIds
     ) external override {
         require(msg.sender == memeverseRegistrar, PermissionDenied());
@@ -548,12 +543,11 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
             _name, 
             _symbol, 
             uri, 
-            creator, 
             memecoin, 
+            creator, 
             address(0), 
             address(0), 
             address(0),
-            maxFund,
             endTime,
             unlockTime, 
             omnichainIds,

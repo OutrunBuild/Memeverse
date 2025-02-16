@@ -14,7 +14,6 @@ interface IMemeverseRegistrar {
         string symbol;                  // Token symbol
         string uri;                     // Token icon uri
         uint256 uniqueId;               // Memeverse uniqueId
-        uint128 maxFund;                // Max fundraising(UPT) limit, if 0 => no limit
         uint64 endTime;                 // EndTime of launchPool
         uint64 unlockTime;              // UnlockTime of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)

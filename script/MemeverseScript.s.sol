@@ -62,24 +62,24 @@ contract MemeverseScript is BaseScript {
 
         // _getDeployedImplementation(6);
 
-        // _getDeployedRegistrationCenter(12);
+        // _getDeployedRegistrationCenter(13);
 
-        // _getDeployedMemecoinDeployer(12);
-        // _getDeployedMemeverseRegistrar(12);
+        // _getDeployedMemecoinDeployer(13);
+        // _getDeployedMemeverseRegistrar(13);
 
-        // _getDeployedUETHMemeverseLauncher(12);
-        // _getDeployedUETHYieldDispatcher(12);
+        // _getDeployedUETHMemeverseLauncher(13);
+        // _getDeployedUETHYieldDispatcher(13);
 
 
         // _deployImplementation(6);
 
-        // _deployRegistrationCenter(12);
+        // _deployRegistrationCenter(13);
 
-        _deployMemecoinDeployer(12);
-        _deployMemeverseRegistrar(12);
+        _deployMemecoinDeployer(13);
+        _deployMemeverseRegistrar(13);
 
-        _deployUETHMemeverseLauncher(12);
-        _deployUETHYieldDispatcher(12);
+        _deployUETHMemeverseLauncher(13);
+        _deployUETHYieldDispatcher(13);
     }
 
     function _getDeployedImplementation(uint256 nonce) internal view {
@@ -199,7 +199,7 @@ contract MemeverseScript is BaseScript {
         endpointPairs[1] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: 534351, endpointId: 40170});
         IMemeverseRegistrationCenter(centerAddr).setLzEndpointIds(endpointPairs);
 
-        IMemeverseRegistrationCenter(centerAddr).setRegisterGasLimit(500000);
+        IMemeverseRegistrationCenter(centerAddr).setRegisterGasLimit(600000);
         IMemeverseRegistrationCenter(centerAddr).setDurationDaysRange(1, 3);
         IMemeverseRegistrationCenter(centerAddr).setLockupDaysRange(1, 365);
 
@@ -232,7 +232,7 @@ contract MemeverseScript is BaseScript {
                 MEMECOIN_DEPLOYER,
                 uint32(vm.envUint("BSC_TESTNET_EID")),
                 uint32(vm.envUint("BSC_TESTNET_CHAINID")),
-                200000,
+                100000,
                 500000,
                 250000,
                 250000
@@ -283,8 +283,8 @@ contract MemeverseScript is BaseScript {
             1e19,
             1000000,
             10,
-            85000,
-            500000
+            60000,
+            300000
         );
         bytes memory creationCode = abi.encodePacked(
             type(MemeverseLauncher).creationCode,

@@ -29,17 +29,16 @@ contract TestScript is BaseScript {
 
     function _registerTest() internal {
         IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "qqqqqwqqaqq";
-        param.symbol = "qqqqqqwqqaqq";
-        param.uri = "qqqqqqqqqqqqwqqaqqqqqqqqqqqqqqqqqqqq";
+        param.name = "xzxcc";
+        param.symbol = "xzxcc";
+        param.uri = "xxzcc";
         param.durationDays = 1;
         param.lockupDays = 1;
-        param.maxFund = 1 ether;
-        uint32[] memory ids = new uint32[](1);
-        ids[0] = 84532;
-        // ids[1] = 84532;
+        uint32[] memory ids = new uint32[](2);
+        ids[0] = 97;
+        ids[1] = 84532;
         param.omnichainIds = ids;
-        param.registrar = owner;
+        param.creator = owner;
         param.upt = UETH;
 
         // IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
@@ -47,11 +46,10 @@ contract TestScript is BaseScript {
         //     symbol: param.symbol,
         //     uri: param.uri,
         //     uniqueId: uint256(keccak256(abi.encodePacked(param.symbol, block.timestamp, msg.sender))),
-        //     maxFund: uint128(param.maxFund),
         //     endTime: uint64(block.timestamp + param.durationDays * DAY),
         //     unlockTime: uint64(block.timestamp + param.lockupDays * DAY),
         //     omnichainIds: param.omnichainIds,
-        //     creator: param.registrar,
+        //     creator: param.creator,
         //     upt: param.upt
         // });
         // (uint256 totalFee, , ) = IMemeverseRegistrationCenter(MEMEVERSE_REGISTRATION_CENTER).quoteSend(ids, abi.encode(memeverseParam));

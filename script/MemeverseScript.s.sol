@@ -62,24 +62,24 @@ contract MemeverseScript is BaseScript {
 
         // _getDeployedImplementation(6);
 
-        // _getDeployedRegistrationCenter(13);
+        // _getDeployedRegistrationCenter(14);
 
-        // _getDeployedMemecoinDeployer(13);
-        // _getDeployedMemeverseRegistrar(13);
+        // _getDeployedMemecoinDeployer(14);
+        // _getDeployedMemeverseRegistrar(14);
 
-        // _getDeployedUETHMemeverseLauncher(13);
-        // _getDeployedUETHYieldDispatcher(13);
+        // _getDeployedUETHMemeverseLauncher(14);
+        // _getDeployedUETHYieldDispatcher(14);
 
 
         // _deployImplementation(6);
 
-        // _deployRegistrationCenter(13);
+        // _deployRegistrationCenter(14);
 
-        _deployMemecoinDeployer(13);
-        _deployMemeverseRegistrar(13);
+        _deployMemecoinDeployer(14);
+        _deployMemeverseRegistrar(14);
 
-        _deployUETHMemeverseLauncher(13);
-        _deployUETHYieldDispatcher(13);
+        _deployUETHMemeverseLauncher(14);
+        _deployUETHYieldDispatcher(14);
     }
 
     function _getDeployedImplementation(uint256 nonce) internal view {

@@ -5,8 +5,9 @@ import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOA
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 
 import "./BaseScript.s.sol";
+import { IMemeverseRegistrarAtLocal } from "../src/verse/interfaces/IMemeverseRegistrarAtLocal.sol";
+import { IMemeverseRegistrarOmnichain } from "../src/verse/interfaces/IMemeverseRegistrarOmnichain.sol";
 import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "../src/verse/interfaces/IMemeverseRegistrar.sol";
-import { MemeverseRegistrarOmnichain, IMemeverseRegistrarOmnichain } from "../src/verse/MemeverseRegistrarOmnichain.sol";
 
 contract TestScript is BaseScript {
     using OptionsBuilder for bytes;
@@ -29,34 +30,26 @@ contract TestScript is BaseScript {
 
     function _registerTest() internal {
         IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "xzxcc";
-        param.symbol = "xzxcc";
-        param.uri = "xxzcc";
+        param.name = "aaa";
+        param.symbol = "aaa";
+        param.uri = "aaa";
         param.durationDays = 1;
         param.lockupDays = 1;
-        uint32[] memory ids = new uint32[](2);
+        uint32[] memory ids = new uint32[](3);
         ids[0] = 97;
         ids[1] = 84532;
+        ids[2] = 534351;
         param.omnichainIds = ids;
         param.creator = owner;
         param.upt = UETH;
 
-        // IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
-        //     name: param.name,
-        //     symbol: param.symbol,
-        //     uri: param.uri,
-        //     uniqueId: uint256(keccak256(abi.encodePacked(param.symbol, block.timestamp, msg.sender))),
-        //     endTime: uint64(block.timestamp + param.durationDays * DAY),
-        //     unlockTime: uint64(block.timestamp + param.lockupDays * DAY),
-        //     omnichainIds: param.omnichainIds,
-        //     creator: param.creator,
-        //     upt: param.upt
-        // });
-        // (uint256 totalFee, , ) = IMemeverseRegistrationCenter(MEMEVERSE_REGISTRATION_CENTER).quoteSend(ids, abi.encode(memeverseParam));
+        // uint256 totalFee = IMemeverseRegistrar(MEMEVERSE_REGISTRAR).quoteRegister(param, 0);
         // console.log("totalFee=", totalFee);
+        
+        uint256 totalFee = 0.1 ether;
+        // IMemeverseRegistrar(MEMEVERSE_REGISTRAR).registerAtCenter{value: totalFee}(param, uint128(totalFee));
 
-        uint256 totalFee = 0.00033 ether;
-        uint256 lzFee = IMemeverseRegistrarOmnichain(MEMEVERSE_REGISTRAR).quoteRegister(param, uint128(totalFee));
-        IMemeverseRegistrar(MEMEVERSE_REGISTRAR).registerAtCenter{value: lzFee}(param, uint128(totalFee));
+        // uint256 lzFee = IMemeverseRegistrar(MEMEVERSE_REGISTRAR).quoteRegister(param, uint128(totalFee));
+        IMemeverseRegistrar(MEMEVERSE_REGISTRAR).registerAtCenter{value: totalFee}(param, uint128(totalFee));
     }
 }

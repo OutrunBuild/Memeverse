@@ -4,13 +4,15 @@ pragma solidity ^0.8.28;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 import { MemeverseRegistrarAbstract } from "./MemeverseRegistrarAbstract.sol";
-import { IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.sol";
 import { IMemeverseRegistrarAtLocal } from "./interfaces/IMemeverseRegistrarAtLocal.sol";
+import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.sol";
 
 /**
  * @title Local MemeverseRegistrar for deploying memecoin and registering memeverse
  */ 
 contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegistrarAbstract {
+    uint256 public constant DAY = 24 * 3600;
+
     address public registrationCenter;
 
     constructor(
@@ -22,6 +24,29 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
         _memecoinDeployer
     ) {
         registrationCenter = _registrationCenter;
+    }
+
+    /**
+     * @dev Quote the LayerZero fee for the registration at the registration center.
+     * @param param - The registration parameter.
+     * @return lzFee - The LayerZero fee for the registration at the registration center.
+         */
+    function quoteRegister(
+        IMemeverseRegistrationCenter.RegistrationParam calldata param, 
+        uint128 /*value*/
+    ) external view override returns (uint256 lzFee) {
+        IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
+            name: param.name,
+            symbol: param.symbol,
+            uri: param.uri,
+            uniqueId: uint256(keccak256(abi.encodePacked(param.symbol, block.timestamp, msg.sender))),
+            endTime: uint64(block.timestamp + param.durationDays * DAY),
+            unlockTime: uint64(block.timestamp + param.lockupDays * DAY),
+            omnichainIds: param.omnichainIds,
+            creator: param.creator,
+            upt: param.upt
+        });
+        (lzFee, , ) = IMemeverseRegistrationCenter(registrationCenter).quoteSend(param.omnichainIds, abi.encode(memeverseParam));
     }
 
     /**

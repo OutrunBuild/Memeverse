@@ -3,6 +3,9 @@ pragma solidity ^0.8.28;
 
 import { IMemeverseRegistrationCenter } from "../../verse/interfaces/IMemeverseRegistrationCenter.sol";
 
+/**
+ * @dev Interface for the Memeverse Registrar.
+ */
 interface IMemeverseRegistrar {
     struct LzEndpointIdPair {
         uint32 chainId;
@@ -27,6 +30,11 @@ interface IMemeverseRegistrar {
     }
 
     function getEndpointId(uint32 chainId) external view returns (uint32 endpointId);
+
+    function quoteRegister(
+        IMemeverseRegistrationCenter.RegistrationParam calldata param, 
+        uint128 value
+    ) external view returns (uint256 lzFee);
 
     function quoteCancel(
         uint256 uniqueId, 

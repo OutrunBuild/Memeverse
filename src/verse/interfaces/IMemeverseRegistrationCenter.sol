@@ -22,7 +22,7 @@ interface IMemeverseRegistrationCenter {
     struct SymbolRegistration {
         uint256 uniqueId;               // unique verseId
         address creator;                // creator address
-        uint64 unlockTime;              // Memeverse unlockTime
+        uint64 endTime;                 // Memeverse genesis endTime
     }
 
     struct LzEndpointIdPair {
@@ -45,8 +45,6 @@ interface IMemeverseRegistrationCenter {
 
     function registration(RegistrationParam calldata param) external payable;
 
-    function cancelRegistration(uint256 uniqueId, string calldata symbol) external;
-
     function lzSend(
         uint32 dstEid,
         bytes memory message,
@@ -67,11 +65,6 @@ interface IMemeverseRegistrationCenter {
     event Registration(
         uint256 indexed uniqueId,
         RegistrationParam param
-    );
-
-    event CancelRegistration(
-        uint256 indexed uniqueId, 
-        string indexed symbol
     );
 
 

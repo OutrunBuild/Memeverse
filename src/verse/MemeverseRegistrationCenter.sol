@@ -18,7 +18,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     using OptionsBuilder for bytes;
 
     uint256 public constant DAY = 24 * 3600;
-    address public immutable LOCAL_MEMEVERSE_REGISTRAR;
+    address public immutable MEMEVERSE_REGISTRAR;
 
     uint128 public minDurationDays;
     uint128 public maxDurationDays;
@@ -37,9 +37,9 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     constructor(
         address _owner, 
         address _lzEndpoint, 
-        address _localMemeverseRegistrar
+        address _memeverseRegistrar
     ) OApp(_lzEndpoint, _owner) Ownable(_owner) {
-        LOCAL_MEMEVERSE_REGISTRAR = _localMemeverseRegistrar;
+        MEMEVERSE_REGISTRAR = _memeverseRegistrar;
     }
 
     /**
@@ -48,7 +48,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     function previewRegistration(string calldata symbol) external view override returns (bool) {
         if (bytes(symbol).length >= 32) return false;
         SymbolRegistration storage currentRegistration = symbolRegistry[symbol];
-        return block.timestamp > currentRegistration.unlockTime;
+        return block.timestamp > currentRegistration.endTime;
     }
 
     /**
@@ -95,23 +95,22 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
         uint256 currentTime = block.timestamp;
         SymbolRegistration storage currentRegistration = symbolRegistry[param.symbol];
-        uint64 currentUnlockTime = currentRegistration.unlockTime;
-        require(currentTime > currentUnlockTime, SymbolNotUnlock(currentUnlockTime));
+        uint64 currentEndTime = currentRegistration.endTime;
+        require(currentTime > currentEndTime, SymbolNotUnlock(currentEndTime));
         
-        if (currentUnlockTime != 0) {
+        if (currentEndTime != 0) {
             symbolHistory[param.symbol][currentRegistration.uniqueId] = SymbolRegistration({
                 uniqueId: currentRegistration.uniqueId,
                 creator: currentRegistration.creator,
-                unlockTime: currentUnlockTime
+                endTime: currentEndTime
             });
         }
         
         uint64 endTime = uint64(currentTime + param.durationDays * DAY);
-        uint64 unlockTime = endTime + uint64(param.lockupDays * DAY);
         uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentTime, msg.sender)));
         currentRegistration.uniqueId = uniqueId;
         currentRegistration.creator = param.creator;
-        currentRegistration.unlockTime = unlockTime;
+        currentRegistration.endTime = endTime;
 
         IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
             name: param.name,
@@ -119,7 +118,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             uri: param.uri,
             uniqueId: uniqueId,
             endTime: endTime,
-            unlockTime: unlockTime,
+            unlockTime: endTime + uint64(param.lockupDays * DAY),
             omnichainIds: param.omnichainIds,
             creator: param.creator,
             upt: param.upt
@@ -127,15 +126,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         _omnichainSend(param.omnichainIds,  memeverseParam);
 
         emit Registration(uniqueId, param);
-    }
-
-    /**
-     * @dev Cancel registration at local chain
-     */
-    function cancelRegistration(uint256 uniqueId, string calldata symbol) external override {
-        require(msg.sender == LOCAL_MEMEVERSE_REGISTRAR, PermissionDenied());
-
-        _cancelRegistration(uniqueId, symbol);
     }
 
     /**
@@ -163,7 +153,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             uint256 fee = fees[i];
             uint32 eid = eids[i];
             if (eid == 0) {
-                IMemeverseRegistrarAtLocal(LOCAL_MEMEVERSE_REGISTRAR).localRegistration(param);
+                IMemeverseRegistrarAtLocal(MEMEVERSE_REGISTRAR).localRegistration(param);
                 continue;
             }
             
@@ -191,43 +181,18 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     }
 
     /**
-     * @dev Internal function to implement lzReceive logic(Cancel Registration)
+     * @dev Internal function to implement lzReceive logic
      */
     function _lzReceive(
-        Origin calldata /*_origin*/,
+        Origin calldata _origin,
         bytes32 /*_guid*/,
         bytes calldata _message,
         address /*_executor*/,
         bytes calldata /*_extraData*/
     ) internal virtual override {
-        (uint256 uniqueId, RegistrationParam memory param) = abi.decode(_message, (uint256, RegistrationParam));
-        if (uniqueId == 0) {
-            registration(param);
-        } else {
-            _cancelRegistration(uniqueId, param.symbol);
-        }
+        require(_origin.sender == bytes32(uint256(uint160(MEMEVERSE_REGISTRAR))), PermissionDenied());
+        registration(abi.decode(_message, (RegistrationParam)));
     }
-
-    /**
-     * @dev Cancel registration when Memeverse enters the refund stage on all chains.
-     */
-    function _cancelRegistration(uint256 uniqueId, string memory symbol) internal {
-        SymbolRegistration storage currentRegistration = symbolRegistry[symbol];
-        uint256 currentUniqueId = currentRegistration.uniqueId;
-        if (currentUniqueId == uniqueId) {
-            currentRegistration.uniqueId = 0;
-            currentRegistration.creator = address(0);
-            currentRegistration.unlockTime = 0;
-        } else {
-            SymbolRegistration storage history = symbolHistory[symbol][uniqueId];
-            history.uniqueId = 0;
-            history.creator = address(0);
-            history.unlockTime = 0;
-        }
-        
-        emit CancelRegistration(uniqueId, symbol);
-    }
-
 
     /*/////////////////////////////////////////////////////
                 Memeverse Registration Config

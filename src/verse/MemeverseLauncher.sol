@@ -5,7 +5,6 @@ import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
-import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
@@ -35,7 +34,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     address public immutable OUTRUN_AMM_ROUTER;
     address public immutable OUTRUN_AMM_FACTORY;
 
-    address public signer;
     address public memeverseRegistrar;
     address public revenuePool;
     address public polImplementation;
@@ -57,7 +55,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     constructor(
         address _UPT,
         address _owner,
-        address _signer,
         address _revenuePool,
         address _outrunAMMFactory,
         address _outrunAMMRouter,
@@ -73,7 +70,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         uint128 _yieldDispatcherGasLimit
     ) Ownable(_owner) {
         UPT = _UPT;
-        signer = _signer;
         revenuePool = _revenuePool;
         OUTRUN_AMM_ROUTER = _outrunAMMRouter;
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
@@ -230,19 +226,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     /**
      * @dev Adaptively change the Memeverse stage
      * @param verseId - Memeverse id
-     * @param cancel - true: Cross-chain cancellation of registration, false: No cancellation of registration
-     * @notice Only when all chains have entered the refund stage and the symbol in the registration center is
-     *         in an unregistrable state, will the "cancel" be true. In the non-refund stage, parameters  such 
-     *         as deadline, cancel, v, r, and s are not required.
      */
-    function changeStage(
-        uint256 verseId, 
-        uint256 deadline, 
-        bool cancel, 
-        uint8 v, 
-        bytes32 r, 
-        bytes32 s
-    ) external payable override returns (Stage currentStage) {
+    function changeStage(uint256 verseId) external payable override returns (Stage currentStage) {
         uint256 currentTime = block.timestamp;
         Memeverse storage verse = memeverses[verseId];
         uint256 endTime = verse.endTime;
@@ -256,18 +241,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
             if (totalMemecoinFunds + totalLiquidProofFunds < minTotalFunds) {
                 verse.currentStage = Stage.Refund;
                 currentStage = Stage.Refund;
-
-                // All chains have entered the refund stage
-                require(currentTime < deadline, ExpiredSignature(deadline));
-                bytes32 signedHash = MessageHashUtils.toEthSignedMessageHash(
-                    keccak256(abi.encode(verseId, cancel, block.chainid, deadline))
-                );
-                require(signer == ECDSA.recover(signedHash, v, r, s), InvalidSigner());
-
-                IMemeverseRegistrationCenter.RegistrationParam memory param;
-                param.symbol = verse.symbol;
-                uint256 lzFee = IMemeverseRegistrar(memeverseRegistrar).quoteCancel(verseId, param);
-                IMemeverseRegistrar(memeverseRegistrar).cancelRegistration{value: lzFee}(verseId, param, msg.sender);
             } else {
                 string memory name = verse.name;
                 string memory symbol = verse.symbol;
@@ -607,16 +580,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         require(_autoBotFeeRate < RATIO, FeeRateOverFlow());
 
         autoBotFeeRate = _autoBotFeeRate;
-    }
-
-    /**
-     * @dev Set off-chain signer
-     * @param _signer - Address of new signer
-     */
-    function setSigner(address _signer) external override onlyOwner {
-        require(_signer != address(0), ZeroInput());
-
-        signer = _signer;
     }
 
     /**

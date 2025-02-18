@@ -59,17 +59,6 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
         }
     }
 
-    function registerAtCenter(
-        IMemeverseRegistrationCenter.RegistrationParam calldata param, 
-        uint128 value
-    ) virtual external payable;
-
-    function cancelRegistration(
-        uint256 uniqueId, 
-        IMemeverseRegistrationCenter.RegistrationParam calldata param, 
-        address lzRefundAddress
-    ) virtual external payable;
-
     function _registerMemeverse(MemeverseParam memory param) internal returns (address memecoin) {
         string memory name = param.name;
         string memory symbol = param.symbol;

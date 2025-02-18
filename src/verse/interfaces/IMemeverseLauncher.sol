@@ -48,14 +48,12 @@ interface IMemeverseLauncher {
 
     function quoteLzFee(uint256 verseId) external view returns (uint256 lzFee);
 
+
     function genesis(uint256 verseId, uint256 amountInUPT, address user) external;
 
     function refund(uint256 verseId) external returns (uint256 userFunds);
 
-    function changeStage(uint256 verseId, uint256 deadline, bool cancel, uint8 v, bytes32 r, bytes32 s)
-        external
-        payable
-        returns (Stage currentStage);
+    function changeStage(uint256 verseId) external payable returns (Stage currentStage);
 
     function claimLiquidProof(uint256 verseId) external returns (uint256 amount);
 
@@ -87,8 +85,6 @@ interface IMemeverseLauncher {
 
     function setAutoBotFeeRate(uint256 autoBotFeeRate) external;
 
-    function setSigner(address signer) external;
-
     function setPolImplementation(address polImplementation) external;
 
     function setVaultImplementation(address vaultImplementation) external;
@@ -101,8 +97,6 @@ interface IMemeverseLauncher {
 
 
     error ZeroInput();
-
-    error InvalidSigner();
 
     error FeeRateOverFlow();
 

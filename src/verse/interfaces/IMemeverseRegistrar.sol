@@ -36,21 +36,10 @@ interface IMemeverseRegistrar {
         uint128 value
     ) external view returns (uint256 lzFee);
 
-    function quoteCancel(
-        uint256 uniqueId, 
-        IMemeverseRegistrationCenter.RegistrationParam calldata param
-    ) external view returns (uint256 lzFee);
-
     /**
      * @dev Register through cross-chain at the RegistrationCenter
      */
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
-
-    function cancelRegistration( 
-        uint256 uniqueId, 
-        IMemeverseRegistrationCenter.RegistrationParam calldata param, 
-        address lzRefundAddress
-    ) external payable;
 
     function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 

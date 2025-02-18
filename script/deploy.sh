@@ -28,16 +28,16 @@ source ../.env
 #     --broadcast --ffi -vvvv \
 #     --verify
 
-forge script TestScript.s.sol:TestScript --rpc-url bsc_testnet \
-    --with-gas-price 3000000000 \
-    --optimize --optimizer-runs 10000 \
-    --via-ir \
-    --broadcast --ffi -vvvv \
-    --verify
-
-# forge script TestScript.s.sol:TestScript --rpc-url scroll_sepolia \
-#     --priority-gas-price 1000 --with-gas-price 600000000 \
+# forge script TestScript.s.sol:TestScript --rpc-url bsc_testnet \
+#     --with-gas-price 3000000000 \
 #     --optimize --optimizer-runs 10000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
 #     --verify
+
+forge script TestScript.s.sol:TestScript --rpc-url scroll_sepolia \
+    --priority-gas-price 1000 --with-gas-price 600000000 \
+    --optimize --optimizer-runs 10000 \
+    --via-ir \
+    --broadcast --ffi -vvvv \
+    --verify

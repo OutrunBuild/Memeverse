@@ -150,7 +150,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @notice The LZ fee is only charged when the governance chain is not the same as the current chain,
      *         and msg.value needs to be greater than the quoted lzFee for the redeemAndDistributeFees transaction.
      */
-    function quoteLzFee(uint256 verseId) external view returns (uint256 lzFee) {
+    function quoteDistributionLzFee(uint256 verseId) external view returns (uint256 lzFee) {
         Memeverse storage verse = memeverses[verseId];
         uint32 govEndpointId = IMemeverseRegistrar(memeverseRegistrar).getEndpointId(verse.omnichainIds[0]);
         if (govEndpointId == block.chainid) return 0;
@@ -227,7 +227,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @dev Adaptively change the Memeverse stage
      * @param verseId - Memeverse id
      */
-    function changeStage(uint256 verseId) external payable override returns (Stage currentStage) {
+    function changeStage(uint256 verseId) external override returns (Stage currentStage) {
         uint256 currentTime = block.timestamp;
         Memeverse storage verse = memeverses[verseId];
         uint256 endTime = verse.endTime;

@@ -46,14 +46,14 @@ interface IMemeverseLauncher {
 
     function previewGenesisMakerFees(uint256 verseId) external view returns (uint256 UPTFee, uint256 memecoinFee);
 
-    function quoteLzFee(uint256 verseId) external view returns (uint256 lzFee);
+    function quoteDistributionLzFee(uint256 verseId) external view returns (uint256 lzFee);
 
 
     function genesis(uint256 verseId, uint256 amountInUPT, address user) external;
 
     function refund(uint256 verseId) external returns (uint256 userFunds);
 
-    function changeStage(uint256 verseId) external payable returns (Stage currentStage);
+    function changeStage(uint256 verseId) external returns (Stage currentStage);
 
     function claimLiquidProof(uint256 verseId) external returns (uint256 amount);
 

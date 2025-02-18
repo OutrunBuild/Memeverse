@@ -62,24 +62,24 @@ contract MemeverseScript is BaseScript {
 
         // _getDeployedImplementation(6);
 
-        // _getDeployedRegistrationCenter(15);
+        // _getDeployedRegistrationCenter(17);
 
-        // _getDeployedMemecoinDeployer(15);
-        // _getDeployedMemeverseRegistrar(15);
+        // _getDeployedMemecoinDeployer(17);
+        // _getDeployedMemeverseRegistrar(17);
 
-        // _getDeployedUETHMemeverseLauncher(15);
-        // _getDeployedUETHYieldDispatcher(15);
+        // _getDeployedUETHMemeverseLauncher(17);
+        // _getDeployedUETHYieldDispatcher(17);
 
 
         // _deployImplementation(6);
 
-        // _deployRegistrationCenter(15);
+        // _deployRegistrationCenter(17);
 
-        _deployMemecoinDeployer(15);
-        _deployMemeverseRegistrar(15);
+        _deployMemecoinDeployer(17);
+        _deployMemeverseRegistrar(17);
 
-        _deployUETHMemeverseLauncher(15);
-        _deployUETHYieldDispatcher(15);
+        _deployUETHMemeverseLauncher(17);
+        _deployUETHYieldDispatcher(17);
     }
 
     function _getDeployedImplementation(uint256 nonce) internal view {
@@ -271,7 +271,6 @@ contract MemeverseScript is BaseScript {
         bytes memory encodedArgs = abi.encode(
             UETH,
             owner,
-            signer,
             revenuePool,
             factory,
             router,

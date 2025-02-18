@@ -30,9 +30,9 @@ contract TestScript is BaseScript {
 
     function _registerTest() internal {
         IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "aasa";
-        param.symbol = "asaa";
-        param.uri = "aasa";
+        param.name = "aassa";
+        param.symbol = "assaa";
+        param.uri = "aassa";
         param.durationDays = 1;
         param.lockupDays = 1;
         uint32[] memory ids = new uint32[](2);

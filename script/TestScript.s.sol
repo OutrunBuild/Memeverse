@@ -8,6 +8,8 @@ import "./BaseScript.s.sol";
 import { IMemeverseRegistrarAtLocal } from "../src/verse/interfaces/IMemeverseRegistrarAtLocal.sol";
 import { IMemeverseRegistrarOmnichain } from "../src/verse/interfaces/IMemeverseRegistrarOmnichain.sol";
 import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "../src/verse/interfaces/IMemeverseRegistrar.sol";
+import { IMemecoinDaoGovernor } from "../src/governance/interfaces/IMemecoinDaoGovernor.sol";
+import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
 contract TestScript is BaseScript {
     using OptionsBuilder for bytes;
@@ -25,14 +27,15 @@ contract TestScript is BaseScript {
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
 
-        _registerTest();
+        // _registerTest();
+        _memecoinDaoGovernorData();
     }
 
     function _registerTest() internal {
         IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "aassa";
-        param.symbol = "assaa";
-        param.uri = "aassa";
+        param.name = "aaa";
+        param.symbol = "aaa";
+        param.uri = "aaa";
         param.durationDays = 1;
         param.lockupDays = 1;
         uint32[] memory ids = new uint32[](2);
@@ -51,5 +54,19 @@ contract TestScript is BaseScript {
 
         uint256 lzFee = IMemeverseRegistrar(MEMEVERSE_REGISTRAR).quoteRegister(param, uint128(totalFee));
         IMemeverseRegistrar(MEMEVERSE_REGISTRAR).registerAtCenter{value: lzFee}(param, uint128(totalFee));
+    }
+
+    function _memecoinDaoGovernorData() internal view {
+        bytes memory initData = abi.encodeWithSelector(
+            IMemecoinDaoGovernor.initialize.selector,
+            string(abi.encodePacked("aaa", " DAO")),
+            IVotes(0x454c7b0b4dded6BC81f44737965d43AFC294b399),  // voting token
+            1 days,              // voting delay
+            1 weeks,             // voting period
+            10000e18,            // proposal threshold (10000 tokens)
+            30                   // quorum (30%)
+        );
+
+        console.logBytes(initData);
     }
 }

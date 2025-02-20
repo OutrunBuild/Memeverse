@@ -17,7 +17,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     using Address for address;
     using OptionsBuilder for bytes;
 
-    uint256 public constant DAY = 24 * 3600;
+    // uint256 public constant DAY = 24 * 3600;
+    uint256 public constant DAY = 180;  // 180 seconds for testing
     address public immutable MEMEVERSE_REGISTRAR;
 
     uint128 public minDurationDays;

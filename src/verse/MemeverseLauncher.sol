@@ -152,10 +152,11 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      */
     function quoteDistributionLzFee(uint256 verseId) external view returns (uint256 lzFee) {
         Memeverse storage verse = memeverses[verseId];
-        uint32 govEndpointId = IMemeverseRegistrar(memeverseRegistrar).getEndpointId(verse.omnichainIds[0]);
-        if (govEndpointId == block.chainid) return 0;
+        uint32 govChainId = verse.omnichainIds[0];
+        if (govChainId == block.chainid) return 0;
         
         (uint256 UPTFee, uint256 memecoinFee) = previewGenesisMakerFees(verseId);
+        uint32 govEndpointId = IMemeverseRegistrar(memeverseRegistrar).getEndpointId(govChainId);
         if (UPTFee != 0) {
             bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(oftReceiveGasLimit, 0);
             SendParam memory sendUPTParam = SendParam({
@@ -429,8 +430,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         }
         if (autoBotFee != 0) _transferOut(UPT, botFeeReceiver, autoBotFee);
         
-        uint32 govEndpointId = IMemeverseRegistrar(memeverseRegistrar).getEndpointId(verse.omnichainIds[0]);
-        if(govEndpointId == block.chainid) {
+        uint32 govChainId = verse.omnichainIds[0];
+        if(govChainId == block.chainid) {
             if (govFee != 0) {
                 _transferOut(UPT, verse.governor, govFee);
             }
@@ -441,6 +442,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
                 IMemecoinYieldVault(_yieldVault).accumulateYields(memecoinFee);
             }
         } else {
+            uint32 govEndpointId = IMemeverseRegistrar(memeverseRegistrar).getEndpointId(govChainId);
             // Memecoin DAO Treasury income(UPTFee)
             SendParam memory sendUPTParam;
             MessagingFee memory govMessagingFee;

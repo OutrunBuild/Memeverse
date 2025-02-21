@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
+import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 
 import "./BaseScript.s.sol";
 import { IMemeverseRegistrarAtLocal } from "../src/verse/interfaces/IMemeverseRegistrarAtLocal.sol";
@@ -13,6 +14,7 @@ import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
 contract TestScript is BaseScript {
     using OptionsBuilder for bytes;
+    using Clones for address;
 
     uint256 public constant DAY = 24 * 3600;
 
@@ -27,15 +29,15 @@ contract TestScript is BaseScript {
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
 
-        // _registerTest();
-        _memecoinDaoGovernorData();
+        _registerTest();
+        // _memecoinDaoGovernorData();
     }
 
     function _registerTest() internal {
         IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "aaa";
-        param.symbol = "aaa";
-        param.uri = "aaa";
+        param.name = "aasa";
+        param.symbol = "aasa";
+        param.uri = "aasa";
         param.durationDays = 1;
         param.lockupDays = 1;
         uint32[] memory ids = new uint32[](2);

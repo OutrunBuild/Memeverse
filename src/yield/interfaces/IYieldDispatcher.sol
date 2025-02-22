@@ -4,20 +4,12 @@ pragma solidity ^0.8.28;
 import { ILayerZeroComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
 
 interface IYieldDispatcher is ILayerZeroComposer {
-    function setRevenuePool(address _revenuePool) external;
-    
-    function setProtocolFeeRate(uint256 _protocolFeeRate) external;
-
-    event OmnichainAccumulateYields(
-        address indexed memecoin, 
-        address indexed yieldVault, 
-        uint256 yield, 
-        uint256 protocolFee
+    event OmnichainYieldsProcessed(
+        uint256 indexed verseId, 
+        address indexed token, 
+        bool indexed isBurned,
+        uint256 amount
     );
-
-    error ZeroInput();
-
-    error FeeRateOverFlow();
 
     error PermissionDenied();
 }

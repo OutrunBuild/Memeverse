@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
+import { IBurnable } from "../common/IBurnable.sol";
 import { TokenHelper } from "../common/TokenHelper.sol";
 import { IYieldDispatcher } from "./interfaces/IYieldDispatcher.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
@@ -18,62 +18,56 @@ import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol
  *      accepts Memecoin Yield from other chains and then forwards it to the corresponding yield vault.
  */
 contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
-    using SafeERC20 for IERC20;
+    using Strings for string;
 
-    uint256 public constant RATIO = 10000;
     address public immutable localEndpoint;
     address public immutable memeverseLauncher;
-
-    address public revenuePool;
-    uint256 public protocolFeeRate;
 
     constructor(
         address _owner, 
         address _localEndpoint, 
-        address _memeverseLauncher, 
-        address _revenuePool, 
-        uint256 _protocolFeeRate
+        address _memeverseLauncher
     ) Ownable(_owner) {
         localEndpoint = _localEndpoint;
         memeverseLauncher = _memeverseLauncher;
-        revenuePool = _revenuePool;
-        protocolFeeRate = _protocolFeeRate;
     }
 
     /**
      * @notice Redirect the yields of different Memecoins to their yield vault.
-     * @param _memecoin Memecoin OFT Address.
-     * @param _message The composed message payload in bytes. NOT necessarily the same payload passed via lzReceive.
+     * @param token - The token address initiating the composition, typically the OFT where the lzReceive was called.
+     * @param message - The composed message payload in bytes. NOT necessarily the same payload passed via lzReceive.
      */
     function lzCompose(
-        address _memecoin,
-        bytes32 /*_guid*/,
-        bytes calldata _message,
-        address /*_executor*/,
-        bytes calldata /*_extraData*/
+        address token,
+        bytes32 /*guid*/,
+        bytes calldata message,
+        address /*executor*/,
+        bytes calldata /*extraData*/
     ) external payable override {
         require(msg.sender == localEndpoint, PermissionDenied());
 
-        address yieldVault = IMemeverseLauncher(memeverseLauncher).getYieldVaultByMemecoin(_memecoin);
-        _safeApproveInf(_memecoin, yieldVault);
-        uint256 _amountLD = OFTComposeMsgCodec.amountLD(_message);
-        uint256 protocolFee = _amountLD * protocolFeeRate / RATIO;
-        _transferOut(_memecoin, revenuePool, protocolFee);
-        uint256 yield = _amountLD - protocolFee;
-        IMemecoinYieldVault(yieldVault).accumulateYields(yield);
+        bool isBurned = false;
+        uint256 amount = OFTComposeMsgCodec.amountLD(message);
+        (uint256 verseId, string memory tokenType) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (uint256, string));
+        if (tokenType.equal("Memecoin")) {
+            address yieldVault = IMemeverseLauncher(memeverseLauncher).getYieldVaultByVerseId(verseId);
+            if (yieldVault.code.length == 0) {
+                IBurnable(token).burn(amount);
+                isBurned = true;
+            } else {
+                _safeApproveInf(token, yieldVault);
+                IMemecoinYieldVault(yieldVault).accumulateYields(amount);
+            }
+        } else if (tokenType.equal("UPT")) {
+            address governor = IMemeverseLauncher(memeverseLauncher).getGovernorByVerseId(verseId);
+            if (governor.code.length == 0) {
+                IBurnable(token).burn(amount);
+                isBurned = true;
+            } else {
+                _transferOut(token, governor, amount);
+            }
+        }
 
-        emit OmnichainAccumulateYields(_memecoin, yieldVault, yield, protocolFee);
-    }
-
-    function setRevenuePool(address _revenuePool) external override onlyOwner {
-        require(_revenuePool != address(0), ZeroInput());
-
-        revenuePool = _revenuePool;
-    }
-
-    function setProtocolFeeRate(uint256 _protocolFeeRate) external override onlyOwner {
-        require(_protocolFeeRate < RATIO, FeeRateOverFlow());
-
-        protocolFeeRate = _protocolFeeRate;
+        emit OmnichainYieldsProcessed(verseId, token, isBurned, amount);
     }
 }

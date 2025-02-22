@@ -10,6 +10,7 @@ import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/Mes
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
+import { IBurnable } from "../common/IBurnable.sol";
 import { TokenHelper } from "../common/TokenHelper.sol";
 import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
 import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
@@ -107,6 +108,14 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         yieldVault = memeverses[memecoinToIds[memecoin]].yieldVault;
     }
 
+    function getGovernorByVerseId(uint256 verseId) external view override returns (address governor) {
+        governor = memeverses[verseId].governor;
+    }
+
+    function getGovernorByMemecoin(address memecoin) external view override returns (address governor) {
+        governor = memeverses[memecoinToIds[memecoin]].governor;
+    }
+
     /**
      * @dev Preview claimable liquidProof of user in stage Locked
      * @param verseId - Memeverse id
@@ -157,15 +166,17 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         
         (uint256 UPTFee, uint256 memecoinFee) = previewGenesisMakerFees(verseId);
         uint32 govEndpointId = IMemeverseRegistrar(memeverseRegistrar).getEndpointId(govChainId);
+        bytes memory yieldDispatcherOptions = OptionsBuilder.newOptions()
+            .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
+            .addExecutorLzComposeOption(0, yieldDispatcherGasLimit, 0);
         if (UPTFee != 0) {
-            bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(oftReceiveGasLimit, 0);
             SendParam memory sendUPTParam = SendParam({
                 dstEid: govEndpointId,
-                to: bytes32(uint256(uint160(verse.governor))),
+                to: bytes32(uint256(uint160(yieldDispatcher))),
                 amountLD: UPTFee,
                 minAmountLD: 0,
-                extraOptions: receiveOptions,
-                composeMsg: abi.encode(),
+                extraOptions: yieldDispatcherOptions,
+                composeMsg: abi.encode(verseId, "UPT"),
                 oftCmd: abi.encode()
             });
             MessagingFee memory govMessagingFee = IOFT(UPT).quoteSend(sendUPTParam, false);
@@ -173,20 +184,17 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         }
 
         if (memecoinFee != 0) {
-            bytes memory yieldDispatcherOptions = OptionsBuilder.newOptions()
-                .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
-                .addExecutorLzComposeOption(0, yieldDispatcherGasLimit, 0);
-            SendParam memory sendYieldParam = SendParam({
+            SendParam memory sendMemecoinParam = SendParam({
                 dstEid: govEndpointId,
                 to: bytes32(uint256(uint160(yieldDispatcher))),
                 amountLD: memecoinFee,
                 minAmountLD: 0,
                 extraOptions: yieldDispatcherOptions,
-                composeMsg: hex"01",
+                composeMsg: abi.encode(verseId, "Memecoin"),
                 oftCmd: abi.encode()
             });
-            MessagingFee memory yieldMessagingFee = IOFT(verse.memecoin).quoteSend(sendYieldParam, false);
-            lzFee += yieldMessagingFee.nativeFee;
+            MessagingFee memory memecoinMessagingFee = IOFT(verse.memecoin).quoteSend(sendMemecoinParam, false);
+            lzFee += memecoinMessagingFee.nativeFee;
         }
     }
 
@@ -431,62 +439,72 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         if (autoBotFee != 0) _transferOut(UPT, botFeeReceiver, autoBotFee);
         
         uint32 govChainId = verse.omnichainIds[0];
+        bool isLocalBurned = false;
         if(govChainId == block.chainid) {
+            address governor = verse.governor;
+            if (governor.code.length == 0) isLocalBurned = true;
             if (govFee != 0) {
-                _transferOut(UPT, verse.governor, govFee);
+                if (isLocalBurned) {
+                    IBurnable(UPT).burn(govFee);
+                } else {
+                    _transferOut(UPT, governor, govFee);
+                }
             }
 
             if (memecoinFee != 0) {
-                address _yieldVault = verse.yieldVault;
-                _safeApproveInf(memecoin, _yieldVault);
-                IMemecoinYieldVault(_yieldVault).accumulateYields(memecoinFee);
+                if (isLocalBurned) {
+                    IBurnable(memecoin).burn(memecoinFee);
+                } else {
+                    address yieldVault = verse.yieldVault;
+                    _safeApproveInf(memecoin, yieldVault);
+                    IMemecoinYieldVault(yieldVault).accumulateYields(memecoinFee);
+                }
             }
         } else {
             uint32 govEndpointId = IMemeverseRegistrar(memeverseRegistrar).getEndpointId(govChainId);
-            // Memecoin DAO Treasury income(UPTFee)
+            
+            bytes memory yieldDispatcherOptions = OptionsBuilder.newOptions()
+                    .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
+                    .addExecutorLzComposeOption(0, yieldDispatcherGasLimit, 0);
+
             SendParam memory sendUPTParam;
             MessagingFee memory govMessagingFee;
             if (govFee != 0) {
-                bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(oftReceiveGasLimit, 0);
                 sendUPTParam = SendParam({
                     dstEid: govEndpointId,
-                    to: bytes32(uint256(uint160(verse.governor))),
+                    to: bytes32(uint256(uint160(yieldDispatcher))),
                     amountLD: govFee,
                     minAmountLD: 0,
-                    extraOptions: receiveOptions,
-                    composeMsg: abi.encode(),
+                    extraOptions: yieldDispatcherOptions,
+                    composeMsg: abi.encode(verseId, "UPT"),
                     oftCmd: abi.encode()
                 });
                 govMessagingFee = IOFT(UPT).quoteSend(sendUPTParam, false);
             }
 
-            // Memecoin Yield Vault income(memecoinFee)
-            SendParam memory sendYieldParam;
-            MessagingFee memory yieldMessagingFee;
+            SendParam memory sendMemecoinParam;
+            MessagingFee memory memecoinMessagingFee;
             if (memecoinFee != 0) {
-                bytes memory yieldDispatcherOptions = OptionsBuilder.newOptions()
-                    .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
-                    .addExecutorLzComposeOption(0, yieldDispatcherGasLimit, 0);
-                sendYieldParam = SendParam({
+                sendMemecoinParam = SendParam({
                     dstEid: govEndpointId,
                     to: bytes32(uint256(uint160(yieldDispatcher))),
                     amountLD: memecoinFee,
                     minAmountLD: 0,
                     extraOptions: yieldDispatcherOptions,
-                    composeMsg: hex"01",
+                    composeMsg: abi.encode(verseId, "Memecoin"),
                     oftCmd: abi.encode()
                 });
-                yieldMessagingFee = IOFT(memecoin).quoteSend(sendYieldParam, false);
+                memecoinMessagingFee = IOFT(memecoin).quoteSend(sendMemecoinParam, false);
             }
 
             uint256 govMessagingNativeFee = govMessagingFee.nativeFee;
-            uint256 yieldMessagingNativeFee = yieldMessagingFee.nativeFee;
-            require(msg.value >= govMessagingNativeFee + yieldMessagingNativeFee, InsufficientLzFee());
+            uint256 memecoinMessagingNativeFee = memecoinMessagingFee.nativeFee;
+            require(msg.value >= govMessagingNativeFee + memecoinMessagingNativeFee, InsufficientLzFee());
             if (govFee != 0) IOFT(UPT).send{value: govMessagingNativeFee}(sendUPTParam, govMessagingFee, msg.sender);
-            if (memecoinFee != 0) IOFT(memecoin).send{value: yieldMessagingNativeFee}(sendYieldParam, yieldMessagingFee, msg.sender);
+            if (memecoinFee != 0) IOFT(memecoin).send{value: memecoinMessagingNativeFee}(sendMemecoinParam, memecoinMessagingFee, msg.sender);
         }
         
-        emit RedeemAndDistributeFees(verseId, botFeeReceiver, govFee, memecoinFee, liquidProofFee, autoBotFee);
+        emit RedeemAndDistributeFees(verseId, botFeeReceiver, isLocalBurned, govFee, memecoinFee, liquidProofFee, autoBotFee);
     }
 
     /**

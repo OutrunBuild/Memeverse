@@ -42,6 +42,10 @@ interface IMemeverseLauncher {
 
     function getYieldVaultByMemecoin(address memecoin) external view returns (address yieldVault);
 
+    function getGovernorByVerseId(uint256 verseId) external view returns (address governor);
+
+    function getGovernorByMemecoin(address memecoin) external view returns (address governor);
+
     function claimableLiquidProof(uint256 verseId) external view returns (uint256 claimableAmount);
 
     function previewGenesisMakerFees(uint256 verseId) external view returns (uint256 UPTFee, uint256 memecoinFee);
@@ -136,6 +140,7 @@ interface IMemeverseLauncher {
     event RedeemAndDistributeFees(
         uint256 indexed verseId,
         address indexed owner,
+        bool indexed isLocalBurned,
         uint256 govFee,
         uint256 memecoinYields,
         uint256 liquidProofFee,

@@ -26,7 +26,7 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
 
     constructor(
         address _owner,
-        address _localLzEndpoint,
+        address _localEndpoint,
         address _memecoinDeployer,
         uint32 _registrationCenterEid,
         uint32 _registrationCenterChainid,
@@ -36,8 +36,9 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         uint64 _cancelRegisterGasLimit
     ) MemeverseRegistrarAbstract(
         _owner,
+        _localEndpoint,
         _memecoinDeployer
-    ) OApp(_localLzEndpoint, _owner) {
+    ) OApp(_localEndpoint, _owner) {
         REGISTRATION_CENTER_EID = _registrationCenterEid;
         REGISTRATION_CENTER_CHAINID = _registrationCenterChainid;
 

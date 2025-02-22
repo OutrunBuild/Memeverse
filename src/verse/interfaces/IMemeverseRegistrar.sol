@@ -41,9 +41,11 @@ interface IMemeverseRegistrar {
      */
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
 
-    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
+    function setLocalEndpoint(address localEndpoint) external;
 
     function setMemecoinDeployer(address memecoinDeployer) external;
+
+    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 
     function setUPTLauncher(UPTLauncherPair[] calldata pairs) external;
 

@@ -3,6 +3,8 @@ pragma solidity ^0.8.28;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
+import { IMessageLibManager, SetConfigParam } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
+import { UlnConfig } from "@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/UlnBase.sol";
 
 import { IMemecoinDeployer } from "../token/deployer/interfaces/IMemecoinDeployer.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
@@ -12,6 +14,7 @@ import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/
  * @title MemeverseRegistrar Abstract Contract
  */ 
 abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
+    address public localEndpoint;
     address public memecoinDeployer;
 
     mapping(uint32 chainId => uint32) public endpointIds;
@@ -23,17 +26,54 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
         _;
     }
 
+    /**
+     * @notice Constructor to initialize the MemeverseRegistrar.
+     * @param _owner The owner of the contract.
+     * @param _memecoinDeployer The memecoin deployer to set.
+     * @param _localEndpoint The local endpoint to set.
+     */
     constructor(
         address _owner,
+        address _localEndpoint,
         address _memecoinDeployer
     ) Ownable(_owner) {
         memecoinDeployer = _memecoinDeployer;
+        localEndpoint = _localEndpoint;
     }
 
+    /**
+     * @notice Get the endpoint id for a given chain id.
+     * @param chainId The chain id to get the endpoint id for.
+     * @return endpointId The endpoint id for the given chain id.
+     */
     function getEndpointId(uint32 chainId) external view override returns (uint32 endpointId) {
         endpointId = endpointIds[chainId];
     }
 
+    /**
+     * @notice Set the local endpoint.
+     * @param _localEndpoint The local endpoint to set.
+     */
+    function setLocalEndpoint(address _localEndpoint) external override onlyOwner {
+        require(_localEndpoint != address(0), ZeroAddress());
+
+        localEndpoint = _localEndpoint;
+    }
+
+    /**
+     * @notice Set the memecoin deployer.
+     * @param _memecoinDeployer The memecoin deployer to set.
+     */
+    function setMemecoinDeployer(address _memecoinDeployer) external override onlyOwner {
+        require(_memecoinDeployer != address(0), ZeroAddress());
+
+        memecoinDeployer = _memecoinDeployer;
+    }
+
+    /**
+     * @notice Set the endpoint ids for the given chain ids.
+     * @param pairs The pairs of chain ids and endpoint ids to set.
+     */
     function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external override onlyOwner {
         for (uint256 i = 0; i < pairs.length; i++) {
             LzEndpointIdPair calldata pair = pairs[i];
@@ -43,12 +83,10 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
         }
     }
 
-    function setMemecoinDeployer(address _memecoinDeployer) external override onlyOwner {
-        require(_memecoinDeployer != address(0), ZeroAddress());
-
-        memecoinDeployer = _memecoinDeployer;
-    }
-
+    /**
+     * @notice Set the UPT launcher for the given pairs.
+     * @param pairs The pairs of UPT and memeverse launcher to set.
+     */
     function setUPTLauncher(UPTLauncherPair[] calldata pairs) external override onlyOwner {
         for (uint256 i = 0; i < pairs.length; i++) {
             UPTLauncherPair calldata pair = pairs[i];
@@ -59,6 +97,11 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
         }
     }
 
+    /**
+     * @notice Register a memeverse.
+     * @param param The memeverse parameters.
+     * @return memecoin The address of the memecoin deployed.
+     */
     function _registerMemeverse(MemeverseParam memory param) internal returns (address memecoin) {
         string memory name = param.name;
         string memory symbol = param.symbol;
@@ -89,10 +132,30 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
             uint32 omnichainId = omnichainIds[i];
             if (omnichainId == currentChainId) continue;
 
-            uint32 endpointId = endpointIds[omnichainId];
-            require(endpointId != 0, InvalidOmnichainId(omnichainId));
+            uint32 remoteEndpointId = endpointIds[omnichainId];
+            require(remoteEndpointId != 0, InvalidOmnichainId(omnichainId));
 
-            IOAppCore(memecoin).setPeer(endpointId, peer);
+            IOAppCore(memecoin).setPeer(remoteEndpointId, peer);
+
+            UlnConfig memory config = UlnConfig({
+                confirmations: 1,
+                requiredDVNCount: 0,
+                optionalDVNCount: 0,
+                optionalDVNThreshold: 0,
+                requiredDVNs: new address[](0),
+                optionalDVNs: new address[](0)
+            });
+            SetConfigParam[] memory params = new SetConfigParam[](1);
+            params[0] = SetConfigParam({
+                eid: remoteEndpointId,
+                configType: 2,
+                config: abi.encode(config)
+            });
+
+            address sendLib = IMessageLibManager(localEndpoint).getSendLibrary(memecoin, remoteEndpointId);
+            (address receiveLib, ) = IMessageLibManager(localEndpoint).getReceiveLibrary(memecoin, remoteEndpointId);
+            IMessageLibManager(localEndpoint).setConfig(memecoin, sendLib, params);
+            IMessageLibManager(localEndpoint).setConfig(memecoin, receiveLib, params);
         }
     }
 }

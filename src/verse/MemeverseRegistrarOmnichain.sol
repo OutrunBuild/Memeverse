@@ -19,21 +19,28 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
     uint32 public immutable REGISTRATION_CENTER_EID;
     uint32 public immutable REGISTRATION_CENTER_CHAINID;
     
-    uint64 public baseRegisterGasLimit;
-    uint64 public localRegisterGasLimit;
-    uint64 public omnichainRegisterGasLimit;
-    uint64 public cancelRegisterGasLimit;
+    RegistrationGasLimit public registrationGasLimit;
 
+    /**
+     * @dev Constructor
+     * @param _owner - The owner of the contract
+     * @param _localEndpoint - The local endpoint
+     * @param _memecoinDeployer - The memecoin deployer
+     * @param _registrationCenterEid - The registration center eid
+     * @param _registrationCenterChainid - The registration center chainid
+     * @param _baseRegistrationGasLimit - The base registration gas limit
+     * @param _localRegistrationGasLimit - The local registration gas limit
+     * @param _omnichainRegistrationGasLimit - The omnichain registration gas limit
+     */
     constructor(
         address _owner,
         address _localEndpoint,
         address _memecoinDeployer,
         uint32 _registrationCenterEid,
         uint32 _registrationCenterChainid,
-        uint64 _baseRegisterGasLimit,
-        uint64 _localRegisterGasLimit,
-        uint64 _omnichainRegisterGasLimit,
-        uint64 _cancelRegisterGasLimit
+        uint80 _baseRegistrationGasLimit,
+        uint80 _localRegistrationGasLimit,
+        uint80 _omnichainRegistrationGasLimit
     ) MemeverseRegistrarAbstract(
         _owner,
         _localEndpoint,
@@ -42,10 +49,11 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         REGISTRATION_CENTER_EID = _registrationCenterEid;
         REGISTRATION_CENTER_CHAINID = _registrationCenterChainid;
 
-        baseRegisterGasLimit = _baseRegisterGasLimit;
-        localRegisterGasLimit = _localRegisterGasLimit;
-        omnichainRegisterGasLimit = _omnichainRegisterGasLimit;
-        cancelRegisterGasLimit = _cancelRegisterGasLimit;
+        registrationGasLimit = RegistrationGasLimit({
+            baseRegistrationGasLimit: _baseRegistrationGasLimit,
+            localRegistrationGasLimit: _localRegistrationGasLimit,
+            omnichainRegistrationGasLimit: _omnichainRegistrationGasLimit
+        });
     }
 
     /**
@@ -61,12 +69,13 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
     ) external view override returns (uint256 lzFee) {
         bytes memory message = abi.encode(0, param);
         uint256 length = param.omnichainIds.length;
-        uint64 gasLimit = baseRegisterGasLimit;
+        RegistrationGasLimit memory _registrationGasLimit = registrationGasLimit;
+        uint80 gasLimit = _registrationGasLimit.baseRegistrationGasLimit;
         for (uint256 i = 0; i < length; i++) {
             if (param.omnichainIds[i] == REGISTRATION_CENTER_CHAINID) {
-                gasLimit += localRegisterGasLimit;
+                gasLimit += _registrationGasLimit.localRegistrationGasLimit;
             } else {
-                gasLimit += omnichainRegisterGasLimit;
+                gasLimit += _registrationGasLimit.omnichainRegistrationGasLimit;
             }
         }
         
@@ -85,12 +94,13 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable override {
         bytes memory message = abi.encode(param);
         uint256 length = param.omnichainIds.length;
-        uint64 gasLimit = baseRegisterGasLimit;
+        RegistrationGasLimit memory _registrationGasLimit = registrationGasLimit;
+        uint80 gasLimit = _registrationGasLimit.baseRegistrationGasLimit;
         for (uint256 i = 0; i < length; i++) {
             if (param.omnichainIds[i] == REGISTRATION_CENTER_CHAINID) {
-                gasLimit += localRegisterGasLimit;
+                gasLimit += _registrationGasLimit.localRegistrationGasLimit;
             } else {
-                gasLimit += omnichainRegisterGasLimit;
+                gasLimit += _registrationGasLimit.omnichainRegistrationGasLimit;
             }
         }
 
@@ -101,20 +111,12 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         _lzSend(REGISTRATION_CENTER_EID, message, options, MessagingFee({nativeFee: msg.value, lzTokenFee: 0}), msg.sender);
     }
 
-    function setBaseRegisterGasLimit(uint64 _baseRegisterGasLimit) external override onlyOwner {
-        baseRegisterGasLimit = _baseRegisterGasLimit;
-    }
-
-    function setLocalRegisterGasLimit(uint64 _localRegisterGasLimit) external override onlyOwner {
-        localRegisterGasLimit = _localRegisterGasLimit;
-    }
-    
-    function setOmnichainRegisterGasLimit(uint64 _omnichainRegisterGasLimit) external override onlyOwner {
-        omnichainRegisterGasLimit = _omnichainRegisterGasLimit;
-    }
-
-    function setCancelRegisterGasLimit(uint64 _cancelRegisterGasLimit) external override onlyOwner {
-        cancelRegisterGasLimit = _cancelRegisterGasLimit;
+    /**
+     * @dev Set the registration gas limit
+     * @param _registrationGasLimit - The registration gas limit
+     */
+    function setRegistrationGasLimit(RegistrationGasLimit calldata _registrationGasLimit) external override onlyOwner {
+        registrationGasLimit = _registrationGasLimit;
     }
 
     /**

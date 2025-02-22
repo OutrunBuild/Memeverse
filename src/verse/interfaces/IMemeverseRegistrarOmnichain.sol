@@ -7,13 +7,13 @@ import { IMemeverseRegistrationCenter } from "../../verse/interfaces/IMemeverseR
  * @dev Interface for the Memeverse Registrar on Omnichain.
  */
 interface IMemeverseRegistrarOmnichain {
-    function setBaseRegisterGasLimit(uint64 baseRegisterGasLimit) external;
+    struct RegistrationGasLimit {
+        uint80 baseRegistrationGasLimit;
+        uint80 localRegistrationGasLimit;
+        uint80 omnichainRegistrationGasLimit;
+    }
 
-    function setLocalRegisterGasLimit(uint64 localRegisterGasLimit) external;
-
-    function setOmnichainRegisterGasLimit(uint64 omnichainRegisterGasLimit) external;
-
-    function setCancelRegisterGasLimit(uint64 cancelRegisterGasLimit) external;
+    function setRegistrationGasLimit(RegistrationGasLimit calldata registrationGasLimit) external;
 
     error InsufficientLzFee();
 }

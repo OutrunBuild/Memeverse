@@ -5,5 +5,9 @@ pragma solidity ^0.8.26;
   * @title Burnable interface
   */
 interface IBurnable {
-	function burn(uint256 amount) external;
+    /**
+     * @notice Burn the token.
+     * @param amount - The amount of the token to burn.
+     */
+	  function burn(uint256 amount) external;
 }

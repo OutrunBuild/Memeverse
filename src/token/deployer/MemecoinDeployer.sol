@@ -17,6 +17,13 @@ contract MemecoinDeployer is IMemecoinDeployer, Ownable {
     address public memeverseRegistrar;
     address public implementation;
 
+    /**
+     * @notice Constructor of MemecoinDeployer.
+     * @param _owner - The owner of the contract.
+     * @param _localLzEndpoint - The local LayerZero endpoint.
+     * @param _memeverseRegistrar - The memeverse registrar.
+     * @param _implementation - The implementation of the memecoin.
+     */
     constructor(
         address _owner, 
         address _localLzEndpoint,
@@ -30,6 +37,12 @@ contract MemecoinDeployer is IMemecoinDeployer, Ownable {
 
     /**
      * @dev Deploy Memecoin on the current chain
+     * @param name - The name of the memecoin.
+     * @param symbol - The symbol of the memecoin.
+     * @param uniqueId - The unique id of the memecoin.
+     * @param creator - The creator of the memecoin.
+     * @param memeverseLauncher - The memeverse launcher.
+     * @return memecoin - The address of the memecoin.
      */ 
     function deployMemecoin(
         string calldata name, 
@@ -47,12 +60,20 @@ contract MemecoinDeployer is IMemecoinDeployer, Ownable {
         emit DeployMemecoin(memecoin, creator);
     }
 
+    /**
+     * @dev Set the memeverse registrar.
+     * @param _memeverseRegistrar - The memeverse registrar.
+     */
     function setMemeverseRegistrar(address _memeverseRegistrar) external override onlyOwner {
         require(_memeverseRegistrar != address(0), ZeroAddress());
 
         memeverseRegistrar = _memeverseRegistrar;
     }
 
+    /**
+     * @dev Set the memecoin implementation.
+     * @param _implementation - The memecoin implementation.
+     */
     function setImplementation(address _implementation) external override onlyOwner {
         require(_implementation != address(0), ZeroAddress());
 

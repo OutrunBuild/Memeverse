@@ -33,6 +33,15 @@ contract MemecoinDaoGovernor is
         _disableInitializers();
     }
 
+    /**
+     * @notice Initialize the governor.
+     * @param _name - The name of the governor.
+     * @param _token - The vote token of the governor.
+     * @param _votingDelay - The voting delay.
+     * @param _votingPeriod - The voting period.
+     * @param _proposalThreshold - The proposal threshold.
+     * @param _quorumNumerator - The quorum numerator.
+     */
     function initialize(
         string memory _name, 
         IVotes _token,

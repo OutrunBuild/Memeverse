@@ -19,6 +19,14 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
         _;
     }
 
+    /**
+     * @notice Initialize the memeverse proof.
+     * @param name_ - The name of the memeverse proof.
+     * @param symbol_ - The symbol of the memeverse proof.
+     * @param decimals_ - The decimals of the memeverse proof.
+     * @param _memecoin - The address of the memecoin.
+     * @param _memeverseLauncher - The address of the memeverse launcher.
+     */
     function initialize(
         string memory name_, 
         string memory symbol_, 
@@ -40,10 +48,22 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
         return "mode=timestamp";
     }
 
+    /**
+     * @notice Mint the memeverse proof.
+     * @param account - The address of the account.
+     * @param amount - The amount of the memeverse proof.
+     * @notice Only the memeverse launcher can mint the memeverse proof.
+     */
     function mint(address account, uint256 amount) external override onlyMemeverseLauncher {
         _mint(account, amount);
     }
 
+    /**
+     * @notice Burn the memeverse proof.
+     * @param account - The address of the account.
+     * @param amount - The amount of the memeverse proof.
+     * @notice Only the memeverse launcher can burn the memeverse proof.
+     */
     function burn(address account, uint256 amount) external onlyMemeverseLauncher {
         require(balanceOf(account) >= amount, InsufficientBalance());
         _burn(account, amount);

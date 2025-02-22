@@ -7,8 +7,20 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @title Memeverse Liquidity proof Token Interface
  */
 interface IMemeLiquidProof is IERC20 {
+    /**
+     * @notice Get the memeverse launcher.
+     * @return memeverseLauncher - The address of the memeverse launcher.
+     */
     function memeverseLauncher() external view returns (address);
 
+    /**
+     * @notice Initialize the memeverse proof.
+     * @param _name - The name of the memeverse proof.
+     * @param _symbol - The symbol of the memeverse proof.
+     * @param _decimals - The decimals of the memeverse proof.
+     * @param _memecoin - The address of the memecoin.
+     * @param _memeverseLauncher - The address of the memeverse launcher.
+     */
     function initialize(
         string memory _name, 
         string memory _symbol, 
@@ -17,11 +29,27 @@ interface IMemeLiquidProof is IERC20 {
         address _memeverseLauncher
     ) external;
 
+    /**
+     * @notice Mint the memeverse proof.
+     * @param account - The address of the account.
+     * @param amount - The amount of the memeverse proof.
+     */
     function mint(address account, uint256 amount) external;
 
+    /**
+     * @notice Burn the memeverse proof.
+     * @param account - The address of the account.
+     * @param amount - The amount of the memeverse proof.
+     */
     function burn(address account, uint256 amount) external;
 
+    /**
+     * @notice Permission denied.
+     */
     error PermissionDenied();
 
+    /**
+     * @notice Insufficient balance.
+     */
     error InsufficientBalance();
 }

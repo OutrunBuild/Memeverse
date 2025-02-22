@@ -88,30 +88,65 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         _safeApproveInf(_UPT, _outrunAMMRouter);
     }
 
+    /**
+     * @notice Get the verse id by memecoin.
+     * @param memecoin -The address of the memecoin.
+     * @return verseId The verse id.
+     */
     function getVerseIdByMemecoin(address memecoin) external view override returns (uint256 verseId) {
         verseId = memecoinToIds[memecoin];
     }
 
+    /**
+     * @notice Get the memeverse by verse id.
+     * @param verseId - The verse id.
+     * @return verse - The memeverse.
+     */
     function getMemeverseByVerseId(uint256 verseId) external view override returns (Memeverse memory verse) {
         verse = memeverses[verseId];
     }
 
+    /**
+     * @notice Get the memeverse by memecoin.
+     * @param memecoin - The address of the memecoin.
+     * @return verse - The memeverse.
+     */
     function getMemeverseByMemecoin(address memecoin) external view override returns (Memeverse memory verse) {
         verse = memeverses[memecoinToIds[memecoin]];
     }
 
+    /**
+     * @notice Get the yield vault by verse id.
+     * @param verseId - The verse id.
+     * @return yieldVault - The yield vault.
+     */
     function getYieldVaultByVerseId(uint256 verseId) external view override returns (address yieldVault) {
         yieldVault = memeverses[verseId].yieldVault;
     }
 
+    /**
+     * @notice Get the yield vault by memecoin.
+     * @param memecoin - The address of the memecoin.
+     * @return yieldVault - The yield vault.
+     */
     function getYieldVaultByMemecoin(address memecoin) external view override returns (address yieldVault) {
         yieldVault = memeverses[memecoinToIds[memecoin]].yieldVault;
     }
 
+    /**
+     * @notice Get the governor by verse id.
+     * @param verseId - The verse id.
+     * @return governor - The governor.
+     */
     function getGovernorByVerseId(uint256 verseId) external view override returns (address governor) {
         governor = memeverses[verseId].governor;
     }
 
+    /**
+     * @notice Get the governor by memecoin.
+     * @param memecoin - The address of the memecoin.
+     * @return governor - The governor.
+     */
     function getGovernorByMemecoin(address memecoin) external view override returns (address governor) {
         governor = memeverses[memecoinToIds[memecoin]].governor;
     }
@@ -119,6 +154,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     /**
      * @dev Preview claimable liquidProof of user in stage Locked
      * @param verseId - Memeverse id
+     * @return claimableAmount - The claimable amount.
      */
     function claimableLiquidProof(uint256 verseId) public view override returns (uint256 claimableAmount) {
         Memeverse storage verse = memeverses[verseId];
@@ -134,6 +170,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     /**
      * @dev Preview Genesis liquidity market maker fees for DAO Treasury (UPT) and Yield Vault(Memecoin)
      * @param verseId - Memeverse id
+     * @return UPTFee - The UPT fee.
+     * @return memecoinFee - The memecoin fee.
      */
     function previewGenesisMakerFees(uint256 verseId) public view override returns (uint256 UPTFee, uint256 memecoinFee) {
         Memeverse storage verse = memeverses[verseId];
@@ -156,6 +194,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     /**
      * @dev Quote the LZ fee for the redemption and distribution of fees
      * @param verseId - Memeverse id
+     * @return lzFee - The LZ fee.
      * @notice The LZ fee is only charged when the governance chain is not the same as the current chain,
      *         and msg.value needs to be greater than the quoted lzFee for the redeemAndDistributeFees transaction.
      */
@@ -235,6 +274,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     /**
      * @dev Adaptively change the Memeverse stage
      * @param verseId - Memeverse id
+     * @return currentStage - The current stage.
      */
     function changeStage(uint256 verseId) external override returns (Stage currentStage) {
         uint256 currentTime = block.timestamp;
@@ -404,6 +444,10 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @dev Redeem transaction fees and distribute them to the owner(UPT) and vault(Memecoin)
      * @param verseId - Memeverse id
      * @param botFeeReceiver - Address of AutoBotFee receiver
+     * @return govFee - The UPT fee.
+     * @return memecoinFee - The memecoin fee.
+     * @return liquidProofFee - The liquidProof fee.
+     * @return autoBotFee - The AutoBotFee.
      * @notice Anyone who calls this method will be rewarded with AutoBotFee.
      */
     function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable override returns (uint256 govFee, uint256 memecoinFee, uint256 liquidProofFee, uint256 autoBotFee) {

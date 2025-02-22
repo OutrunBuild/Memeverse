@@ -54,7 +54,8 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /**
-     * @dev Accumulate yields
+     * @notice Accumulate yields
+     * @param amount - The amount of yields to accumulate
      */
     function accumulateYields(uint256 amount) external {
         address msgSender = msg.sender;

@@ -35,6 +35,12 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
     mapping(uint32 chainId => uint32) public endpointIds;
 
+    /**
+     * @notice Constructor
+     * @param _owner - The owner of the contract
+     * @param _lzEndpoint - The lz endpoint
+     * @param _memeverseRegistrar - The memeverse registrar
+     */
     constructor(
         address _owner, 
         address _lzEndpoint, 
@@ -44,7 +50,9 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     }
 
     /**
-     * @dev Preview if the symbol can be registered
+     * @notice Preview if the symbol can be registered
+     * @param symbol - The symbol to preview
+     * @return true if the symbol can be registered, false otherwise
      */
     function previewRegistration(string calldata symbol) external view override returns (bool) {
         if (bytes(symbol).length >= 32) return false;
@@ -53,7 +61,12 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     }
 
     /**
-     * @dev Calculate the fee quotation for cross-chain transactions
+     * @notice Calculate the fee quotation for cross-chain transactions
+     * @param omnichainIds - The omnichain ids
+     * @param message - The message to send
+     * @return totalFee - The total cross-chain fee
+     * @return fees - The cross-chain fee for each omnichain id
+     * @return eids - The lz endpoint id for each omnichain id
      */
     function quoteSend(
         uint32[] memory omnichainIds, 
@@ -89,7 +102,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     }
 
     /**
-     * @dev Registration memeverse
+     * @notice Registration memeverse
+     * @param param - The registration parameter
      */
     function registration(RegistrationParam memory param) public payable override {
         _registrationParamValidation(param);
@@ -130,7 +144,12 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     }
 
     /**
-     * @dev lzSend external call. Only called by self.
+     * @notice lzSend external call. Only called by self.
+     * @param dstEid - The destination eid
+     * @param message - The message
+     * @param options - The options
+     * @param fee - The cross-chain fee
+     * @param refundAddress - The refund address
      */
     function lzSend(
         uint32 dstEid,
@@ -144,6 +163,11 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         _lzSend(dstEid, message, options, fee, refundAddress);
     }
 
+    /**
+     * @notice Omnichain send
+     * @param omnichainIds - The omnichain ids
+     * @param param - The registration parameter
+     */
     function _omnichainSend(uint32[] memory omnichainIds, IMemeverseRegistrar.MemeverseParam memory param) internal {
         bytes memory message = abi.encode(param);
         (uint256 totalFee, uint256[] memory fees, uint32[] memory eids) = quoteSend(omnichainIds, message);
@@ -170,6 +194,10 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         }
     }
 
+    /**
+     * @notice Registration parameter validation
+     * @param param - The registration parameter
+     */
     function _registrationParamValidation(RegistrationParam memory param) internal view {
         require(param.lockupDays >= minLockupDays && param.lockupDays <= maxLockupDays, InvalidLockupDays());
         require(param.durationDays >= minDurationDays && param.durationDays <= maxDurationDays, InvalidDurationDays());
@@ -182,7 +210,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     }
 
     /**
-     * @dev Internal function to implement lzReceive logic
+     * @notice Internal function to implement lzReceive logic
      */
     function _lzReceive(
         Origin calldata _origin,
@@ -232,7 +260,11 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         minLockupDays = _minLockupDays;
         maxLockupDays = _maxLockupDays;
     }
-    
+
+    /**
+     * @dev Set the lz endpoint ids
+     * @param pairs - The lz endpoint id pairs
+     */
     function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external override onlyOwner {
         for (uint256 i = 0; i < pairs.length; i++) {
             LzEndpointIdPair calldata pair = pairs[i];
@@ -242,6 +274,10 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         }
     }
 
+    /**
+     * @dev Set the register gas limit
+     * @param _registerGasLimit - The register gas limit
+     */
     function setRegisterGasLimit(uint256 _registerGasLimit) external override onlyOwner {
         require(_registerGasLimit > 0, ZeroInput());
 

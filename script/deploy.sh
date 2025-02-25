@@ -41,3 +41,10 @@ forge script TestScript.s.sol:TestScript --rpc-url scroll_sepolia \
     --via-ir \
     --broadcast --ffi -vvvv \
     --verify
+
+# forge script TestScript.s.sol:TestScript --rpc-url base_sepolia \
+#     --with-gas-price 1200000 \
+#     --optimize --optimizer-runs 10000 \
+#     --via-ir \
+#     --broadcast --ffi -vvvv \
+#     --verify

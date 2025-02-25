@@ -35,9 +35,9 @@ contract TestScript is BaseScript {
 
     function _registerTest() internal {
         IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "aasa";
-        param.symbol = "aasa";
-        param.uri = "aasa";
+        param.name = "AAAA";
+        param.symbol = "AAAA";
+        param.uri = "AAAA";
         param.durationDays = 1;
         param.lockupDays = 1;
         uint32[] memory ids = new uint32[](2);
@@ -50,7 +50,7 @@ contract TestScript is BaseScript {
         // uint256 totalFee = IMemeverseRegistrar(MEMEVERSE_REGISTRAR).quoteRegister(param, 0);
         // console.log("totalFee=", totalFee);
         
-        uint256 totalFee = 0.00033 ether;
+        uint256 totalFee = 0.0004 ether;
 
         // IMemeverseRegistrar(MEMEVERSE_REGISTRAR).registerAtCenter{value: totalFee}(param, uint128(totalFee));
 

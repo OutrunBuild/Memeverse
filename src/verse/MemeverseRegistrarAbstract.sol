@@ -3,8 +3,6 @@ pragma solidity ^0.8.28;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
-import { IMessageLibManager, SetConfigParam } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
-import { UlnConfig } from "@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/UlnBase.sol";
 
 import { IMemecoinDeployer } from "../token/deployer/interfaces/IMemecoinDeployer.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
@@ -124,7 +122,6 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
      * @dev Memecoin Layerzero configure. See: https://docs.layerzero.network/v2/developers/evm/create-lz-oapp/configuring-pathways
      */
     function _lzConfigure(address memecoin, uint32[] memory omnichainIds) internal {
-        bytes32 peer = bytes32(uint256(uint160(memecoin)));
         uint32 currentChainId = uint32(block.chainid);
 
         // Use default config
@@ -135,27 +132,7 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
             uint32 remoteEndpointId = endpointIds[omnichainId];
             require(remoteEndpointId != 0, InvalidOmnichainId(omnichainId));
 
-            IOAppCore(memecoin).setPeer(remoteEndpointId, peer);
-
-            UlnConfig memory config = UlnConfig({
-                confirmations: 1,
-                requiredDVNCount: 0,
-                optionalDVNCount: 0,
-                optionalDVNThreshold: 0,
-                requiredDVNs: new address[](0),
-                optionalDVNs: new address[](0)
-            });
-            SetConfigParam[] memory params = new SetConfigParam[](1);
-            params[0] = SetConfigParam({
-                eid: remoteEndpointId,
-                configType: 2,
-                config: abi.encode(config)
-            });
-
-            address sendLib = IMessageLibManager(localEndpoint).getSendLibrary(memecoin, remoteEndpointId);
-            (address receiveLib, ) = IMessageLibManager(localEndpoint).getReceiveLibrary(memecoin, remoteEndpointId);
-            IMessageLibManager(localEndpoint).setConfig(memecoin, sendLib, params);
-            IMessageLibManager(localEndpoint).setConfig(memecoin, receiveLib, params);
+            IOAppCore(memecoin).setPeer(remoteEndpointId, bytes32(uint256(uint160(memecoin))));
         }
     }
 }

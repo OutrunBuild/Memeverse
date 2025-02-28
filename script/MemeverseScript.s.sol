@@ -73,24 +73,24 @@ contract MemeverseScript is BaseScript {
 
         // _getDeployedImplementation(6);
 
-        // _getDeployedRegistrationCenter(28);
+        // _getDeployedRegistrationCenter(29);
 
-        // _getDeployedMemecoinDeployer(28);
-        // _getDeployedMemeverseRegistrar(28);
+        // _getDeployedMemecoinDeployer(29);
+        // _getDeployedMemeverseRegistrar(29);
 
-        // _getDeployedUETHMemeverseLauncher(28);
-        // _getDeployedUETHYieldDispatcher(28);
+        // _getDeployedUETHMemeverseLauncher(29);
+        // _getDeployedUETHYieldDispatcher(29);
 
 
         // _deployImplementation(6);
 
-        // _deployRegistrationCenter(28);
+        // _deployRegistrationCenter(29);
 
-        _deployMemecoinDeployer(28);
-        _deployMemeverseRegistrar(28);
+        _deployMemecoinDeployer(29);
+        _deployMemeverseRegistrar(29);
 
-        _deployUETHMemeverseLauncher(28);
-        _deployUETHYieldDispatcher(28);
+        _deployUETHMemeverseLauncher(29);
+        _deployUETHYieldDispatcher(29);
     }
 
     function _getDeployedImplementation(uint256 nonce) internal view {
@@ -270,7 +270,7 @@ contract MemeverseScript is BaseScript {
                 MEMECOIN_DEPLOYER,
                 uint32(vm.envUint("BSC_TESTNET_EID")),
                 uint32(vm.envUint("BSC_TESTNET_CHAINID")),
-                100000,
+                150000,
                 500000,
                 250000
             );

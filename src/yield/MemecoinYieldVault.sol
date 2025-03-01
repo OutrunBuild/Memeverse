@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
 
+import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
 import { IMemecoinYieldVault } from "./interfaces/IMemecoinYieldVault.sol";
 import { OutrunSafeERC20 , IERC20} from "../libraries/OutrunSafeERC20.sol";
 import { OutrunERC20PermitInit } from "../common/OutrunERC20PermitInit.sol";
@@ -61,11 +62,16 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         address msgSender = msg.sender;
         IERC20(asset).safeTransferFrom(msgSender, address(this), amount);
 
-        unchecked {
-            totalAssets += amount;
-        }
+        // If the vault is empty, burn the yield
+        if (totalSupply() == 0) {
+            IMemecoin(asset).burn(amount);
+        } else {
+            unchecked {
+                totalAssets += amount;
+            }
 
-        emit AccumulateYields(msgSender, amount);
+            emit AccumulateYields(msgSender, amount);
+        }
     }
 
     /**

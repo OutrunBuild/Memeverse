@@ -79,6 +79,9 @@ interface IMemeverseLauncher {
         uint32[] calldata omnichainIds
     ) external;
 
+    function removeGasDust() external;
+
+
     function setMemeverseRegistrar(address _registrar) external;
 
     function setRevenuePool(address revenuePool) external;

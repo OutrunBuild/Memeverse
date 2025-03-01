@@ -18,7 +18,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     using OptionsBuilder for bytes;
 
     // uint256 public constant DAY = 24 * 3600;
-    uint256 public constant DAY = 180;  // 180 seconds for testing
+    uint256 public constant DAY = 180;  // OutrunTODO 180 seconds for testing
     address public immutable MEMEVERSE_REGISTRAR;
 
     uint128 public minDurationDays;
@@ -141,6 +141,13 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         _omnichainSend(param.omnichainIds,  memeverseParam);
 
         emit Registration(uniqueId, param);
+    }
+
+    /**
+     * @dev Remove gas dust from the contract
+     */
+    function removeGasDust(address receiver) external override onlyOwner {
+        _transferOut(NATIVE, receiver, address(this).balance);
     }
 
     /**

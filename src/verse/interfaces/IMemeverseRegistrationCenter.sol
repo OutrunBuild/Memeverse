@@ -45,6 +45,8 @@ interface IMemeverseRegistrationCenter {
 
     function registration(RegistrationParam calldata param) external payable;
 
+    function removeGasDust(address receiver) external;
+
     function lzSend(
         uint32 dstEid,
         bytes memory message,

@@ -597,6 +597,13 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     }
 
     /**
+     * @dev Remove gas dust from the contract
+     */
+    function removeGasDust() external override {
+        _transferOut(NATIVE, revenuePool, address(this).balance);
+    }
+
+    /**
      * @dev Set memeverse registrar
      * @param _registrar - Memeverse registrar address
      */

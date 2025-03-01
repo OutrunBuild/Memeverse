@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
+import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
+import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
-import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 
 import "./BaseScript.s.sol";
+import { IMemecoinDaoGovernor } from "../src/governance/interfaces/IMemecoinDaoGovernor.sol";
 import { IMemeverseRegistrarAtLocal } from "../src/verse/interfaces/IMemeverseRegistrarAtLocal.sol";
 import { IMemeverseRegistrarOmnichain } from "../src/verse/interfaces/IMemeverseRegistrarOmnichain.sol";
 import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "../src/verse/interfaces/IMemeverseRegistrar.sol";
-import { IMemecoinDaoGovernor } from "../src/governance/interfaces/IMemecoinDaoGovernor.sol";
-import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
 contract TestScript is BaseScript {
     using OptionsBuilder for bytes;
@@ -31,18 +31,19 @@ contract TestScript is BaseScript {
 
         _registerTest();
         // _memecoinDaoGovernorData();
+        // _testQuoteDistributionLzFee();
     }
 
     function _registerTest() internal {
         IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "AAAA";
-        param.symbol = "AAAA";
-        param.uri = "AAAA";
+        param.name = "DDD";
+        param.symbol = "DDD";
+        param.uri = "DDD";
         param.durationDays = 1;
         param.lockupDays = 1;
         uint32[] memory ids = new uint32[](2);
-        ids[0] = 97;
-        ids[1] = 84532;
+        ids[0] = 84532;
+        ids[1] = 97;
         param.omnichainIds = ids;
         param.creator = owner;
         param.upt = UETH;

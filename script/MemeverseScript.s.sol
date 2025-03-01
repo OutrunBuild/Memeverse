@@ -73,24 +73,24 @@ contract MemeverseScript is BaseScript {
 
         // _getDeployedImplementation(6);
 
-        // _getDeployedRegistrationCenter(29);
+        // _getDeployedRegistrationCenter(30);
 
-        // _getDeployedMemecoinDeployer(29);
-        // _getDeployedMemeverseRegistrar(29);
+        // _getDeployedMemecoinDeployer(30);
+        // _getDeployedMemeverseRegistrar(30);
 
-        // _getDeployedUETHMemeverseLauncher(29);
-        // _getDeployedUETHYieldDispatcher(29);
+        // _getDeployedUETHMemeverseLauncher(30);
+        // _getDeployedUETHYieldDispatcher(30);
 
 
         // _deployImplementation(6);
 
-        // _deployRegistrationCenter(29);
+        // _deployRegistrationCenter(30);
 
-        _deployMemecoinDeployer(29);
-        _deployMemeverseRegistrar(29);
+        _deployMemecoinDeployer(30);
+        _deployMemeverseRegistrar(30);
 
-        _deployUETHMemeverseLauncher(29);
-        _deployUETHYieldDispatcher(29);
+        _deployUETHMemeverseLauncher(30);
+        _deployUETHYieldDispatcher(30);
     }
 
     function _getDeployedImplementation(uint256 nonce) internal view {
@@ -342,8 +342,8 @@ contract MemeverseScript is BaseScript {
             1e19,
             1000000,
             10,
-            85000,
-            1200000
+            115000,
+            135000
         );
         bytes memory creationCode = abi.encodePacked(
             type(MemeverseLauncher).creationCode,

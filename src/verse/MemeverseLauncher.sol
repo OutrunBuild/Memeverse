@@ -152,14 +152,14 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
     }
 
     /**
-     * @dev Preview claimable liquidProof of user in stage Locked
+     * @dev Preview claimable liquidProof of user after Genesis Stage 
      * @param verseId - Memeverse id
      * @return claimableAmount - The claimable amount.
      */
     function claimableLiquidProof(uint256 verseId) public view override returns (uint256 claimableAmount) {
         Memeverse storage verse = memeverses[verseId];
         Stage currentStage = verse.currentStage;
-        require(currentStage == Stage.Locked, NotLockedStage(currentStage));
+        require(currentStage >= Stage.Locked, NotLockedStage(currentStage));
 
         uint256 totalFunds = genesisFunds[verseId].totalMemecoinFunds + genesisFunds[verseId].totalLiquidProofFunds;
         uint256 userFunds = userTotalFunds[verseId][msg.sender];

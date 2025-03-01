@@ -508,8 +508,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
             uint32 govEndpointId = IMemeverseRegistrar(memeverseRegistrar).getEndpointId(govChainId);
             
             bytes memory yieldDispatcherOptions = OptionsBuilder.newOptions()
-                    .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
-                    .addExecutorLzComposeOption(0, yieldDispatcherGasLimit, 0);
+                .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
+                .addExecutorLzComposeOption(0, yieldDispatcherGasLimit, 0);
 
             SendParam memory sendUPTParam;
             MessagingFee memory govMessagingFee;

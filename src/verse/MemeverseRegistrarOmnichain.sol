@@ -117,6 +117,8 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
      */
     function setRegistrationGasLimit(RegistrationGasLimit calldata _registrationGasLimit) external override onlyOwner {
         registrationGasLimit = _registrationGasLimit;
+
+        emit SetRegistrationGasLimit(_registrationGasLimit);
     }
 
     /**

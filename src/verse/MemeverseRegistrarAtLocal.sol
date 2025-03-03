@@ -80,5 +80,7 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
         require(_registrationCenter != address(0), ZeroAddress());
         
         registrationCenter = _registrationCenter;
+
+        emit SetRegistrationCenter(_registrationCenter);
     }
 }

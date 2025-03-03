@@ -78,9 +78,8 @@ contract Memecoin is IMemecoin, OutrunOFTInit, IERC3156FlashLender {
      * @return The fees applied to the corresponding flash loan.
      */
     function flashFee(address token, uint256 value) public view virtual returns (uint256) {
-        if (token != address(this)) {
-            revert ERC3156UnsupportedToken(token);
-        }
+        require(token == address(this), ERC3156UnsupportedToken(token));
+
         return value * flashloanFeeRate / 10000;
     }
 
@@ -104,20 +103,23 @@ contract Memecoin is IMemecoin, OutrunOFTInit, IERC3156FlashLender {
         require(value <= maxLoan, ERC3156ExceededMaxLoan(maxLoan));
 
         uint256 fee = flashFee(token, value);
-        _mint(address(receiver), value);
+        address receiverAddress = address(receiver);
+        _mint(receiverAddress, value);
         require(
             receiver.onFlashLoan(msg.sender, token, value, fee, data) == RETURN_VALUE, 
-            ERC3156InvalidReceiver(address(receiver))
+            ERC3156InvalidReceiver(receiverAddress)
         );
         
         address yieldVault = IMemeverseLauncher(memeverseLauncher).getYieldVaultByMemecoin(address(this));
         if (fee == 0 || yieldVault == address(0)) {
-            _burn(address(receiver), value + fee);
+            _burn(receiverAddress, value + fee);
         } else {
-            _burn(address(receiver), value);
-            _transfer(address(receiver), address(this), fee);
+            _burn(receiverAddress, value);
+            _transfer(receiverAddress, address(this), fee);
             IMemecoinYieldVault(yieldVault).accumulateYields(fee);
         }
+
+        emit MemecoinFlashLoan(receiverAddress, value, fee, data);
         return true;
     }
 }

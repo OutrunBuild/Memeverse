@@ -16,4 +16,6 @@ interface IMemeverseRegistrarOmnichain {
     function setRegistrationGasLimit(RegistrationGasLimit calldata registrationGasLimit) external;
 
     error InsufficientLzFee();
+
+    event SetRegistrationGasLimit(RegistrationGasLimit registrationGasLimit);
 }

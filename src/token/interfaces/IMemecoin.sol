@@ -53,4 +53,6 @@ interface IMemecoin is IERC20 {
      * @notice Insufficient balance.
      */
     error InsufficientBalance();
+
+    event MemecoinFlashLoan(address indexed receiver, uint256 value, uint256 fee, bytes data);
 }

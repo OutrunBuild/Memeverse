@@ -598,7 +598,10 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @dev Remove gas dust from the contract
      */
     function removeGasDust(address receiver) external override {
-        _transferOut(NATIVE, receiver, address(this).balance);
+        uint256 dust = address(this).balance;
+        _transferOut(NATIVE, receiver, dust);
+
+        emit RemoveGasDust(receiver, dust);
     }
 
     function pause() external onlyOwner {
@@ -617,6 +620,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(_registrar != address(0), ZeroInput());
 
         memeverseRegistrar = _registrar;
+
+        emit SetMemeverseRegistrar(_registrar);
     }
 
     /**
@@ -627,6 +632,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(_minTotalFunds != 0, ZeroInput());
 
         minTotalFunds = _minTotalFunds;
+
+        emit SetMinTotalFund(_minTotalFunds);
     }
 
     /**
@@ -637,6 +644,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(_fundBasedAmount != 0, ZeroInput());
 
         fundBasedAmount = _fundBasedAmount;
+
+        emit SetFundBasedAmount(_fundBasedAmount);
     }
 
     /**
@@ -647,6 +656,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(_autoBotFeeRate < RATIO, FeeRateOverFlow());
 
         autoBotFeeRate = _autoBotFeeRate;
+
+        emit SetAutoBotFeeRate(_autoBotFeeRate);
     }
 
     /**
@@ -657,6 +668,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(_polImplementation != address(0), ZeroInput());
 
         polImplementation = _polImplementation;
+
+        emit SetPolImplementation(_polImplementation);
     }
 
     /**
@@ -667,6 +680,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(_vaultImplementation != address(0), ZeroInput());
 
         vaultImplementation = _vaultImplementation;
+
+        emit SetVaultImplementation(_vaultImplementation);
     }
 
     /**
@@ -677,6 +692,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(_governorImplementation != address(0), ZeroInput());
 
         governorImplementation = _governorImplementation;
+
+        emit SetGovernorImplementation(_governorImplementation);
     }
 
     /**
@@ -687,6 +704,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(_yieldDispatcher != address(0), ZeroInput());
 
         yieldDispatcher = _yieldDispatcher;
+
+        emit SetYieldDispatcher(_yieldDispatcher);
     }
 
     /**
@@ -699,5 +718,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
 
         oftReceiveGasLimit = _oftReceiveGasLimit;
         yieldDispatcherGasLimit = _yieldDispatcherGasLimit;
+
+        emit SetGasLimits(_oftReceiveGasLimit, _yieldDispatcherGasLimit);
     }
 }

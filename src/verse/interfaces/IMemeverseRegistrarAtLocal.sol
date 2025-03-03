@@ -7,4 +7,6 @@ interface IMemeverseRegistrarAtLocal {
     function localRegistration(IMemeverseRegistrar.MemeverseParam calldata param) external returns (address memecoin);
 
     function setRegistrationCenter(address registrationCenter) external;
+
+    event SetRegistrationCenter(address registrationCenter);
 }

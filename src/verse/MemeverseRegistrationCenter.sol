@@ -147,7 +147,10 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
      * @dev Remove gas dust from the contract
      */
     function removeGasDust(address receiver) external override onlyOwner {
-        _transferOut(NATIVE, receiver, address(this).balance);
+        uint256 dust = address(this).balance;
+        _transferOut(NATIVE, receiver, dust);
+
+        emit RemoveGasDust(receiver, dust);
     }
 
     /**
@@ -249,6 +252,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
         minDurationDays = _minDurationDays;
         maxDurationDays = _maxDurationDays;
+
+        emit SetDurationDaysRange(_minDurationDays, _maxDurationDays);
     }
 
     /**
@@ -266,6 +271,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
         minLockupDays = _minLockupDays;
         maxLockupDays = _maxLockupDays;
+
+        emit SetLockupDaysRange(_minLockupDays, _maxLockupDays);
     }
 
     /**
@@ -279,6 +286,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
             endpointIds[pair.chainId] = pair.endpointId;
         }
+
+        emit SetLzEndpointIds(pairs);
     }
 
     /**
@@ -289,5 +298,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(_registerGasLimit > 0, ZeroInput());
 
         registerGasLimit = _registerGasLimit;
+
+        emit SetRegisterGasLimit(_registerGasLimit);
     }
 }

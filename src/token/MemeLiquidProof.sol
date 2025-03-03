@@ -100,9 +100,8 @@ contract MemeLiquidProof is IMemeLiquidProof, IERC3156FlashLender, OutrunERC20Pe
      * @return The fees applied to the corresponding flash loan.
      */
     function flashFee(address token, uint256 value) public view virtual returns (uint256) {
-        if (token != address(this)) {
-            revert ERC3156UnsupportedToken(token);
-        }
+        require(token == address(this), ERC3156UnsupportedToken(token));
+
         return value * flashloanFeeRate / 10000;
     }
 
@@ -126,13 +125,16 @@ contract MemeLiquidProof is IMemeLiquidProof, IERC3156FlashLender, OutrunERC20Pe
         require(value <= maxLoan, ERC3156ExceededMaxLoan(maxLoan));
 
         uint256 fee = flashFee(token, value);
-        _mint(address(receiver), value);
+        address receiverAddress = address(receiver);
+        _mint(receiverAddress, value);
         require(
             receiver.onFlashLoan(msg.sender, token, value, fee, data) == RETURN_VALUE, 
-            ERC3156InvalidReceiver(address(receiver))
+            ERC3156InvalidReceiver(receiverAddress)
         );
         
-        _burn(address(receiver), value + fee);
+        _burn(receiverAddress, value + fee);
+
+        emit MemeLiquidProofFlashLoan(receiverAddress, value, fee, data);
         return true;
     }
 }

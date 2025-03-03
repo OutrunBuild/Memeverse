@@ -56,6 +56,8 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
         require(_localEndpoint != address(0), ZeroAddress());
 
         localEndpoint = _localEndpoint;
+
+        emit SetLocalEndpoint(_localEndpoint);
     }
 
     /**
@@ -66,6 +68,8 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
         require(_memecoinDeployer != address(0), ZeroAddress());
 
         memecoinDeployer = _memecoinDeployer;
+
+        emit SetMemecoinDeployer(_memecoinDeployer);
     }
 
     /**
@@ -79,6 +83,8 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
 
             endpointIds[pair.chainId] = pair.endpointId;
         }
+
+        emit SetLzEndpointIds(pairs);
     }
 
     /**
@@ -93,6 +99,8 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
             uptToLauncher[pair.upt] = pair.memeverseLauncher;
             launcherToUPT[pair.memeverseLauncher] = pair.upt;
         }
+
+        emit SetUPTLauncher(pairs);
     }
 
     /**

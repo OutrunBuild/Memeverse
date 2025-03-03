@@ -52,4 +52,6 @@ interface IMemeLiquidProof is IERC20 {
      * @notice Insufficient balance.
      */
     error InsufficientBalance();
+
+    event MemeLiquidProofFlashLoan(address receiver, uint256 value, uint256 fee, bytes data);
 }

@@ -69,6 +69,16 @@ interface IMemeverseRegistrationCenter {
         RegistrationParam param
     );
 
+    event RemoveGasDust(address indexed receiver, uint256 dust);
+
+    event SetDurationDaysRange(uint128 minDurationDays, uint128 maxDurationDays);
+
+    event SetLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays);
+
+    event SetLzEndpointIds(LzEndpointIdPair[] pairs);
+
+    event SetRegisterGasLimit(uint256 registerGasLimit);
+
 
     error ZeroInput();
 

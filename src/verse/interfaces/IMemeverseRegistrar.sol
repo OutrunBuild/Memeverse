@@ -49,9 +49,19 @@ interface IMemeverseRegistrar {
 
     function setUPTLauncher(UPTLauncherPair[] calldata pairs) external;
 
+
     error ZeroAddress();
 
     error PermissionDenied();
 
     error InvalidOmnichainId(uint32 omnichainId);
+
+
+    event SetLocalEndpoint(address indexed localEndpoint);
+
+    event SetMemecoinDeployer(address indexed memecoinDeployer);
+
+    event SetLzEndpointIds(LzEndpointIdPair[] pairs);
+
+    event SetUPTLauncher(UPTLauncherPair[] pairs);
 }

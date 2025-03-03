@@ -149,4 +149,24 @@ interface IMemeverseLauncher {
     );
 
     event RegisterMemeverse(uint256 indexed verseId, Memeverse verse);
+
+    event RemoveGasDust(address indexed receiver, uint256 dust);
+
+    event SetMemeverseRegistrar(address registrar);
+
+    event SetMinTotalFund(uint256 minTotalFunds);
+
+    event SetFundBasedAmount(uint256 fundBasedAmount);
+
+    event SetAutoBotFeeRate(uint256 autoBotFeeRate);
+
+    event SetPolImplementation(address polImplementation);
+
+    event SetVaultImplementation(address vaultImplementation);
+
+    event SetGovernorImplementation(address governorImplementation);
+    
+    event SetYieldDispatcher(address yieldDispatcher);
+
+    event SetGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit);
 }

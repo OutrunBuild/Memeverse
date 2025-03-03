@@ -37,7 +37,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     address public immutable OUTRUN_AMM_FACTORY;
 
     address public memeverseRegistrar;
-    address public revenuePool;
     address public polImplementation;
     address public vaultImplementation;
     address public yieldDispatcher;
@@ -57,7 +56,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     constructor(
         address _UPT,
         address _owner,
-        address _revenuePool,
         address _outrunAMMFactory,
         address _outrunAMMRouter,
         address _memeverseRegistrar,
@@ -72,7 +70,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint128 _yieldDispatcherGasLimit
     ) Ownable(_owner) {
         UPT = _UPT;
-        revenuePool = _revenuePool;
         OUTRUN_AMM_ROUTER = _outrunAMMRouter;
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
         memeverseRegistrar = _memeverseRegistrar;
@@ -473,8 +470,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
 
         if (UPTFee == 0 && memecoinFee == 0 && liquidProofFee == 0) return (0, 0, 0, 0);
 
-        // Protocol fee(liquidProofFee)
-        if (liquidProofFee != 0) _transferOut(liquidProof, revenuePool, liquidProofFee);
+        // Burn the liquidProof Fee
+        if (liquidProofFee != 0) IBurnable(liquidProof).burn(liquidProofFee);
 
         // AutoBot Fee
         unchecked {
@@ -600,8 +597,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     /**
      * @dev Remove gas dust from the contract
      */
-    function removeGasDust() external override {
-        _transferOut(NATIVE, revenuePool, address(this).balance);
+    function removeGasDust(address receiver) external override {
+        _transferOut(NATIVE, receiver, address(this).balance);
     }
 
     function pause() external onlyOwner {
@@ -620,16 +617,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(_registrar != address(0), ZeroInput());
 
         memeverseRegistrar = _registrar;
-    }
-
-    /**
-     * @dev Set revenuePool
-     * @param _revenuePool - Revenue verse address
-     */
-    function setRevenuePool(address _revenuePool) external override onlyOwner {
-        require(_revenuePool != address(0), ZeroInput());
-
-        revenuePool = _revenuePool;
     }
 
     /**

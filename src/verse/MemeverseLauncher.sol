@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
@@ -25,7 +26,7 @@ import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/
 /**
  * @title Trapping into the memeverse
  */
-contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
+contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable {
     using Clones for address;
     using OptionsBuilder for bytes;
 
@@ -244,7 +245,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @param user - Address of user participating in the genesis
      * @notice Approve fund token first
      */
-    function genesis(uint256 verseId, uint256 amountInUPT, address user) external override {
+    function genesis(uint256 verseId, uint256 amountInUPT, address user) external whenNotPaused override {
         Memeverse storage verse = memeverses[verseId];
         uint256 endTime = verse.endTime;
         uint256 currentTime = block.timestamp;
@@ -276,7 +277,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @param verseId - Memeverse id
      * @return currentStage - The current stage.
      */
-    function changeStage(uint256 verseId) external override returns (Stage currentStage) {
+    function changeStage(uint256 verseId) external whenNotPaused override returns (Stage currentStage) {
         uint256 currentTime = block.timestamp;
         Memeverse storage verse = memeverses[verseId];
         uint256 endTime = verse.endTime;
@@ -393,7 +394,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @dev Refund UPT after genesis Failed, total omnichain funds didn't meet the minimum funding requirement
      * @param verseId - Memeverse id
      */
-    function refund(uint256 verseId) external override returns (uint256 userFunds) {
+    function refund(uint256 verseId) external whenNotPaused override returns (uint256 userFunds) {
         Memeverse storage verse = memeverses[verseId];
         Stage currentStage = verse.currentStage;
         require(currentStage == Stage.Refund, NotRefundStage(currentStage));
@@ -411,7 +412,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @dev Claim liquidProof in stage Locked
      * @param verseId - Memeverse id
      */
-    function claimLiquidProof(uint256 verseId) external returns (uint256 amount) {
+    function claimLiquidProof(uint256 verseId) external whenNotPaused override returns (uint256 amount) {
         amount = claimableLiquidProof(verseId);
         if (amount != 0) {
             address msgSender = msg.sender;
@@ -427,7 +428,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @param verseId - Memeverse id
      * @param proofTokenAmount - Burned liquid proof token amount
      */
-    function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external {
+    function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external whenNotPaused override {
         Memeverse storage verse = memeverses[verseId];
         Stage currentStage = verse.currentStage;
         require(currentStage == Stage.Unlocked, NotUnlockedStage(currentStage));
@@ -450,7 +451,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      * @return autoBotFee - The AutoBotFee.
      * @notice Anyone who calls this method will be rewarded with AutoBotFee.
      */
-    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable override returns (uint256 govFee, uint256 memecoinFee, uint256 liquidProofFee, uint256 autoBotFee) {
+    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable whenNotPaused override returns (uint256 govFee, uint256 memecoinFee, uint256 liquidProofFee, uint256 autoBotFee) {
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage >= Stage.Locked, PermissionDenied());
 
@@ -573,7 +574,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
         uint128 endTime,
         uint128 unlockTime,
         uint32[] calldata omnichainIds
-    ) external override {
+    ) external whenNotPaused override {
         require(msg.sender == memeverseRegistrar, PermissionDenied());
 
         Memeverse memory verse = Memeverse(
@@ -601,6 +602,14 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Ownable {
      */
     function removeGasDust() external override {
         _transferOut(NATIVE, revenuePool, address(this).balance);
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     /**

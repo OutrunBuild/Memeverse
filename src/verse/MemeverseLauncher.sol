@@ -248,9 +248,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint256 currentTime = block.timestamp;
         require(currentTime < endTime, NotGenesisStage(endTime));
 
-        GenesisFund storage genesisFund = genesisFunds[verseId];
-        uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
-        uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
         _transferIn(UPT, msg.sender, amountInUPT);
 
         uint256 increasedMemecoinFund;
@@ -260,9 +257,10 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             increasedMemecoinFund = amountInUPT - increasedLiquidProofFund;
         }
 
+        GenesisFund storage genesisFund = genesisFunds[verseId];
         unchecked {
-            genesisFund.totalMemecoinFunds = uint128(totalMemecoinFunds + increasedMemecoinFund);
-            genesisFund.totalLiquidProofFunds = uint128(totalLiquidProofFunds + increasedLiquidProofFund);
+            genesisFund.totalMemecoinFunds = uint128(genesisFund.totalMemecoinFunds + increasedMemecoinFund);
+            genesisFund.totalLiquidProofFunds = uint128(genesisFund.totalLiquidProofFunds + increasedLiquidProofFund);
             userTotalFunds[verseId][user] += amountInUPT;
         }
 

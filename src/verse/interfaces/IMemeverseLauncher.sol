@@ -61,11 +61,18 @@ interface IMemeverseLauncher {
 
     function claimLiquidProof(uint256 verseId) external returns (uint256 amount);
 
+    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable
+    returns (uint256 govFee, uint256 memecoinYields, uint256 liquidProofFee, uint256 autoBotFee);
+
     function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external;
 
-    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver)
-        external payable
-        returns (uint256 govFee, uint256 memecoinYields, uint256 liquidProofFee, uint256 autoBotFee);
+    function mintLiquidProof(
+        uint256 verseId, 
+        uint256 amountInUPTDesired,
+        uint256 amountInMemecoinDesired,
+        uint256 amountInUPTMin,
+        uint256 amountInMemecoinMin
+    ) external returns (uint256);
 
     function registerMemeverse(
         string calldata _name,
@@ -136,8 +143,6 @@ interface IMemeverseLauncher {
 
     event ClaimLiquidProof(uint256 indexed verseId, address indexed receiver, uint256 claimedAmount);
 
-    event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 liquidity);
-
     event RedeemAndDistributeFees(
         uint256 indexed verseId,
         address indexed owner,
@@ -146,6 +151,16 @@ interface IMemeverseLauncher {
         uint256 memecoinYields,
         uint256 liquidProofFee,
         uint256 autoBotFee
+    );
+
+    event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 liquidity);
+
+    event MintLiquidProof(
+        uint256 indexed verseId, 
+        address indexed memecoin, 
+        address indexed liquidProof, 
+        address receiver, 
+        uint256 amount
     );
 
     event RegisterMemeverse(uint256 indexed verseId, Memeverse verse);

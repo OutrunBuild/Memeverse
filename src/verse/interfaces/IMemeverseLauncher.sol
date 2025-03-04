@@ -61,8 +61,8 @@ interface IMemeverseLauncher {
 
     function claimLiquidProof(uint256 verseId) external returns (uint256 amount);
 
-    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable
-    returns (uint256 govFee, uint256 memecoinYields, uint256 liquidProofFee, uint256 autoBotFee);
+    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable 
+    returns (uint256 govFee, uint256 memecoinFee, uint256 autoBotFee);
 
     function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external;
 
@@ -144,13 +144,13 @@ interface IMemeverseLauncher {
     event ClaimLiquidProof(uint256 indexed verseId, address indexed receiver, uint256 claimedAmount);
 
     event RedeemAndDistributeFees(
-        uint256 indexed verseId,
-        address indexed owner,
-        bool indexed isLocalBurned,
-        uint256 govFee,
-        uint256 memecoinYields,
-        uint256 liquidProofFee,
-        uint256 autoBotFee
+        uint256 indexed verseId, 
+        bool indexed isLocalBurned, 
+        uint256 govFee, 
+        uint256 memecoinFee, 
+        uint256 autoBotFee, 
+        uint256 burnedUPT, 
+        uint256 burnedLiquidProof
     );
 
     event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 liquidity);

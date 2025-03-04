@@ -424,15 +424,15 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param botFeeReceiver - Address of AutoBotFee receiver
      * @return govFee - The UPT fee.
      * @return memecoinFee - The memecoin fee.
-     * @return liquidProofFee - The liquidProof fee.
      * @return autoBotFee - The AutoBotFee.
      * @notice Anyone who calls this method will be rewarded with AutoBotFee.
      */
-    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable whenNotPaused override returns (uint256 govFee, uint256 memecoinFee, uint256 liquidProofFee, uint256 autoBotFee) {
+    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable whenNotPaused override 
+    returns (uint256 govFee, uint256 memecoinFee, uint256 autoBotFee) {
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage >= Stage.Locked, PermissionDenied());
 
-        // memecoin pair
+        // Memecoin pair
         address memecoin = verse.memecoin;
         IOutrunAMMPair memecoinPair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, memecoin, UPT, SWAP_FEERATE));
         (uint256 amount0, uint256 amount1) = memecoinPair.claimMakerFee();
@@ -440,18 +440,19 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint256 UPTFee = token0 == UPT ? amount0 : amount1;
         memecoinFee = token0 == memecoin ? amount0 : amount1;
 
-        // liquidProof pair
+        // LiquidProof pair
         address liquidProof = verse.liquidProof;
         IOutrunAMMPair liquidProofPair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, liquidProof, UPT, SWAP_FEERATE));
-        (uint256 amount2, uint256 amount3) = liquidProofPair.claimMakerFee();
-        address token2 = liquidProofPair.token0();
-        UPTFee = token2 == UPT ? UPTFee + amount2 : UPTFee + amount3;
-        liquidProofFee = token2 == liquidProof ? amount2 : amount3;
+        (amount0, amount1) = liquidProofPair.claimMakerFee();
+        token0 = liquidProofPair.token0();
+        uint256 burnedUPT = token0 == UPT ? amount0 : amount1;
+        uint256 burnedLiquidProof = token0 == liquidProof ? amount0 : amount1;
 
-        if (UPTFee == 0 && memecoinFee == 0 && liquidProofFee == 0) return (0, 0, 0, 0);
+        if (UPTFee == 0 && memecoinFee == 0) return (0, 0, 0);
 
-        // Burn the liquidProof Fee
-        if (liquidProofFee != 0) IBurnable(liquidProof).burn(liquidProofFee);
+        // Burn the UPT fee and liquidProof fee from liquidProof pair
+        if (burnedUPT != 0) IBurnable(UPT).burn(burnedUPT);
+        if (burnedLiquidProof != 0) IBurnable(liquidProof).burn(burnedLiquidProof);
 
         // AutoBot Fee
         unchecked {
@@ -526,7 +527,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             if (memecoinFee != 0) IOFT(memecoin).send{value: memecoinMessagingNativeFee}(sendMemecoinParam, memecoinMessagingFee, msg.sender);
         }
         
-        emit RedeemAndDistributeFees(verseId, botFeeReceiver, isLocalBurned, govFee, memecoinFee, liquidProofFee, autoBotFee);
+        emit RedeemAndDistributeFees(verseId, isLocalBurned, govFee, memecoinFee, autoBotFee, burnedUPT, burnedLiquidProof);
     }
 
     /**

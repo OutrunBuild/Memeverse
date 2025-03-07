@@ -36,22 +36,23 @@ contract TestScript is BaseScript {
 
     function _registerTest() internal {
         IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "DDD";
-        param.symbol = "DDD";
-        param.uri = "DDD";
+        param.name = "AAA";
+        param.symbol = "AAA";
+        param.uri = "AAA";
         param.durationDays = 1;
         param.lockupDays = 1;
         uint32[] memory ids = new uint32[](2);
-        ids[0] = 84532;
-        ids[1] = 97;
+        ids[0] = 10143;
+        ids[1] = 80002;
         param.omnichainIds = ids;
         param.creator = owner;
         param.upt = UETH;
 
+        // Center Chain - MemeverseRegistrarAtLocal
         // uint256 totalFee = IMemeverseRegistrar(MEMEVERSE_REGISTRAR).quoteRegister(param, 0);
         // console.log("totalFee=", totalFee);
         
-        uint256 totalFee = 0.0004 ether;
+        uint256 totalFee = 0.036 ether;
 
         // IMemeverseRegistrar(MEMEVERSE_REGISTRAR).registerAtCenter{value: totalFee}(param, uint128(totalFee));
 

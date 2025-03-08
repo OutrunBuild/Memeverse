@@ -32,6 +32,11 @@ interface IMemeverseLauncher {
         uint128 totalLiquidProofFunds; // Initial fundraising(UPT) for liquidProof liquidity
     }
 
+    struct LzEndpointIdPair {
+        uint32 chainId;
+        uint32 endpointId;
+    }
+
     function getVerseIdByMemecoin(address memecoin) external view returns (uint256 verseId);
 
     function getMemeverseByVerseId(uint256 verseId) external view returns (Memeverse memory verse);
@@ -75,11 +80,10 @@ interface IMemeverseLauncher {
     ) external returns (uint256);
 
     function registerMemeverse(
-        string calldata _name,
-        string calldata _symbol,
+        string calldata name,
+        string calldata symbol,
         string calldata uri,
         address creator,
-        address memecoin,
         uint256 uniqueId,
         uint128 endTime,
         uint128 unlockTime,
@@ -97,6 +101,8 @@ interface IMemeverseLauncher {
 
     function setAutoBotFeeRate(uint256 autoBotFeeRate) external;
 
+    function setMemecoinImplementation(address memecoinImplementation) external;
+
     function setPolImplementation(address polImplementation) external;
 
     function setVaultImplementation(address vaultImplementation) external;
@@ -106,6 +112,8 @@ interface IMemeverseLauncher {
     function setYieldDispatcher(address yieldDispatcher) external;
 
     function setGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit) external;
+
+    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 
 
     error ZeroInput();
@@ -129,6 +137,9 @@ interface IMemeverseLauncher {
     error NotLockedStage(Stage currentStage);
 
     error NotUnlockedStage(Stage currentStage);
+
+    error InvalidOmnichainId(uint32 omnichainId);
+
 
     event Genesis(
         uint256 indexed verseId,
@@ -175,6 +186,8 @@ interface IMemeverseLauncher {
 
     event SetAutoBotFeeRate(uint256 autoBotFeeRate);
 
+    event SetMemecoinImplementation(address memecoinImplementation);
+
     event SetPolImplementation(address polImplementation);
 
     event SetVaultImplementation(address vaultImplementation);
@@ -184,4 +197,6 @@ interface IMemeverseLauncher {
     event SetYieldDispatcher(address yieldDispatcher);
 
     event SetGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit);
+
+    event SetLzEndpointIds(LzEndpointIdPair[] pairs);
 }

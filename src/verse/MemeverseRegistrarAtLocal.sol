@@ -2,7 +2,6 @@
 pragma solidity ^0.8.28;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 
 import { MemeverseRegistrarAbstract } from "./MemeverseRegistrarAbstract.sol";
 import { IMemeverseRegistrarAtLocal } from "./interfaces/IMemeverseRegistrarAtLocal.sol";
@@ -16,16 +15,7 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
 
     address public registrationCenter;
 
-    constructor(
-        address _owner, 
-        address _localEndpoint,
-        address _registrationCenter, 
-        address _memecoinDeployer
-    ) MemeverseRegistrarAbstract(
-        _owner,
-        _localEndpoint,
-        _memecoinDeployer
-    ) {
+    constructor(address _owner, address _registrationCenter) MemeverseRegistrarAbstract(_owner) {
         registrationCenter = _registrationCenter;
     }
 

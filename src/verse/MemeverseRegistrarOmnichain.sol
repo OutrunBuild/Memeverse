@@ -25,7 +25,6 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
      * @dev Constructor
      * @param _owner - The owner of the contract
      * @param _localEndpoint - The local endpoint
-     * @param _memecoinDeployer - The memecoin deployer
      * @param _registrationCenterEid - The registration center eid
      * @param _registrationCenterChainid - The registration center chainid
      * @param _baseRegistrationGasLimit - The base registration gas limit
@@ -35,17 +34,12 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
     constructor(
         address _owner,
         address _localEndpoint,
-        address _memecoinDeployer,
         uint32 _registrationCenterEid,
         uint32 _registrationCenterChainid,
         uint80 _baseRegistrationGasLimit,
         uint80 _localRegistrationGasLimit,
         uint80 _omnichainRegistrationGasLimit
-    ) MemeverseRegistrarAbstract(
-        _owner,
-        _localEndpoint,
-        _memecoinDeployer
-    ) OApp(_localEndpoint, _owner) {
+    ) MemeverseRegistrarAbstract(_owner) OApp(_localEndpoint, _owner) {
         REGISTRATION_CENTER_EID = _registrationCenterEid;
         REGISTRATION_CENTER_CHAINID = _registrationCenterChainid;
 

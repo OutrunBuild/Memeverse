@@ -7,11 +7,6 @@ import { IMemeverseRegistrationCenter } from "../../verse/interfaces/IMemeverseR
  * @dev Interface for the Memeverse Registrar.
  */
 interface IMemeverseRegistrar {
-    struct LzEndpointIdPair {
-        uint32 chainId;
-        uint32 endpointId;
-    }
-
     struct MemeverseParam {
         string name;                    // Token name
         string symbol;                  // Token symbol
@@ -29,8 +24,6 @@ interface IMemeverseRegistrar {
         address memeverseLauncher;
     }
 
-    function getEndpointId(uint32 chainId) external view returns (uint32 endpointId);
-
     function quoteRegister(
         IMemeverseRegistrationCenter.RegistrationParam calldata param, 
         uint128 value
@@ -40,12 +33,6 @@ interface IMemeverseRegistrar {
      * @dev Register through cross-chain at the RegistrationCenter
      */
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
-
-    function setLocalEndpoint(address localEndpoint) external;
-
-    function setMemecoinDeployer(address memecoinDeployer) external;
-
-    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 
     function setUPTLauncher(UPTLauncherPair[] calldata pairs) external;
 
@@ -58,10 +45,6 @@ interface IMemeverseRegistrar {
 
 
     event SetLocalEndpoint(address indexed localEndpoint);
-
-    event SetMemecoinDeployer(address indexed memecoinDeployer);
-
-    event SetLzEndpointIds(LzEndpointIdPair[] pairs);
 
     event SetUPTLauncher(UPTLauncherPair[] pairs);
 }

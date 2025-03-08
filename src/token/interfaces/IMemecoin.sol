@@ -33,6 +33,13 @@ interface IMemecoin is IERC20 {
         address _delegate
     ) external;
 
+    
+    /**
+     * @notice Set GenesisLiquidityPool.
+     * @param genesisLiquidityPool - The address of the genesisLiquidityPool.
+     */
+    function setGenesisLiquidityPool(address genesisLiquidityPool) external;
+
     /**
      * @notice Mint the memecoin.
      * @param account - The address of the account.
@@ -56,5 +63,8 @@ interface IMemecoin is IERC20 {
      */
     error InsufficientBalance();
 
-    event MemecoinFlashLoan(address indexed receiver, uint256 value, uint256 fee, bytes data);
+    /**
+     * @notice In Liquidity Protection Period.
+     */
+    error LiquidityProtectionPeriod();
 }

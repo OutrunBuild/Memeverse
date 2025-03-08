@@ -366,6 +366,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                     address(this),
                     block.timestamp + 600
                 );
+                IMemecoin(memecoin).setGenesisLiquidityPool(OutrunAMMLibrary.pairFor(OUTRUN_AMM_FACTORY, UPT, memecoin, SWAP_FEERATE));
 
                 // Mint liquidity proof token and deploy liquid proof liquidity
                 IMemeLiquidProof(liquidProof).mint(address(this), memecoinLiquidity);

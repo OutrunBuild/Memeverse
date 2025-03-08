@@ -12,6 +12,12 @@ import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol
 contract Memecoin is IMemecoin, OutrunOFTInit {
     uint256 public unlockTime;
     address public memeverseLauncher;
+    address public genesisLiquidityPool;
+
+    modifier onlyMemeverseLauncher {
+        require(msg.sender == memeverseLauncher, PermissionDenied());
+        _;
+    }
 
     /**
      * @notice Initialize the memecoin.
@@ -40,12 +46,19 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
     }
 
     /**
+     * @notice Set GenesisLiquidityPool.
+     * @param _genesisLiquidityPool - The address of the genesisLiquidityPool.
+     */
+    function setGenesisLiquidityPool(address _genesisLiquidityPool) external override onlyMemeverseLauncher {
+        genesisLiquidityPool = _genesisLiquidityPool;
+    }
+
+    /**
      * @notice Mint the memecoin.
      * @param account - The address of the account.
      * @param amount - The amount of the memecoin.
      */
-    function mint(address account, uint256 amount) external override {
-        require(msg.sender == memeverseLauncher, PermissionDenied());
+    function mint(address account, uint256 amount) external override onlyMemeverseLauncher {
         _mint(account, amount);
     }
 
@@ -57,5 +70,32 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
         address msgSender = msg.sender;
         require(balanceOf(msgSender) >= amount, InsufficientBalance());
         _burn(msgSender, amount);
+    }
+
+    function _transfer(address from, address to, uint256 value) internal override {
+        if (from == address(0)) {
+            revert ERC20InvalidSender(address(0));
+        }
+        if (to == address(0)) {
+            revert ERC20InvalidReceiver(address(0));
+        }
+
+        // The Liquidity Protection Period serves as a crucial mechanism to safeguard the liquidity and 
+        // price stability of Memecoins. Without it, when the block time reaches the unlockTime, some 
+        // individuals may rush to redeem their liquidity and sell immediately. This behavior could lead 
+        // to a significant reduction in the redemption value for subsequent participants, potentially 
+        // triggering a panic sell-off and destabilizing the market.
+
+        // By implementing a Liquidity Protection Period of 24 hours following the unlockTime, only token 
+        // transfers from the liquidity pool are permitted during this interval. This ensures that all 
+        // participants redeeming liquidity within this 24-hour window receive an equal unit value. 
+        // Consequently, it promotes fairness and maintains liquidity stability, preventing adverse market 
+        // dynamics such as panic selling and market instability.
+        require(
+            block.timestamp < unlockTime || block.timestamp > unlockTime + 1 days || from == genesisLiquidityPool,
+            LiquidityProtectionPeriod()
+        );
+
+        _update(from, to, value);
     }
 }

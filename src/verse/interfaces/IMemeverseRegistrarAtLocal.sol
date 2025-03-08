@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import { IMemeverseRegistrar } from "../../verse/interfaces/IMemeverseRegistrar.sol";
 
 interface IMemeverseRegistrarAtLocal {
-    function localRegistration(IMemeverseRegistrar.MemeverseParam calldata param) external returns (address memecoin);
+    function localRegistration(IMemeverseRegistrar.MemeverseParam calldata param) external;
 
     function setRegistrationCenter(address registrationCenter) external;
 

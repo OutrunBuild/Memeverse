@@ -48,10 +48,10 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
      * @dev On the same chain, the registration center directly calls this method
      * @notice Only RegistrationCenter can call
      */
-    function localRegistration(MemeverseParam calldata param) external override returns (address memecoin) {
+    function localRegistration(MemeverseParam calldata param) external override {
         require(msg.sender == registrationCenter, PermissionDenied());
 
-        return _registerMemeverse(param);
+        _registerMemeverse(param);
     }
 
     /**

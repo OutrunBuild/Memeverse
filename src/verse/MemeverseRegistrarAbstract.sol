@@ -36,9 +36,8 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
     /**
      * @notice Register a memeverse.
      * @param param The memeverse parameters.
-     * @return memecoin The address of the memecoin deployed.
      */
-    function _registerMemeverse(MemeverseParam memory param) internal returns (address memecoin) {
+    function _registerMemeverse(MemeverseParam memory param) internal {
         IMemeverseLauncher(uptToLauncher[param.upt]).registerMemeverse(
             param.name, param.symbol, param.uri, param.creator, param.uniqueId, 
             param.endTime, param.unlockTime, param.omnichainIds

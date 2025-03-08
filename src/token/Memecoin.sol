@@ -80,17 +80,18 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
             revert ERC20InvalidReceiver(address(0));
         }
 
-        // The Liquidity Protection Period serves as a crucial mechanism to safeguard the liquidity and 
-        // price stability of Memecoins. Without it, when the block time reaches the unlockTime, some 
-        // individuals may rush to redeem their liquidity and sell immediately. This behavior could lead 
-        // to a significant reduction in the redemption value for subsequent participants, potentially 
-        // triggering a panic sell-off and destabilizing the market.
-
-        // By implementing a Liquidity Protection Period of 24 hours following the unlockTime, only token 
-        // transfers from the liquidity pool are permitted during this interval. This ensures that all 
-        // participants redeeming liquidity within this 24-hour window receive an equal unit value. 
-        // Consequently, it promotes fairness and maintains liquidity stability, preventing adverse market 
-        // dynamics such as panic selling and market instability.
+        // The Liquidity Protection Period is an essential mechanism for safeguarding token liquidity and 
+        // price stability. When the block time reaches the unlock time, some POL token holders may rush 
+        // to redeem their liquidity and immediately sell the redeemed tokens. Without a Liquidity Protection 
+        // Period, this behavior can lead to a gradual decrease in the value of subsequent redemptions, 
+        // violating the principle of fairness and triggering panic redemptions and sales, which can destabilize 
+        // the market. 
+        // By implementing a 24-hour Liquidity Protection Period immediately after the block time reaches the 
+        // liquidity unlock time, only token transfers from the liquidity pool are permitted during this interval. 
+        // This means that only the purchase of tokens and the redemption of liquidity can be executed. This 
+        // ensures consistency in the value of liquidity redeemed by burning POL tokens within this 24-hour 
+        // window and provides users who redeem liquidity with a period to consider their next steps, preventing 
+        // panic-induced stampedes and severe market fluctuations.
         require(
             block.timestamp < unlockTime || block.timestamp > unlockTime + 1 days || from == genesisLiquidityPool,
             LiquidityProtectionPeriod()

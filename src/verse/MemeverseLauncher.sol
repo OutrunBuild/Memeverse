@@ -632,7 +632,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
 
         bytes32 salt = keccak256(abi.encodePacked(symbol, creator, uniqueId));
         address memecoin = memecoinImplementation.cloneDeterministic(salt);
-        IMemecoin(memecoin).initialize(name, symbol, 18, address(this), LOCAL_LZ_ENDPOINT, address(this), unlockTime);
+        IMemecoin(memecoin).initialize(name, symbol, 18, unlockTime, address(this), LOCAL_LZ_ENDPOINT, address(this));
         _lzConfigure(memecoin, omnichainIds);
 
         Memeverse memory verse = Memeverse(

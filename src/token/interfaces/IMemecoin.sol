@@ -15,17 +15,19 @@ interface IMemecoin is IERC20 {
 
     /**
      * @notice Initialize the memecoin.
-     * @param _name - The name of the memecoin.
-     * @param _symbol - The symbol of the memecoin.
-     * @param _decimals - The decimals of the memecoin.
+     * @param name_ - The name of the memecoin.
+     * @param symbol_ - The symbol of the memecoin.
+     * @param decimals_ - The decimals of the memecoin.
+     * @param _unlockTime - The unlock time of liquidity.
      * @param _memeverseLauncher - The address of the memeverse launcher.
      * @param _lzEndpoint - The address of the LayerZero endpoint.
      * @param _delegate - The address of the delegate.
      */
     function initialize(
-        string memory _name, 
-        string memory _symbol,
-        uint8 _decimals, 
+        string memory name_, 
+        string memory symbol_,
+        uint8 decimals_, 
+        uint256 _unlockTime, 
         address _memeverseLauncher, 
         address _lzEndpoint,
         address _delegate

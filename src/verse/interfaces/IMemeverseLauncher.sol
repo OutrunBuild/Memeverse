@@ -69,7 +69,7 @@ interface IMemeverseLauncher {
     function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable 
     returns (uint256 govFee, uint256 memecoinFee, uint256 autoBotFee);
 
-    function redeemLiquidity(uint256 verseId, uint256 proofTokenAmount) external;
+    function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external;
 
     function mintLiquidProof(
         uint256 verseId, 
@@ -126,7 +126,7 @@ interface IMemeverseLauncher {
 
     error InsufficientUserFunds();
 
-    error NotGenesisStage(uint256 endTime);
+    error NotGenesisStage(Stage currentStage);
 
     error ExpiredSignature(uint256 deadline);
 
@@ -134,11 +134,11 @@ interface IMemeverseLauncher {
 
     error NotRefundStage(Stage currentStage);
 
-    error NotLockedStage(Stage currentStage);
-
     error NotUnlockedStage(Stage currentStage);
 
     error InvalidOmnichainId(uint32 omnichainId);
+
+    error NotReachedLockedStage(Stage currentStage);
 
 
     event Genesis(

@@ -101,8 +101,8 @@ source ../.env
 #     --broadcast --ffi -vvvv \
 #     --verify
 
-# forge script TestScript.s.sol:TestScript --rpc-url avalanche_fuji \
-#     --priority-gas-price 1000000001 --with-gas-price 1000000001 \
+# forge script TestScript.s.sol:TestScript --rpc-url polygon_amoy \
+#     --priority-gas-price 40000000000 --with-gas-price 50000000000 \
 #     --optimize --optimizer-runs 10000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \

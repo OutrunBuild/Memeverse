@@ -8,7 +8,7 @@ import { OutrunERC20PermitInit } from "../common/OutrunERC20PermitInit.sol";
 import { OutrunERC20Init, OutrunERC20Votes } from "../common/governance/OutrunERC20Votes.sol";
 
 /**
- * @title Omnichain Memeverse Proof Of Liquidity Token
+ * @title Memecoin Proof Of Liquidity(POL) Token
  */
 contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20Votes {
     address public memecoin;
@@ -20,10 +20,10 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
     }
 
     /**
-     * @notice Initialize the memeverse proof.
-     * @param name_ - The name of the memeverse proof.
-     * @param symbol_ - The symbol of the memeverse proof.
-     * @param decimals_ - The decimals of the memeverse proof.
+     * @notice Initialize the memecoin liquidProof.
+     * @param name_ - The name of the memecoin liquidProof.
+     * @param symbol_ - The symbol of the memecoin liquidProof.
+     * @param decimals_ - The decimals of the memecoin liquidProof.
      * @param _memecoin - The address of the memecoin.
      * @param _memeverseLauncher - The address of the memeverse launcher.
      */

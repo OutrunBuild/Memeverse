@@ -33,7 +33,7 @@ interface IMemecoinYieldVault is IERC20 {
     function executeRedeem() external returns (uint256 redeemedAmount);
 
 
-    event AccumulateYields(address indexed yieldSource, uint256 amount);
+    event AccumulateYields(address indexed yieldSource, uint256 yield, uint256 exchangeRate);
 
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
 

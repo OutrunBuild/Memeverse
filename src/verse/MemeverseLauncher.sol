@@ -302,7 +302,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 uint32 govChainId = verse.omnichainIds[0];
                 address yieldVault;
                 if (govChainId == block.chainid) {
-                    yieldVault = IMemeverseProxyDeployer(memeverseProxyDeployer).deployPOL(salt);
+                    yieldVault = IMemeverseProxyDeployer(memeverseProxyDeployer).deployYieldVault(salt);
                     IMemecoinYieldVault(yieldVault).initialize(
                         string(abi.encodePacked("Staked ", name)),
                         string(abi.encodePacked("s", symbol)),

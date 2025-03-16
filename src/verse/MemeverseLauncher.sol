@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
-import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
-import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
-import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
@@ -20,15 +15,13 @@ import { IOutrunAMMRouter } from "../common/IOutrunAMMRouter.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
 import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
 import { IMemeLiquidProof } from "../token/interfaces/IMemeLiquidProof.sol";
-import { IMemecoinDaoGovernor } from "../governance/interfaces/IMemecoinDaoGovernor.sol";
-import { MemecoinYieldVault, IMemecoinYieldVault } from "../yield/MemecoinYieldVault.sol";
-import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "./interfaces/IMemeverseRegistrar.sol";
+import { IMemeverseProxyDeployer } from "./interfaces/IMemeverseProxyDeployer.sol";
+import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 
 /**
  * @title Trapping into the memeverse
  */
 contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable {
-    using Clones for address;
     using OptionsBuilder for bytes;
 
     uint256 public constant RATIO = 10000;
@@ -38,11 +31,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     address public immutable OUTRUN_AMM_FACTORY;
     address public immutable LOCAL_LZ_ENDPOINT;
 
+    address public memeverseProxyDeployer;
     address public memeverseRegistrar;
-    address public memecoinImplementation;
-    address public polImplementation;
-    address public vaultImplementation;
-    address public governorImplementation;
     address public yieldDispatcher;
     
     uint256 public minTotalFunds;
@@ -65,10 +55,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         address _outrunAMMRouter,
         address _localLzEndpoint,
         address _memeverseRegistrar,
-        address _memecoinImplementation,
-        address _polImplementation,
-        address _vaultImplementation,
-        address _governorImplementation,
+        address _memeverseProxyDeployer,
         address _yieldDispatcher,
         uint256 _minTotalFunds,
         uint256 _fundBasedAmount,
@@ -81,10 +68,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
         LOCAL_LZ_ENDPOINT = _localLzEndpoint;
         memeverseRegistrar = _memeverseRegistrar;
-        memecoinImplementation = _memecoinImplementation;
-        polImplementation = _polImplementation;
-        vaultImplementation = _vaultImplementation;
-        governorImplementation = _governorImplementation;
+        memeverseProxyDeployer = _memeverseProxyDeployer;
         yieldDispatcher = _yieldDispatcher;
         minTotalFunds = _minTotalFunds;
         fundBasedAmount = _fundBasedAmount;
@@ -292,7 +276,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         GenesisFund storage genesisFund = genesisFunds[verseId];
         uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
         uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
-        address yieldVault;
         if (currentStage == Stage.Genesis) {
             if (totalMemecoinFunds + totalLiquidProofFunds < minTotalFunds) {
                 verse.currentStage = Stage.Refund;
@@ -305,7 +288,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 bytes32 salt = keccak256(abi.encodePacked(symbol, creator, verseId));
 
                 // Deploy POL
-                address liquidProof = polImplementation.cloneDeterministic(salt);
+                address liquidProof = IMemeverseProxyDeployer(memeverseProxyDeployer).deployPOL(salt);
                 IMemeLiquidProof(liquidProof).initialize(
                     string(abi.encodePacked("POL-", name)), 
                     string(abi.encodePacked("POL-", symbol)), 
@@ -315,40 +298,23 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 );
                 verse.liquidProof = liquidProof;
 
-                // Deploy Memecoin Yield Vault on Governance Chain
-                address _vaultImplementation = vaultImplementation;
+                // Deploy Memecoin Yield Vault and Memecoin DAO Governor on Governance Chain
                 uint32 govChainId = verse.omnichainIds[0];
-                yieldVault = _vaultImplementation.predictDeterministicAddress(salt);
+                address yieldVault;
                 if (govChainId == block.chainid) {
-                    _vaultImplementation.cloneDeterministic(salt);
+                    yieldVault = IMemeverseProxyDeployer(memeverseProxyDeployer).deployPOL(salt);
                     IMemecoinYieldVault(yieldVault).initialize(
                         string(abi.encodePacked("Staked ", name)),
                         string(abi.encodePacked("s", symbol)),
                         memecoin,
                         verseId
                     );
+                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).deployDAOGovernor(name, yieldVault, salt);
+                } else {
+                    yieldVault = IMemeverseProxyDeployer(memeverseProxyDeployer).predictYieldVaultAddress(salt);
+                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).computeDAOGovernorAddress(name, yieldVault, salt);
                 }
                 verse.yieldVault = yieldVault;
-
-                // Deploy Memecoin DAO Governor on Governance Chain
-                bytes memory initData = abi.encodeWithSelector(
-                    IMemecoinDaoGovernor.initialize.selector,
-                    string(abi.encodePacked(name, " DAO")),
-                    IVotes(yieldVault),  // voting token
-                    1 days,              // voting delay
-                    1 weeks,             // voting period
-                    10000e18,            // proposal threshold (10000 tokens)
-                    30                   // quorum (30%)
-                );
-                bytes memory proxyBytecode = abi.encodePacked(
-                    type(ERC1967Proxy).creationCode,
-                    abi.encode(governorImplementation, initData)
-                );
-                if (govChainId == block.chainid) {
-                    verse.governor = Create2.deploy(0, salt, proxyBytecode);
-                } else {
-                    verse.governor = Create2.computeAddress(salt, keccak256(proxyBytecode));
-                }
 
                 // Deploy memecoin liquidity
                 uint256 memecoinAmount = genesisFunds[verseId].totalMemecoinFunds * fundBasedAmount;
@@ -394,7 +360,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             currentStage = Stage.Unlocked;
         }
 
-        emit ChangeStage(verseId, currentStage, yieldVault);
+        emit ChangeStage(verseId, currentStage);
     }
 
     /**
@@ -633,7 +599,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     ) external whenNotPaused override {
         require(msg.sender == memeverseRegistrar, PermissionDenied());
 
-        address memecoin = memecoinImplementation.cloneDeterministic(keccak256(abi.encodePacked(symbol, creator, uniqueId)));
+        address memecoin = IMemeverseProxyDeployer(memeverseProxyDeployer).deployMemecoin(keccak256(abi.encodePacked(symbol, creator, uniqueId)));
         IMemecoin(memecoin).initialize(name, symbol, 18, unlockTime, address(this), LOCAL_LZ_ENDPOINT, address(this));
         _lzConfigure(memecoin, omnichainIds);
 
@@ -694,15 +660,39 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
-     * @dev Set memeverse registrar
-     * @param _registrar - Memeverse registrar address
+     * @dev Set memeverse registrar contract
+     * @param _memeverseRegistrar - Address of memeverseRegistrar
      */
-    function setMemeverseRegistrar(address _registrar) external override onlyOwner {
-        require(_registrar != address(0), ZeroInput());
+    function setMemeverseRegistrar(address _memeverseRegistrar) external override onlyOwner {
+        require(_memeverseRegistrar != address(0), ZeroInput());
 
-        memeverseRegistrar = _registrar;
+        memeverseRegistrar = _memeverseRegistrar;
 
-        emit SetMemeverseRegistrar(_registrar);
+        emit SetMemeverseRegistrar(_memeverseRegistrar);
+    }
+
+    /**
+     * @dev Set memeverse proxy deployer contract
+     * @param _memeverseProxyDeployer - Address of memeverseProxyDeployer
+     */
+    function setMemeverseProxyDeployer(address _memeverseProxyDeployer) external override onlyOwner {
+        require(_memeverseProxyDeployer != address(0), ZeroInput());
+
+        memeverseProxyDeployer = _memeverseProxyDeployer;
+
+        emit SetMemeverseProxyDeployer(_memeverseProxyDeployer);
+    }
+
+    /**
+     * @dev Set memecoin yieldDispatcher contract
+     * @param _yieldDispatcher - Address of yieldDispatcher
+     */
+    function setYieldDispatcher(address _yieldDispatcher) external override onlyOwner {
+        require(_yieldDispatcher != address(0), ZeroInput());
+
+        yieldDispatcher = _yieldDispatcher;
+
+        emit SetYieldDispatcher(_yieldDispatcher);
     }
 
     /**
@@ -739,66 +729,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         autoBotFeeRate = _autoBotFeeRate;
 
         emit SetAutoBotFeeRate(_autoBotFeeRate);
-    }
-
-    /**
-     * @dev Set Memecoin implementation logic contract
-     * @param _memecoinImplementation - Address of memecoinImplementation
-     */
-    function setMemecoinImplementation(address _memecoinImplementation) external override onlyOwner {
-        require(_memecoinImplementation != address(0), ZeroInput());
-
-        memecoinImplementation = _memecoinImplementation;
-
-        emit SetMemecoinImplementation(_memecoinImplementation);
-    }
-
-    /**
-     * @dev Set POL implementation logic contract
-     * @param _polImplementation - Address of polImplementation
-     */
-    function setPolImplementation(address _polImplementation) external override onlyOwner {
-        require(_polImplementation != address(0), ZeroInput());
-
-        polImplementation = _polImplementation;
-
-        emit SetPolImplementation(_polImplementation);
-    }
-
-    /**
-     * @dev Set Vault implementation logic contract
-     * @param _vaultImplementation - Address of vaultImplementation
-     */
-    function setVaultImplementation(address _vaultImplementation) external override onlyOwner {
-        require(_vaultImplementation != address(0), ZeroInput());
-
-        vaultImplementation = _vaultImplementation;
-
-        emit SetVaultImplementation(_vaultImplementation);
-    }
-
-    /**
-     * @dev Set memecoin DAO governor implementation logic contract
-     * @param _governorImplementation - Address of governorImplementation
-     */
-    function setGovernorImplementation(address _governorImplementation) external override onlyOwner {
-        require(_governorImplementation != address(0), ZeroInput());
-
-        governorImplementation = _governorImplementation;
-
-        emit SetGovernorImplementation(_governorImplementation);
-    }
-
-    /**
-     * @dev Set memecoin _yieldDispatcher contract
-     * @param _yieldDispatcher - Address of _yieldDispatcher
-     */
-    function setYieldDispatcher(address _yieldDispatcher) external override onlyOwner {
-        require(_yieldDispatcher != address(0), ZeroInput());
-
-        yieldDispatcher = _yieldDispatcher;
-
-        emit SetYieldDispatcher(_yieldDispatcher);
     }
 
     /**

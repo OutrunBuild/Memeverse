@@ -92,24 +92,17 @@ interface IMemeverseLauncher {
 
     function removeGasDust(address receiver) external;
 
+    function setMemeverseRegistrar(address memeverseRegistrar) external;
 
-    function setMemeverseRegistrar(address _registrar) external;
+    function setMemeverseProxyDeployer(address memeverseProxyDeployer) external;
+
+    function setYieldDispatcher(address yieldDispatcher) external;
 
     function setMinTotalFund(uint256 minTotalFund) external;
 
     function setFundBasedAmount(uint256 fundBasedAmount) external;
 
     function setAutoBotFeeRate(uint256 autoBotFeeRate) external;
-
-    function setMemecoinImplementation(address memecoinImplementation) external;
-
-    function setPolImplementation(address polImplementation) external;
-
-    function setVaultImplementation(address vaultImplementation) external;
-
-    function setGovernorImplementation(address governorImplementation) external;
-
-    function setYieldDispatcher(address yieldDispatcher) external;
 
     function setGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit) external;
 
@@ -150,7 +143,7 @@ interface IMemeverseLauncher {
 
     event Refund(uint256 indexed verseId, address indexed receiver, uint256 refundAmount);
 
-    event ChangeStage(uint256 indexed verseId, Stage currentStage, address memecoinYieldVault);
+    event ChangeStage(uint256 indexed verseId, Stage currentStage);
 
     event ClaimLiquidProof(uint256 indexed verseId, address indexed receiver, uint256 claimedAmount);
 
@@ -178,23 +171,17 @@ interface IMemeverseLauncher {
 
     event RemoveGasDust(address indexed receiver, uint256 dust);
 
-    event SetMemeverseRegistrar(address registrar);
+    event SetMemeverseRegistrar(address memeverseRegistrar);
+
+    event SetMemeverseProxyDeployer(address memeverseProxyDeployer);
+
+    event SetYieldDispatcher(address yieldDispatcher);
 
     event SetMinTotalFund(uint256 minTotalFunds);
 
     event SetFundBasedAmount(uint256 fundBasedAmount);
 
     event SetAutoBotFeeRate(uint256 autoBotFeeRate);
-
-    event SetMemecoinImplementation(address memecoinImplementation);
-
-    event SetPolImplementation(address polImplementation);
-
-    event SetVaultImplementation(address vaultImplementation);
-
-    event SetGovernorImplementation(address governorImplementation);
-    
-    event SetYieldDispatcher(address yieldDispatcher);
 
     event SetGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit);
 

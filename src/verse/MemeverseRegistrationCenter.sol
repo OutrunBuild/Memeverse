@@ -138,7 +138,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             creator: param.creator,
             upt: param.upt
         });
-        _omnichainSend(param.omnichainIds,  memeverseParam);
+        _omnichainSend(param.omnichainIds, memeverseParam);
 
         emit Registration(uniqueId, param);
     }

@@ -72,24 +72,24 @@ contract MemeverseScript is BaseScript {
         omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351, 10143];
         _chainsInit();
 
-        // _getDeployedImplementation(2);
+        // _getDeployedImplementation(3);
 
-        // _getDeployedRegistrationCenter(2);
+        // _getDeployedRegistrationCenter(3);
 
-        // _getDeployedMemeverseRegistrar(2);
-        // _getDeployedMemeverseProxyDeployer(2);
-        // _getDeployedUETHMemeverseLauncher(2);
-        // _getDeployedUETHYieldDispatcher(2);
+        // _getDeployedMemeverseRegistrar(3);
+        // _getDeployedMemeverseProxyDeployer(3);
+        // _getDeployedUETHMemeverseLauncher(3);
+        // _getDeployedUETHYieldDispatcher(3);
 
 
-        // _deployImplementation(2);
+        // _deployImplementation(3);
 
-        // _deployRegistrationCenter(2);
+        // _deployRegistrationCenter(3);
 
-        _deployMemeverseRegistrar(2);
-        _deployMemeverseProxyDeployer(2);
-        _deployUETHMemeverseLauncher(2);
-        _deployUETHYieldDispatcher(2);
+        _deployMemeverseRegistrar(3);
+        _deployMemeverseProxyDeployer(3);
+        _deployUETHMemeverseLauncher(3);
+        _deployUETHYieldDispatcher(3);
     }
 
     function _chainsInit() internal {

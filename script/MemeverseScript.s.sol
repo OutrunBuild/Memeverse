@@ -13,6 +13,7 @@ import { MemeLiquidProof } from "../src/token/MemeLiquidProof.sol";
 import { YieldDispatcher } from "../src/yield/YieldDispatcher.sol";
 import { MemecoinYieldVault } from "../src/yield/MemecoinYieldVault.sol";
 import { MemecoinDaoGovernor } from "../src/governance/MemecoinDaoGovernor.sol";
+import { MemeverseProxyDeployer } from "../src/verse/MemeverseProxyDeployer.sol";
 import { IMemeverseRegistrar } from "../src/verse/interfaces/IMemeverseRegistrar.sol";
 import { MemeverseRegistrarAtLocal } from "../src/verse/MemeverseRegistrarAtLocal.sol";
 import { MemeverseRegistrationCenter } from "../src/verse/MemeverseRegistrationCenter.sol";
@@ -25,40 +26,45 @@ contract MemeverseScript is BaseScript {
 
     uint256 public constant DAY = 24 * 3600;
 
-    address internal UETH;
-    address internal OUTRUN_DEPLOYER;
-    address internal MEMECOIN_DEPLOYER;
-    address internal MEMEVERSE_REGISTRAR;
-    address internal MEMEVERSE_REGISTRATION_CENTER;
-    address internal MEMECOIN_IMPLEMENTATION;
-    address internal POL_IMPLEMENTATION;
-    address internal MEMECOIN_VAULT_IMPLEMENTATION;
-    address internal MEMECOIN_GOVERNOR_IMPLEMENTATION;
-    address internal UETH_YIELD_DISPATCHER;
-    address internal UETH_MEMEVERSE_LAUNCHER;
-    
     address internal owner;
     address internal signer;
     address internal factory;
     address internal router;
+
+    address internal UETH;
+    address internal OUTRUN_DEPLOYER;
+
+    address internal MEMECOIN_IMPLEMENTATION;
+    address internal POL_IMPLEMENTATION;
+    address internal MEMECOIN_VAULT_IMPLEMENTATION;
+    address internal MEMECOIN_GOVERNOR_IMPLEMENTATION;
+
+    address internal MEMEVERSE_REGISTRATION_CENTER;
+    address internal MEMEVERSE_REGISTRAR;
+    address internal MEMEVERSE_PROXY_DEPLOYER;
+    address internal UETH_YIELD_DISPATCHER;
+    address internal UETH_MEMEVERSE_LAUNCHER;
 
     uint32[] public omnichainIds;
     mapping(uint32 chainId => address) public endpoints;
     mapping(uint32 chainId => uint32) public endpointIds;
 
     function run() public broadcaster {
-        UETH = vm.envAddress("UETH");
         owner = vm.envAddress("OWNER");
         signer = vm.envAddress("SIGNER");
         factory = vm.envAddress("OUTRUN_AMM_FACTORY");
         router = vm.envAddress("OUTRUN_AMM_ROUTER");
+        UETH = vm.envAddress("UETH");
         OUTRUN_DEPLOYER = vm.envAddress("OUTRUN_DEPLOYER");
-        MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
-        MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
+
         MEMECOIN_IMPLEMENTATION = vm.envAddress("MEMECOIN_IMPLEMENTATION");
         POL_IMPLEMENTATION = vm.envAddress("POL_IMPLEMENTATION");
         MEMECOIN_VAULT_IMPLEMENTATION = vm.envAddress("MEMECOIN_VAULT_IMPLEMENTATION");
         MEMECOIN_GOVERNOR_IMPLEMENTATION = vm.envAddress("MEMECOIN_GOVERNOR_IMPLEMENTATION");
+        
+        MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
+        MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR"); 
+        MEMEVERSE_PROXY_DEPLOYER = vm.envAddress("MEMEVERSE_PROXY_DEPLOYER"); 
         UETH_YIELD_DISPATCHER = vm.envAddress("UETH_YIELD_DISPATCHER_");
         UETH_MEMEVERSE_LAUNCHER = vm.envAddress("UETH_MEMEVERSE_LAUNCHER");
 
@@ -66,23 +72,24 @@ contract MemeverseScript is BaseScript {
         omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351, 10143];
         _chainsInit();
 
-        // _getDeployedImplementation(0);
+        // _getDeployedImplementation(2);
 
-        // _getDeployedRegistrationCenter(1);
+        // _getDeployedRegistrationCenter(2);
 
-        // _getDeployedMemeverseRegistrar(1);
-        // _getDeployedUETHMemeverseLauncher(1);
-        // _getDeployedUETHYieldDispatcher(1);
-
-
-        // _deployImplementation(0);
-
-        // _deployRegistrationCenter(1);
+        // _getDeployedMemeverseRegistrar(2);
+        // _getDeployedMemeverseProxyDeployer(2);
+        // _getDeployedUETHMemeverseLauncher(2);
+        // _getDeployedUETHYieldDispatcher(2);
 
 
-        _deployMemeverseRegistrar(1);
-        _deployUETHMemeverseLauncher(1);
-        _deployUETHYieldDispatcher(1);
+        // _deployImplementation(2);
+
+        // _deployRegistrationCenter(2);
+
+        _deployMemeverseRegistrar(2);
+        _deployMemeverseProxyDeployer(2);
+        _deployUETHMemeverseLauncher(2);
+        _deployUETHYieldDispatcher(2);
     }
 
     function _chainsInit() internal {
@@ -144,6 +151,13 @@ contract MemeverseScript is BaseScript {
         console.log("MemeverseRegistrationCenter deployed on %s", deployed);
     }
 
+    function _getDeployedMemeverseProxyDeployer(uint256 nonce) internal view {
+        bytes32 salt = keccak256(abi.encodePacked("MemeverseProxyDeployer", nonce));
+        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, salt);
+
+        console.log("MemeverseProxyDeployer deployed on %s", deployed);
+    }
+
     function _getDeployedUETHMemeverseLauncher(uint256 nonce) internal view {
         bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", "UETH", nonce));
         address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, salt);
@@ -180,7 +194,7 @@ contract MemeverseScript is BaseScript {
 
     function _deployRegistrationCenter(uint256 nonce) internal {
         bytes32 salt = keccak256(abi.encodePacked("MemeverseRegistrationCenter", nonce));
-        address localEndpoint = vm.envAddress("MONAD_TESTNET_ENDPOINT");
+        address localEndpoint = endpoints[uint32(block.chainid)];
         bytes memory creationCode = abi.encodePacked(
             type(MemeverseRegistrationCenter).creationCode,
             abi.encode(
@@ -197,7 +211,7 @@ contract MemeverseScript is BaseScript {
             uint32 chainId = omnichainIds[i];
             uint32 endpointId = endpointIds[chainId];
             endpointIdPairs[i] = IMemeverseRegistrationCenter.LzEndpointIdPair({ chainId: chainId, endpointId: endpointId});
-            if (block.chainid == chainId || chainId == 57054 || chainId == 168587773 || chainId == 534351) continue;
+            if (block.chainid == chainId) continue;
 
             IOAppCore(centerAddr).setPeer(endpointId, bytes32(abi.encode(MEMEVERSE_REGISTRAR)));
 
@@ -234,7 +248,7 @@ contract MemeverseScript is BaseScript {
         bytes memory encodedArgs;
         bytes memory creationBytecode;
         address localEndpoint = endpoints[uint32(block.chainid)];
-        if (block.chainid == vm.envUint("MONAD_TESTNET_CHAINID")) {
+        if (block.chainid == vm.envUint("BSC_TESTNET_CHAINID")) {
             encodedArgs = abi.encode(
                 owner,
                 MEMEVERSE_REGISTRATION_CENTER
@@ -244,8 +258,8 @@ contract MemeverseScript is BaseScript {
             encodedArgs = abi.encode(
                 owner,
                 localEndpoint,
-                uint32(vm.envUint("MONAD_TESTNET_EID")),
-                uint32(vm.envUint("MONAD_TESTNET_CHAINID")),
+                uint32(vm.envUint("BSC_TESTNET_EID")),
+                uint32(vm.envUint("BSC_TESTNET_CHAINID")),
                 150000,
                 500000,
                 250000
@@ -265,13 +279,8 @@ contract MemeverseScript is BaseScript {
         pairs[0] = IMemeverseRegistrar.UPTLauncherPair({ upt: UETH, memeverseLauncher: UETH_MEMEVERSE_LAUNCHER});
         IMemeverseRegistrar(memeverseRegistrarAddr).setUPTLauncher(pairs);
 
-        if (
-            block.chainid != vm.envUint("MONAD_TESTNET_CHAINID") && 
-            block.chainid != 57054 &&
-            block.chainid != 168587773 &&
-            block.chainid != 534351
-        ) {
-            uint32 centerEndpointId = uint32(vm.envUint("MONAD_TESTNET_EID"));
+        if (block.chainid != vm.envUint("BSC_TESTNET_CHAINID")) {
+            uint32 centerEndpointId = uint32(vm.envUint("BSC_TESTNET_EID"));
             IOAppCore(memeverseRegistrarAddr).setPeer(
                 centerEndpointId, 
                 bytes32(abi.encode(MEMEVERSE_REGISTRATION_CENTER))
@@ -292,12 +301,32 @@ contract MemeverseScript is BaseScript {
                 config: abi.encode(config)
             });
 
-            console.log("ChainId is:", block.chainid);
             address sendLib = IMessageLibManager(localEndpoint).getSendLibrary(memeverseRegistrarAddr, centerEndpointId);
             (address receiveLib, ) = IMessageLibManager(localEndpoint).getReceiveLibrary(memeverseRegistrarAddr, centerEndpointId);
             IMessageLibManager(localEndpoint).setConfig(memeverseRegistrarAddr, sendLib, params);
             IMessageLibManager(localEndpoint).setConfig(memeverseRegistrarAddr, receiveLib, params);
         }
+    }
+
+    function _deployMemeverseProxyDeployer(uint256 nonce) internal {
+        bytes memory creationCode = abi.encodePacked(
+            type(MemeverseProxyDeployer).creationCode,
+            abi.encode(
+                owner,
+                UETH_MEMEVERSE_LAUNCHER,
+                MEMECOIN_IMPLEMENTATION,
+                POL_IMPLEMENTATION,
+                MEMECOIN_VAULT_IMPLEMENTATION,
+                MEMECOIN_GOVERNOR_IMPLEMENTATION,
+                10000e18,
+                30
+            )
+        );
+
+        bytes32 salt = keccak256(abi.encodePacked("MemeverseProxyDeployer", nonce));
+        address memeverseProxyDeployer = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+
+        console.log("MemeverseProxyDeployer deployed on %s", memeverseProxyDeployer);
     }
 
     function _deployUETHMemeverseLauncher(uint256 nonce) internal {
@@ -309,10 +338,7 @@ contract MemeverseScript is BaseScript {
             router,
             localEndpoint,
             MEMEVERSE_REGISTRAR,
-            MEMECOIN_IMPLEMENTATION,
-            POL_IMPLEMENTATION,
-            MEMECOIN_VAULT_IMPLEMENTATION,
-            MEMECOIN_GOVERNOR_IMPLEMENTATION,
+            MEMEVERSE_PROXY_DEPLOYER,
             UETH_YIELD_DISPATCHER,
             1e19,
             1000000,

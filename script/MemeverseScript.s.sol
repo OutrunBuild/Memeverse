@@ -74,22 +74,22 @@ contract MemeverseScript is BaseScript {
 
         // _getDeployedImplementation(3);
 
-        // _getDeployedRegistrationCenter(3);
+        // _getDeployedRegistrationCenter(4);
 
-        // _getDeployedMemeverseRegistrar(3);
-        // _getDeployedMemeverseProxyDeployer(3);
-        // _getDeployedUETHMemeverseLauncher(3);
-        // _getDeployedUETHYieldDispatcher(3);
+        // _getDeployedMemeverseRegistrar(4);
+        // _getDeployedMemeverseProxyDeployer(4);
+        // _getDeployedUETHMemeverseLauncher(4);
+        // _getDeployedUETHYieldDispatcher(4);
 
 
         // _deployImplementation(3);
 
-        // _deployRegistrationCenter(3);
+        // _deployRegistrationCenter(4);
 
-        _deployMemeverseRegistrar(3);
-        _deployMemeverseProxyDeployer(3);
-        _deployUETHMemeverseLauncher(3);
-        _deployUETHYieldDispatcher(3);
+        _deployMemeverseRegistrar(4);
+        _deployMemeverseProxyDeployer(4);
+        _deployUETHMemeverseLauncher(4);
+        _deployUETHYieldDispatcher(4);
     }
 
     function _chainsInit() internal {
@@ -176,20 +176,20 @@ contract MemeverseScript is BaseScript {
     /** DEPLOY **/
 
     function _deployImplementation(uint256 nonce) internal {
-        bytes32 memecoinSalt = keccak256(abi.encodePacked("MemecoinImplementation", nonce));
-        bytes32 liquidProofSalt = keccak256(abi.encodePacked("LiquidProofImplementation", nonce));
-        bytes32 memecoinYieldVaultSalt = keccak256(abi.encodePacked("MemecoinYieldVaultImplementation", nonce));
-        bytes32 memecoinDaoGovernorSalt = keccak256(abi.encodePacked("MemecoinDaoGovernorImplementation", nonce));
+        //bytes32 memecoinSalt = keccak256(abi.encodePacked("MemecoinImplementation", nonce));
+        bytes32 memecoinPOLSalt = keccak256(abi.encodePacked("MemecoinPOLImplementation", nonce));
+        //bytes32 memecoinYieldVaultSalt = keccak256(abi.encodePacked("MemecoinYieldVaultImplementation", nonce));
+        //bytes32 memecoinDaoGovernorSalt = keccak256(abi.encodePacked("MemecoinDaoGovernorImplementation", nonce));
         
-        address memecoinImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, type(Memecoin).creationCode);
-        address liquidProofImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(liquidProofSalt, type(MemeLiquidProof).creationCode);
-        address memecoinYieldVaultImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinYieldVaultSalt, type(MemecoinYieldVault).creationCode);
-        address memecoinDaoGovernorImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinDaoGovernorSalt, type(MemecoinDaoGovernor).creationCode);
+        //address memecoinImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, type(Memecoin).creationCode);
+        address memecoinPOLImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinPOLSalt, type(MemeLiquidProof).creationCode);
+        //address memecoinYieldVaultImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinYieldVaultSalt, type(MemecoinYieldVault).creationCode);
+        //address memecoinDaoGovernorImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinDaoGovernorSalt, type(MemecoinDaoGovernor).creationCode);
         
-        console.log("MemecoinImplementation deployed on %s", memecoinImplementation);
-        console.log("LiquidProofImplementation deployed on %s", liquidProofImplementation);
-        console.log("MemecoinYieldVaultImplementation deployed on %s", memecoinYieldVaultImplementation);
-        console.log("MemecoinDaoGovernorImplementation deployed on %s", memecoinDaoGovernorImplementation);
+        //console.log("MemecoinImplementation deployed on %s", memecoinImplementation);
+        console.log("MemecoinPOLImplementation deployed on %s", memecoinPOLImplementation);
+        //console.log("MemecoinYieldVaultImplementation deployed on %s", memecoinYieldVaultImplementation);
+        //console.log("MemecoinDaoGovernorImplementation deployed on %s", memecoinDaoGovernorImplementation);
     }
 
     function _deployRegistrationCenter(uint256 nonce) internal {

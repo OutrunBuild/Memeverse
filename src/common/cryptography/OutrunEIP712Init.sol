@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import { IERC5267 } from "@openzeppelin/contracts/interfaces/IERC5267.sol";
 import { ShortStrings, ShortString} from "@openzeppelin/contracts/utils/ShortStrings.sol";
-import { MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 import { Initializable } from "../Initializable.sol";
 

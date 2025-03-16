@@ -11,7 +11,6 @@ import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
-import { Initializable } from "../Initializable.sol";
 import { OutrunEIP712Init } from "../cryptography/OutrunEIP712Init.sol";
 
 /**

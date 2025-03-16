@@ -3,8 +3,6 @@ pragma solidity ^0.8.28;
 
 import { IMemecoin } from "./interfaces/IMemecoin.sol";
 import { OutrunOFTInit } from "../common/layerzero/oft/OutrunOFTInit.sol";
-import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
-import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 
 /**
  * @title Omnichain Memecoin

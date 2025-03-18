@@ -17,7 +17,6 @@ interface IMemeverseLauncher {
         string symbol; // Token symbol
         string uri; // Image uri
         address memecoin; // Omnichain memecoin address
-        address creator; // Token creator
         address liquidProof; // POL token address
         address yieldVault; // Memecoin yield vault
         address governor; // Memecoin DAO governor
@@ -83,7 +82,6 @@ interface IMemeverseLauncher {
         string calldata name,
         string calldata symbol,
         string calldata uri,
-        address creator,
         uint256 uniqueId,
         uint128 endTime,
         uint128 unlockTime,

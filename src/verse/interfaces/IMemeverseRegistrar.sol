@@ -15,7 +15,6 @@ interface IMemeverseRegistrar {
         uint64 endTime;                 // EndTime of launchPool
         uint64 unlockTime;              // UnlockTime of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
-        address creator;                // Memeverse creator
         address upt;                    // UPT of Memeverse
     }
 

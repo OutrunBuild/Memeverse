@@ -116,7 +116,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         if (currentEndTime != 0) {
             symbolHistory[param.symbol][currentRegistration.uniqueId] = SymbolRegistration({
                 uniqueId: currentRegistration.uniqueId,
-                creator: currentRegistration.creator,
                 endTime: currentEndTime
             });
         }
@@ -124,7 +123,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         uint64 endTime = uint64(currentTime + param.durationDays * DAY);
         uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentTime, msg.sender)));
         currentRegistration.uniqueId = uniqueId;
-        currentRegistration.creator = param.creator;
         currentRegistration.endTime = endTime;
 
         IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
@@ -135,7 +133,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             endTime: endTime,
             unlockTime: endTime + uint64(param.lockupDays * DAY),
             omnichainIds: param.omnichainIds,
-            creator: param.creator,
             upt: param.upt
         });
         _omnichainSend(param.omnichainIds, memeverseParam);
@@ -198,7 +195,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
                 message,
                 options,
                 MessagingFee({nativeFee: fee, lzTokenFee: 0}),
-                param.creator
+                msg.sender
             );
             address(this).functionCallWithValue(functionSignature, fee);
         }
@@ -215,7 +212,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32, InvalidSymbolLength());
         require(bytes(param.uri).length > 0, InvalidURILength());
         require(param.omnichainIds.length > 0, EmptyOmnichainIds());
-        require(param.creator != address(0), ZeroCreatorAddress());
         require(param.upt != address(0), ZeroUPTAddress());
     }
 

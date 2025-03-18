@@ -39,7 +39,7 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
      */
     function _registerMemeverse(MemeverseParam memory param) internal {
         IMemeverseLauncher(uptToLauncher[param.upt]).registerMemeverse(
-            param.name, param.symbol, param.uri, param.creator, param.uniqueId, 
+            param.name, param.symbol, param.uri, param.uniqueId, 
             param.endTime, param.unlockTime, param.omnichainIds
         );
     }

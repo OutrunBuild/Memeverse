@@ -14,13 +14,11 @@ interface IMemeverseRegistrationCenter {
         uint256 durationDays;           // DurationDays of genesis stage
         uint256 lockupDays;             // LockupDays of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
-        address creator;                // Memeverse creator
         address upt;                    // UPT of Memeverse
     }
 
     struct SymbolRegistration {
         uint256 uniqueId;               // unique verseId
-        address creator;                // creator address
         uint64 endTime;                 // Memeverse genesis endTime
     }
 

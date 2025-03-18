@@ -52,8 +52,8 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     /**
      * @dev Predict memecoin yield vault address
      */
-    function predictYieldVaultAddress(bytes32 salt) external view override returns (address) {
-        return vaultImplementation.predictDeterministicAddress(salt);
+    function predictYieldVaultAddress(uint256 uniqueId) external view override returns (address) {
+        return vaultImplementation.predictDeterministicAddress(keccak256(abi.encode(uniqueId)));
     }
 
     /**
@@ -62,38 +62,38 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     function computeDAOGovernorAddress(
         string calldata memecoinName,
         address yieldVault,
-        bytes32 salt
+        uint256 uniqueId
     ) external view override returns (address) {
         bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, yieldVault);
 
-        return Create2.computeAddress(salt, keccak256(proxyBytecode));
+        return Create2.computeAddress(keccak256(abi.encode(uniqueId)), keccak256(proxyBytecode));
     }
 
     /**
      * @dev Deploy memecoin proxy contract
      */
-    function deployMemecoin(bytes32 salt) external onlyMemeverseLauncher override returns (address memecoin) {
-        memecoin = memecoinImplementation.cloneDeterministic(salt);
+    function deployMemecoin(uint256 uniqueId) external onlyMemeverseLauncher override returns (address memecoin) {
+        memecoin = memecoinImplementation.cloneDeterministic(keccak256(abi.encode(uniqueId)));
 
-        emit DeployMemecoin(memecoin);
+        emit DeployMemecoin(uniqueId, memecoin);
     }
 
     /**
      * @dev Deploy POL proxy contract
      */
-    function deployPOL(bytes32 salt) external onlyMemeverseLauncher override returns (address pol) {
-        pol = polImplementation.cloneDeterministic(salt);
+    function deployPOL(uint256 uniqueId) external onlyMemeverseLauncher override returns (address pol) {
+        pol = polImplementation.cloneDeterministic(keccak256(abi.encode(uniqueId)));
 
-        emit DeployPOL(pol);
+        emit DeployPOL(uniqueId, pol);
     }
 
     /**
      * @dev Deploy memecoin yield vault proxy contract
      */
-    function deployYieldVault(bytes32 salt) external onlyMemeverseLauncher override returns (address yieldVault) {
-        yieldVault = vaultImplementation.cloneDeterministic(salt);
+    function deployYieldVault(uint256 uniqueId) external onlyMemeverseLauncher override returns (address yieldVault) {
+        yieldVault = vaultImplementation.cloneDeterministic(keccak256(abi.encode(uniqueId)));
 
-        emit DeployYieldVault(yieldVault);
+        emit DeployYieldVault(uniqueId, yieldVault);
     }
 
     /**
@@ -104,13 +104,13 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     function deployDAOGovernor(
         string calldata memecoinName,
         address yieldVault,
-        bytes32 salt
+        uint256 uniqueId
     ) external onlyMemeverseLauncher override returns (address daoGovernor) {
         bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, yieldVault);
 
-        daoGovernor = Create2.deploy(0, salt, proxyBytecode);
+        daoGovernor = Create2.deploy(0, keccak256(abi.encode(uniqueId)), proxyBytecode);
 
-        emit DeployDAOGovernor(daoGovernor);
+        emit DeployDAOGovernor(uniqueId, daoGovernor);
     }
 
     function _computeProxyBytecode(string memory memecoinName, address yieldVault) internal view returns (bytes memory proxyBytecode) {

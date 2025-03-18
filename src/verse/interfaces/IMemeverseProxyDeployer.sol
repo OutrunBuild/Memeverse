@@ -5,24 +5,24 @@ pragma solidity ^0.8.28;
  * @dev Interface for the Memeverse Proxy Contract Deployer.
  */
 interface IMemeverseProxyDeployer {
-    function predictYieldVaultAddress(bytes32 salt) external view returns (address);
+    function predictYieldVaultAddress(uint256 uniqueId) external view returns (address);
 
     function computeDAOGovernorAddress(
         string calldata memecoinName,
         address yieldVault,
-        bytes32 salt
+        uint256 uniqueId
     ) external view returns (address);
     
-    function deployMemecoin(bytes32 salt) external returns (address memecoin);
+    function deployMemecoin(uint256 uniqueId) external returns (address memecoin);
 
-    function deployPOL(bytes32 salt) external returns (address pol);
+    function deployPOL(uint256 uniqueId) external returns (address pol);
 
-    function deployYieldVault(bytes32 salt) external returns (address yieldVault);
+    function deployYieldVault(uint256 uniqueId) external returns (address yieldVault);
 
     function deployDAOGovernor(
         string calldata memecoinName,
         address yieldVault,
-        bytes32 salt
+        uint256 uniqueId
     ) external returns (address daoGovernor);
 
 
@@ -31,18 +31,19 @@ interface IMemeverseProxyDeployer {
     function setQuorumNumerator(uint256 quorumNumerator) external;
 
 
-    event DeployMemecoin(address memecoin);
+    event DeployMemecoin(uint256 indexed uniqueId, address memecoin);
 
-    event DeployPOL(address pol);
+    event DeployPOL(uint256 indexed uniqueId, address pol);
 
-    event DeployYieldVault(address yieldVault);
+    event DeployYieldVault(uint256 indexed uniqueId, address yieldVault);
 
-    event DeployDAOGovernor(address daoGovernor);
+    event DeployDAOGovernor(uint256 indexed uniqueId, address daoGovernor);
 
     event SetProposalThreshold(uint256 proposalThreshold);
 
     event SetQuorumNumerator(uint256 quorumNumerator);
 
     error ZeroInput();
+    
     error PermissionDenied();
 }

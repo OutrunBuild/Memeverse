@@ -44,8 +44,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     mapping(uint32 chainId => uint32) public lzEndpointIds;
     mapping(address memecoin => uint256) public memecoinToIds;
     mapping(uint256 verseId => Memeverse) public memeverses;
-    mapping(uint256 verseId => uint256) public claimableLiquidProofs;
     mapping(uint256 verseId => GenesisFund) public genesisFunds;
+    mapping(uint256 verseId => uint256) public totalClaimablePOLs;
     mapping(uint256 verseId => mapping(address account => uint256)) public userTotalFunds;
 
     constructor(
@@ -143,19 +143,19 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
-     * @dev Preview claimable liquidProof of user after Genesis Stage 
+     * @dev Preview claimable POLs token of user after Genesis Stage 
      * @param verseId - Memeverse id
      * @return claimableAmount - The claimable amount.
      */
-    function claimableLiquidProof(uint256 verseId) public view override returns (uint256 claimableAmount) {
+    function userClaimablePOLs(uint256 verseId) public view override returns (uint256 claimableAmount) {
         Memeverse storage verse = memeverses[verseId];
         Stage currentStage = verse.currentStage;
         require(currentStage >= Stage.Locked, NotReachedLockedStage(currentStage));
 
         uint256 totalFunds = genesisFunds[verseId].totalMemecoinFunds + genesisFunds[verseId].totalLiquidProofFunds;
         uint256 userFunds = userTotalFunds[verseId][msg.sender];
-        uint256 totalUserLiquidProof = claimableLiquidProofs[verseId];
-        claimableAmount = totalUserLiquidProof * userFunds / totalFunds;
+        uint256 totalPOLs = totalClaimablePOLs[verseId];
+        claimableAmount = totalPOLs * userFunds / totalFunds;
     }
 
     /**
@@ -348,7 +348,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                     address(0),
                     block.timestamp
                 );
-                claimableLiquidProofs[verseId] = memecoinLiquidity - liquidProofAmount;
+                totalClaimablePOLs[verseId] = memecoinLiquidity - liquidProofAmount;
 
                 verse.currentStage = Stage.Locked;
                 currentStage = Stage.Locked;
@@ -380,11 +380,11 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
-     * @dev Claim liquidProof in stage Locked
+     * @dev Claim POL tokens in stage Locked
      * @param verseId - Memeverse id
      */
-    function claimLiquidProof(uint256 verseId) external whenNotPaused override returns (uint256 amount) {
-        amount = claimableLiquidProof(verseId);
+    function claimPOLs(uint256 verseId) external whenNotPaused override returns (uint256 amount) {
+        amount = userClaimablePOLs(verseId);
         if (amount != 0) {
             address msgSender = msg.sender;
             userTotalFunds[verseId][msgSender] = 0;

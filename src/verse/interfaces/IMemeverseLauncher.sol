@@ -50,7 +50,7 @@ interface IMemeverseLauncher {
 
     function getGovernorByMemecoin(address memecoin) external view returns (address governor);
 
-    function claimableLiquidProof(uint256 verseId) external view returns (uint256 claimableAmount);
+    function userClaimablePOLs(uint256 verseId) external view returns (uint256 claimableAmount);
 
     function previewGenesisMakerFees(uint256 verseId) external view returns (uint256 UPTFee, uint256 memecoinFee);
 
@@ -63,7 +63,7 @@ interface IMemeverseLauncher {
 
     function changeStage(uint256 verseId) external returns (Stage currentStage);
 
-    function claimLiquidProof(uint256 verseId) external returns (uint256 amount);
+    function claimPOLs(uint256 verseId) external returns (uint256 amount);
 
     function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable 
     returns (uint256 govFee, uint256 memecoinFee, uint256 autoBotFee);

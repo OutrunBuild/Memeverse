@@ -130,6 +130,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         require(requestCount < MAX_REDEEM_REQUESTS, MaxRedeemRequestsReached());
 
         _burn(sender, shares);
+        totalAssets -= assets;
         redeemRequestQueues[msg.sender].push(RedeemRequest({
             amount: uint192(assets),
             requestTime: uint64(block.timestamp)
@@ -158,6 +159,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
 
     function _deposit(address sender, address receiver, uint256 assets, uint256 shares) internal {
         IERC20(asset).safeTransferFrom(sender, address(this), assets);
+        totalAssets += assets;
         _mint(receiver, shares);
 
         emit Deposit(sender, receiver, assets, shares);

@@ -18,7 +18,6 @@ interface IMemecoin is IERC20 {
      * @param name_ - The name of the memecoin.
      * @param symbol_ - The symbol of the memecoin.
      * @param decimals_ - The decimals of the memecoin.
-     * @param _unlockTime - The unlock time of liquidity.
      * @param _memeverseLauncher - The address of the memeverse launcher.
      * @param _lzEndpoint - The address of the LayerZero endpoint.
      * @param _delegate - The address of the delegate.
@@ -27,18 +26,10 @@ interface IMemecoin is IERC20 {
         string memory name_, 
         string memory symbol_,
         uint8 decimals_, 
-        uint256 _unlockTime, 
         address _memeverseLauncher, 
         address _lzEndpoint,
         address _delegate
     ) external;
-
-    
-    /**
-     * @notice Set GenesisLiquidityPool.
-     * @param genesisLiquidityPool - The address of the genesisLiquidityPool.
-     */
-    function setGenesisLiquidityPool(address genesisLiquidityPool) external;
 
     /**
      * @notice Mint the memecoin.
@@ -62,9 +53,4 @@ interface IMemecoin is IERC20 {
      * @notice Insufficient balance.
      */
     error InsufficientBalance();
-
-    /**
-     * @notice In Liquidity Protection Period.
-     */
-    error LiquidityProtectionPeriod();
 }

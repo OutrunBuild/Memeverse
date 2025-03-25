@@ -70,6 +70,8 @@ interface IMemeverseLauncher {
 
     function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external;
 
+    function redeemUnlockedCoins(uint256 verseId) external;
+
     function mintPOLToken(
         uint256 verseId, 
         uint256 amountInUPTDesired,
@@ -112,11 +114,16 @@ interface IMemeverseLauncher {
 
     error FeeRateOverFlow();
 
+    error NoCoinsToUnlock();
+
     error PermissionDenied();
 
     error InsufficientLzFee();
 
+
     error InsufficientUserFunds();
+
+    error LiquidityProtectionPeriod();
 
     error NotGenesisStage(Stage currentStage);
 
@@ -158,7 +165,9 @@ interface IMemeverseLauncher {
 
     event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 liquidity);
 
-    event MintLiquidProof(
+    event RedeemUnlockedCoins(uint256 indexed verseId, address indexed sender, uint256 amountInMemecoin);
+    
+    event MintPOLToken(
         uint256 indexed verseId, 
         address indexed memecoin, 
         address indexed liquidProof, 

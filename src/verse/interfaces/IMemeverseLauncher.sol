@@ -70,13 +70,14 @@ interface IMemeverseLauncher {
 
     function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external;
 
-    function mintLiquidProof(
+    function mintPOLToken(
         uint256 verseId, 
         uint256 amountInUPTDesired,
         uint256 amountInMemecoinDesired,
         uint256 amountInUPTMin,
-        uint256 amountInMemecoinMin
-    ) external returns (uint256);
+        uint256 amountInMemecoinMin,
+        uint256 amountOutDesired
+    ) external returns (uint256 amountInUPT, uint256 amountInMemecoin, uint256 amountOut);
 
     function registerMemeverse(
         string calldata name,

@@ -11,6 +11,7 @@ import { IBurnable } from "../common/IBurnable.sol";
 import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
 import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
 import { TokenHelper, IERC20 } from "../common/TokenHelper.sol";
+import { ILiquidityRouter } from "../common/ILiquidityRouter.sol";
 import { IOutrunAMMRouter } from "../common/IOutrunAMMRouter.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
 import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
@@ -27,6 +28,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     uint256 public constant RATIO = 10000;
     uint256 public constant SWAP_FEERATE = 100;
     address public immutable UPT;
+    address public immutable LIQUIDITY_ROUTER;
     address public immutable OUTRUN_AMM_ROUTER;
     address public immutable OUTRUN_AMM_FACTORY;
     address public immutable LOCAL_LZ_ENDPOINT;
@@ -52,6 +54,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         address _UPT,
         address _owner,
         address _outrunAMMFactory,
+        address _liquidityRouter,
         address _outrunAMMRouter,
         address _localLzEndpoint,
         address _memeverseRegistrar,
@@ -64,6 +67,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint128 _yieldDispatcherGasLimit
     ) Ownable(_owner) {
         UPT = _UPT;
+        LIQUIDITY_ROUTER = _liquidityRouter;
         OUTRUN_AMM_ROUTER = _outrunAMMRouter;
         OUTRUN_AMM_FACTORY = _outrunAMMFactory;
         LOCAL_LZ_ENDPOINT = _localLzEndpoint;
@@ -75,8 +79,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         autoBotFeeRate =_autoBotFeeRate;
         oftReceiveGasLimit = _oftReceiveGasLimit;
         yieldDispatcherGasLimit = _yieldDispatcherGasLimit;
-
-        _safeApproveInf(_UPT, _outrunAMMRouter);
     }
 
     /**
@@ -526,20 +528,22 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
-     * @dev Mint liquidProof by add memecoin liquidity when currentStage >= Stage.Locked.
+     * @dev Mint POL token by add memecoin liquidity when currentStage >= Stage.Locked.
      * @param verseId - Memeverse id
-     * @param amountInUPTDesired - Amount of UPT desired
-     * @param amountInMemecoinDesired - Amount of memecoin desired
+     * @param amountInUPTDesired - Amount of UPT transfered into Launcher
+     * @param amountInMemecoinDesired - Amount of transfered into Launcher
      * @param amountInUPTMin - Minimum amount of UPT
      * @param amountInMemecoinMin - Minimum amount of memecoin
+     * @param amountOutDesired - Amount of POL token desired, If the amountOut is 0, the output quantity will be automatically calculated.
      */
-    function mintLiquidProof(
+    function mintPOLToken(
         uint256 verseId, 
         uint256 amountInUPTDesired,
         uint256 amountInMemecoinDesired,
         uint256 amountInUPTMin,
-        uint256 amountInMemecoinMin
-    ) external override returns (uint256) {
+        uint256 amountInMemecoinMin,
+        uint256 amountOutDesired
+    ) external override returns (uint256 amountInUPT, uint256 amountInMemecoin, uint256 amountOut) {
         Memeverse storage verse = memeverses[verseId];
         Stage currentStage = verse.currentStage;
         require(currentStage >= Stage.Locked, NotReachedLockedStage(currentStage));
@@ -547,31 +551,41 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         address memecoin = verse.memecoin;
         _transferFrom(IERC20(UPT), msg.sender, address(this), amountInUPTDesired);
         _transferFrom(IERC20(memecoin), msg.sender, address(this), amountInMemecoinDesired);
+        _safeApproveInf(UPT, LIQUIDITY_ROUTER);
+        _safeApproveInf(memecoin, LIQUIDITY_ROUTER);
+        if (amountOutDesired == 0) {
+            (amountInUPT, amountInMemecoin, amountOut) = ILiquidityRouter(LIQUIDITY_ROUTER).addExactTokensForLiquidity(
+                UPT,
+                memecoin,
+                SWAP_FEERATE,
+                amountInUPTDesired,
+                amountInMemecoinDesired,
+                amountInUPTMin,
+                amountInMemecoinMin,
+                address(this),
+                block.timestamp
+            );
+        } else {
+            (amountInUPT, amountInMemecoin, amountOut) = ILiquidityRouter(LIQUIDITY_ROUTER).addTokensForExactLiquidity(
+                UPT, 
+                memecoin, 
+                SWAP_FEERATE, 
+                amountOutDesired, 
+                amountInUPTDesired, 
+                amountInMemecoinDesired, 
+                address(this), 
+                block.timestamp
+            );
+        }
 
-        _safeApproveInf(UPT, OUTRUN_AMM_ROUTER);
-        _safeApproveInf(memecoin, OUTRUN_AMM_ROUTER);
-        (uint256 amountInUPTAdded, uint256 amountInMemecoinAdded, uint256 liquidity) = IOutrunAMMRouter(OUTRUN_AMM_ROUTER).addLiquidity(
-            UPT,
-            memecoin,
-            SWAP_FEERATE,
-            amountInUPTDesired,
-            amountInMemecoinDesired,
-            amountInUPTMin,
-            amountInMemecoinMin,
-            address(this),
-            block.timestamp + 600
-        );
-
-        uint256 UPTRefund = amountInUPTDesired - amountInUPTAdded;
-        uint256 memecoinRefund = amountInMemecoinDesired - amountInMemecoinAdded;
+        uint256 UPTRefund = amountInUPTDesired - amountInUPT;
+        uint256 memecoinRefund = amountInMemecoinDesired - amountInMemecoin;
         if (UPTRefund > 0) _transferOut(UPT, msg.sender, UPTRefund);
         if (memecoinRefund > 0) _transferOut(memecoin, msg.sender, memecoinRefund);
-
         address liquidProof = verse.liquidProof;
-        IMemeLiquidProof(liquidProof).mint(msg.sender, liquidity);
+        IMemeLiquidProof(liquidProof).mint(msg.sender, amountOut);
 
-        emit MintLiquidProof(verseId, memecoin, liquidProof, msg.sender, liquidity);
-        return liquidity;
+        emit MintLiquidProof(verseId, memecoin, liquidProof, msg.sender, amountOut);
     }
 
     /**

@@ -271,7 +271,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         Memeverse storage verse = memeverses[verseId];
         uint256 endTime = verse.endTime;
         currentStage = verse.currentStage;
-        require(endTime != 0 && currentTime > endTime && currentStage != Stage.Refund, InTheGenesisStage(endTime));
+        require(currentStage != Stage.Refund, InTheRefundStage());
+        require(endTime != 0 && currentTime > endTime, InTheGenesisStage(endTime));
 
         GenesisFund storage genesisFund = genesisFunds[verseId];
         uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;

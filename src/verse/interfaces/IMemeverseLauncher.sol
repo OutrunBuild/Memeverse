@@ -118,8 +118,9 @@ interface IMemeverseLauncher {
 
     error PermissionDenied();
 
-    error InsufficientLzFee();
+    error InTheRefundStage();
 
+    error InsufficientLzFee();
 
     error InsufficientUserFunds();
 

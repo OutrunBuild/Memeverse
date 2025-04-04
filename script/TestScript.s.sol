@@ -46,7 +46,6 @@ contract TestScript is BaseScript {
         ids[1] = 10143;
 
         param.omnichainIds = ids;
-        param.creator = owner;
         param.upt = UETH;
 
         // Center Chain - MemeverseRegistrarAtLocal

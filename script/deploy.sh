@@ -56,13 +56,13 @@ forge script MemeverseScript.s.sol:MemeverseScript --rpc-url scroll_sepolia \
     --broadcast --ffi -vvvv \
     --verify
 
-forge script MemeverseScript.s.sol:MemeverseScript --rpc-url monad_testnet \
-    --with-gas-price 52000000000 \
-    --optimize --optimizer-runs 10000 \
-    --via-ir \
-    --broadcast --ffi -vvvv \
-    --verify --verifier sourcify \
-    --verifier-url 'https://sourcify-api-monad.blockvision.org'
+# forge script MemeverseScript.s.sol:MemeverseScript --rpc-url monad_testnet \
+#     --with-gas-price 52000000000 \
+#     --optimize --optimizer-runs 10000 \
+#     --via-ir \
+#     --broadcast --ffi -vvvv \
+#     --verify --verifier sourcify \
+#     --verifier-url 'https://sourcify-api-monad.blockvision.org'
 
 # forge script MemeverseScript.s.sol:MemeverseScript --rpc-url optimistic_sepolia \
 #     --with-gas-price 1000000 \

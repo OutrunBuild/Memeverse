@@ -66,9 +66,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         if (totalSupply() == 0) {
             IMemecoin(asset).burn(yield);
         } else {
-            uint256 _totalAssets = totalAssets;
+            uint256 _totalAssets = totalAssets + yield;
             unchecked {
-                totalAssets = _totalAssets + yield;
+                totalAssets = _totalAssets;
             }
 
             emit AccumulateYields(msgSender, yield, _convertToAssets(1e18, _totalAssets));

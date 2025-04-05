@@ -12,12 +12,11 @@ import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
 import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
 import { TokenHelper, IERC20 } from "../common/TokenHelper.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
-import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
 import { IMemeLiquidProof } from "../token/interfaces/IMemeLiquidProof.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 import { IMemeverseProxyDeployer } from "./interfaces/IMemeverseProxyDeployer.sol";
 import { IMemeverseLiquidityRouter } from "../common/IMemeverseLiquidityRouter.sol";
-
+import { IMemeverseLauncher, Social } from "./interfaces/IMemeverseLauncher.sol";
 
 /**
  * @title Trapping into the memeverse
@@ -49,6 +48,16 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     mapping(uint256 verseId => uint256) public totalClaimablePOLs;
     mapping(uint256 verseId => mapping(address account => uint256)) public userTotalFunds;
     mapping(uint256 verseId => mapping(address account => uint256)) public toBeUnlockedCoins;
+
+    modifier onlyMemeverseRegistrar{
+        require(msg.sender == memeverseRegistrar, PermissionDenied());
+        _;
+    }
+
+    modifier onlyGovernor(uint256 verseId) {
+        require(msg.sender == memeverses[verseId].governor, PermissionDenied());
+        _;
+    }
 
     constructor(
         address _UPT,
@@ -624,10 +633,9 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
-     * @dev register memeverse
+     * @dev Register memeverse
      * @param name - Name of memecoin
      * @param symbol - Symbol of memecoin
-     * @param uri - IPFS URI of memecoin icon
      * @param uniqueId - Unique verseId
      * @param endTime - Genesis stage end time
      * @param unlockTime - Unlock time of liquidity
@@ -636,31 +644,23 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     function registerMemeverse(
         string calldata name,
         string calldata symbol,
-        string calldata uri,
         uint256 uniqueId,
         uint128 endTime,
         uint128 unlockTime,
         uint32[] calldata omnichainIds
-    ) external whenNotPaused override {
-        require(msg.sender == memeverseRegistrar, PermissionDenied());
-
+    ) external whenNotPaused onlyMemeverseRegistrar override {
         address memecoin = IMemeverseProxyDeployer(memeverseProxyDeployer).deployMemecoin(uniqueId);
         IMemecoin(memecoin).initialize(name, symbol, 18, address(this), LOCAL_LZ_ENDPOINT, address(this));
         _lzConfigure(memecoin, omnichainIds);
 
-        Memeverse memory verse = Memeverse(
-            name, 
-            symbol, 
-            uri, 
-            memecoin, 
-            address(0), 
-            address(0), 
-            address(0),
-            endTime,
-            unlockTime, 
-            omnichainIds,
-            Stage.Genesis
-        );
+        Memeverse storage verse = memeverses[uniqueId];
+        verse.name = name;
+        verse.symbol = symbol;
+        verse.memecoin = memecoin;
+        verse.endTime = endTime;
+        verse.unlockTime = unlockTime;
+        verse.omnichainIds = omnichainIds;
+
         memeverses[uniqueId] = verse;
         memecoinToIds[memecoin] = uniqueId;
 
@@ -790,8 +790,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
-     * @notice Set the layerzero endpoint ids for the given chain ids.
-     * @param pairs The pairs of chain ids and endpoint ids to set.
+     * @dev Set the layerzero endpoint ids for the given chain ids.
+     * @param pairs - The pairs of chain ids and endpoint ids to set.
      */
     function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external override onlyOwner {
         for (uint256 i = 0; i < pairs.length; i++) {
@@ -802,5 +802,61 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         }
 
         emit SetLzEndpointIds(pairs);
+    }
+
+    /**
+     * @dev Set token icon uri
+     * @param verseId - Memeverse id
+     * @param uri - IPFS URI of memecoin icon
+     * @param description - Description
+     * @param community - Community(X, Discord, Telegram and Others)
+     */
+    function setStringInfo(
+        uint256 verseId,
+        string calldata uri,
+        string calldata description,
+        Social.Community calldata community
+    ) external override onlyMemeverseRegistrar {
+        memeverses[verseId].uri = uri;
+        memeverses[verseId].desc = description;
+        memeverses[verseId].community = community;
+
+        emit SetStringInfo(verseId, uri, description, community);
+    }
+
+    /**
+     * @dev Set token icon uri
+     * @param verseId - Memeverse id
+     * @param uri - IPFS URI of memecoin icon
+     */
+    function setUri(uint256 verseId, string calldata uri) external override onlyGovernor(verseId) {
+        memeverses[verseId].uri = uri;
+
+        emit SetUri(verseId, uri);
+    }
+
+    /**
+     * @dev Set description
+     * @param verseId - Memeverse id
+     * @param description - Description
+     */
+    function setDescription(uint256 verseId, string calldata description) external override onlyGovernor(verseId) {
+        require(bytes(description).length < 256, InvalidLength());
+        
+        memeverses[verseId].desc = description;
+
+        emit SetDescription(verseId, description);
+    }
+
+    /**
+     * @dev Set community
+     * @param verseId - Memeverse id
+     * @param community - Community(X, Discord, Telegram and Others)
+     */
+    function setCommunity(uint256 verseId, Social.Community calldata community) external override onlyGovernor(verseId) {
+        require(bytes(community.handle).length < 32, InvalidLength());
+        memeverses[verseId].community = community;
+
+        emit SetCommunity(verseId, community);
     }
 }

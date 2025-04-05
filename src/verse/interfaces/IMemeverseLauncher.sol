@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
+import { Social } from "../../libraries/Social.sol";
+
 /**
  * @title MemeverseLauncher interface
  */
@@ -13,17 +15,19 @@ interface IMemeverseLauncher {
     }
 
     struct Memeverse {
-        string name; // Token name
-        string symbol; // Token symbol
-        string uri; // Image uri
-        address memecoin; // Omnichain memecoin address
-        address liquidProof; // POL token address
-        address yieldVault; // Memecoin yield vault
-        address governor; // Memecoin DAO governor
-        uint128 endTime; // EndTime of launchPool
-        uint128 unlockTime; // UnlockTime of liquidity
-        uint32[] omnichainIds; // ChainIds of the token's omnichain(EVM),The first chainId is main governance chain
-        Stage currentStage; // Current stage
+        string name;                    // Token name
+        string symbol;                  // Token symbol
+        string uri;                     // Token icon uri
+        string desc;                    // Description
+        Social.Community community;     // Community(X, Discord, Telegram and Others)
+        address memecoin;               // Omnichain memecoin address
+        address liquidProof;            // POL token address
+        address yieldVault;             // Memecoin yield vault
+        address governor;               // Memecoin DAO governor
+        uint128 endTime;                // End time of Genesis stage 
+        uint128 unlockTime;             // UnlockTime of liquidity
+        uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM),The first chainId is main governance chain
+        Stage currentStage;             // Current stage
     }
 
     struct GenesisFund {
@@ -84,7 +88,6 @@ interface IMemeverseLauncher {
     function registerMemeverse(
         string calldata name,
         string calldata symbol,
-        string calldata uri,
         uint256 uniqueId,
         uint128 endTime,
         uint128 unlockTime,
@@ -109,8 +112,23 @@ interface IMemeverseLauncher {
 
     function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 
+    function setStringInfo(
+        uint256 verseId,
+        string calldata uri,
+        string calldata description,
+        Social.Community calldata community
+    ) external; 
+
+    function setUri(uint256 verseId, string calldata uri) external;
+
+    function setDescription(uint256 verseId, string calldata description) external;
+
+    function setCommunity(uint256 verseId, Social.Community calldata community) external;
+
 
     error ZeroInput();
+
+    error InvalidLength();
 
     error FeeRateOverFlow();
 
@@ -195,4 +213,12 @@ interface IMemeverseLauncher {
     event SetGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit);
 
     event SetLzEndpointIds(LzEndpointIdPair[] pairs);
+
+    event SetStringInfo(uint256 indexed verseId, string uri, string description, Social.Community community);
+
+    event SetUri(uint256 indexed verseId, string uri);
+
+    event SetDescription(uint256 indexed verseId, string description);
+
+    event SetCommunity(uint256 indexed verseId, Social.Community community);
 }

@@ -34,6 +34,8 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
             name: param.name,
             symbol: param.symbol,
             uri: param.uri,
+            desc: param.desc,
+            community: param.community,
             uniqueId: uint256(keccak256(abi.encodePacked(param.symbol, block.timestamp, msg.sender))),
             endTime: endTime,
             unlockTime: unlockTime,

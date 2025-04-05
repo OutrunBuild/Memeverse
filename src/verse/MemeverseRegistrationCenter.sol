@@ -129,6 +129,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             name: param.name,
             symbol: param.symbol,
             uri: param.uri,
+            desc: param.desc,
+            community: param.community,
             uniqueId: uniqueId,
             endTime: endTime,
             unlockTime: endTime + uint64(param.lockupDays * DAY),
@@ -208,9 +210,11 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     function _registrationParamValidation(RegistrationParam memory param) internal view {
         require(param.lockupDays >= minLockupDays && param.lockupDays <= maxLockupDays, InvalidLockupDays());
         require(param.durationDays >= minDurationDays && param.durationDays <= maxDurationDays, InvalidDurationDays());
-        require(bytes(param.name).length > 0 && bytes(param.name).length < 32, InvalidNameLength());
-        require(bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32, InvalidSymbolLength());
-        require(bytes(param.uri).length > 0, InvalidURILength());
+        require(bytes(param.name).length > 0 && bytes(param.name).length < 32, InvalidLength());
+        require(bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32, InvalidLength());
+        require(bytes(param.uri).length > 0, InvalidLength());
+        require(bytes(param.desc).length > 0 && bytes(param.desc).length < 256, InvalidLength());
+        require(bytes(param.community.handle).length < 32, InvalidLength());
         require(param.omnichainIds.length > 0, EmptyOmnichainIds());
         require(param.upt != address(0), ZeroUPTAddress());
     }

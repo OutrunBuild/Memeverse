@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
+import { Social } from "../../libraries/Social.sol";
 import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
 /**
@@ -11,6 +12,8 @@ interface IMemeverseRegistrationCenter {
         string name;                    // Token name
         string symbol;                  // Token symbol
         string uri;                     // Token icon uri
+        string desc;                    // Description
+        Social.Community community;     // Community
         uint256 durationDays;           // DurationDays of genesis stage
         uint256 lockupDays;             // LockupDays of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
@@ -81,25 +84,21 @@ interface IMemeverseRegistrationCenter {
 
     error InvalidInput();
 
+    error InvalidLength();
+
     error ZeroUPTAddress();
 
     error LengthMismatch();
 
     error PermissionDenied();
 
-    error InvalidURILength();
-
     error EmptyOmnichainIds();
 
     error InvalidLockupDays();
 
-    error InvalidNameLength();
-
     error InsufficientLzFee();
 
     error InvalidDurationDays();
-    
-    error InvalidSymbolLength();
     
     error ZeroCreatorAddress();
 

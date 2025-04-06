@@ -9,4 +9,8 @@ interface IMemeverseRegistrarAtLocal {
     function setRegistrationCenter(address registrationCenter) external;
 
     event SetRegistrationCenter(address registrationCenter);
+
+    error ZeroAddress();
+
+    error PermissionDenied();
 }

@@ -59,8 +59,6 @@ interface IMemeverseRegistrationCenter {
 
     function setLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays) external;
 
-    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
-
     function setRegisterGasLimit(uint256 registerGasLimit) external;
 
 
@@ -75,8 +73,6 @@ interface IMemeverseRegistrationCenter {
 
     event SetLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays);
 
-    event SetLzEndpointIds(LzEndpointIdPair[] pairs);
-
     event SetRegisterGasLimit(uint256 registerGasLimit);
 
 
@@ -88,8 +84,6 @@ interface IMemeverseRegistrationCenter {
 
     error ZeroUPTAddress();
 
-    error LengthMismatch();
-
     error PermissionDenied();
 
     error EmptyOmnichainIds();
@@ -99,10 +93,6 @@ interface IMemeverseRegistrationCenter {
     error InsufficientLzFee();
 
     error InvalidDurationDays();
-    
-    error ZeroCreatorAddress();
-
-    error MaxFundNotSetCorrectly();
 
     error SymbolNotUnlock(uint64 unlockTime);
 

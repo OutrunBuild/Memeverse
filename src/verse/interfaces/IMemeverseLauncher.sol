@@ -20,6 +20,7 @@ interface IMemeverseLauncher {
         string uri;                     // Token icon uri
         string desc;                    // Description
         Social.Community community;     // Community(X, Discord, Telegram and Others)
+        address upt;                    // Genesis fund type
         address memecoin;               // Omnichain memecoin address
         address liquidProof;            // POL token address
         address yieldVault;             // Memecoin yield vault
@@ -31,13 +32,13 @@ interface IMemeverseLauncher {
     }
 
     struct GenesisFund {
-        uint128 totalMemecoinFunds; // Initial fundraising(UPT) for memecoin liquidity
-        uint128 totalLiquidProofFunds; // Initial fundraising(UPT) for liquidProof liquidity
+        uint128 totalMemecoinFunds;     // Initial fundraising(UPT) for memecoin liquidity
+        uint128 totalLiquidProofFunds;  // Initial fundraising(UPT) for liquidProof liquidity
     }
 
-    struct LzEndpointIdPair {
-        uint32 chainId;
-        uint32 endpointId;
+    struct FundMetaData{
+        uint256 minTotalFund;           // The minimum participation genesis fund corresponding to UPT
+        uint256 fundBasedAmount;        // The number of Memecoins minted per unit of Memecoin genesis fund
     }
 
     function getVerseIdByMemecoin(address memecoin) external view returns (uint256 verseId);
@@ -91,10 +92,15 @@ interface IMemeverseLauncher {
         uint256 uniqueId,
         uint128 endTime,
         uint128 unlockTime,
-        uint32[] calldata omnichainIds
+        uint32[] calldata omnichainIds,
+        address upt
     ) external;
 
     function removeGasDust(address receiver) external;
+
+    function setLiquidityRouter(address liquidityRouter) external;
+
+    function setMemeverseCommonInfo(address memeverseCommonInfo) external;
 
     function setMemeverseRegistrar(address memeverseRegistrar) external;
 
@@ -102,15 +108,11 @@ interface IMemeverseLauncher {
 
     function setYieldDispatcher(address yieldDispatcher) external;
 
-    function setMinTotalFund(uint256 minTotalFund) external;
-
-    function setFundBasedAmount(uint256 fundBasedAmount) external;
+    function setFundMetaData(address upt, uint256 minTotalFund, uint256 fundBasedAmount) external;
 
     function setAutoBotFeeRate(uint256 autoBotFeeRate) external;
 
     function setGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit) external;
-
-    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external;
 
     function setStringInfo(
         uint256 verseId,
@@ -198,21 +200,23 @@ interface IMemeverseLauncher {
 
     event RemoveGasDust(address indexed receiver, uint256 dust);
 
+    event SetLiquidityRouter(address liquidityRouter);
+
+    event SetMemeverseCommonInfo(address memeverseCommonInfo);
+
     event SetMemeverseRegistrar(address memeverseRegistrar);
 
     event SetMemeverseProxyDeployer(address memeverseProxyDeployer);
 
     event SetYieldDispatcher(address yieldDispatcher);
 
-    event SetMinTotalFund(uint256 minTotalFunds);
+    event SetFundMetaData(address indexed upt, uint256 minTotalFund, uint256 fundBasedAmount);
 
     event SetFundBasedAmount(uint256 fundBasedAmount);
 
     event SetAutoBotFeeRate(uint256 autoBotFeeRate);
 
     event SetGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit);
-
-    event SetLzEndpointIds(LzEndpointIdPair[] pairs);
 
     event SetStringInfo(uint256 indexed verseId, string uri, string description, Social.Community community);
 

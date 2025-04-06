@@ -7,6 +7,7 @@ import { OApp, Origin } from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 
 import { TokenHelper } from "../common/TokenHelper.sol";
+import { IMemeverseCommonInfo } from "./interfaces/IMemeverseCommonInfo.sol";
 import { IMemeverseRegistrationCenter, MessagingFee } from "./interfaces/IMemeverseRegistrationCenter.sol";
 import { IMemeverseRegistrarAtLocal, IMemeverseRegistrar } from "../verse/interfaces/IMemeverseRegistrarAtLocal.sol";
 
@@ -20,6 +21,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     // uint256 public constant DAY = 24 * 3600;
     uint256 public constant DAY = 180;  // OutrunTODO 180 seconds for testing
     address public immutable MEMEVERSE_REGISTRAR;
+    address public immutable MEMEVERSE_COMMON_INFO;
 
     uint128 public minDurationDays;
     uint128 public maxDurationDays;
@@ -33,8 +35,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     // Symbol history mapping, storing all valid registration records
     mapping(string symbol => mapping(uint256 uniqueId => SymbolRegistration)) public symbolHistory;
 
-    mapping(uint32 chainId => uint32) public endpointIds;
-
     /**
      * @notice Constructor
      * @param _owner - The owner of the contract
@@ -44,9 +44,11 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     constructor(
         address _owner, 
         address _lzEndpoint, 
-        address _memeverseRegistrar
+        address _memeverseRegistrar,
+        address _memeverseCommonInfo
     ) OApp(_lzEndpoint, _owner) Ownable(_owner) {
         MEMEVERSE_REGISTRAR = _memeverseRegistrar;
+        MEMEVERSE_COMMON_INFO = _memeverseCommonInfo;
     }
 
     /**
@@ -88,7 +90,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
                     continue;
                 }
 
-                uint32 eid = endpointIds[omnichainId];
+                uint32 eid = IMemeverseCommonInfo(MEMEVERSE_COMMON_INFO).lzEndpointIdMap(omnichainId);
                 require(eid != 0, InvalidOmnichainId(omnichainId));
 
                 uint256 fee = _quote(eid, message, options, false).nativeFee;
@@ -121,7 +123,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         }
         
         uint64 endTime = uint64(currentTime + param.durationDays * DAY);
-        uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentTime, msg.sender)));
+        uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentTime, param.upt, msg.sender)));
         currentRegistration.uniqueId = uniqueId;
         currentRegistration.endTime = endTime;
 
@@ -273,21 +275,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         maxLockupDays = _maxLockupDays;
 
         emit SetLockupDaysRange(_minLockupDays, _maxLockupDays);
-    }
-
-    /**
-     * @dev Set the lz endpoint ids
-     * @param pairs - The lz endpoint id pairs
-     */
-    function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external override onlyOwner {
-        for (uint256 i = 0; i < pairs.length; i++) {
-            LzEndpointIdPair calldata pair = pairs[i];
-            if (pair.chainId == 0 || pair.endpointId == 0) continue;
-
-            endpointIds[pair.chainId] = pair.endpointId;
-        }
-
-        emit SetLzEndpointIds(pairs);
     }
 
     /**

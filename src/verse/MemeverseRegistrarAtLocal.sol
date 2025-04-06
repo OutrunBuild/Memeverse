@@ -15,7 +15,12 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
 
     address public registrationCenter;
 
-    constructor(address _owner, address _registrationCenter) MemeverseRegistrarAbstract(_owner) {
+    constructor(
+        address _owner, 
+        address _registrationCenter,
+        address _memeverseLauncher,
+        address _memeverseCommonInfo
+    ) MemeverseRegistrarAbstract(_owner, _memeverseLauncher, _memeverseCommonInfo) {
         registrationCenter = _registrationCenter;
     }
 

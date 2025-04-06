@@ -21,11 +21,6 @@ interface IMemeverseRegistrar {
         address upt;                    // UPT of Memeverse
     }
 
-    struct UPTLauncherPair {
-        address upt;
-        address memeverseLauncher;
-    }
-
     function quoteRegister(
         IMemeverseRegistrationCenter.RegistrationParam calldata param, 
         uint128 value
@@ -35,18 +30,4 @@ interface IMemeverseRegistrar {
      * @dev Register through cross-chain at the RegistrationCenter
      */
     function registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value) external payable;
-
-    function setUPTLauncher(UPTLauncherPair[] calldata pairs) external;
-
-
-    error ZeroAddress();
-
-    error PermissionDenied();
-
-    error InvalidOmnichainId(uint32 omnichainId);
-
-
-    event SetLocalEndpoint(address indexed localEndpoint);
-
-    event SetUPTLauncher(UPTLauncherPair[] pairs);
 }

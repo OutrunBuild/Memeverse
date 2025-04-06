@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
 import { IBurnable } from "../common/IBurnable.sol";

@@ -113,17 +113,19 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         uint256 currentTime = block.timestamp;
         SymbolRegistration storage currentRegistration = symbolRegistry[param.symbol];
         uint64 currentEndTime = currentRegistration.endTime;
+        uint192 currentNonce = currentRegistration.nonce;
         require(currentTime > currentEndTime, SymbolNotUnlock(currentEndTime));
         
         if (currentEndTime != 0) {
             symbolHistory[param.symbol][currentRegistration.uniqueId] = SymbolRegistration({
                 uniqueId: currentRegistration.uniqueId,
-                endTime: currentEndTime
+                endTime: currentEndTime,
+                nonce: currentNonce
             });
         }
         
         uint64 endTime = uint64(currentTime + param.durationDays * DAY);
-        uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentTime, param.upt, msg.sender)));
+        uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentNonce + 1, param.upt)));
         currentRegistration.uniqueId = uniqueId;
         currentRegistration.endTime = endTime;
 

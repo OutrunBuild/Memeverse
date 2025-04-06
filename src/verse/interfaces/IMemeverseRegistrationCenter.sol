@@ -23,6 +23,7 @@ interface IMemeverseRegistrationCenter {
     struct SymbolRegistration {
         uint256 uniqueId;               // unique verseId
         uint64 endTime;                 // Memeverse genesis endTime
+        uint192 nonce;                  // Number of replication
     }
 
     struct LzEndpointIdPair {

@@ -22,7 +22,6 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     address public immutable vaultImplementation;
     address public immutable governorImplementation;
 
-    uint256 public proposalThreshold;
     uint256 public quorumNumerator;
 
     modifier onlyMemeverseLauncher() {
@@ -37,7 +36,6 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         address _polImplementation,
         address _vaultImplementation,
         address _governorImplementation,
-        uint256 _proposalThreshold,
         uint256 _quorumNumerator
     ) Ownable(_owner) {
         memeverseLauncher = _memeverseLauncher;
@@ -45,7 +43,6 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         polImplementation = _polImplementation;
         vaultImplementation = _vaultImplementation;
         governorImplementation = _governorImplementation;
-        proposalThreshold = _proposalThreshold;
         quorumNumerator = _quorumNumerator;
     }
 
@@ -62,9 +59,10 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     function computeDAOGovernorAddress(
         string calldata memecoinName,
         address yieldVault,
-        uint256 uniqueId
+        uint256 uniqueId,
+        uint256 proposalThreshold
     ) external view override returns (address) {
-        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, yieldVault);
+        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, yieldVault, proposalThreshold);
 
         return Create2.computeAddress(keccak256(abi.encode(uniqueId)), keccak256(proxyBytecode));
     }
@@ -100,20 +98,22 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
      * @dev Deploy memecoin DAO governor proxy contract
      * @param memecoinName - The name of memecoin
      * @param yieldVault - The yield vault of memecoin
+     * @param proposalThreshold - Proposal Threshold
      */
     function deployDAOGovernor(
         string calldata memecoinName,
         address yieldVault,
-        uint256 uniqueId
+        uint256 uniqueId,
+        uint256 proposalThreshold
     ) external onlyMemeverseLauncher override returns (address daoGovernor) {
-        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, yieldVault);
+        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, yieldVault, proposalThreshold);
 
         daoGovernor = Create2.deploy(0, keccak256(abi.encode(uniqueId)), proxyBytecode);
 
         emit DeployDAOGovernor(uniqueId, daoGovernor);
     }
 
-    function _computeProxyBytecode(string memory memecoinName, address yieldVault) internal view returns (bytes memory proxyBytecode) {
+    function _computeProxyBytecode(string memory memecoinName, address yieldVault, uint256 proposalThreshold) internal view returns (bytes memory proxyBytecode) {
         bytes memory initData = abi.encodeWithSelector(
             IMemecoinDaoGovernor.initialize.selector,
             string(abi.encodePacked(memecoinName, " DAO")),
@@ -127,18 +127,6 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
             type(ERC1967Proxy).creationCode,
             abi.encode(governorImplementation, initData)
         );
-    }
-
-    /**
-     * @dev Set proposal threshold
-     * @param _proposalThreshold - proposal threshold
-     */
-    function setProposalThreshold(uint256 _proposalThreshold) external override onlyOwner {
-        require(_proposalThreshold != 0, ZeroInput());
-
-        proposalThreshold = _proposalThreshold;
-
-        emit SetProposalThreshold(_proposalThreshold);
     }
 
     /**

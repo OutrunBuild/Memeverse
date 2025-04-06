@@ -10,7 +10,8 @@ interface IMemeverseProxyDeployer {
     function computeDAOGovernorAddress(
         string calldata memecoinName,
         address yieldVault,
-        uint256 uniqueId
+        uint256 uniqueId,
+        uint256 proposalThreshold
     ) external view returns (address);
     
     function deployMemecoin(uint256 uniqueId) external returns (address memecoin);
@@ -22,14 +23,11 @@ interface IMemeverseProxyDeployer {
     function deployDAOGovernor(
         string calldata memecoinName,
         address yieldVault,
-        uint256 uniqueId
+        uint256 uniqueId,
+        uint256 proposalThreshold
     ) external returns (address daoGovernor);
 
-
-    function setProposalThreshold(uint256 proposalThreshold) external;
-
     function setQuorumNumerator(uint256 quorumNumerator) external;
-
 
     event DeployMemecoin(uint256 indexed uniqueId, address memecoin);
 
@@ -38,8 +36,6 @@ interface IMemeverseProxyDeployer {
     event DeployYieldVault(uint256 indexed uniqueId, address yieldVault);
 
     event DeployDAOGovernor(uint256 indexed uniqueId, address daoGovernor);
-
-    event SetProposalThreshold(uint256 proposalThreshold);
 
     event SetQuorumNumerator(uint256 quorumNumerator);
 

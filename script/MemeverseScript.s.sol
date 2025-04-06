@@ -365,8 +365,8 @@ contract MemeverseScript is BaseScript {
                 POL_IMPLEMENTATION,
                 MEMECOIN_VAULT_IMPLEMENTATION,
                 MEMECOIN_GOVERNOR_IMPLEMENTATION,
-                10000e18,
-                30
+                1000000e18,
+                25
             )
         );
 
@@ -397,7 +397,7 @@ contract MemeverseScript is BaseScript {
         );
         bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
         address memeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
-        IMemeverseLauncher(memeverseLauncherAddr).setFundMetaData(UETH, 1e19, 1000000);
+        IMemeverseLauncher(memeverseLauncherAddr).setFundMetaData(UETH, 1e19, 10000000);
 
         console.log("MemeverseLauncher deployed on %s", memeverseLauncherAddr);
     }

@@ -5,6 +5,7 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
+import { TokenHelper } from "../common/TokenHelper.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 import { IMemeverseCommonInfo } from "../verse/interfaces/IMemeverseCommonInfo.sol";
@@ -13,7 +14,7 @@ import { IMemeverseOmnichainInteroperation } from "./interfaces/IMemeverseOmnich
 /**
  * @title Memeverse Omnichain Interoperation
  */ 
-contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, Ownable {
+contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, TokenHelper, Ownable {
     using OptionsBuilder for bytes;
 
     address public immutable MEMEVERSE_COMMON_INFO;
@@ -61,6 +62,8 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         address receiver,
         uint256 amount
     ) external view override returns (uint256 lzFee) {
+        require(memecoin != address(0) && receiver != address(0) && amount != 0, ZeroInput());
+
         IMemeverseLauncher.Memeverse memory verse = IMemeverseLauncher(MEMEVERSE_LAUNCHER).getMemeverseByMemecoin(memecoin);
         uint32 govChainId = verse.omnichainIds[0];
         address yieldVault = verse.yieldVault;
@@ -93,11 +96,16 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         address receiver,
         uint256 amount
     ) external payable override {
+        require(memecoin != address(0) && receiver != address(0) && amount != 0, ZeroInput());
+
         IMemeverseLauncher.Memeverse memory verse = IMemeverseLauncher(MEMEVERSE_LAUNCHER).getMemeverseByMemecoin(memecoin);
         uint32 govChainId = verse.omnichainIds[0];
         address yieldVault = verse.yieldVault;
         require(yieldVault.code.length != 0, EmptyYieldVault());
+
+        _transferIn(memecoin, msg.sender, amount);
         if (govChainId == block.chainid) {
+            _safeApproveInf(memecoin, yieldVault);
             IMemecoinYieldVault(yieldVault).deposit(amount, receiver);
             return;
         }

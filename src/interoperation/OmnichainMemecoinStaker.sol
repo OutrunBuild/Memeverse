@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
-import { IBurnable } from "../common/IBurnable.sol";
 import { TokenHelper } from "../common/TokenHelper.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 import { IOmnichainMemecoinStaker } from "./interfaces/IOmnichainMemecoinStaker.sol";
@@ -40,6 +39,7 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper, Ownab
         if (yieldVault.code.length == 0) {
             _transferOut(token, receiver, amount);
         } else {
+            _safeApproveInf(token, yieldVault);
             IMemecoinYieldVault(yieldVault).deposit(amount, receiver);
         }
 

@@ -67,6 +67,6 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
             }
         }
 
-        emit OmnichainYieldsProcessed(verseId, token, isBurned, amount);
+        emit OmnichainYieldsProcessed(verseId, token, tokenType, isBurned, amount);
     }
 }

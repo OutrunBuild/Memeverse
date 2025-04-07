@@ -11,8 +11,6 @@ import { IMemeverseCommonInfo } from "./interfaces/IMemeverseCommonInfo.sol";
 contract MemeverseCommonInfo is IMemeverseCommonInfo, Ownable {
     mapping(uint32 chainId => uint32) public lzEndpointIdMap;
 
-    mapping(address UPT => address memeverseLauncher) public launcherMap;
-
     constructor(address _owner) Ownable(_owner) {}
 
     function setLzEndpointIdMap(LzEndpointIdPair[] calldata pairs) external override onlyOwner {

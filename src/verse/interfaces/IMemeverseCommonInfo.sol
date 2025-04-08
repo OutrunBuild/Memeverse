@@ -1,9 +1,6 @@
 //SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
-import { Social } from "../../libraries/Social.sol";
-import { IMemeverseRegistrationCenter } from "../../verse/interfaces/IMemeverseRegistrationCenter.sol";
-
 /**
  * @dev Interface for the Memeverse Registrar.
  */

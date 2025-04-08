@@ -10,7 +10,7 @@ import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/
 import { IBurnable } from "../common/IBurnable.sol";
 import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
 import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
-import { TokenHelper, IERC20 } from "../common/TokenHelper.sol";
+import { TokenHelper } from "../common/TokenHelper.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
 import { IMemeLiquidProof } from "../token/interfaces/IMemeLiquidProof.sol";
 import { IMemeverseCommonInfo } from "./interfaces/IMemeverseCommonInfo.sol";
@@ -47,16 +47,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     mapping(uint256 verseId => uint256) public totalClaimablePOLs;
     mapping(uint256 verseId => mapping(address account => uint256)) public userTotalFunds;
     mapping(uint256 verseId => mapping(address account => uint256)) public toBeUnlockedCoins;
-
-    modifier onlyMemeverseRegistrar{
-        require(msg.sender == memeverseRegistrar, PermissionDenied());
-        _;
-    }
-
-    modifier onlyGovernor(uint256 verseId) {
-        require(msg.sender == memeverses[verseId].governor, PermissionDenied());
-        _;
-    }
 
     constructor(
         address _owner,
@@ -120,30 +110,12 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
-     * @notice Get the yield vault by memecoin.
-     * @param memecoin - The address of the memecoin.
-     * @return yieldVault - The yield vault.
-     */
-    function getYieldVaultByMemecoin(address memecoin) external view override returns (address yieldVault) {
-        yieldVault = memeverses[memecoinToIds[memecoin]].yieldVault;
-    }
-
-    /**
      * @notice Get the governor by verse id.
      * @param verseId - The verse id.
      * @return governor - The governor.
      */
     function getGovernorByVerseId(uint256 verseId) external view override returns (address governor) {
         governor = memeverses[verseId].governor;
-    }
-
-    /**
-     * @notice Get the governor by memecoin.
-     * @param memecoin - The address of the memecoin.
-     * @return governor - The governor.
-     */
-    function getGovernorByMemecoin(address memecoin) external view override returns (address governor) {
-        governor = memeverses[memecoinToIds[memecoin]].governor;
     }
 
     /**
@@ -594,8 +566,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
 
         address UPT = verse.upt;
         address memecoin = verse.memecoin;
-        _transferFrom(IERC20(UPT), msg.sender, address(this), amountInUPTDesired);
-        _transferFrom(IERC20(memecoin), msg.sender, address(this), amountInMemecoinDesired);
+        _transferIn(UPT, msg.sender, amountInUPTDesired);
+        _transferIn(memecoin, msg.sender, amountInMemecoinDesired);
         _safeApproveInf(UPT, liquidityRouter);
         _safeApproveInf(memecoin, liquidityRouter);
         if (amountOutDesired == 0) {
@@ -651,7 +623,9 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint128 unlockTime,
         uint32[] calldata omnichainIds,
         address upt
-    ) external whenNotPaused onlyMemeverseRegistrar override {
+    ) external whenNotPaused override {
+        require(msg.sender == memeverseRegistrar, PermissionDenied());
+
         address memecoin = IMemeverseProxyDeployer(memeverseProxyDeployer).deployMemecoin(uniqueId);
         IMemecoin(memecoin).initialize(name, symbol, 18, address(this), localLzEndpoint, address(this));
         _lzConfigure(memecoin, omnichainIds);
@@ -808,58 +782,25 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
-     * @dev Set token icon uri
+     * @dev Set external info
      * @param verseId - Memeverse id
      * @param uri - IPFS URI of memecoin icon
      * @param description - Description
      * @param community - Community(X, Discord, Telegram and Others)
      */
-    function setStringInfo(
+    function setExternalInfo(
         uint256 verseId,
         string calldata uri,
         string calldata description,
         Social.Community calldata community
-    ) external override onlyMemeverseRegistrar {
-        memeverses[verseId].uri = uri;
-        memeverses[verseId].desc = description;
-        memeverses[verseId].community = community;
+    ) external override {
+        require(msg.sender == memeverses[verseId].governor || msg.sender == memeverseRegistrar, PermissionDenied());
+        require(bytes(description).length < 256 && bytes(community.handle).length < 32, InvalidLength());
 
-        emit SetStringInfo(verseId, uri, description, community);
-    }
+        if (bytes(uri).length != 0) memeverses[verseId].uri = uri;
+        if (bytes(description).length != 0) memeverses[verseId].desc = description;
+        if (bytes(community.handle).length != 0) memeverses[verseId].community = community;
 
-    /**
-     * @dev Set token icon uri
-     * @param verseId - Memeverse id
-     * @param uri - IPFS URI of memecoin icon
-     */
-    function setUri(uint256 verseId, string calldata uri) external override onlyGovernor(verseId) {
-        memeverses[verseId].uri = uri;
-
-        emit SetUri(verseId, uri);
-    }
-
-    /**
-     * @dev Set description
-     * @param verseId - Memeverse id
-     * @param description - Description
-     */
-    function setDescription(uint256 verseId, string calldata description) external override onlyGovernor(verseId) {
-        require(bytes(description).length < 256, InvalidLength());
-        
-        memeverses[verseId].desc = description;
-
-        emit SetDescription(verseId, description);
-    }
-
-    /**
-     * @dev Set community
-     * @param verseId - Memeverse id
-     * @param community - Community(X, Discord, Telegram and Others)
-     */
-    function setCommunity(uint256 verseId, Social.Community calldata community) external override onlyGovernor(verseId) {
-        require(bytes(community.handle).length < 32, InvalidLength());
-        memeverses[verseId].community = community;
-
-        emit SetCommunity(verseId, community);
+        emit SetExternalInfo(verseId, uri, description, community);
     }
 }

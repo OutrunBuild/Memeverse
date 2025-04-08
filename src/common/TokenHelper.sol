@@ -28,25 +28,6 @@ abstract contract TokenHelper {
         }
     }
 
-    function _transferOut(address[] memory tokens, address to, uint256[] memory amounts) internal {
-        uint256 numTokens = tokens.length;
-        require(numTokens == amounts.length, "length mismatch");
-        for (uint256 i = 0; i < numTokens; ) {
-            _transferOut(tokens[i], to, amounts[i]);
-            unchecked {
-                i++;
-            }
-        }
-    }
-
-    function _selfBalance(address token) internal view returns (uint256) {
-        return (token == NATIVE) ? address(this).balance : IERC20(token).balanceOf(address(this));
-    }
-
-    function _selfBalance(IERC20 token) internal view returns (uint256) {
-        return token.balanceOf(address(this));
-    }
-
     /// @notice Approves the stipulated contract to spend the given allowance in the given token
     /// @dev PLS PAY ATTENTION to tokens that requires the approval to be set to 0 before changing it
     function _safeApprove(address token, address to, uint256 value) internal {

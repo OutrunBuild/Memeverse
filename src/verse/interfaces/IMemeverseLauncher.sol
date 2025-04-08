@@ -49,11 +49,7 @@ interface IMemeverseLauncher {
 
     function getYieldVaultByVerseId(uint256 verseId) external view returns (address yieldVault);
 
-    function getYieldVaultByMemecoin(address memecoin) external view returns (address yieldVault);
-
     function getGovernorByVerseId(uint256 verseId) external view returns (address governor);
-
-    function getGovernorByMemecoin(address memecoin) external view returns (address governor);
 
     function userClaimablePOLs(uint256 verseId) external view returns (uint256 claimableAmount);
 
@@ -114,18 +110,12 @@ interface IMemeverseLauncher {
 
     function setGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit) external;
 
-    function setStringInfo(
+    function setExternalInfo(
         uint256 verseId,
         string calldata uri,
         string calldata description,
         Social.Community calldata community
     ) external; 
-
-    function setUri(uint256 verseId, string calldata uri) external;
-
-    function setDescription(uint256 verseId, string calldata description) external;
-
-    function setCommunity(uint256 verseId, Social.Community calldata community) external;
 
 
     error ZeroInput();
@@ -212,17 +202,9 @@ interface IMemeverseLauncher {
 
     event SetFundMetaData(address indexed upt, uint256 minTotalFund, uint256 fundBasedAmount);
 
-    event SetFundBasedAmount(uint256 fundBasedAmount);
-
     event SetAutoBotFeeRate(uint256 autoBotFeeRate);
 
     event SetGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit);
 
-    event SetStringInfo(uint256 indexed verseId, string uri, string description, Social.Community community);
-
-    event SetUri(uint256 indexed verseId, string uri);
-
-    event SetDescription(uint256 indexed verseId, string description);
-
-    event SetCommunity(uint256 indexed verseId, Social.Community community);
+    event SetExternalInfo(uint256 indexed verseId, string uri, string description, Social.Community community);
 }

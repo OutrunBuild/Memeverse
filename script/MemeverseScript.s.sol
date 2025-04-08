@@ -105,7 +105,7 @@ contract MemeverseScript is BaseScript {
 
         //_deployMemeverseLauncher(13);    // optimizer-runs: 1000
 
-        _deployMemecoinDaoGovernorImplementation(13);    // optimizer-runs: 10000
+        _deployMemecoinDaoGovernorImplementation(8);    // optimizer-runs: 10000
     }
 
     function _chainsInit() internal {
@@ -226,8 +226,8 @@ contract MemeverseScript is BaseScript {
     }
 
     function _deployMemecoinDaoGovernorImplementation(uint256 nonce) internal {
-        bytes32 memecoinDaoGovernorSalt = keccak256(abi.encodePacked("MemecoinDaoGovernorImplementation", nonce));
-        address memecoinDaoGovernorImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinDaoGovernorSalt, type(MemecoinDaoGovernor).creationCode);
+        bytes32 salt = keccak256(abi.encodePacked("MemecoinDaoGovernorImplementation", nonce));
+        address memecoinDaoGovernorImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, type(MemecoinDaoGovernor).creationCode);
         
         console.log("MemecoinDaoGovernorImplementation deployed on %s", memecoinDaoGovernorImplementation);
     }

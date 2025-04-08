@@ -58,7 +58,7 @@ forge script MemeverseScript.s.sol:MemeverseScript --rpc-url scroll_sepolia \
 
 # forge script MemeverseScript.s.sol:MemeverseScript --rpc-url monad_testnet \
 #     --with-gas-price 52000000000 \
-#     --optimize --optimizer-runs 10000 \
+#     --optimize --optimizer-runs 100000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
 #     --verify --verifier sourcify \
@@ -66,21 +66,21 @@ forge script MemeverseScript.s.sol:MemeverseScript --rpc-url scroll_sepolia \
 
 # forge script MemeverseScript.s.sol:MemeverseScript --rpc-url optimistic_sepolia \
 #     --with-gas-price 1000000 \
-#     --optimize --optimizer-runs 10000 \
+#     --optimize --optimizer-runs 100000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
 #     --verify
 
 # forge script MemeverseScript.s.sol:MemeverseScript --rpc-url linea_sepolia \
 #     --with-gas-price 250000000 \
-#     --optimize --optimizer-runs 10000 \
+#     --optimize --optimizer-runs 100000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
 #     --verify
 
 # forge script MemeverseScript.s.sol:MemeverseScript --rpc-url zksync_sepolia \
 #     --with-gas-price 25000000 \
-#     --optimize --optimizer-runs 10000 \
+#     --optimize --optimizer-runs 100000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
 #     --verify
@@ -89,36 +89,25 @@ forge script MemeverseScript.s.sol:MemeverseScript --rpc-url scroll_sepolia \
 
 # forge script TestScript.s.sol:TestScript --rpc-url monad_testnet \
 #     --with-gas-price 52000000000 \
-#     --optimize --optimizer-runs 10000 \
 #     --via-ir \
-#     --broadcast --ffi -vvvv \
-#     --verify --verifier sourcify \
-#     --verifier-url 'https://sourcify-api-monad.blockvision.org'
+#     --broadcast --ffi -vvvv
 
 # forge script TestScript.s.sol:TestScript --rpc-url bsc_testnet \
 #     --with-gas-price 3000000000 \
-#     --optimize --optimizer-runs 10000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
-#     --verify
 
 # forge script TestScript.s.sol:TestScript --rpc-url polygon_amoy \
 #     --priority-gas-price 40000000000 --with-gas-price 50000000000 \
-#     --optimize --optimizer-runs 10000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
-#     --verify
 
 # forge script TestScript.s.sol:TestScript --rpc-url scroll_sepolia \
 #     --priority-gas-price 1000 --with-gas-price 600000000 \
-#     --optimize --optimizer-runs 10000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
-#     --verify
 
 # forge script TestScript.s.sol:TestScript --rpc-url base_sepolia \
 #     --with-gas-price 1200000 \
-#     --optimize --optimizer-runs 10000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
-#     --verify

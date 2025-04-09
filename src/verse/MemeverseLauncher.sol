@@ -277,7 +277,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 // Deploy Memecoin Yield Vault and Memecoin DAO Governor on Governance Chain
                 uint32 govChainId = verse.omnichainIds[0];
                 uint256 proposalThreshold = IMemecoin(memecoin).totalSupply() / 50;
-                string memory daoName = string(abi.encodePacked(name, " DAO"));
                 address yieldVault;
                 if (govChainId == block.chainid) {
                     yieldVault = IMemeverseProxyDeployer(memeverseProxyDeployer).deployYieldVault(verseId);
@@ -287,10 +286,10 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                         memecoin,
                         verseId
                     );
-                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).deployDAOGovernor(daoName, yieldVault, verseId, proposalThreshold);
+                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).deployDAOGovernor(name, yieldVault, verseId, proposalThreshold);
                 } else {
                     yieldVault = IMemeverseProxyDeployer(memeverseProxyDeployer).predictYieldVaultAddress(verseId);
-                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).computeDAOGovernorAddress(daoName, yieldVault, verseId, proposalThreshold);
+                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).computeDAOGovernorAddress(name, yieldVault, verseId, proposalThreshold);
                 }
                 verse.yieldVault = yieldVault;
 

@@ -376,7 +376,6 @@ contract MemeverseScript is BaseScript {
                 POL_IMPLEMENTATION,
                 MEMECOIN_VAULT_IMPLEMENTATION,
                 MEMECOIN_GOVERNOR_IMPLEMENTATION,
-                1000000e18,
                 25
             )
         );

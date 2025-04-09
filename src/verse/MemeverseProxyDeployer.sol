@@ -120,7 +120,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
             IVotes(yieldVault),    // voting token
             1 days,                 // voting delay
             1 weeks,                // voting period
-            proposalThreshold,      // proposal threshold
+            proposalThreshold,     // proposal threshold
             quorumNumerator         // quorum (quorumNumerator%)
         );
         proxyBytecode = abi.encodePacked(

@@ -81,31 +81,31 @@ contract MemeverseScript is BaseScript {
 
         // _getDeployedImplementation(8);
 
-        // _getDeployedRegistrationCenter(13);
+        // _getDeployedRegistrationCenter(14);
 
-        // _getDeployedMemeverseCommonInfo(13);
-        // _getDeployedMemeverseRegistrar(13);
-        // _getDeployedMemeverseProxyDeployer(13);
-        // _getDeployedYieldDispatcher(13);
-        // _getDeployedMemeverseOmnichainInteroperation(13);
-        // _getDeployedOmnichainMemecoinStaker(13);
-        // _getDeployedMemeverseLauncher(13);
+        // _getDeployedMemeverseCommonInfo(14);
+        // _getDeployedMemeverseRegistrar(14);
+        // _getDeployedMemeverseProxyDeployer(14);
+        // _getDeployedYieldDispatcher(14);
+        // _getDeployedMemeverseOmnichainInteroperation(14);
+        // _getDeployedOmnichainMemecoinStaker(14);
+        // _getDeployedMemeverseLauncher(14);
 
 
-        // _deployRegistrationCenter(13);
+        // _deployRegistrationCenter(14);
 
         // _deployImplementation(8);
 
-        // _deployMemeverseCommonInfo(13);
-        // _deployMemeverseRegistrar(13);
-        // _deployMemeverseProxyDeployer(13);
-        // _deployYieldDispatcher(13);
-        // _deployMemeverseOmnichainInteroperation(13);
-        // _deployOmnichainMemecoinStaker(13);
+        // _deployMemeverseCommonInfo(14);
+        // _deployMemeverseRegistrar(14);
+        // _deployMemeverseProxyDeployer(14);
+        // _deployYieldDispatcher(14);
+        // _deployMemeverseOmnichainInteroperation(14);
+        // _deployOmnichainMemecoinStaker(14);
 
-        //_deployMemeverseLauncher(13);    // optimizer-runs: 1000
+        _deployMemeverseLauncher(14);    // optimizer-runs: 1000
 
-        _deployMemecoinDaoGovernorImplementation(8);    // optimizer-runs: 10000
+        // _deployMemecoinDaoGovernorImplementation(8);    // optimizer-runs: 10000
     }
 
     function _chainsInit() internal {

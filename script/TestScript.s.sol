@@ -29,22 +29,25 @@ contract TestScript is BaseScript {
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
 
-        _registerTest();
+        // _registerTest();
+        _testBlockNum();
         // _memecoinDaoGovernorData();
         // _testQuoteDistributionLzFee();
     }
 
     function _registerTest() internal {
         IMemeverseRegistrationCenter.RegistrationParam memory param;
-        param.name = "GGG";
-        param.symbol = "GGG";
-        param.uri = "GGG";
+        param.name = "XXX";
+        param.symbol = "XXX";
+        param.uri = "XXX";
+        param.desc = "XXX";
         param.durationDays = 1;
         param.lockupDays = 1;
         uint32[] memory ids = new uint32[](2);
-        ids[0] = 84532;
-        ids[1] = 10143;
-
+        ids[0] = 421614;
+        ids[1] = 84532;
+        // ids[2] = 97;
+        
         param.omnichainIds = ids;
         param.upt = UETH;
 
@@ -52,7 +55,7 @@ contract TestScript is BaseScript {
         // uint256 totalFee = IMemeverseRegistrar(MEMEVERSE_REGISTRAR).quoteRegister(param, 0);
         // console.log("totalFee=", totalFee);
         
-        uint256 totalFee = 0.01 ether;
+        uint256 totalFee = 0.00085 ether;
 
         // IMemeverseRegistrar(MEMEVERSE_REGISTRAR).registerAtCenter{value: totalFee}(param, uint128(totalFee));
 
@@ -72,5 +75,9 @@ contract TestScript is BaseScript {
         );
 
         console.logBytes(initData);
+    }
+
+    function _testBlockNum() internal view {
+        console.log("Current block number is:", block.number);
     }
 }

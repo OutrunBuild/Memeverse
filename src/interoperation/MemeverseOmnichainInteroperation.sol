@@ -101,10 +101,10 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         IMemeverseLauncher.Memeverse memory verse = IMemeverseLauncher(MEMEVERSE_LAUNCHER).getMemeverseByMemecoin(memecoin);
         uint32 govChainId = verse.omnichainIds[0];
         address yieldVault = verse.yieldVault;
-        require(yieldVault.code.length != 0, EmptyYieldVault());
-
+        
         _transferIn(memecoin, msg.sender, amount);
         if (govChainId == block.chainid) {
+            require(yieldVault.code.length != 0, EmptyYieldVault());
             _safeApproveInf(memecoin, yieldVault);
             IMemecoinYieldVault(yieldVault).deposit(amount, receiver);
             return;

@@ -30,7 +30,7 @@ For more details, please refer to the product documentation : [Outrun Official D
 
 ### MemeverseOmnichainInteroperation
 
-0x2091C1490601B4B1F4C013EC661e21eb3a272910
+0xd173cC6Fd22590dAe2d0C1f45B5D5faBb31AD3fB
 
 ### OmnichainMemecoinStaker
 

@@ -87,7 +87,7 @@ contract MemeverseScript is BaseScript {
         // _getDeployedMemeverseRegistrar(15);
         // _getDeployedMemeverseProxyDeployer(15);
         // _getDeployedYieldDispatcher(15);
-        // _getDeployedMemeverseOmnichainInteroperation(15);
+        // _getDeployedMemeverseOmnichainInteroperation(16);
         // _getDeployedOmnichainMemecoinStaker(15);
         // _getDeployedMemeverseLauncher(15);
 
@@ -101,10 +101,11 @@ contract MemeverseScript is BaseScript {
         // _deployMemeverseRegistrar(15);
         // _deployMemeverseProxyDeployer(15);
         // _deployYieldDispatcher(15);
-        // _deployMemeverseOmnichainInteroperation(15);
+        _deployMemeverseOmnichainInteroperation(16);
         // _deployOmnichainMemecoinStaker(15);
-
-        _deployMemeverseLauncher(15);    // optimizer-runs: 1000
+        
+        // Update OutrunRouter after deployed
+        // _deployMemeverseLauncher(15);    // optimizer-runs: 1000
     }
 
     function _chainsInit() internal {

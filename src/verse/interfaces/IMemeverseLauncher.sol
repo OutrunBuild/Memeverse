@@ -66,8 +66,8 @@ interface IMemeverseLauncher {
 
     function claimPOLs(uint256 verseId) external returns (uint256 amount);
 
-    function redeemAndDistributeFees(uint256 verseId, address botFeeReceiver) external payable 
-    returns (uint256 govFee, uint256 memecoinFee, uint256 autoBotFee);
+    function redeemAndDistributeFees(uint256 verseId, address rewardReceiver) external payable 
+    returns (uint256 govFee, uint256 memecoinFee, uint256 operatorReward);
 
     function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external;
 
@@ -106,7 +106,7 @@ interface IMemeverseLauncher {
 
     function setFundMetaData(address upt, uint256 minTotalFund, uint256 fundBasedAmount) external;
 
-    function setAutoBotFeeRate(uint256 autoBotFeeRate) external;
+    function setOperatorRewardRate(uint256 operatorRewardRate) external;
 
     function setGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit) external;
 
@@ -169,7 +169,7 @@ interface IMemeverseLauncher {
         bool indexed isLocalBurned, 
         uint256 govFee, 
         uint256 memecoinFee, 
-        uint256 autoBotFee, 
+        uint256 operatorReward, 
         uint256 burnedUPT, 
         uint256 burnedLiquidProof
     );
@@ -202,7 +202,7 @@ interface IMemeverseLauncher {
 
     event SetFundMetaData(address indexed upt, uint256 minTotalFund, uint256 fundBasedAmount);
 
-    event SetAutoBotFeeRate(uint256 autoBotFeeRate);
+    event SetOperatorRewardRate(uint256 operatorRewardRate);
 
     event SetGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit);
 

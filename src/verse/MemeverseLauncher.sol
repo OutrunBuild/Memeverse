@@ -36,7 +36,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     address public memeverseRegistrar;
     address public memeverseProxyDeployer;
     
-    uint256 public operatorRewardRate;
+    uint256 public executorRewardRate;
     uint128 public oftReceiveGasLimit;
     uint128 public yieldDispatcherGasLimit;
 
@@ -57,7 +57,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         address _memeverseProxyDeployer,
         address _yieldDispatcher,
         address _memeverseCommonInfo,
-        uint256 _operatorRewardRate,
+        uint256 _executorRewardRate,
         uint128 _oftReceiveGasLimit,
         uint128 _yieldDispatcherGasLimit
     ) Ownable(_owner) {
@@ -68,7 +68,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         memeverseProxyDeployer = _memeverseProxyDeployer;
         memeverseCommonInfo = _memeverseCommonInfo;
         yieldDispatcher = _yieldDispatcher;
-        operatorRewardRate =_operatorRewardRate;
+        executorRewardRate =_executorRewardRate;
         oftReceiveGasLimit = _oftReceiveGasLimit;
         yieldDispatcherGasLimit = _yieldDispatcherGasLimit;
     }
@@ -375,14 +375,14 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     /**
      * @dev Redeem transaction fees and distribute them to the owner(UPT) and vault(Memecoin)
      * @param verseId - Memeverse id
-     * @param rewardReceiver - Address of operator reward receiver
+     * @param rewardReceiver - Address of executor reward receiver
      * @return govFee - The UPT fee.
      * @return memecoinFee - The memecoin fee.
-     * @return operatorReward  - The operator reward.
-     * @notice Anyone who calls this method will be rewarded with operatorReward.
+     * @return executorReward  - The executor reward.
+     * @notice Anyone who calls this method will be rewarded with executorReward.
      */
     function redeemAndDistributeFees(uint256 verseId, address rewardReceiver) external payable whenNotPaused override 
-    returns (uint256 govFee, uint256 memecoinFee, uint256 operatorReward) {
+    returns (uint256 govFee, uint256 memecoinFee, uint256 executorReward) {
         Memeverse storage verse = memeverses[verseId];
         Stage currentStage = verse.currentStage;
         require(currentStage >= Stage.Locked, NotReachedLockedStage(currentStage));
@@ -410,12 +410,12 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         if (burnedUPT != 0) IBurnable(UPT).burn(burnedUPT);
         if (burnedLiquidProof != 0) IBurnable(liquidProof).burn(burnedLiquidProof);
 
-        // Operator Reward
+        // Executor Reward
         unchecked {
-            operatorReward = UPTFee * operatorRewardRate / RATIO;
-            govFee = UPTFee - operatorReward;
+            executorReward = UPTFee * executorRewardRate / RATIO;
+            govFee = UPTFee - executorReward;
         }
-        if (operatorReward != 0) _transferOut(UPT, rewardReceiver, operatorReward);
+        if (executorReward != 0) _transferOut(UPT, rewardReceiver, executorReward);
         
         uint32 govChainId = verse.omnichainIds[0];
         bool isLocalBurned = false;
@@ -483,7 +483,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             if (memecoinFee != 0) IOFT(memecoin).send{value: memecoinMessagingNativeFee}(sendMemecoinParam, memecoinMessagingFee, msg.sender);
         }
         
-        emit RedeemAndDistributeFees(verseId, isLocalBurned, govFee, memecoinFee, operatorReward, burnedUPT, burnedLiquidProof);
+        emit RedeemAndDistributeFees(verseId, isLocalBurned, govFee, memecoinFee, executorReward, burnedUPT, burnedLiquidProof);
     }
 
     /**
@@ -755,15 +755,15 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
-     * @dev Set operator reward rate 
-     * @param _operatorRewardRate - Operator reward rate 
+     * @dev Set executor reward rate 
+     * @param _executorRewardRate - Executor reward rate 
      */
-    function setOperatorRewardRate(uint256 _operatorRewardRate) external override onlyOwner {
-        require(_operatorRewardRate < RATIO, FeeRateOverFlow());
+    function setExecutorRewardRate(uint256 _executorRewardRate) external override onlyOwner {
+        require(_executorRewardRate < RATIO, FeeRateOverFlow());
 
-        operatorRewardRate = _operatorRewardRate;
+        executorRewardRate = _executorRewardRate;
 
-        emit SetOperatorRewardRate(_operatorRewardRate);
+        emit SetExecutorRewardRate(_executorRewardRate);
     }
 
     /**

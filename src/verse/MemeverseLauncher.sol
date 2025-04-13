@@ -363,13 +363,13 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      */
     function claimPOLs(uint256 verseId) external whenNotPaused override returns (uint256 amount) {
         amount = userClaimablePOLs(verseId);
-        if (amount != 0) {
-            address msgSender = msg.sender;
-            userTotalFunds[verseId][msgSender] = 0;
-            _transferOut(memeverses[verseId].liquidProof, msgSender, amount);
+        require(amount != 0, NoPOLAvailable());
 
-            emit ClaimLiquidProof(verseId, msgSender, amount);
-        }
+        address msgSender = msg.sender;
+        userTotalFunds[verseId][msgSender] = 0;
+        _transferOut(memeverses[verseId].liquidProof, msgSender, amount);
+        
+        emit ClaimLiquidProof(verseId, msgSender, amount);
     }
 
     /**

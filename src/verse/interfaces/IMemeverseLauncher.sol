@@ -121,6 +121,8 @@ interface IMemeverseLauncher {
     error ZeroInput();
 
     error InvalidLength();
+    
+    error NoPOLAvailable();
 
     error FeeRateOverFlow();
 

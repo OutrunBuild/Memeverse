@@ -66,10 +66,9 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
 
         IMemeverseLauncher.Memeverse memory verse = IMemeverseLauncher(MEMEVERSE_LAUNCHER).getMemeverseByMemecoin(memecoin);
         uint32 govChainId = verse.omnichainIds[0];
-        address yieldVault = verse.yieldVault;
-        require(yieldVault.code.length != 0, EmptyYieldVault());
         if (govChainId == block.chainid) return 0;
 
+        address yieldVault = verse.yieldVault;
         bytes memory omnichainStakingOptions = OptionsBuilder.newOptions()
             .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
             .addExecutorLzComposeOption(0, omnichainStakingGasLimit, 0);

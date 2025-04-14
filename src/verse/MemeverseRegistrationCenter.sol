@@ -219,8 +219,42 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(bytes(param.uri).length > 0, InvalidLength());
         require(bytes(param.desc).length > 0 && bytes(param.desc).length < 256, InvalidLength());
         require(bytes(param.community.handle).length < 32, InvalidLength());
-        require(param.omnichainIds.length > 0, EmptyOmnichainIds());
         require(param.upt != address(0), ZeroUPTAddress());
+
+        uint32[] memory omnichainIds = param.omnichainIds;
+        require(omnichainIds.length > 0, EmptyOmnichainIds());
+        param.omnichainIds = _deduplicate(omnichainIds);
+    }
+
+    function _deduplicate(uint32[] memory input) internal pure returns (uint32[] memory) {
+        if (input.length == 0) {
+            return new uint32[](0);
+        }
+
+        uint32[] memory temp = new uint32[](input.length);
+        uint uniqueCount = 0;
+        bool found;
+
+        for (uint i = 0; i < input.length; i++) {
+            found = false;
+            for (uint j = 0; j < uniqueCount; j++) {
+                if (temp[j] == input[i]) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                temp[uniqueCount] = input[i];
+                uniqueCount++;
+            }
+        }
+
+        uint32[] memory unique = new uint32[](uniqueCount);
+        for (uint i = 0; i < uniqueCount; i++) {
+            unique[i] = temp[i];
+        }
+
+        return unique;
     }
 
     /**

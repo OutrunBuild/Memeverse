@@ -222,7 +222,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(param.upt != address(0), ZeroUPTAddress());
 
         uint32[] memory omnichainIds = param.omnichainIds;
-        require(omnichainIds.length > 0, EmptyOmnichainIds());
+        require(omnichainIds.length > 0 && omnichainIds.length < 32, InvalidLength());
         param.omnichainIds = _deduplicate(omnichainIds);
     }
 

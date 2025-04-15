@@ -6,6 +6,7 @@ import { IOFT, SendParam, OFTLimit, OFTReceipt, OFTFeeDetail, MessagingReceipt, 
 import { OFTMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
+import { IOFTCompose } from "./IOFTCompose.sol";
 import { OutrunOAppInit, Origin } from "../oapp/OutrunOAppInit.sol";
 import { OutrunOAppOptionsType3Init } from "../oapp/OutrunOAppOptionsType3Init.sol";
 import { OutrunOAppPreCrimeSimulatorInit } from "../oapp/OutrunOAppPreCrimeSimulatorInit.sol";
@@ -14,7 +15,7 @@ import { OutrunOAppPreCrimeSimulatorInit } from "../oapp/OutrunOAppPreCrimeSimul
  * @title OutrunOFTCoreInit
  * @dev Abstract contract for the OftChain (OFT) token.
  */
-abstract contract OutrunOFTCoreInit is IOFT, OutrunOAppInit, OutrunOAppPreCrimeSimulatorInit, OutrunOAppOptionsType3Init {
+abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, OutrunOAppPreCrimeSimulatorInit, OutrunOAppOptionsType3Init {
     using OFTMsgCodec for bytes;
     using OFTMsgCodec for bytes32;
 
@@ -41,6 +42,9 @@ abstract contract OutrunOFTCoreInit is IOFT, OutrunOAppInit, OutrunOAppPreCrimeS
 
     // Address of an optional contract to inspect both 'message' and 'options'
     address public msgInspector;
+
+    mapping(bytes32 guid => ComposeTxStatus) public composeTxs;
+
     event MsgInspectorSet(address inspector);
 
     /**
@@ -272,7 +276,7 @@ abstract contract OutrunOFTCoreInit is IOFT, OutrunOAppInit, OutrunOAppPreCrimeS
         address /*_executor*/, // @dev unused in the default implementation.
         bytes calldata /*_extraData*/ // @dev unused in the default implementation.
     ) internal virtual override {
-        // @dev The src sending chain doesnt know the address length on this chain (potentially non-evm)
+        // @dev The src sending chain doesn't know the address length on this chain (potentially non-evm)
         // Thus everything is bytes32() encoded in flight.
         address toAddress = _message.sendTo().bytes32ToAddress();
         // @dev Credit the amountLD to the recipient and return the ACTUAL amount the recipient received in local decimals
@@ -292,10 +296,27 @@ abstract contract OutrunOFTCoreInit is IOFT, OutrunOAppInit, OutrunOAppPreCrimeS
             // @dev The off-chain executor will listen and process the msg based on the src-chain-callers compose options passed.
             // @dev The index is used when a OApp needs to compose multiple msgs on lzReceive.
             // For default OFT implementation there is only 1 compose msg per lzReceive, thus its always 0.
+            composeTxs[_guid].composer = toAddress;
+            composeTxs[_guid].amount = amountReceivedLD;
+            // The default first parameter must always be the receiver address.
+            composeTxs[_guid].receiver = abi.decode(_message.composeMsg(), (address));
             endpoint.sendCompose(toAddress, _guid, 0 /* the index of the composed message*/, composeMsg);
         }
 
         emit OFTReceived(_guid, _origin.srcEid, toAddress, amountReceivedLD);
+    }
+
+    /**
+     * @dev Notify the OFT contract that the composition call has been fully executed.
+     * @param guid The unique identifier for the received LayerZero message.
+     */
+    function notifyComposeExecuted(bytes32 guid) external override {
+        ComposeTxStatus storage txStatus = composeTxs[guid];
+        require(msg.sender == txStatus.composer, PermissionDenied());
+
+        txStatus.isExecuted = true;
+
+        emit NotifyComposeExecuted(guid);
     }
 
     /**

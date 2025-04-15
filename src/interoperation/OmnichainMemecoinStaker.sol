@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
 import { TokenHelper } from "../common/TokenHelper.sol";
@@ -14,10 +13,10 @@ import { IOmnichainMemecoinStaker } from "./interfaces/IOmnichainMemecoinStaker.
  * @dev The contract is designed to interact with LayerZero's Omnichain Fungible Token (OFT) Standard, 
  *      accepts Memecoin and stakes to the yield vault.
  */
-contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper, Ownable {
+contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
     address public immutable localEndpoint;
 
-    constructor(address _owner, address _localEndpoint) Ownable(_owner) {
+    constructor(address _localEndpoint) {
         localEndpoint = _localEndpoint;
     }
 

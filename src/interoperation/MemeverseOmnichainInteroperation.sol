@@ -78,7 +78,7 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
             amountLD: amount,
             minAmountLD: 0,
             extraOptions: omnichainStakingOptions,
-            composeMsg: abi.encode(memecoin, yieldVault, receiver),
+            composeMsg: abi.encode(receiver, yieldVault),
             oftCmd: abi.encode()
         });
         lzFee = IOFT(memecoin).quoteSend(sendParam, false).nativeFee;
@@ -118,7 +118,7 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
             amountLD: amount,
             minAmountLD: 0,
             extraOptions: omnichainStakingOptions,
-            composeMsg: abi.encode(yieldVault, receiver),
+            composeMsg: abi.encode(receiver, yieldVault),
             oftCmd: abi.encode()
         });
         MessagingFee memory messagingFee = IOFT(memecoin).quoteSend(sendParam, false);

@@ -45,11 +45,6 @@ interface IMemecoin is IERC20 {
     function burn(uint256 amount) external;
 
     /**
-     * @notice Permission denied.
-     */
-    error PermissionDenied();
-
-    /**
      * @notice Insufficient balance.
      */
     error InsufficientBalance();

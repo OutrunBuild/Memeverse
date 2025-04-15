@@ -5,6 +5,7 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
 import { TokenHelper } from "../common/TokenHelper.sol";
+import { IOFTCompose } from "../common/layerzero/oft/IOFTCompose.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 import { IOmnichainMemecoinStaker } from "./interfaces/IOmnichainMemecoinStaker.sol";
 
@@ -27,7 +28,7 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper, Ownab
      */
     function lzCompose(
         address token,
-        bytes32 /*guid*/,
+        bytes32 guid,
         bytes calldata message,
         address /*executor*/,
         bytes calldata /*extraData*/
@@ -35,13 +36,14 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper, Ownab
         require(msg.sender == localEndpoint, PermissionDenied());
 
         uint256 amount = OFTComposeMsgCodec.amountLD(message);
-        (address yieldVault, address receiver) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (address, address));
+        (address receiver, address yieldVault) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (address, address));
         if (yieldVault.code.length == 0) {
             _transferOut(token, receiver, amount);
         } else {
             _safeApproveInf(token, yieldVault);
             IMemecoinYieldVault(yieldVault).deposit(amount, receiver);
         }
+        IOFTCompose(token).notifyComposeExecuted(guid);
 
         emit OmnichainMemecoinStakingProcessed(token, yieldVault, receiver, amount);
     }

@@ -35,6 +35,7 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper, Ownab
         bytes calldata /*extraData*/
     ) external payable override {
         require(msg.sender == localEndpoint, PermissionDenied());
+        require(!IOFTCompose(token).getComposeTxExecutedStatus(guid), AlreadyExecuted());
 
         uint256 amount = OFTComposeMsgCodec.amountLD(message);
         (address receiver, address yieldVault) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (address, address));

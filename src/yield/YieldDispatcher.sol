@@ -39,6 +39,7 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
         bytes calldata /*extraData*/
     ) external payable override {
         require(msg.sender == localEndpoint, PermissionDenied());
+        require(!IOFTCompose(token).getComposeTxExecutedStatus(guid), AlreadyExecuted());
 
         bool isBurned = false;
         uint256 amount = OFTComposeMsgCodec.amountLD(message);

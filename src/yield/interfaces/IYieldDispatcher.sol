@@ -12,5 +12,7 @@ interface IYieldDispatcher is ILayerZeroComposer {
         bool indexed isBurned
     );
 
+    error AlreadyExecuted();
+    
     error PermissionDenied();
 }

@@ -11,5 +11,7 @@ interface IOmnichainMemecoinStaker is ILayerZeroComposer {
         uint256 amount
     );
 
+    error AlreadyExecuted();
+
     error PermissionDenied();
 }

@@ -32,8 +32,9 @@ interface IOFTCompose {
      * @dev Withdraw OFT if the composition call has not been executed.
      * @param guid - The unique identifier for the received LayerZero message.
      * @param receiver - Address to receive OFT.
+     * @return amount - Withdraw amount
      */
-    function withdrawIfNotExecuted(bytes32 guid, address receiver) external;
+    function withdrawIfNotExecuted(bytes32 guid, address receiver) external returns (uint256 amount);
 
     event NotifyComposeExecuted(bytes32 indexed guid);
 

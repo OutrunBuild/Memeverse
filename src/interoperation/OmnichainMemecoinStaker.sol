@@ -24,6 +24,7 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper, Ownab
     /**
      * @notice Redirect the yields of different Memecoins to their yield vault.
      * @param token - The token address initiating the composition, typically the OFT where the lzReceive was called.
+     * @param guid The unique identifier for the received LayerZero message.
      * @param message - The composed message payload in bytes. NOT necessarily the same payload passed via lzReceive.
      */
     function lzCompose(

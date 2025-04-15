@@ -123,6 +123,10 @@ interface IMemeverseLauncher {
     error InvalidLength();
     
     error NoPOLAvailable();
+    
+    error NotRefundStage();
+
+    error NotGenesisStage();
 
     error FeeRateOverFlow();
 
@@ -132,25 +136,21 @@ interface IMemeverseLauncher {
 
     error InTheRefundStage();
 
+    error NotUnlockedStage();
+
     error InsufficientLzFee();
 
     error InsufficientUserFunds();
+    
+    error NotReachedLockedStage();
 
     error LiquidityProtectionPeriod();
-
-    error NotGenesisStage(Stage currentStage);
 
     error ExpiredSignature(uint256 deadline);
 
     error InTheGenesisStage(uint256 endTime);
 
-    error NotRefundStage(Stage currentStage);
-
-    error NotUnlockedStage(Stage currentStage);
-
     error InvalidOmnichainId(uint32 omnichainId);
-
-    error NotReachedLockedStage(Stage currentStage);
 
 
     event Genesis(

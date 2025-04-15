@@ -8,7 +8,7 @@ import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTCom
 import { IBurnable } from "../common/IBurnable.sol";
 import { TokenHelper } from "../common/TokenHelper.sol";
 import { IYieldDispatcher } from "./interfaces/IYieldDispatcher.sol";
-import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
+import { IOFTCompose } from "../common/layerzero/oft/IOFTCompose.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 
 /**
@@ -20,25 +20,20 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
     using Strings for string;
 
     address public immutable localEndpoint;
-    address public immutable memeverseLauncher;
 
-    constructor(
-        address _owner, 
-        address _localEndpoint, 
-        address _memeverseLauncher
-    ) Ownable(_owner) {
+    constructor(address _owner, address _localEndpoint) Ownable(_owner) {
         localEndpoint = _localEndpoint;
-        memeverseLauncher = _memeverseLauncher;
     }
 
     /**
      * @notice Redirect the yields of different Memecoins to their yield vault.
      * @param token - The token address initiating the composition, typically the OFT where the lzReceive was called.
+     * @param guid The unique identifier for the received LayerZero message.
      * @param message - The composed message payload in bytes. NOT necessarily the same payload passed via lzReceive.
      */
     function lzCompose(
         address token,
-        bytes32 /*guid*/,
+        bytes32 guid,
         bytes calldata message,
         address /*executor*/,
         bytes calldata /*extraData*/
@@ -47,26 +42,20 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
 
         bool isBurned = false;
         uint256 amount = OFTComposeMsgCodec.amountLD(message);
-        (uint256 verseId, string memory tokenType) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (uint256, string));
-        if (tokenType.equal("Memecoin")) {
-            address yieldVault = IMemeverseLauncher(memeverseLauncher).getYieldVaultByVerseId(verseId);
-            if (yieldVault.code.length == 0) {
-                IBurnable(token).burn(amount);
-                isBurned = true;
-            } else {
-                _safeApproveInf(token, yieldVault);
-                IMemecoinYieldVault(yieldVault).accumulateYields(amount);
-            }
-        } else if (tokenType.equal("UPT")) {
-            address governor = IMemeverseLauncher(memeverseLauncher).getGovernorByVerseId(verseId);
-            if (governor.code.length == 0) {
-                IBurnable(token).burn(amount);
-                isBurned = true;
-            } else {
-                _transferOut(token, governor, amount);
+        (address receiver, string memory tokenType) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (address, string));
+        if (receiver.code.length == 0) {
+            IBurnable(token).burn(amount);
+            isBurned = true;
+        } else {
+            if (tokenType.equal("Memecoin")) {
+                _safeApproveInf(token, receiver);
+                IMemecoinYieldVault(receiver).accumulateYields(amount);
+            } else if (tokenType.equal("UPT")) {
+                _transferOut(token, receiver, amount);
             }
         }
+        IOFTCompose(token).notifyComposeExecuted(guid);
 
-        emit OmnichainYieldsProcessed(verseId, token, tokenType, isBurned, amount);
+        emit OmnichainYieldsProcessed(token, tokenType, receiver, amount, isBurned);
     }
 }

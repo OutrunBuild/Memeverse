@@ -125,8 +125,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      */
     function userClaimablePOLs(uint256 verseId) public view override returns (uint256 claimableAmount) {
         Memeverse storage verse = memeverses[verseId];
-        Stage currentStage = verse.currentStage;
-        require(currentStage >= Stage.Locked, NotReachedLockedStage(currentStage));
+        require(verse.currentStage >= Stage.Locked, NotReachedLockedStage());
 
         uint256 totalFunds = genesisFunds[verseId].totalMemecoinFunds + genesisFunds[verseId].totalLiquidProofFunds;
         uint256 userFunds = userTotalFunds[verseId][msg.sender];
@@ -142,8 +141,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      */
     function previewGenesisMakerFees(uint256 verseId) public view override returns (uint256 UPTFee, uint256 memecoinFee) {
         Memeverse storage verse = memeverses[verseId];
-        Stage currentStage = verse.currentStage;
-        require(currentStage >= Stage.Locked, NotReachedLockedStage(currentStage));
+        require(verse.currentStage >= Stage.Locked, NotReachedLockedStage());
 
         address UPT = verse.upt;
         address memecoin = verse.memecoin;
@@ -184,7 +182,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 amountLD: UPTFee,
                 minAmountLD: 0,
                 extraOptions: yieldDispatcherOptions,
-                composeMsg: abi.encode(verseId, "UPT"),
+                composeMsg: abi.encode(verse.governor, "UPT"),
                 oftCmd: abi.encode()
             });
             MessagingFee memory govMessagingFee = IOFT(verse.upt).quoteSend(sendUPTParam, false);
@@ -198,7 +196,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 amountLD: memecoinFee,
                 minAmountLD: 0,
                 extraOptions: yieldDispatcherOptions,
-                composeMsg: abi.encode(verseId, "Memecoin"),
+                composeMsg: abi.encode(verse.yieldVault, "Memecoin"),
                 oftCmd: abi.encode()
             });
             MessagingFee memory memecoinMessagingFee = IOFT(verse.memecoin).quoteSend(sendMemecoinParam, false);
@@ -215,8 +213,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      */
     function genesis(uint256 verseId, uint256 amountInUPT, address user) external whenNotPaused override {
         Memeverse storage verse = memeverses[verseId];
-        Stage currentStage = verse.currentStage;
-        require(currentStage == Stage.Genesis, NotGenesisStage(currentStage));
+        require(verse.currentStage == Stage.Genesis, NotGenesisStage());
 
         _transferIn(verse.upt, msg.sender, amountInUPT);
 
@@ -345,8 +342,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      */
     function refund(uint256 verseId) external whenNotPaused override returns (uint256 userFunds) {
         Memeverse storage verse = memeverses[verseId];
-        Stage currentStage = verse.currentStage;
-        require(currentStage == Stage.Refund, NotRefundStage(currentStage));
+        require(verse.currentStage == Stage.Refund, NotRefundStage());
         
         address msgSender = msg.sender;
         userFunds = userTotalFunds[verseId][msgSender];
@@ -384,8 +380,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     function redeemAndDistributeFees(uint256 verseId, address rewardReceiver) external payable whenNotPaused override 
     returns (uint256 govFee, uint256 memecoinFee, uint256 executorReward) {
         Memeverse storage verse = memeverses[verseId];
-        Stage currentStage = verse.currentStage;
-        require(currentStage >= Stage.Locked, NotReachedLockedStage(currentStage));
+        require(verse.currentStage >= Stage.Locked, NotReachedLockedStage());
 
         address UPT = verse.upt;
         // Memecoin pair
@@ -418,7 +413,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         if (executorReward != 0) _transferOut(UPT, rewardReceiver, executorReward);
         
         uint32 govChainId = verse.omnichainIds[0];
-        bool isLocalBurned = false;
+        bool isLocalBurned;
         if(govChainId == block.chainid) {
             address governor = verse.governor;
             if (governor.code.length == 0) isLocalBurned = true;
@@ -431,10 +426,10 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             }
 
             if (memecoinFee != 0) {
+                address yieldVault = verse.yieldVault;
                 if (isLocalBurned) {
                     IBurnable(memecoin).burn(memecoinFee);
                 } else {
-                    address yieldVault = verse.yieldVault;
                     _safeApproveInf(memecoin, yieldVault);
                     IMemecoinYieldVault(yieldVault).accumulateYields(memecoinFee);
                 }
@@ -455,7 +450,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                     amountLD: govFee,
                     minAmountLD: 0,
                     extraOptions: yieldDispatcherOptions,
-                    composeMsg: abi.encode(verseId, "UPT"),
+                    composeMsg: abi.encode(verse.governor, "UPT"),
                     oftCmd: abi.encode()
                 });
                 govMessagingFee = IOFT(UPT).quoteSend(sendUPTParam, false);
@@ -470,17 +465,15 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                     amountLD: memecoinFee,
                     minAmountLD: 0,
                     extraOptions: yieldDispatcherOptions,
-                    composeMsg: abi.encode(verseId, "Memecoin"),
+                    composeMsg: abi.encode(verse.yieldVault, "Memecoin"),
                     oftCmd: abi.encode()
                 });
                 memecoinMessagingFee = IOFT(memecoin).quoteSend(sendMemecoinParam, false);
             }
 
-            uint256 govMessagingNativeFee = govMessagingFee.nativeFee;
-            uint256 memecoinMessagingNativeFee = memecoinMessagingFee.nativeFee;
-            require(msg.value >= govMessagingNativeFee + memecoinMessagingNativeFee, InsufficientLzFee());
-            if (govFee != 0) IOFT(UPT).send{value: govMessagingNativeFee}(sendUPTParam, govMessagingFee, msg.sender);
-            if (memecoinFee != 0) IOFT(memecoin).send{value: memecoinMessagingNativeFee}(sendMemecoinParam, memecoinMessagingFee, msg.sender);
+            require(msg.value >= govMessagingFee.nativeFee + memecoinMessagingFee.nativeFee, InsufficientLzFee());
+            if (govFee != 0) IOFT(UPT).send{value: govMessagingFee.nativeFee}(sendUPTParam, govMessagingFee, msg.sender);
+            if (memecoinFee != 0) IOFT(memecoin).send{value: memecoinMessagingFee.nativeFee}(sendMemecoinParam, memecoinMessagingFee, msg.sender);
         }
         
         emit RedeemAndDistributeFees(verseId, isLocalBurned, govFee, memecoinFee, executorReward, burnedUPT, burnedLiquidProof);
@@ -493,8 +486,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      */
     function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external whenNotPaused override {
         Memeverse storage verse = memeverses[verseId];
-        Stage currentStage = verse.currentStage;
-        require(currentStage == Stage.Unlocked, NotUnlockedStage(currentStage));
+        require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
 
         IMemeLiquidProof(verse.liquidProof).burn(msg.sender, amountInPOL);
         address UPT = verse.upt;
@@ -529,8 +521,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      */
     function redeemUnlockedCoins(uint256 verseId) external whenNotPaused override {
         Memeverse storage verse = memeverses[verseId];
-        Stage currentStage = verse.currentStage;
-        require(currentStage == Stage.Unlocked, NotUnlockedStage(currentStage));
+        require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
         require(block.timestamp > verse.unlockTime + 3 days, LiquidityProtectionPeriod());
 
         uint256 amountInMemecoin = toBeUnlockedCoins[verseId][msg.sender];
@@ -560,8 +551,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint256 amountOutDesired
     ) external override returns (uint256 amountInUPT, uint256 amountInMemecoin, uint256 amountOut) {
         Memeverse storage verse = memeverses[verseId];
-        Stage currentStage = verse.currentStage;
-        require(currentStage >= Stage.Locked, NotReachedLockedStage(currentStage));
+        require(verse.currentStage >= Stage.Locked, NotReachedLockedStage());
 
         address UPT = verse.upt;
         address memecoin = verse.memecoin;

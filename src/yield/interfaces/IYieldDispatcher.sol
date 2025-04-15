@@ -5,11 +5,11 @@ import { ILayerZeroComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/
 
 interface IYieldDispatcher is ILayerZeroComposer {
     event OmnichainYieldsProcessed(
-        uint256 indexed verseId, 
-        address token, 
-        string indexed tokenType,
-        bool indexed isBurned,
-        uint256 amount
+        address indexed token, 
+        string tokenType,
+        address indexed receiver,
+        uint256 amount,
+        bool indexed isBurned
     );
 
     error PermissionDenied();

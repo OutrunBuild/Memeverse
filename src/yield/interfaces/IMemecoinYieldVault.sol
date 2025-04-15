@@ -18,13 +18,16 @@ interface IMemecoinYieldVault is IERC20 {
     function previewRedeem(uint256 shares) external view returns (uint256 assets);
 
     function initialize(
-        string memory _name, 
-        string memory _symbol,
-        address _asset,
-        uint256 _verseId
+        string memory name, 
+        string memory symbol,
+        address yieldDispatcher,
+        address asset,
+        uint256 verseId
     ) external;
 
     function accumulateYields(uint256 amount) external;
+
+    function reAccumulateYields(bytes32 lzGuid) external;
 
     function deposit(uint256 assets, address receiver) external returns (uint256 shares);
 

@@ -280,6 +280,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                     IMemecoinYieldVault(yieldVault).initialize(
                         string(abi.encodePacked("Staked ", name)),
                         string(abi.encodePacked("s", symbol)),
+                        yieldDispatcher,
                         memecoin,
                         verseId
                     );

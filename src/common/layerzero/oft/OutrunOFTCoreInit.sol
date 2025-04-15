@@ -111,14 +111,8 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
      * @return oftFeeDetails The details of OFT fees.
      * @return oftReceipt The OFT receipt information.
      */
-    function quoteOFT(
-        SendParam calldata _sendParam
-    )
-        external
-        view
-        virtual
-        returns (OFTLimit memory oftLimit, OFTFeeDetail[] memory oftFeeDetails, OFTReceipt memory oftReceipt)
-    {
+    function quoteOFT(SendParam calldata _sendParam) external view virtual
+    returns (OFTLimit memory oftLimit, OFTFeeDetail[] memory oftFeeDetails, OFTReceipt memory oftReceipt) {
         uint256 minAmountLD = 0; // Unused in the default implementation.
         uint256 maxAmountLD = type(uint64).max; // Unused in the default implementation.
         oftLimit = OFTLimit(minAmountLD, maxAmountLD);
@@ -162,6 +156,15 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
         // @dev Calculates the LayerZero fee for the send() operation.
         return _quote(_sendParam.dstEid, message, options, _payInLzToken);
     }
+
+    
+    /**
+     * @dev Get the compose tx executed status by guid.
+     * @param guid The unique identifier for the received LayerZero message.
+     */
+    function getComposeTxExecutedStatus(bytes32 guid) external view override returns (bool) {
+        return composeTxs[guid].isExecuted;
+    } 
 
     /**
      * @dev Executes the send operation.
@@ -298,8 +301,8 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
             // For default OFT implementation there is only 1 compose msg per lzReceive, thus its always 0.
             composeTxs[_guid].composer = toAddress;
             composeTxs[_guid].amount = amountReceivedLD;
-            // The default first parameter must always be the receiver address.
-            composeTxs[_guid].receiver = abi.decode(_message.composeMsg(), (address));
+            // The default first parameter must always be the UBO address.
+            composeTxs[_guid].UBO = abi.decode(_message.composeMsg(), (address));
             endpoint.sendCompose(toAddress, _guid, 0 /* the index of the composed message*/, composeMsg);
         }
 
@@ -307,7 +310,7 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
     }
 
     /**
-     * @dev Notify the OFT contract that the composition call has been fully executed.
+     * @dev Notify the OFT contract that the composition call has been executed.
      * @param guid The unique identifier for the received LayerZero message.
      */
     function notifyComposeExecuted(bytes32 guid) external override {

@@ -49,6 +49,25 @@ abstract contract OutrunOFTInit is OutrunOFTCoreInit, OutrunERC20Init {
     }
 
     /**
+     * @dev Withdraw OFT if the composition call has not been executed.
+     * @param guid - The unique identifier for the received LayerZero message.
+     * @param receiver - Address to receive OFT.
+     */
+    function withdrawIfNotExecuted(bytes32 guid, address receiver) external override {
+        ComposeTxStatus storage txStatus = composeTxs[guid];
+        require(!txStatus.isExecuted, AlreadyExecuted());
+        require(msg.sender == txStatus.UBO, PermissionDenied());
+        
+        txStatus.isExecuted = true;
+
+        uint256 amount = txStatus.amount;
+        address composer = txStatus.composer;
+        _update(composer, receiver, amount);
+
+        emit WithdrawIfNotExecuted(guid, composer, receiver, amount);
+    }
+
+    /**
      * @dev Burns tokens from the sender's specified balance.
      * @param _from The address to debit the tokens from.
      * @param _amountLD The amount of tokens to send in local decimals.

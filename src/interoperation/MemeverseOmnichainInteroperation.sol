@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
-import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import { IOFT, SendParam, MessagingFee, MessagingReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
 import { TokenHelper } from "../common/TokenHelper.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
@@ -124,7 +124,9 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         MessagingFee memory messagingFee = IOFT(memecoin).quoteSend(sendParam, false);
         require(msg.value >= messagingFee.nativeFee, InsufficientLzFee());
 
-        IOFT(memecoin).send{value: messagingFee.nativeFee}(sendParam, messagingFee, msg.sender);
+        (MessagingReceipt memory rec, ) = IOFT(memecoin).send{value: messagingFee.nativeFee}(sendParam, messagingFee, msg.sender);
+        
+        emit OmnichainMemecoinStaking(rec.guid, msg.sender, receiver, memecoin, amount);
     }
 
     /**

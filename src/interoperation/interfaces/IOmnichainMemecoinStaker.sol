@@ -5,9 +5,10 @@ import { ILayerZeroComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/
 
 interface IOmnichainMemecoinStaker is ILayerZeroComposer {
     event OmnichainMemecoinStakingProcessed(
+        bytes32 indexed guid,
         address indexed memecoin, 
         address indexed yieldVault, 
-        address indexed receiver, 
+        address receiver, 
         uint256 amount
     );
 

@@ -21,6 +21,14 @@ interface IMemeverseOmnichainInteroperation {
 
     event SetGasLimits(uint128 oftReceiveGasLimit, uint128 omnichainStakingGasLimit);
 
+    event OmnichainMemecoinStaking(
+        bytes32 indexed guid, 
+        address indexed sender, 
+        address receiver, 
+        address indexed memecoin, 
+        uint256 amount
+    );
+
     error ZeroInput();
 
     error EmptyYieldVault();

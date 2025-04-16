@@ -22,30 +22,30 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
 
     /**
      * @notice Redirect the yields of different Memecoins to their yield vault.
-     * @param token - The token address initiating the composition, typically the OFT where the lzReceive was called.
+     * @param memecoin - The token address initiating the composition, typically the OFT where the lzReceive was called.
      * @param guid The unique identifier for the received LayerZero message.
      * @param message - The composed message payload in bytes. NOT necessarily the same payload passed via lzReceive.
      */
     function lzCompose(
-        address token,
+        address memecoin,
         bytes32 guid,
         bytes calldata message,
         address /*executor*/,
         bytes calldata /*extraData*/
     ) external payable override {
         require(msg.sender == localEndpoint, PermissionDenied());
-        require(!IOFTCompose(token).getComposeTxExecutedStatus(guid), AlreadyExecuted());
+        require(!IOFTCompose(memecoin).getComposeTxExecutedStatus(guid), AlreadyExecuted());
 
         uint256 amount = OFTComposeMsgCodec.amountLD(message);
         (address receiver, address yieldVault) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (address, address));
         if (yieldVault.code.length == 0) {
-            _transferOut(token, receiver, amount);
+            _transferOut(memecoin, receiver, amount);
         } else {
-            _safeApproveInf(token, yieldVault);
+            _safeApproveInf(memecoin, yieldVault);
             IMemecoinYieldVault(yieldVault).deposit(amount, receiver);
         }
-        IOFTCompose(token).notifyComposeExecuted(guid);
+        IOFTCompose(memecoin).notifyComposeExecuted(guid);
 
-        emit OmnichainMemecoinStakingProcessed(token, yieldVault, receiver, amount);
+        emit OmnichainMemecoinStakingProcessed(guid, memecoin, yieldVault, receiver, amount);
     }
 }

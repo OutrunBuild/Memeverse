@@ -20,9 +20,11 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
     using Strings for string;
 
     address public immutable localEndpoint;
+    address public immutable memeverseLauncher;
 
-    constructor(address _owner, address _localEndpoint) Ownable(_owner) {
+    constructor(address _owner, address _localEndpoint, address _memeverseLauncher) Ownable(_owner) {
         localEndpoint = _localEndpoint;
+        memeverseLauncher = _memeverseLauncher;
     }
 
     /**
@@ -38,25 +40,33 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
         address /*executor*/,
         bytes calldata /*extraData*/
     ) external payable override {
-        require(msg.sender == localEndpoint, PermissionDenied());
-        require(!IOFTCompose(token).getComposeTxExecutedStatus(guid), AlreadyExecuted());
+        require(msg.sender == localEndpoint || msg.sender == memeverseLauncher, PermissionDenied());
+        if (msg.sender == localEndpoint) require(!IOFTCompose(token).getComposeTxExecutedStatus(guid), AlreadyExecuted());
 
-        bool isBurned = false;
-        uint256 amount = OFTComposeMsgCodec.amountLD(message);
-        (address receiver, string memory tokenType) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (address, string));
+        bool isBurned;
+        uint256 amount;
+        bool isMemecoin;
+        address receiver;
+        if (msg.sender ==  memeverseLauncher) {
+            (receiver, isMemecoin, amount) = abi.decode(message, (address, bool, uint256));
+        } else {
+            amount = OFTComposeMsgCodec.amountLD(message);
+            (receiver, isMemecoin) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (address, bool));
+            IOFTCompose(token).notifyComposeExecuted(guid);
+        }
+
         if (receiver.code.length == 0) {
             IBurnable(token).burn(amount);
             isBurned = true;
         } else {
-            if (tokenType.equal("Memecoin")) {
+            if (isMemecoin) {
                 _safeApproveInf(token, receiver);
                 IMemecoinYieldVault(receiver).accumulateYields(amount);
-            } else if (tokenType.equal("UPT")) {
+            } else {
                 _transferOut(token, receiver, amount);
             }
         }
-        IOFTCompose(token).notifyComposeExecuted(guid);
 
-        emit OmnichainYieldsProcessed(token, tokenType, receiver, amount, isBurned);
+        emit OmnichainYieldsProcessed(guid, token, isMemecoin, receiver, amount, isBurned);
     }
 }

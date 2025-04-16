@@ -168,12 +168,11 @@ interface IMemeverseLauncher {
 
     event RedeemAndDistributeFees(
         uint256 indexed verseId, 
-        bool indexed isLocalBurned, 
         uint256 govFee, 
         uint256 memecoinFee, 
         uint256 executorReward, 
         uint256 burnedUPT, 
-        uint256 burnedLiquidProof
+        uint256 burnedPOL
     );
 
     event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 liquidity);

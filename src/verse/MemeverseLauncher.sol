@@ -6,6 +6,7 @@ import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import { ILayerZeroComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
 
 import { IBurnable } from "../common/IBurnable.sol";
 import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
@@ -398,13 +399,13 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         (amount0, amount1) = liquidProofPair.claimMakerFee();
         token0 = liquidProofPair.token0();
         uint256 burnedUPT = token0 == UPT ? amount0 : amount1;
-        uint256 burnedLiquidProof = token0 == liquidProof ? amount0 : amount1;
+        uint256 burnedPOL = token0 == liquidProof ? amount0 : amount1;
 
         if (UPTFee == 0 && memecoinFee == 0) return (0, 0, 0);
 
         // Burn the UPT fee and liquidProof fee from liquidProof pair
         if (burnedUPT != 0) IBurnable(UPT).burn(burnedUPT);
-        if (burnedLiquidProof != 0) IBurnable(liquidProof).burn(burnedLiquidProof);
+        if (burnedPOL != 0) IBurnable(liquidProof).burn(burnedPOL);
 
         // Executor Reward
         unchecked {
@@ -414,27 +415,12 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         if (executorReward != 0) _transferOut(UPT, rewardReceiver, executorReward);
         
         uint32 govChainId = verse.omnichainIds[0];
-        bool isLocalBurned;
-        if(govChainId == block.chainid) {
-            address governor = verse.governor;
-            if (governor.code.length == 0) isLocalBurned = true;
-            if (govFee != 0) {
-                if (isLocalBurned) {
-                    IBurnable(UPT).burn(govFee);
-                } else {
-                    _transferOut(UPT, governor, govFee);
-                }
-            }
+        address governor = verse.governor;
+        address yieldVault = verse.yieldVault;
 
-            if (memecoinFee != 0) {
-                address yieldVault = verse.yieldVault;
-                if (isLocalBurned) {
-                    IBurnable(memecoin).burn(memecoinFee);
-                } else {
-                    _safeApproveInf(memecoin, yieldVault);
-                    IMemecoinYieldVault(yieldVault).accumulateYields(memecoinFee);
-                }
-            }
+        if(govChainId == block.chainid) {
+            if (govFee != 0) ILayerZeroComposer(yieldDispatcher).lzCompose(UPT, bytes32(0), abi.encode(governor, false, govFee), address(0), "");
+            if (memecoinFee != 0) ILayerZeroComposer(yieldDispatcher).lzCompose(memecoin, bytes32(0), abi.encode(yieldVault, true, memecoinFee), address(0), "");
         } else {
             uint32 govEndpointId = IMemeverseCommonInfo(memeverseCommonInfo).lzEndpointIdMap(govChainId);
             
@@ -451,7 +437,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                     amountLD: govFee,
                     minAmountLD: 0,
                     extraOptions: yieldDispatcherOptions,
-                    composeMsg: abi.encode(verse.governor, "UPT"),
+                    composeMsg: abi.encode(governor, true),
                     oftCmd: abi.encode()
                 });
                 govMessagingFee = IOFT(UPT).quoteSend(sendUPTParam, false);
@@ -466,7 +452,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                     amountLD: memecoinFee,
                     minAmountLD: 0,
                     extraOptions: yieldDispatcherOptions,
-                    composeMsg: abi.encode(verse.yieldVault, "Memecoin"),
+                    composeMsg: abi.encode(yieldVault, false),
                     oftCmd: abi.encode()
                 });
                 memecoinMessagingFee = IOFT(memecoin).quoteSend(sendMemecoinParam, false);
@@ -477,7 +463,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             if (memecoinFee != 0) IOFT(memecoin).send{value: memecoinMessagingFee.nativeFee}(sendMemecoinParam, memecoinMessagingFee, msg.sender);
         }
         
-        emit RedeemAndDistributeFees(verseId, isLocalBurned, govFee, memecoinFee, executorReward, burnedUPT, burnedLiquidProof);
+        emit RedeemAndDistributeFees(verseId, govFee, memecoinFee, executorReward, burnedUPT, burnedPOL);
     }
 
     /**

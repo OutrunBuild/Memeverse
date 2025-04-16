@@ -11,7 +11,7 @@ import { MessagingReceipt, MessagingFee } from "@layerzerolabs/oapp-evm/contract
 interface IOFTCompose {
     struct ComposeTxStatus {
         address composer;   // The Layerzero Composer contract of this tx
-        address UBO;      // Ultimate beneficiary owner
+        address UBO;        // Ultimate beneficiary owner
         uint256 amount;     // OFT cross-chain amount
         bool isExecuted;    // Has Been Executed?
     }

@@ -144,7 +144,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage >= Stage.Locked, NotReachedLockedStage());
 
-        address UPT = verse.upt;
+        address UPT = verse.UPT;
         address memecoin = verse.memecoin;
         IOutrunAMMPair memecoinPair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(outrunAMMFactory, memecoin, UPT, SWAP_FEERATE));
         (uint256 amount0, uint256 amount1) = memecoinPair.previewMakerFee();
@@ -186,7 +186,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 composeMsg: abi.encode(verse.governor, "UPT"),
                 oftCmd: abi.encode()
             });
-            MessagingFee memory govMessagingFee = IOFT(verse.upt).quoteSend(sendUPTParam, false);
+            MessagingFee memory govMessagingFee = IOFT(verse.UPT).quoteSend(sendUPTParam, false);
             lzFee += govMessagingFee.nativeFee;
         }
 
@@ -216,7 +216,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage == Stage.Genesis, NotGenesisStage());
 
-        _transferIn(verse.upt, msg.sender, amountInUPT);
+        _transferIn(verse.UPT, msg.sender, amountInUPT);
 
         uint256 increasedMemecoinFund;
         uint256 increasedLiquidProofFund;
@@ -243,17 +243,22 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     function changeStage(uint256 verseId) external whenNotPaused override returns (Stage currentStage) {
         uint256 currentTime = block.timestamp;
         Memeverse storage verse = memeverses[verseId];
-        uint256 endTime = verse.endTime;
         currentStage = verse.currentStage;
-        require(currentStage != Stage.Refund, InTheRefundStage());
-        require(endTime != 0 && currentTime > endTime, InTheGenesisStage(endTime));
+        require(currentStage != Stage.Refund && currentStage != Stage.Unlocked, ReachedFinalStage());
 
-        GenesisFund storage genesisFund = genesisFunds[verseId];
-        uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
-        uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
         if (currentStage == Stage.Genesis) {
-            address UPT = verse.upt;
-            if (totalMemecoinFunds + totalLiquidProofFunds < fundMetaDatas[UPT].minTotalFund) {
+            address UPT = verse.UPT;
+            GenesisFund storage genesisFund = genesisFunds[verseId];
+            uint128 totalMemecoinFunds = genesisFund.totalMemecoinFunds;
+            uint128 totalLiquidProofFunds = genesisFund.totalLiquidProofFunds;
+            bool meetMinTotalFund = totalMemecoinFunds + totalLiquidProofFunds >= fundMetaDatas[UPT].minTotalFund;
+            uint256 endTime = verse.endTime;
+            require(
+                endTime != 0 && (currentTime > endTime || (verse.flashGenesis && meetMinTotalFund)), 
+                StillInGenesisStage(endTime)
+            );
+
+            if (!meetMinTotalFund) {
                 verse.currentStage = Stage.Refund;
                 currentStage = Stage.Refund;
             } else {
@@ -350,7 +355,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         userFunds = userTotalFunds[verseId][msgSender];
         require(userFunds > 0, InsufficientUserFunds());
         userTotalFunds[verseId][msgSender] = 0;
-        _transferOut(verse.upt, msgSender, userFunds);
+        _transferOut(verse.UPT, msgSender, userFunds);
         
         emit Refund(verseId, msgSender, userFunds);
     }
@@ -384,7 +389,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage >= Stage.Locked, NotReachedLockedStage());
 
-        address UPT = verse.upt;
+        address UPT = verse.UPT;
         // Memecoin pair
         address memecoin = verse.memecoin;
         IOutrunAMMPair memecoinPair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(outrunAMMFactory, memecoin, UPT, SWAP_FEERATE));
@@ -476,7 +481,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
 
         IMemeLiquidProof(verse.liquidProof).burn(msg.sender, amountInPOL);
-        address UPT = verse.upt;
+        address UPT = verse.UPT;
         address memecoin = verse.memecoin;
         address pair = OutrunAMMLibrary.pairFor(outrunAMMFactory, memecoin, UPT, SWAP_FEERATE);
         _safeApproveInf(pair, liquidityRouter);
@@ -540,7 +545,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage >= Stage.Locked, NotReachedLockedStage());
 
-        address UPT = verse.upt;
+        address UPT = verse.UPT;
         address memecoin = verse.memecoin;
         _transferIn(UPT, msg.sender, amountInUPTDesired);
         _transferIn(memecoin, msg.sender, amountInMemecoinDesired);
@@ -589,7 +594,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param endTime - Genesis stage end time
      * @param unlockTime - Unlock time of liquidity
      * @param omnichainIds - ChainIds of the token's omnichain(EVM)
-     * @param upt - Genesis fund types
+     * @param UPT - Genesis fund types
+     * @param flashGenesis - Enable FlashGenesis mode
      */
     function registerMemeverse(
         string calldata name,
@@ -598,7 +604,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint128 endTime,
         uint128 unlockTime,
         uint32[] calldata omnichainIds,
-        address upt
+        address UPT,
+        bool flashGenesis
     ) external whenNotPaused override {
         require(msg.sender == memeverseRegistrar, PermissionDenied());
 
@@ -609,11 +616,12 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         Memeverse storage verse = memeverses[uniqueId];
         verse.name = name;
         verse.symbol = symbol;
-        verse.upt = upt;
+        verse.UPT = UPT;
         verse.memecoin = memecoin;
         verse.endTime = endTime;
         verse.unlockTime = unlockTime;
         verse.omnichainIds = omnichainIds;
+        verse.flashGenesis = flashGenesis;
 
         memeverses[uniqueId] = verse;
         memecoinToIds[memecoin] = uniqueId;

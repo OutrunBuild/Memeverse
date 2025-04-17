@@ -20,7 +20,7 @@ interface IMemeverseLauncher {
         string uri;                     // Token icon uri
         string desc;                    // Description
         Social.Community community;     // Community(X, Discord, Telegram and Others)
-        address upt;                    // Genesis fund type
+        address UPT;                    // Genesis fund type
         address memecoin;               // Omnichain memecoin address
         address liquidProof;            // POL token address
         address yieldVault;             // Memecoin yield vault
@@ -29,6 +29,7 @@ interface IMemeverseLauncher {
         uint128 unlockTime;             // UnlockTime of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM),The first chainId is main governance chain
         Stage currentStage;             // Current stage
+        bool flashGenesis;              // Allowing the transition to the liquidity lock stage once the minimum funding requirement is met, without waiting for the genesis stage to end.
     }
 
     struct GenesisFund {
@@ -89,7 +90,8 @@ interface IMemeverseLauncher {
         uint128 endTime,
         uint128 unlockTime,
         uint32[] calldata omnichainIds,
-        address upt
+        address UPT,
+        bool flashGenesis
     ) external;
 
     function removeGasDust(address receiver) external;
@@ -134,11 +136,11 @@ interface IMemeverseLauncher {
 
     error PermissionDenied();
 
-    error InTheRefundStage();
-
     error NotUnlockedStage();
 
     error InsufficientLzFee();
+
+    error ReachedFinalStage();
 
     error InsufficientUserFunds();
     
@@ -148,7 +150,7 @@ interface IMemeverseLauncher {
 
     error ExpiredSignature(uint256 deadline);
 
-    error InTheGenesisStage(uint256 endTime);
+    error StillInGenesisStage(uint256 endTime);
 
     error InvalidOmnichainId(uint32 omnichainId);
 

@@ -17,7 +17,8 @@ interface IMemeverseRegistrationCenter {
         uint256 durationDays;           // DurationDays of genesis stage
         uint256 lockupDays;             // LockupDays of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM)
-        address upt;                    // UPT of Memeverse
+        address UPT;                    // UPT of Memeverse
+        bool flashGenesis;              // Allowing the transition to the liquidity lock stage once the minimum funding requirement is met, without waiting for the genesis stage to end.
     }
 
     struct SymbolRegistration {

@@ -125,7 +125,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         }
         
         uint64 endTime = uint64(currentTime + param.durationDays * DAY);
-        uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentNonce + 1, param.upt)));
+        uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, currentNonce + 1, param.UPT)));
         currentRegistration.uniqueId = uniqueId;
         currentRegistration.endTime = endTime;
 
@@ -139,7 +139,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             endTime: endTime,
             unlockTime: endTime + uint64(param.lockupDays * DAY),
             omnichainIds: param.omnichainIds,
-            upt: param.upt
+            UPT: param.UPT,
+            flashGenesis: param.flashGenesis
         });
         _omnichainSend(param.omnichainIds, memeverseParam);
 
@@ -219,7 +220,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(bytes(param.uri).length > 0, InvalidLength());
         require(bytes(param.desc).length > 0 && bytes(param.desc).length < 256, InvalidLength());
         require(bytes(param.community.handle).length < 32, InvalidLength());
-        require(param.upt != address(0), ZeroUPTAddress());
+        require(param.UPT != address(0), ZeroUPTAddress());
 
         uint32[] memory omnichainIds = param.omnichainIds;
         require(omnichainIds.length > 0 && omnichainIds.length < 32, InvalidLength());

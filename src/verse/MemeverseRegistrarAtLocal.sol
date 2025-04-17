@@ -45,7 +45,8 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
             endTime: endTime,
             unlockTime: unlockTime,
             omnichainIds: param.omnichainIds,
-            upt: param.upt
+            UPT: param.UPT,
+            flashGenesis: param.flashGenesis
         });
         (lzFee, , ) = IMemeverseRegistrationCenter(registrationCenter).quoteSend(param.omnichainIds, abi.encode(memeverseParam));
     }

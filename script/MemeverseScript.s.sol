@@ -79,33 +79,33 @@ contract MemeverseScript is BaseScript {
         omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351];
         _chainsInit();
 
-        // _getDeployedImplementation(8);
+        // _getDeployedImplementation(9);
 
-        // _getDeployedRegistrationCenter(15);
+        // _getDeployedRegistrationCenter(16);
 
-        // _getDeployedMemeverseCommonInfo(15);
-        // _getDeployedMemeverseRegistrar(15);
-        // _getDeployedMemeverseProxyDeployer(15);
-        // _getDeployedYieldDispatcher(15);
-        // _getDeployedMemeverseOmnichainInteroperation(16);
-        // _getDeployedOmnichainMemecoinStaker(15);
-        // _getDeployedMemeverseLauncher(15);
+        // _getDeployedMemeverseCommonInfo(16);
+        // _getDeployedMemeverseRegistrar(16);
+        // _getDeployedMemeverseProxyDeployer(16);
+        // _getDeployedYieldDispatcher(16);
+        // _getDeployedMemeverseOmnichainInteroperation(1);
+        // _getDeployedOmnichainMemecoinStaker(16);
+        // _getDeployedMemeverseLauncher(16);
 
 
-        // _deployImplementation(8);
-        // _deployMemecoinDaoGovernorImplementation(8);    // optimizer-runs: 10000
+        // _deployImplementation(9);
+        // _deployMemecoinDaoGovernorImplementation(9);    // optimizer-runs: 10000
 
-        // _deployRegistrationCenter(15);
+        // _deployRegistrationCenter(16);
 
-        // _deployMemeverseCommonInfo(15);
-        // _deployMemeverseRegistrar(15);
-        // _deployMemeverseProxyDeployer(15);
-        // _deployYieldDispatcher(15);
-        _deployMemeverseOmnichainInteroperation(16);
-        // _deployOmnichainMemecoinStaker(15);
+        // _deployMemeverseCommonInfo(16);
+        // _deployMemeverseRegistrar(16);
+        // _deployMemeverseProxyDeployer(16);
+        // _deployYieldDispatcher(16);
+        // _deployMemeverseOmnichainInteroperation(1);
+        // _deployOmnichainMemecoinStaker(16);
         
         // Update OutrunRouter after deployed
-        // _deployMemeverseLauncher(15);    // optimizer-runs: 1000
+        _deployMemeverseLauncher(16);    // optimizer-runs: 1000
     }
 
     function _chainsInit() internal {
@@ -454,7 +454,7 @@ contract MemeverseScript is BaseScript {
 
         bytes memory creationCode = abi.encodePacked(
             type(OmnichainMemecoinStaker).creationCode,
-            abi.encode(owner, localEndpoint)
+            abi.encode(localEndpoint)
         );
 
         bytes32 salt = keccak256(abi.encodePacked("OmnichainMemecoinStaker", nonce));

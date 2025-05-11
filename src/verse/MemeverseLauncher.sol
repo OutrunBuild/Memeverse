@@ -424,8 +424,14 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         address yieldVault = verse.yieldVault;
 
         if(govChainId == block.chainid) {
-            if (govFee != 0) ILayerZeroComposer(yieldDispatcher).lzCompose(UPT, bytes32(0), abi.encode(governor, false, govFee), address(0), "");
-            if (memecoinFee != 0) ILayerZeroComposer(yieldDispatcher).lzCompose(memecoin, bytes32(0), abi.encode(yieldVault, true, memecoinFee), address(0), "");
+            if (govFee != 0) {
+                _transferOut(UPT, yieldDispatcher, govFee);
+                ILayerZeroComposer(yieldDispatcher).lzCompose(UPT, bytes32(0), abi.encode(governor, false, govFee), address(0), "");
+            }
+            if (memecoinFee != 0) {
+                _transferOut(memecoin, yieldDispatcher, memecoinFee);
+                ILayerZeroComposer(yieldDispatcher).lzCompose(memecoin, bytes32(0), abi.encode(yieldVault, true, memecoinFee), address(0), "");
+            }
         } else {
             uint32 govEndpointId = IMemeverseCommonInfo(memeverseCommonInfo).lzEndpointIdMap(govChainId);
             

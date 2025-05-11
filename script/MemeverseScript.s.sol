@@ -81,31 +81,31 @@ contract MemeverseScript is BaseScript {
 
         // _getDeployedImplementation(9);
 
-        // _getDeployedRegistrationCenter(16);
+        // _getDeployedRegistrationCenter(17);
 
-        // _getDeployedMemeverseCommonInfo(16);
-        // _getDeployedMemeverseRegistrar(16);
-        // _getDeployedMemeverseProxyDeployer(16);
-        // _getDeployedYieldDispatcher(16);
-        // _getDeployedMemeverseOmnichainInteroperation(1);
-        // _getDeployedOmnichainMemecoinStaker(16);
-        // _getDeployedMemeverseLauncher(16);
+        // _getDeployedMemeverseCommonInfo(17);
+        // _getDeployedMemeverseRegistrar(17);
+        // _getDeployedMemeverseProxyDeployer(17);
+        // _getDeployedYieldDispatcher(17);
+        // _getDeployedMemeverseOmnichainInteroperation(17);
+        // _getDeployedOmnichainMemecoinStaker(17);
+        // _getDeployedMemeverseLauncher(17);
 
 
         // _deployImplementation(9);
         // _deployMemecoinDaoGovernorImplementation(9);    // optimizer-runs: 10000
 
-        // _deployRegistrationCenter(16);
+        // _deployRegistrationCenter(17);
 
-        // _deployMemeverseCommonInfo(16);
-        // _deployMemeverseRegistrar(16);
-        // _deployMemeverseProxyDeployer(16);
-        // _deployYieldDispatcher(16);
-        // _deployMemeverseOmnichainInteroperation(1);
-        // _deployOmnichainMemecoinStaker(16);
+        _deployMemeverseCommonInfo(17);
+        _deployMemeverseRegistrar(17);
+        _deployMemeverseProxyDeployer(17);
+        _deployYieldDispatcher(17);
+        _deployMemeverseOmnichainInteroperation(17);
+        _deployOmnichainMemecoinStaker(17);
         
         // Update OutrunRouter after deployed
-        _deployMemeverseLauncher(16);    // optimizer-runs: 1000
+        // _deployMemeverseLauncher(17);    // optimizer-runs: 1000
     }
 
     function _chainsInit() internal {
@@ -407,7 +407,7 @@ contract MemeverseScript is BaseScript {
         );
         bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
         address memeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
-        IMemeverseLauncher(memeverseLauncherAddr).setFundMetaData(UETH, 1e19, 10000000);
+        IMemeverseLauncher(memeverseLauncherAddr).setFundMetaData(UETH, 1e19, 1000000);
 
         console.log("MemeverseLauncher deployed on %s", memeverseLauncherAddr);
     }

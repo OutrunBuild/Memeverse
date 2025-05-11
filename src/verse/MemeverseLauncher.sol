@@ -9,13 +9,13 @@ import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/
 import { ILayerZeroComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
 
 import { IBurnable } from "../common/IBurnable.sol";
+import { TokenHelper } from "../common/TokenHelper.sol";
 import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
 import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
-import { TokenHelper } from "../common/TokenHelper.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
+import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
 import { IMemeLiquidProof } from "../token/interfaces/IMemeLiquidProof.sol";
 import { IMemeverseCommonInfo } from "./interfaces/IMemeverseCommonInfo.sol";
-import { IMemeverseLauncher, Social } from "./interfaces/IMemeverseLauncher.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 import { IMemeverseProxyDeployer } from "./interfaces/IMemeverseProxyDeployer.sol";
 import { IMemeverseLiquidityRouter } from "../common/IMemeverseLiquidityRouter.sol";
@@ -48,6 +48,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     mapping(uint256 verseId => uint256) public totalClaimablePOLs;
     mapping(uint256 verseId => mapping(address account => uint256)) public userTotalFunds;
     mapping(uint256 verseId => mapping(address account => uint256)) public toBeUnlockedCoins;
+    mapping(uint256 verseId => mapping(uint256 provider => string)) public communitiesMap;     // provider -> 0:Website, 1:X, 2:Discord, 3:Telegram, >4:Others
 
     constructor(
         address _owner,
@@ -776,21 +777,25 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param verseId - Memeverse id
      * @param uri - IPFS URI of memecoin icon
      * @param description - Description
-     * @param community - Community(X, Discord, Telegram and Others)
+     * @param communities - Community(Website, X, Discord, Telegram and Others)
      */
     function setExternalInfo(
         uint256 verseId,
         string calldata uri,
         string calldata description,
-        Social.Community calldata community
+        string[] calldata communities
     ) external override {
         require(msg.sender == memeverses[verseId].governor || msg.sender == memeverseRegistrar, PermissionDenied());
-        require(bytes(description).length < 256 && bytes(community.handle).length < 32, InvalidLength());
+        require(bytes(description).length < 256, InvalidLength());
 
         if (bytes(uri).length != 0) memeverses[verseId].uri = uri;
         if (bytes(description).length != 0) memeverses[verseId].desc = description;
-        if (bytes(community.handle).length != 0) memeverses[verseId].community = community;
+        if (communities.length != 0) {
+            for (uint256 i = 0; i < communities.length; i++) {
+                communitiesMap[verseId][i] = communities[i];
+            }
+        }
 
-        emit SetExternalInfo(verseId, uri, description, community);
+        emit SetExternalInfo(verseId, uri, description, communities);
     }
 }

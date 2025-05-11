@@ -134,7 +134,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
             symbol: param.symbol,
             uri: param.uri,
             desc: param.desc,
-            community: param.community,
+            communities: param.communities,
             uniqueId: uniqueId,
             endTime: endTime,
             unlockTime: endTime + uint64(param.lockupDays * DAY),
@@ -219,7 +219,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32, InvalidLength());
         require(bytes(param.uri).length > 0, InvalidLength());
         require(bytes(param.desc).length > 0 && bytes(param.desc).length < 256, InvalidLength());
-        require(bytes(param.community.handle).length < 32, InvalidLength());
         require(param.UPT != address(0), ZeroUPTAddress());
 
         uint32[] memory omnichainIds = param.omnichainIds;

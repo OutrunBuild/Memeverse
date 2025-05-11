@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
-import { Social } from "../../libraries/Social.sol";
-
 /**
  * @title MemeverseLauncher interface
  */
@@ -19,7 +17,6 @@ interface IMemeverseLauncher {
         string symbol;                  // Token symbol
         string uri;                     // Token icon uri
         string desc;                    // Description
-        Social.Community community;     // Community(X, Discord, Telegram and Others)
         address UPT;                    // Genesis fund type
         address memecoin;               // Omnichain memecoin address
         address liquidProof;            // POL token address
@@ -116,7 +113,7 @@ interface IMemeverseLauncher {
         uint256 verseId,
         string calldata uri,
         string calldata description,
-        Social.Community calldata community
+        string[] calldata communities
     ) external; 
 
 
@@ -209,5 +206,5 @@ interface IMemeverseLauncher {
 
     event SetGasLimits(uint128 oftReceiveGasLimit, uint128 yieldDispatcherGasLimit);
 
-    event SetExternalInfo(uint256 indexed verseId, string uri, string description, Social.Community community);
+    event SetExternalInfo(uint256 indexed verseId, string uri, string description, string[] community);
 }

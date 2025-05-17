@@ -79,33 +79,33 @@ contract MemeverseScript is BaseScript {
         omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351];
         _chainsInit();
 
-        // _getDeployedImplementation(9);
+        // _getDeployedImplementation(10);
 
-        // _getDeployedRegistrationCenter(17);
+        // _getDeployedRegistrationCenter(18);
 
-        // _getDeployedMemeverseCommonInfo(17);
-        // _getDeployedMemeverseRegistrar(17);
-        // _getDeployedMemeverseProxyDeployer(17);
-        // _getDeployedYieldDispatcher(17);
-        // _getDeployedMemeverseOmnichainInteroperation(17);
-        // _getDeployedOmnichainMemecoinStaker(17);
-        // _getDeployedMemeverseLauncher(17);
+        // _getDeployedMemeverseCommonInfo(18);
+        // _getDeployedMemeverseRegistrar(18);
+        // _getDeployedMemeverseProxyDeployer(18);
+        // _getDeployedYieldDispatcher(18);
+        // _getDeployedMemeverseOmnichainInteroperation(18);
+        // _getDeployedOmnichainMemecoinStaker(18);
+        // _getDeployedMemeverseLauncher(18);
 
 
-        // _deployImplementation(9);
-        // _deployMemecoinDaoGovernorImplementation(9);    // optimizer-runs: 10000
+        // _deployImplementation(10);
+        // _deployMemecoinDaoGovernorImplementation(10);    // optimizer-runs: 10000
 
-        // _deployRegistrationCenter(17);
+        // _deployRegistrationCenter(18);
 
-        _deployMemeverseCommonInfo(17);
-        _deployMemeverseRegistrar(17);
-        _deployMemeverseProxyDeployer(17);
-        _deployYieldDispatcher(17);
-        _deployMemeverseOmnichainInteroperation(17);
-        _deployOmnichainMemecoinStaker(17);
+        // _deployMemeverseCommonInfo(18);
+        // _deployMemeverseRegistrar(18);
+        // _deployMemeverseProxyDeployer(18);
+        // _deployYieldDispatcher(18);
+        // _deployMemeverseOmnichainInteroperation(18);
+        // _deployOmnichainMemecoinStaker(18);
         
         // Update OutrunRouter after deployed
-        // _deployMemeverseLauncher(17);    // optimizer-runs: 1000
+        _deployMemeverseLauncher(18);    // optimizer-runs: 1000
     }
 
     function _chainsInit() internal {

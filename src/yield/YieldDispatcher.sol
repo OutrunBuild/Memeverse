@@ -10,6 +10,7 @@ import { TokenHelper } from "../common/TokenHelper.sol";
 import { IYieldDispatcher } from "./interfaces/IYieldDispatcher.sol";
 import { IOFTCompose } from "../common/layerzero/oft/IOFTCompose.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
+import { IGovernanceCycleIncentive } from "../governance/interfaces/IGovernanceCycleIncentive.sol";
 
 /**
  * @title Memecoin Yield Dispatcher
@@ -59,11 +60,11 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
             IBurnable(token).burn(amount);
             isBurned = true;
         } else {
+            _safeApproveInf(token, receiver);
             if (isMemecoin) {
-                _safeApproveInf(token, receiver);
                 IMemecoinYieldVault(receiver).accumulateYields(amount);
             } else {
-                _transferOut(token, receiver, amount);
+                IGovernanceCycleIncentive(receiver).receiveTreasuryIncome(token, amount);
             }
         }
 

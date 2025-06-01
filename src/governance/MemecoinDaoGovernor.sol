@@ -12,6 +12,7 @@ import { GovernorCountingFractionalUpgradeable } from "@openzeppelin/contracts-u
 import { GovernorVotesQuorumFractionUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesQuorumFractionUpgradeable.sol";
 
 import { IVotes, IMemecoinDaoGovernor } from "./interfaces/IMemecoinDaoGovernor.sol";
+import { GovernanceCycleIncentiveUpgradeable } from "./GovernanceCycleIncentiveUpgradeable.sol";
 
 /** 
  * @title Memecoin DAO Governor
@@ -27,7 +28,8 @@ contract MemecoinDaoGovernor is
     GovernorStorageUpgradeable, 
     GovernorVotesUpgradeable, 
     GovernorVotesQuorumFractionUpgradeable,
-    UUPSUpgradeable 
+    GovernanceCycleIncentiveUpgradeable,
+    UUPSUpgradeable
 {
     constructor() {
         _disableInitializers();
@@ -60,6 +62,7 @@ contract MemecoinDaoGovernor is
         __GovernorStorage_init();
         __GovernorVotes_init(_token);
         __GovernorVotesQuorumFraction_init(_quorumNumerator);
+        __GovernanceCycleIncentive_init();
         __UUPSUpgradeable_init();
     }
 
@@ -107,6 +110,18 @@ contract MemecoinDaoGovernor is
         returns (uint256)
     {
         return super._propose(targets, values, calldatas, description, proposer);
+    }
+
+    function _castVote(
+        uint256 proposalId,
+        address account,
+        uint8 support,
+        string memory reason,
+        bytes memory params
+    ) internal override returns (uint256) {
+        uint256 votes = super._castVote(proposalId, account, support, reason, params);
+        _recordVotes(account, votes);
+        return votes;
     }
 
     /**

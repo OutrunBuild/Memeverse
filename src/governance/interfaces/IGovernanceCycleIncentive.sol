@@ -14,7 +14,6 @@ interface IGovernanceCycleIncentive {
         mapping(address => uint256) rewardBalances;
         mapping(address => uint256) userVotes; 
         uint256 totalVotes;
-        bool isFinalized;
     }
 
     struct GovernanceCycleIncentiveStorage {
@@ -99,7 +98,7 @@ interface IGovernanceCycleIncentive {
     event TokenRegistered(address indexed token);
     event TokenUnregistered(address indexed token);
     event RewardRatioUpdated(uint256 oldRatio, uint256 newRatio);
-    event RewardClaimed(address indexed user, address indexed token, uint256 amount);
+    event RewardClaimed(address indexed user, uint256 indexed cycleId, address indexed token, uint256 amount);
     event TreasuryReceived(
         uint256 indexed cycleId, 
         address indexed token, 
@@ -112,7 +111,7 @@ interface IGovernanceCycleIncentive {
         address indexed receiver, 
         uint256 amount
     );
-    event RecordVotes(uint256 indexed cycleId, address indexed user, uint256 votes);
+    event AccumCycleVotes(uint256 indexed cycleId, address indexed user, uint256 votes);
 
     // Errors
     error ZeroInput();
@@ -121,6 +120,5 @@ interface IGovernanceCycleIncentive {
     error NotGovernance();
     error NoRewardsToClaim();
     error InvalidRewardRatio();
-    error CycleAlreadyFinalized();
     error InsufficientTreasuryBalance();
 }

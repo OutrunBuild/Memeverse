@@ -66,8 +66,6 @@ contract MemecoinDaoGovernor is
         __UUPSUpgradeable_init();
     }
 
-    // The following functions are overrides required by Solidity.
-
     function votingDelay()
         public
         view
@@ -120,7 +118,7 @@ contract MemecoinDaoGovernor is
         bytes memory params
     ) internal override returns (uint256) {
         uint256 votes = super._castVote(proposalId, account, support, reason, params);
-        _recordVotes(account, votes);
+        _accumCycleVotes(account, votes);
         return votes;
     }
 

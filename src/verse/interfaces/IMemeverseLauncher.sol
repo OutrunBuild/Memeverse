@@ -67,7 +67,12 @@ interface IMemeverseLauncher {
     function redeemAndDistributeFees(uint256 verseId, address rewardReceiver) external payable 
     returns (uint256 govFee, uint256 memecoinFee, uint256 executorReward);
 
-    function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external;
+    function redeemLiquidity(
+        uint256 verseId,
+        uint256 amountInPOL,
+        uint256 amountUPTMin,
+        uint256 amountMemecoinMin
+    ) external;
 
     function redeemUnlockedCoins(uint256 verseId) external;
 

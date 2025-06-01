@@ -482,8 +482,15 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @dev Burn liquidProof to claim the locked liquidity
      * @param verseId - Memeverse id
      * @param amountInPOL - Burned liquid proof token amount
+     * @param amountUPTMin - Minimum amount of UPT
+     * @param amountMemecoinMin - Minimum amount of memecoin
      */
-    function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external whenNotPaused override {
+    function redeemLiquidity(
+        uint256 verseId,
+        uint256 amountInPOL,
+        uint256 amountUPTMin,
+        uint256 amountMemecoinMin
+    ) external whenNotPaused override {
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
 
@@ -497,8 +504,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             memecoin, 
             SWAP_FEERATE, 
             amountInPOL, 
-            0, 
-            0, 
+            amountUPTMin, 
+            amountMemecoinMin, 
             address(this), 
             block.timestamp
         );

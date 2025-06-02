@@ -25,12 +25,21 @@ interface IGovernanceCycleIncentive {
     }
 
     /**
-     * @dev Get the rewards claimable by the user for the previous cycle
+     * @dev Get the specific token rewards claimable by the user for the previous cycle
+     * @param user - The user address
      * @param token - The token address
-     * @return The rewards claimable by the user for the previous cycle
+     * @return The specific token rewards claimable by the user for the previous cycle
      */
-    function getClaimableReward(address token) external view returns (uint256);
+    function getClaimableReward(address user, address token) external view returns (uint256);
     
+    /**
+     * @dev Get all registered token rewards claimable by the user for the previous cycle
+     * @param user - The user address
+     * @return tokens - Tokens Array of token addresses
+     * @return rewards - All registered token rewards
+     */
+    function getClaimableReward(address user) external view returns (address[] memory tokens, uint256[] memory rewards);
+
     /**
      * @dev Get the treasury balance for the current cycle
      * @param token - The token address
@@ -39,12 +48,27 @@ interface IGovernanceCycleIncentive {
     function getCurrentTreasuryBalance(address token) external view returns (uint256);
 
     /**
+     * @dev Get all registered tokens' treasury balances for the current cycle
+     * @return tokens - Tokens Array of token addresses
+     * @return balances - Balances Array of corresponding treasury balances
+     */
+    function getCurrentTreasuryBalances() external view returns (address[] memory tokens, uint256[] memory balances);
+
+    /**
      * @dev Get treasury balance for a specific cycle
      * @param cycleId - The cycle ID
      * @param token - The token address
      * @return The treasury balance for the specific cycle
      */
     function getTreasuryBalance(uint256 cycleId, address token) external view returns (uint256);
+
+    /**
+     * @dev Get all registered tokens' treasury balances for a specific cycle
+     * @param cycleId - The cycle ID
+     * @return tokens - Tokens Array of token addresses
+     * @return balances - Balances Array of corresponding treasury balances
+     */
+    function getTreasuryBalances(uint256 cycleId) external view returns (address[] memory tokens, uint256[] memory balances);
 
     /**
      * @dev Receive treasury income
@@ -120,5 +144,6 @@ interface IGovernanceCycleIncentive {
     error NotGovernance();
     error NoRewardsToClaim();
     error InvalidRewardRatio();
+    error OutOfMaxAcceptedTokens();
     error InsufficientTreasuryBalance();
 }

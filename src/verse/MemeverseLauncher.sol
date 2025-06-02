@@ -484,12 +484,14 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param amountInPOL - Burned liquid proof token amount
      * @param amountUPTMin - Minimum amount of UPT
      * @param amountMemecoinMin - Minimum amount of memecoin
+     * @param deadline - Transaction deadline
      */
     function redeemLiquidity(
         uint256 verseId,
         uint256 amountInPOL,
         uint256 amountUPTMin,
-        uint256 amountMemecoinMin
+        uint256 amountMemecoinMin,
+        uint256 deadline
     ) external whenNotPaused override {
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
@@ -507,7 +509,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             amountUPTMin, 
             amountMemecoinMin, 
             address(this), 
-            block.timestamp
+            deadline
         );
         _transferOut(UPT, msg.sender, amountInUPT);
         if (block.timestamp > verse.unlockTime + 3 days) {
@@ -547,6 +549,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param amountInUPTMin - Minimum amount of UPT
      * @param amountInMemecoinMin - Minimum amount of memecoin
      * @param amountOutDesired - Amount of POL token desired, If the amountOut is 0, the output quantity will be automatically calculated.
+     * @param deadline - Transaction deadline
      */
     function mintPOLToken(
         uint256 verseId, 
@@ -554,7 +557,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint256 amountInMemecoinDesired,
         uint256 amountInUPTMin,
         uint256 amountInMemecoinMin,
-        uint256 amountOutDesired
+        uint256 amountOutDesired,
+        uint256 deadline
     ) external override returns (uint256 amountInUPT, uint256 amountInMemecoin, uint256 amountOut) {
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage >= Stage.Locked, NotReachedLockedStage());
@@ -575,7 +579,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 amountInUPTMin,
                 amountInMemecoinMin,
                 address(this),
-                block.timestamp
+                deadline
             );
         } else {
             (amountInUPT, amountInMemecoin, amountOut) = IMemeverseLiquidityRouter(liquidityRouter).addTokensForExactLiquidity(
@@ -586,7 +590,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 amountInUPTDesired, 
                 amountInMemecoinDesired, 
                 address(this), 
-                block.timestamp
+                deadline
             );
         }
 

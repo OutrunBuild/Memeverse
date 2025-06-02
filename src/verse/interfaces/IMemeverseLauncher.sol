@@ -71,7 +71,8 @@ interface IMemeverseLauncher {
         uint256 verseId,
         uint256 amountInPOL,
         uint256 amountUPTMin,
-        uint256 amountMemecoinMin
+        uint256 amountMemecoinMin,
+        uint256 deadline
     ) external;
 
     function redeemUnlockedCoins(uint256 verseId) external;
@@ -82,7 +83,8 @@ interface IMemeverseLauncher {
         uint256 amountInMemecoinDesired,
         uint256 amountInUPTMin,
         uint256 amountInMemecoinMin,
-        uint256 amountOutDesired
+        uint256 amountOutDesired,
+        uint256 deadline
     ) external returns (uint256 amountInUPT, uint256 amountInMemecoin, uint256 amountOut);
 
     function registerMemeverse(

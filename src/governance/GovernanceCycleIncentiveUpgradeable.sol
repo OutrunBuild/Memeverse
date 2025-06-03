@@ -72,18 +72,53 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
     function getClaimableReward(address user) external view override returns (address[] memory tokens, uint256[] memory rewards) {
         GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
         Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
+        
         uint256 userVotes = prevCycle.userVotes[user];
-        require(userVotes != 0, NoRewardsToClaim());
+        if (userVotes != 0) {
+            uint256 totalVotes = prevCycle.totalVotes;
+            uint256 length = $._acceptedTokenList.length;
+            tokens = new address[](length);
+            rewards = new uint256[](length);
+            for (uint256 i = 0; i < length; i++) {
+                address token = $._acceptedTokenList[i];
+                tokens[i] = token;
+                uint256 rewardBalance = prevCycle.rewardBalances[token];
+                rewards[i] = Math.mulDiv(rewardBalance, userVotes, totalVotes);
+            }
+        }
+    }
+
+    /**
+     * @dev Get the specific token remaining rewards claimable for the previous cycle
+     * @param token - The token address
+     * @return remainingReward - The specific token remaining rewards claimable
+     */
+    function getRemainingClaimableRewards(address token) external view override returns (uint256 remainingReward) {
+        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
+        uint256 totalVotes = prevCycle.totalVotes;
+        if (totalVotes != 0) remainingReward = prevCycle.rewardBalances[token];
+    }
+
+    /**
+     * @dev Get all registered token remaining rewards claimable for the previous cycle
+     * @return tokens - Tokens Array of token addresses
+     * @return rewards - All registered token rewards
+     */
+    function getRemainingClaimableRewards() external view override returns (address[] memory tokens, uint256[] memory rewards) {
+        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
 
         uint256 totalVotes = prevCycle.totalVotes;
-        uint256 length = $._acceptedTokenList.length;
-        tokens = new address[](length);
-        rewards = new uint256[](length);
-        for (uint256 i = 0; i < length; i++) {
-            address token = $._acceptedTokenList[i];
-            tokens[i] = token;
-            uint256 rewardBalance = prevCycle.rewardBalances[token];
-            rewards[i] = Math.mulDiv(rewardBalance, userVotes, totalVotes);
+        if (totalVotes != 0) {
+            uint256 length = $._acceptedTokenList.length;
+            tokens = new address[](length);
+            rewards = new uint256[](length);
+            for (uint256 i = 0; i < length; i++) {
+                address token = $._acceptedTokenList[i];
+                tokens[i] = token;
+                rewards[i] = prevCycle.rewardBalances[token];
+            }
         }
     }
     

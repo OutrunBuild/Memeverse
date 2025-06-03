@@ -41,6 +41,20 @@ interface IGovernanceCycleIncentive {
     function getClaimableReward(address user) external view returns (address[] memory tokens, uint256[] memory rewards);
 
     /**
+     * @dev Get the specific token remaining rewards claimable for the previous cycle
+     * @param token - The token address
+     * @return remainingReward - The specific token remaining rewards claimable
+     */
+    function getRemainingClaimableRewards(address token) external view returns (uint256 remainingReward);
+
+    /**
+     * @dev Get all registered token remaining rewards claimable for the previous cycle
+     * @return tokens - Tokens Array of token addresses
+     * @return rewards - All registered token rewards
+     */
+    function getRemainingClaimableRewards() external view returns (address[] memory tokens, uint256[] memory rewards);
+    
+    /**
      * @dev Get the treasury balance for the current cycle
      * @param token - The token address
      * @return The treasury balance for the current cycle

@@ -176,9 +176,7 @@ interface IMemeverseLauncher {
         uint256 indexed verseId, 
         uint256 govFee, 
         uint256 memecoinFee, 
-        uint256 executorReward, 
-        uint256 burnedUPT, 
-        uint256 burnedPOL
+        uint256 executorReward
     );
 
     event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 liquidity);

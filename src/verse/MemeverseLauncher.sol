@@ -399,19 +399,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint256 UPTFee = token0 == UPT ? amount0 : amount1;
         memecoinFee = token0 == memecoin ? amount0 : amount1;
 
-        // LiquidProof pair
-        address liquidProof = verse.liquidProof;
-        IOutrunAMMPair liquidProofPair = IOutrunAMMPair(OutrunAMMLibrary.pairFor(outrunAMMFactory, liquidProof, UPT, SWAP_FEERATE));
-        (amount0, amount1) = liquidProofPair.claimMakerFee();
-        token0 = liquidProofPair.token0();
-        uint256 burnedUPT = token0 == UPT ? amount0 : amount1;
-        uint256 burnedPOL = token0 == liquidProof ? amount0 : amount1;
-
         if (UPTFee == 0 && memecoinFee == 0) return (0, 0, 0);
-
-        // Burn the UPT fee and liquidProof fee from liquidProof pair
-        if (burnedUPT != 0) IBurnable(UPT).burn(burnedUPT);
-        if (burnedPOL != 0) IBurnable(liquidProof).burn(burnedPOL);
 
         // Executor Reward
         unchecked {
@@ -475,7 +463,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             if (memecoinFee != 0) IOFT(memecoin).send{value: memecoinMessagingFee.nativeFee}(sendMemecoinParam, memecoinMessagingFee, msg.sender);
         }
         
-        emit RedeemAndDistributeFees(verseId, govFee, memecoinFee, executorReward, burnedUPT, burnedPOL);
+        emit RedeemAndDistributeFees(verseId, govFee, memecoinFee, executorReward);
     }
 
     /**

@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
-import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
-
 /**
  * @dev Extension of {Governor} for governance cycle incentive.
  */
 interface IGovernanceCycleIncentive {
     struct Cycle {
-        uint256 startTime;
-        uint256 endTime;
+        uint128 startTime;
+        uint128 endTime;
         mapping(address => uint256) treasuryBalances;
         mapping(address => uint256) rewardBalances;
         mapping(address => uint256) userVotes; 
@@ -131,7 +129,7 @@ interface IGovernanceCycleIncentive {
     function updateRewardRatio(uint256 newRatio) external;
 
     // Events
-    event CycleStarted(uint256 indexed cycleId, uint256 startTime, uint256 endTime);
+    event CycleStarted(uint256 indexed cycleId, uint128 startTime, uint128 endTime);
     event CycleFinalized(uint256 indexed cycleId);
     event TokenRegistered(address indexed token);
     event TokenUnregistered(address indexed token);

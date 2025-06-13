@@ -28,22 +28,18 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
         }
     }
 
-    modifier onlyAcceptedToken(address token) {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
-        require($._acceptedTokens[token], InvalidToken());
-        _;
-    }
-
     function __GovernanceCycleIncentive_init(address initFundToken) internal onlyInitializing {
         GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
         $._currentCycleId = 1;
         $._rewardRatio = 5000;
-        $._cycles[1].startTime = block.timestamp;
-        $._cycles[1].endTime = block.timestamp + CYCLE_DURATION;
+        uint128 startTime = uint128(block.timestamp);
+        uint128 endTime = uint128(block.timestamp + CYCLE_DURATION);
+        $._cycles[1].startTime = startTime;
+        $._cycles[1].endTime = endTime;
 
         registerToken(initFundToken);
 
-        emit CycleStarted(1, block.timestamp, block.timestamp + CYCLE_DURATION);
+        emit CycleStarted(1, startTime, endTime);
     }
 
     /**
@@ -188,10 +184,11 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @param token - The token address
      * @param amount - The amount
      */
-    function receiveTreasuryIncome(address token, uint256 amount) external override onlyAcceptedToken(token) {
+    function receiveTreasuryIncome(address token, uint256 amount) external override {
         require(token != address(0) && amount != 0, ZeroInput());
-
         GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        require($._acceptedTokens[token], InvalidToken());
+
         uint256 currentCycleId = $._currentCycleId;
         $._cycles[currentCycleId].treasuryBalances[token] += amount;
 
@@ -207,24 +204,22 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @param amount - The amount to transfer
      * @notice All actions to transfer assets from the DAO treasury MUST call this function
      */
-    function sendTreasuryAssets(
-        address token,
-        address to,
-        uint256 amount
-    ) external override onlyGovernance onlyAcceptedToken(token) {
+    function sendTreasuryAssets(address token, address to, uint256 amount) external override onlyGovernance {
         require(token != address(0) && to != address(0) && amount != 0, ZeroInput());
-        
         GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        require($._acceptedTokens[token], InvalidToken());
+
         uint256 currentCycleId = $._currentCycleId;
         Cycle storage currentCycle = $._cycles[currentCycleId];
+        uint256 currentBalance = currentCycle.treasuryBalances[token];
         
         require(
-            currentCycle.treasuryBalances[token] >= amount &&
+            currentBalance >= amount &&
             IERC20(token).balanceOf(address(this)) >= amount, 
             InsufficientTreasuryBalance()
         );
 
-        currentCycle.treasuryBalances[token] -= amount;
+        currentCycle.treasuryBalances[token] = currentBalance - amount;
         IERC20(token).safeTransfer(to, amount);
         
         emit TreasurySent(currentCycleId, token, to, amount);
@@ -245,9 +240,9 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
         uint256 length = $._acceptedTokenList.length;
         for (uint256 i = 0; i < length; i++) {
             address token = $._acceptedTokenList[i];
-            uint256 prevRewardBalance = prevCycle.rewardBalances[token];
 
             // Transfer remaining reward balance to current cycle treasury
+            uint256 prevRewardBalance = prevCycle.rewardBalances[token];
             uint256 treasuryBalance = currentCycle.treasuryBalances[token];
             if (prevRewardBalance > 0) {
                 prevCycle.rewardBalances[token] = 0;
@@ -256,12 +251,10 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
             }
 
             // Distribute reward
-            if (treasuryBalance > 0) {
-                uint256 rewardAmount = currentCycle.totalVotes == 0 ? 0 : (treasuryBalance * $._rewardRatio) / RATIO;
-                if (rewardAmount != 0) {
-                    currentCycle.rewardBalances[token] = rewardAmount;
-                    treasuryBalance -= rewardAmount;
-                }
+            if (treasuryBalance > 0 && currentCycle.totalVotes > 0) {
+                uint256 rewardAmount = treasuryBalance * $._rewardRatio / RATIO;
+                currentCycle.rewardBalances[token] = rewardAmount;
+                treasuryBalance -= rewardAmount;
                 $._cycles[newCycleId].treasuryBalances[token] = treasuryBalance;
             }
         }
@@ -270,11 +263,12 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
 
         // Start new cycle
         $._currentCycleId++;
-        $._cycles[newCycleId].startTime = block.timestamp;
-        uint256 endTime = block.timestamp + CYCLE_DURATION;
+        uint128 startTime = uint128(block.timestamp);
+        uint128 endTime = uint128(block.timestamp + CYCLE_DURATION);
+        $._cycles[newCycleId].startTime = startTime;
         $._cycles[newCycleId].endTime = endTime;
 
-        emit CycleStarted(newCycleId, block.timestamp, endTime);
+        emit CycleStarted(newCycleId, startTime, endTime);
     }
 
     /**
@@ -289,18 +283,19 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
         require(userVotes != 0, NoRewardsToClaim());
 
         prevCycle.userVotes[msg.sender] = 0;
-
         uint256 totalVotes = prevCycle.totalVotes;
         uint256 length = $._acceptedTokenList.length;
+
         for (uint256 i = 0; i < length; i++) {
             address token = $._acceptedTokenList[i];
             uint256 rewardBalance = prevCycle.rewardBalances[token];
             if(rewardBalance > 0) {
                 uint256 rewardAmount = Math.mulDiv(rewardBalance, userVotes, totalVotes);
-                if (rewardAmount == 0) continue;
-                prevCycle.rewardBalances[token] -= rewardAmount;
-                IERC20(token).safeTransfer(msg.sender, rewardAmount);
-                emit RewardClaimed(msg.sender, prevCycleId, token, rewardAmount);
+                if (rewardAmount > 0) {
+                    prevCycle.rewardBalances[token] = rewardBalance - rewardAmount;
+                    IERC20(token).safeTransfer(msg.sender, rewardAmount);
+                    emit RewardClaimed(msg.sender, prevCycleId, token, rewardAmount);
+                }
             }
         }
     }
@@ -313,12 +308,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
     function registerToken(address token) public override onlyGovernance {
         GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
         require($._acceptedTokenList.length < MAX_ACCEPTED_TOKENS, OutOfMaxAcceptedTokens());
-        require(
-            token != address(0) &&
-            IERC20(token).totalSupply() > 0 &&
-            !$._acceptedTokens[token], 
-            InvalidToken()
-        );
+        require(token != address(0) && IERC20(token).totalSupply() > 0 &&! $._acceptedTokens[token],  InvalidToken());
 
         $._acceptedTokens[token] = true;
         $._acceptedTokenList.push(token);
@@ -330,8 +320,10 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @dev Unregister for receivable treasury token
      * @param token - The token address
      */
-    function unregisterToken(address token) external override onlyAcceptedToken(token) onlyGovernance {
+    function unregisterToken(address token) external override onlyGovernance {
         GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        require($._acceptedTokens[token], InvalidToken());
+
         $._acceptedTokens[token] = false;
         uint256 length = $._acceptedTokenList.length;
         for (uint256 i = 0; i < length; i++) {

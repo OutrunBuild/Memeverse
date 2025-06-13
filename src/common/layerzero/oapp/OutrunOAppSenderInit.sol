@@ -7,7 +7,7 @@ import { MessagingParams, MessagingFee, MessagingReceipt } from "@layerzerolabs/
 import { OutrunOAppCoreInit } from "./OutrunOAppCoreInit.sol";
 
 /**
- * @title OutrunOAppSenderInit
+ * @title OutrunOAppSenderInit (Just for minimal proxy)
  * @dev Abstract contract implementing the OAppSender functionality for sending messages to a LayerZero endpoint.
  */
 abstract contract OutrunOAppSenderInit is OutrunOAppCoreInit {
@@ -20,6 +20,17 @@ abstract contract OutrunOAppSenderInit is OutrunOAppCoreInit {
     // @dev The version of the OAppSender implementation.
     // @dev Version is bumped when changes are made to this contract.
     uint64 internal constant SENDER_VERSION = 1;
+
+    /**
+     * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
+     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
+     * accommodate the different version of Ownable.
+     */
+    function __OutrunOAppSender_init(address _delegate) internal onlyInitializing {
+        __OutrunOAppCore_init(_delegate);
+    }
+
+    function __OutrunOAppSender_init_unchained() internal onlyInitializing {}
 
     /**
      * @notice Retrieves the OApp version information.

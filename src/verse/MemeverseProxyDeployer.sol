@@ -58,11 +58,12 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
      */
     function computeDAOGovernorAddress(
         string calldata memecoinName,
+        address UPT,
         address yieldVault,
         uint256 uniqueId,
         uint256 proposalThreshold
     ) external view override returns (address) {
-        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, yieldVault, proposalThreshold);
+        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, UPT, yieldVault, proposalThreshold);
 
         return Create2.computeAddress(keccak256(abi.encode(uniqueId)), keccak256(proxyBytecode));
     }
@@ -102,18 +103,19 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
      */
     function deployDAOGovernor(
         string calldata memecoinName,
+        address UPT,
         address yieldVault,
         uint256 uniqueId,
         uint256 proposalThreshold
     ) external onlyMemeverseLauncher override returns (address daoGovernor) {
-        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, yieldVault, proposalThreshold);
+        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, UPT, yieldVault, proposalThreshold);
 
         daoGovernor = Create2.deploy(0, keccak256(abi.encode(uniqueId)), proxyBytecode);
 
         emit DeployDAOGovernor(uniqueId, daoGovernor);
     }
 
-    function _computeProxyBytecode(string memory memecoinName, address yieldVault, uint256 proposalThreshold) internal view returns (bytes memory proxyBytecode) {
+    function _computeProxyBytecode(string memory memecoinName, address UPT, address yieldVault, uint256 proposalThreshold) internal view returns (bytes memory proxyBytecode) {
         bytes memory initData = abi.encodeWithSelector(
             IMemecoinDaoGovernor.initialize.selector,
             string(abi.encodePacked(memecoinName, " DAO")),
@@ -121,7 +123,8 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
             1 days,                 // voting delay
             1 weeks,                // voting period
             proposalThreshold,     // proposal threshold
-            quorumNumerator         // quorum (quorumNumerator%)
+            quorumNumerator,        // quorum (quorumNumerator%)
+            UPT
         );
         proxyBytecode = abi.encodePacked(
             type(ERC1967Proxy).creationCode,

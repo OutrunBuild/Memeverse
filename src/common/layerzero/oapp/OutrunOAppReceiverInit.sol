@@ -6,7 +6,7 @@ import { IOAppReceiver, Origin } from "@layerzerolabs/oapp-evm/contracts/oapp/in
 import { OutrunOAppCoreInit } from "./OutrunOAppCoreInit.sol";
 
 /**
- * @title OutrunOAppReceiverInit
+ * @title OutrunOAppReceiverInit (Just for minimal proxy)
  * @dev Abstract contract implementing the ILayerZeroReceiver interface and extending OAppCore for OApp receivers.
  */
 abstract contract OutrunOAppReceiverInit is IOAppReceiver, OutrunOAppCoreInit {
@@ -16,6 +16,17 @@ abstract contract OutrunOAppReceiverInit is IOAppReceiver, OutrunOAppCoreInit {
     // @dev The version of the OAppReceiver implementation.
     // @dev Version is bumped when changes are made to this contract.
     uint64 internal constant RECEIVER_VERSION = 2;
+
+    /**
+     * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
+     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
+     * accommodate the different version of Ownable.
+     */
+    function __OutrunOAppReceiver_init(address _delegate) internal onlyInitializing {
+        __OutrunOAppCore_init(_delegate);
+    }
+
+    function __OutrunOAppReceiver_init_unchained() internal onlyInitializing {}
 
     /**
      * @notice Retrieves the OApp version information.
@@ -61,7 +72,7 @@ abstract contract OutrunOAppReceiverInit is IOAppReceiver, OutrunOAppCoreInit {
      * Can be overridden by the OApp if there is other logic to determine this.
      */
     function allowInitializePath(Origin calldata origin) public view virtual returns (bool) {
-        return peers[origin.srcEid] == origin.sender;
+        return peers(origin.srcEid) == origin.sender;
     }
 
     /**

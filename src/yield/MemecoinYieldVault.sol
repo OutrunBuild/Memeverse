@@ -33,7 +33,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         address _asset,
         uint256 _verseId
     ) external override initializer {
-        __OutrunERC20_init(_name, _symbol, 18);
+        __OutrunERC20_init(_name, _symbol);
         __OutrunERC20Permit_init(_name);
 
         yieldDispatcher = _yieldDispatcher;

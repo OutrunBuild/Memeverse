@@ -272,7 +272,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 IMemeLiquidProof(liquidProof).initialize(
                     string(abi.encodePacked("POL-", name)), 
                     string(abi.encodePacked("POL-", symbol)), 
-                    18, 
                     memecoin, 
                     address(this)
                 );
@@ -291,10 +290,10 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                         memecoin,
                         verseId
                     );
-                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).deployDAOGovernor(name, yieldVault, verseId, proposalThreshold);
+                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).deployDAOGovernor(name, UPT, yieldVault, verseId, proposalThreshold);
                 } else {
                     yieldVault = IMemeverseProxyDeployer(memeverseProxyDeployer).predictYieldVaultAddress(verseId);
-                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).computeDAOGovernorAddress(name, yieldVault, verseId, proposalThreshold);
+                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).computeDAOGovernorAddress(name, UPT, yieldVault, verseId, proposalThreshold);
                 }
                 verse.yieldVault = yieldVault;
 
@@ -616,7 +615,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         require(msg.sender == memeverseRegistrar, PermissionDenied());
 
         address memecoin = IMemeverseProxyDeployer(memeverseProxyDeployer).deployMemecoin(uniqueId);
-        IMemecoin(memecoin).initialize(name, symbol, 18, address(this), localLzEndpoint, address(this));
+        IMemecoin(memecoin).initialize(name, symbol, address(this), address(this));
         _lzConfigure(memecoin, omnichainIds);
 
         Memeverse storage verse = memeverses[uniqueId];

@@ -12,12 +12,18 @@ import { OutrunOAppOptionsType3Init } from "../oapp/OutrunOAppOptionsType3Init.s
 import { OutrunOAppPreCrimeSimulatorInit } from "../oapp/OutrunOAppPreCrimeSimulatorInit.sol";
 
 /**
- * @title OutrunOFTCoreInit
+ * @title OutrunOFTCoreInit (Just for minimal proxy)
  * @dev Abstract contract for the OftChain (OFT) token.
  */
 abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, OutrunOAppPreCrimeSimulatorInit, OutrunOAppOptionsType3Init {
     using OFTMsgCodec for bytes;
     using OFTMsgCodec for bytes32;
+
+    struct OFTCoreStorage {
+        // Address of an optional contract to inspect both 'message' and 'options'
+        address msgInspector;
+        mapping(bytes32 guid => ComposeTxStatus) composeTxs;
+    }
 
     // @notice Provides a conversion rate when swapping between denominations of SD and LD
     //      - shareDecimals == SD == shared Decimals
@@ -32,7 +38,7 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
     //  you can only display 1.23 -> uint(123).
     //  @dev To preserve the dust that would otherwise be lost on that conversion,
     //  we need to unify a denomination that can be represented on ALL chains inside of the OFT mesh
-    uint256 public decimalConversionRate;
+    uint256 public immutable decimalConversionRate;
 
     // @notice Msg types that are used to identify the various OFT operations.
     // @dev This can be extended in child contracts for non-default oft operations
@@ -40,29 +46,56 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
     uint16 public constant SEND = 1;
     uint16 public constant SEND_AND_CALL = 2;
 
-    // Address of an optional contract to inspect both 'message' and 'options'
-    address public msgInspector;
+    // keccak256(abi.encode(uint256(keccak256("outrun.layerzerov2.storage.OFTCore")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant OFT_CORE_STORAGE_LOCATION = 0x1a2846a4be01d927c13a5ab572124918fa6eabc1d9def75fd5d4e3f0617fe600;
 
-    mapping(bytes32 guid => ComposeTxStatus) public composeTxs;
+    function _getOFTCoreStorage() internal pure returns (OFTCoreStorage storage $) {
+        assembly {
+            $.slot := OFT_CORE_STORAGE_LOCATION
+        }
+    }
 
     event MsgInspectorSet(address inspector);
 
     /**
-     * @dev Initializer.
+     * @dev Constructor.
      * @param _localDecimals The decimals of the token on the local chain (this chain).
      * @param _endpoint The address of the LayerZero endpoint.
-     * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
      */
-    function __OutrunOFTCore_init(
-        uint8 _localDecimals, 
-        address _endpoint, 
-        address _delegate
-    ) internal onlyInitializing {
+    constructor(uint8 _localDecimals, address _endpoint) OutrunOAppInit(_endpoint) {
         if (_localDecimals < sharedDecimals()) revert InvalidLocalDecimals();
         decimalConversionRate = 10 ** (_localDecimals - sharedDecimals());
-
-        __OutrunOApp_init(_endpoint, _delegate);
     }
+
+    /**
+     * @dev Initializer.
+     * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
+     *
+     * @dev The delegate typically should be set as the owner of the contract.
+     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
+     * accommodate the different version of Ownable.
+     */
+    function __OutrunOFTCore_init(address _delegate) internal onlyInitializing {
+        __OutrunOApp_init(_delegate);
+        __OutrunOAppPreCrimeSimulator_init();
+        __OutrunOAppOptionsType3_init();
+    }
+
+    function __OFTCore_init_unchained() internal onlyInitializing {}
+
+    function msgInspector() public view returns (address) {
+        OFTCoreStorage storage $ = _getOFTCoreStorage();
+        return $.msgInspector;
+    }
+
+    /**
+     * @dev Get the compose tx executed status by guid.
+     * @param guid The unique identifier for the received LayerZero message.
+     */
+    function getComposeTxExecutedStatus(bytes32 guid) external view override returns (bool) {
+        OFTCoreStorage storage $ = _getOFTCoreStorage();
+        return $.composeTxs[guid].isExecuted;
+    } 
 
     /**
      * @notice Retrieves interfaceID and the version of the OFT.
@@ -100,7 +133,8 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
      * @dev Set it to address(0) to disable it, or set it to a contract address to enable it.
      */
     function setMsgInspector(address _msgInspector) public virtual onlyOwner {
-        msgInspector = _msgInspector;
+        OFTCoreStorage storage $ = _getOFTCoreStorage();
+        $.msgInspector = _msgInspector;
         emit MsgInspectorSet(_msgInspector);
     }
 
@@ -157,15 +191,6 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
         return _quote(_sendParam.dstEid, message, options, _payInLzToken);
     }
 
-    
-    /**
-     * @dev Get the compose tx executed status by guid.
-     * @param guid The unique identifier for the received LayerZero message.
-     */
-    function getComposeTxExecutedStatus(bytes32 guid) external view override returns (bool) {
-        return composeTxs[guid].isExecuted;
-    } 
-
     /**
      * @dev Executes the send operation.
      * @param _sendParam The parameters for the send operation.
@@ -186,29 +211,6 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
         MessagingFee calldata _fee,
         address _refundAddress
     ) external payable virtual returns (MessagingReceipt memory msgReceipt, OFTReceipt memory oftReceipt) {
-        return _send(_sendParam, _fee, _refundAddress);
-    }
-
-    /**
-     * @dev Internal function to execute the send operation.
-     * @param _sendParam The parameters for the send operation.
-     * @param _fee The calculated fee for the send() operation.
-     *      - nativeFee: The native fee.
-     *      - lzTokenFee: The lzToken fee.
-     * @param _refundAddress The address to receive any excess funds.
-     * @return msgReceipt The receipt for the send operation.
-     * @return oftReceipt The OFT receipt information.
-     *
-     * @dev MessagingReceipt: LayerZero msg receipt
-     *  - guid: The unique identifier for the sent message.
-     *  - nonce: The nonce of the sent message.
-     *  - fee: The LayerZero fee incurred for the message.
-     */
-    function _send(
-        SendParam calldata _sendParam,
-        MessagingFee calldata _fee,
-        address _refundAddress
-    ) internal virtual returns (MessagingReceipt memory msgReceipt, OFTReceipt memory oftReceipt) {
         // @dev Applies the token transfers regarding this send() operation.
         // - amountSentLD is the amount in local decimals that was ACTUALLY sent/debited from the sender.
         // - amountReceivedLD is the amount in local decimals that will be received/credited to the recipient on the remote OFT instance.
@@ -255,9 +257,11 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
         // @dev Combine the callers _extraOptions with the enforced options via the OAppOptionsType3.
         options = combineOptions(_sendParam.dstEid, msgType, _sendParam.extraOptions);
 
+        OFTCoreStorage storage $ = _getOFTCoreStorage();
+
         // @dev Optionally inspect the message and options depending if the OApp owner has set a msg inspector.
         // @dev If it fails inspection, needs to revert in the implementation. ie. does not rely on return boolean
-        address inspector = msgInspector; // caches the msgInspector to avoid potential double storage read
+        address inspector = $.msgInspector; // caches the msgInspector to avoid potential double storage read
         if (inspector != address(0)) IOAppMsgInspector(inspector).inspect(message, options);
     }
 
@@ -299,10 +303,11 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
             // @dev The off-chain executor will listen and process the msg based on the src-chain-callers compose options passed.
             // @dev The index is used when a OApp needs to compose multiple msgs on lzReceive.
             // For default OFT implementation there is only 1 compose msg per lzReceive, thus its always 0.
-            composeTxs[_guid].composer = toAddress;
-            composeTxs[_guid].amount = amountReceivedLD;
+            ComposeTxStatus storage txStatus = _getOFTCoreStorage().composeTxs[_guid];
+            txStatus.composer = toAddress;
+            txStatus.amount = amountReceivedLD;
             // The default first parameter must always be the UBO address.
-            composeTxs[_guid].UBO = abi.decode(_message.composeMsg(), (address));
+            txStatus.UBO = abi.decode(_message.composeMsg(), (address));
             endpoint.sendCompose(toAddress, _guid, 0 /* the index of the composed message*/, composeMsg);
         }
 
@@ -314,7 +319,7 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
      * @param guid The unique identifier for the received LayerZero message.
      */
     function notifyComposeExecuted(bytes32 guid) external override {
-        ComposeTxStatus storage txStatus = composeTxs[guid];
+        ComposeTxStatus storage txStatus = _getOFTCoreStorage().composeTxs[guid];
         require(msg.sender == txStatus.composer, PermissionDenied());
 
         txStatus.isExecuted = true;
@@ -355,7 +360,7 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
      * @dev Enables OAppPreCrimeSimulator to check whether a potential Inbound Packet is from a trusted source.
      */
     function isPeer(uint32 _eid, bytes32 _peer) public view virtual override returns (bool) {
-        return peers[_eid] == _peer;
+        return peers(_eid) == _peer;
     }
 
     /**

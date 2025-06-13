@@ -9,6 +9,7 @@ interface IMemeverseProxyDeployer {
 
     function computeDAOGovernorAddress(
         string calldata memecoinName,
+        address UPT,
         address yieldVault,
         uint256 uniqueId,
         uint256 proposalThreshold
@@ -22,6 +23,7 @@ interface IMemeverseProxyDeployer {
 
     function deployDAOGovernor(
         string calldata memecoinName,
+        address UPT,
         address yieldVault,
         uint256 uniqueId,
         uint256 proposalThreshold

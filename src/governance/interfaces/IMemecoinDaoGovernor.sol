@@ -13,6 +13,7 @@ interface IMemecoinDaoGovernor {
         uint48 _votingDelay,
         uint32 _votingPeriod,
         uint256 _proposalThreshold,
-        uint256 _quorumNumerator
+        uint256 _quorumNumerator,
+        address UPT
     ) external;
 }

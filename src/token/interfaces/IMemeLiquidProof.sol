@@ -17,14 +17,12 @@ interface IMemeLiquidProof is IERC20 {
      * @notice Initialize the memeverse proof.
      * @param _name - The name of the memeverse proof.
      * @param _symbol - The symbol of the memeverse proof.
-     * @param _decimals - The decimals of the memeverse proof.
      * @param _memecoin - The address of the memecoin.
      * @param _memeverseLauncher - The address of the memeverse launcher.
      */
     function initialize(
         string memory _name, 
         string memory _symbol, 
-        uint8 _decimals, 
         address _memecoin, 
         address _memeverseLauncher
     ) external;

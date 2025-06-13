@@ -5,28 +5,36 @@ import { IOFT, OutrunOFTCoreInit } from "./OutrunOFTCoreInit.sol";
 import { OutrunERC20Init } from "../../../common/OutrunERC20Init.sol";
 
 /**
- * @title Outrun OFT Init Contract
+ * @title Outrun OFT Init Contract (Just for minimal proxy)
  * @dev OFT is an ERC-20 token that extends the functionality of the OFTCore contract.
  */
 abstract contract OutrunOFTInit is OutrunOFTCoreInit, OutrunERC20Init {
     /**
-     * @dev Initialize for the OutrunOFT contract.
-     * @param name_ The name of the OFT.
-     * @param symbol_ The symbol of the OFT.
-     * @param decimals_ The decimals of the OFT.
-     * @param _lzEndpoint The LayerZero endpoint address.
+     * @dev Constructor for the OFT contract.
+     * @param _lzEndpoint The local LayerZero endpoint address.
+     */
+    constructor(address _lzEndpoint) OutrunOFTCoreInit(decimals(), _lzEndpoint) {}
+
+    /**
+     * @dev Initializes the OFT with the provided name, symbol, and delegate.
+     * @param _name The name of the OFT.
+     * @param _symbol The symbol of the OFT.
      * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
+     *
+     * @dev The delegate typically should be set as the owner of the contract.
+     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
+     * accommodate the different version of Ownable.
      */
     function __OutrunOFT_init(
-        string memory name_,
-        string memory symbol_,
-        uint8 decimals_,
-        address _lzEndpoint,
+        string memory _name,
+        string memory _symbol,
         address _delegate
     ) internal onlyInitializing {
-        __OutrunERC20_init(name_, symbol_, decimals_);
-        __OutrunOFTCore_init(decimals_, _lzEndpoint, _delegate);
+        __OutrunERC20_init(_name, _symbol);
+        __OutrunOFTCore_init(_delegate);
     }
+
+    function __OFT_init_unchained() internal onlyInitializing {}
 
     /**
      * @dev Retrieves the address of the underlying ERC20 implementation.
@@ -56,7 +64,7 @@ abstract contract OutrunOFTInit is OutrunOFTCoreInit, OutrunERC20Init {
      * @return amount - Withdraw amount
      */
     function withdrawIfNotExecuted(bytes32 guid, address receiver) external override returns (uint256 amount) {
-        ComposeTxStatus storage txStatus = composeTxs[guid];
+        ComposeTxStatus storage txStatus = _getOFTCoreStorage().composeTxs[guid];
         require(!txStatus.isExecuted, AlreadyExecuted());
         require(msg.sender == txStatus.UBO, PermissionDenied());
         

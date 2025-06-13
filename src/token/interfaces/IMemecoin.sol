@@ -17,17 +17,13 @@ interface IMemecoin is IERC20 {
      * @notice Initialize the memecoin.
      * @param name_ - The name of the memecoin.
      * @param symbol_ - The symbol of the memecoin.
-     * @param decimals_ - The decimals of the memecoin.
      * @param _memeverseLauncher - The address of the memeverse launcher.
-     * @param _lzEndpoint - The address of the LayerZero endpoint.
      * @param _delegate - The address of the delegate.
      */
     function initialize(
         string memory name_, 
         string memory symbol_,
-        uint8 decimals_, 
         address _memeverseLauncher, 
-        address _lzEndpoint,
         address _delegate
     ) external;
 

@@ -23,18 +23,16 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
      * @notice Initialize the memecoin liquidProof.
      * @param name_ - The name of the memecoin liquidProof.
      * @param symbol_ - The symbol of the memecoin liquidProof.
-     * @param decimals_ - The decimals of the memecoin liquidProof.
      * @param _memecoin - The address of the memecoin.
      * @param _memeverseLauncher - The address of the memeverse launcher.
      */
     function initialize(
         string memory name_, 
         string memory symbol_, 
-        uint8 decimals_, 
         address _memecoin, 
         address _memeverseLauncher
     ) external override initializer {
-        __OutrunERC20_init(name_, symbol_, decimals_);
+        __OutrunERC20_init(name_, symbol_);
 
         memecoin = _memecoin;
         memeverseLauncher = _memeverseLauncher;

@@ -6,14 +6,38 @@ import { IOAppOptionsType3, EnforcedOptionParam } from "@layerzerolabs/oapp-evm/
 import { OutrunOwnableInit } from "../../OutrunOwnableInit.sol";
 
 /**
- * @title OutrunOAppOptionsType3Init
+ * @title OutrunOAppOptionsType3Init (Just for minimal proxy)
  * @dev Abstract contract implementing the IOAppOptionsType3 interface with type 3 options.
  */
 abstract contract OutrunOAppOptionsType3Init is IOAppOptionsType3, OutrunOwnableInit {
+    struct OAppOptionsType3Storage {
+        // @dev The "msgType" should be defined in the child contract.
+        mapping(uint32 => mapping(uint16 => bytes)) enforcedOptions;
+    }
+
     uint16 internal constant OPTION_TYPE_3 = 3;
 
-    // @dev The "msgType" should be defined in the child contract.
-    mapping(uint32 eid => mapping(uint16 msgType => bytes enforcedOption)) public enforcedOptions;
+    // keccak256(abi.encode(uint256(keccak256("outrun.layerzerov2.storage.OAppOptionsType3")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant OAPP_OPTIONS_TYPE_3_STORAGE_LOCATION = 0xb8742acedc513ab939c44ee9081fd12ef5e204cfe39a55d50dba0e689496ff00;
+
+    function _getOAppOptionsType3Storage() internal pure returns (OAppOptionsType3Storage storage $) {
+        assembly {
+            $.slot := OAPP_OPTIONS_TYPE_3_STORAGE_LOCATION
+        }
+    }
+
+    /**
+     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
+     * accommodate the different version of Ownable.
+     */
+    function __OutrunOAppOptionsType3_init() internal onlyInitializing {}
+
+    function __OutrunOAppOptionsType3_init_unchained() internal onlyInitializing {}
+
+    function enforcedOptions(uint32 _eid, uint16 _msgType) public view returns (bytes memory) {
+        OAppOptionsType3Storage storage $ = _getOAppOptionsType3Storage();
+        return $.enforcedOptions[_eid][_msgType];
+    }
 
     /**
      * @dev Sets the enforced options for specific endpoint and message type combinations.
@@ -26,23 +50,11 @@ abstract contract OutrunOAppOptionsType3Init is IOAppOptionsType3, OutrunOwnable
      * if you are only making a standard LayerZero message ie. lzReceive() WITHOUT sendCompose().
      */
     function setEnforcedOptions(EnforcedOptionParam[] calldata _enforcedOptions) public virtual onlyOwner {
-        _setEnforcedOptions(_enforcedOptions);
-    }
-
-    /**
-     * @dev Sets the enforced options for specific endpoint and message type combinations.
-     * @param _enforcedOptions An array of EnforcedOptionParam structures specifying enforced options.
-     *
-     * @dev Provides a way for the OApp to enforce things like paying for PreCrime, AND/OR minimum dst lzReceive gas amounts etc.
-     * @dev These enforced options can vary as the potential options/execution on the remote may differ as per the msgType.
-     * eg. Amount of lzReceive() gas necessary to deliver a lzCompose() message adds overhead you dont want to pay
-     * if you are only making a standard LayerZero message ie. lzReceive() WITHOUT sendCompose().
-     */
-    function _setEnforcedOptions(EnforcedOptionParam[] memory _enforcedOptions) internal virtual {
+        OAppOptionsType3Storage storage $ = _getOAppOptionsType3Storage();
         for (uint256 i = 0; i < _enforcedOptions.length; i++) {
             // @dev Enforced options are only available for optionType 3, as type 1 and 2 dont support combining.
             _assertOptionsType3(_enforcedOptions[i].options);
-            enforcedOptions[_enforcedOptions[i].eid][_enforcedOptions[i].msgType] = _enforcedOptions[i].options;
+            $.enforcedOptions[_enforcedOptions[i].eid][_enforcedOptions[i].msgType] = _enforcedOptions[i].options;
         }
 
         emit EnforcedOptionSet(_enforcedOptions);
@@ -65,7 +77,8 @@ abstract contract OutrunOAppOptionsType3Init is IOAppOptionsType3, OutrunOwnable
         uint16 _msgType,
         bytes calldata _extraOptions
     ) public view virtual returns (bytes memory) {
-        bytes memory enforced = enforcedOptions[_eid][_msgType];
+        OAppOptionsType3Storage storage $ = _getOAppOptionsType3Storage();
+        bytes memory enforced = $.enforcedOptions[_eid][_msgType];
 
         // No enforced options, pass whatever the caller supplied, even if it's empty or legacy type 1/2 options.
         if (enforced.length == 0) return _extraOptions;
@@ -88,11 +101,8 @@ abstract contract OutrunOAppOptionsType3Init is IOAppOptionsType3, OutrunOwnable
      * @dev Internal function to assert that options are of type 3.
      * @param _options The options to be checked.
      */
-    function _assertOptionsType3(bytes memory _options) internal pure virtual {
-        uint16 optionsType;
-        assembly {
-            optionsType := mload(add(_options, 2))
-        }
+    function _assertOptionsType3(bytes calldata _options) internal pure virtual {
+        uint16 optionsType = uint16(bytes2(_options[0:2]));
         if (optionsType != OPTION_TYPE_3) revert InvalidOptions(_options);
     }
 }

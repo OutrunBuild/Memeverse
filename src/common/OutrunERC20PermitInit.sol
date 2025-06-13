@@ -10,7 +10,8 @@ import { OutrunERC20Init } from "./OutrunERC20Init.sol";
 import { OutrunEIP712Init } from "./cryptography/OutrunEIP712Init.sol";
 
 /**
- * @dev Implementation of the ERC-20 Permit extension allowing approvals to be made via signatures, as defined in
+ * @dev (Just for minimal proxy)
+ * Implementation of the ERC-20 Permit extension allowing approvals to be made via signatures, as defined in
  * https://eips.ethereum.org/EIPS/eip-2612[ERC-2612].
  *
  * Adds the {permit} method, which can be used to change an account's ERC-20 allowance (see {IERC20-allowance}) by
@@ -31,9 +32,16 @@ abstract contract OutrunERC20PermitInit is OutrunERC20Init, IERC20Permit, Outrun
      */
     error ERC2612InvalidSigner(address signer, address owner);
 
+    /**
+     * @dev Initializes the {EIP712} domain separator using the `name` parameter, and setting `version` to `"1"`.
+     *
+     * It's a good idea to use the same `name` that is defined as the ERC-20 token name.
+     */
     function __OutrunERC20Permit_init(string memory _name) internal onlyInitializing {
         __OutrunEIP712_init(_name, "1");
     }
+
+    function __ERC20Permit_init_unchained(string memory) internal onlyInitializing {}
 
     /**
      * @inheritdoc IERC20Permit

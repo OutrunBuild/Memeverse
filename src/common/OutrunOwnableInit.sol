@@ -5,10 +5,22 @@ pragma solidity ^0.8.28;
 import { Initializable } from "../common/Initializable.sol";
 
 /**
- * @dev Outrun's OwnableInit implementation, modified from openzeppelin implementation
+ * @dev Outrun's OwnableInit implementation, modified from openzeppelin implementation (Just for minimal proxy)
  */
 abstract contract OutrunOwnableInit is Initializable {
-    address private _owner;
+    /// @custom:storage-location erc7201:openzeppelin.storage.Ownable
+    struct OwnableStorage {
+        address _owner;
+    }
+
+    // keccak256(abi.encode(uint256(keccak256("outrun.storage.Ownable")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant OWNABLE_STORAGE_LOCATION = 0x7f241041d6960443a72c6e46e3b41069d0f1a8933ddb434b1da86a3f3cba9f00;
+
+    function _getOwnableStorage() private pure returns (OwnableStorage storage $) {
+        assembly {
+            $.slot := OWNABLE_STORAGE_LOCATION
+        }
+    }
 
     /**
      * @dev The caller account is not authorized to perform an operation.
@@ -26,6 +38,10 @@ abstract contract OutrunOwnableInit is Initializable {
      * @dev Initializes the contract setting the address provided by the deployer as the initial owner.
      */
     function __OutrunOwnable_init(address initialOwner) internal onlyInitializing {
+        __OutrunOwnable_init_unchained(initialOwner);
+    }
+
+    function __OutrunOwnable_init_unchained(address initialOwner) internal onlyInitializing {
         if (initialOwner == address(0)) {
             revert OwnableInvalidOwner(address(0));
         }
@@ -44,7 +60,8 @@ abstract contract OutrunOwnableInit is Initializable {
      * @dev Returns the address of the current owner.
      */
     function owner() public view virtual returns (address) {
-        return _owner;
+        OwnableStorage storage $ = _getOwnableStorage();
+        return $._owner;
     }
 
     /**
@@ -83,8 +100,9 @@ abstract contract OutrunOwnableInit is Initializable {
      * Internal function without access restriction.
      */
     function _transferOwnership(address newOwner) internal virtual {
-        address oldOwner = _owner;
-        _owner = newOwner;
+        OwnableStorage storage $ = _getOwnableStorage();
+        address oldOwner = $._owner;
+        $._owner = newOwner;
         emit OwnershipTransferred(oldOwner, newOwner);
     }
 }

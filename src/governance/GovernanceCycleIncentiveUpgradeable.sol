@@ -34,12 +34,14 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
         _;
     }
 
-    function __GovernanceCycleIncentive_init() internal onlyInitializing {
+    function __GovernanceCycleIncentive_init(address initFundToken) internal onlyInitializing {
         GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
         $._currentCycleId = 1;
         $._rewardRatio = 5000;
         $._cycles[1].startTime = block.timestamp;
         $._cycles[1].endTime = block.timestamp + CYCLE_DURATION;
+
+        registerToken(initFundToken);
 
         emit CycleStarted(1, block.timestamp, block.timestamp + CYCLE_DURATION);
     }
@@ -308,7 +310,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @param token - The token address
      * @notice MUST confirm that the registered token is not a malicious token
      */
-    function registerToken(address token) external override onlyGovernance {
+    function registerToken(address token) public override onlyGovernance {
         GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
         require($._acceptedTokenList.length < MAX_ACCEPTED_TOKENS, OutOfMaxAcceptedTokens());
         require(

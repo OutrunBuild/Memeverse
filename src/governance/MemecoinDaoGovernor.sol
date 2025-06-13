@@ -43,6 +43,7 @@ contract MemecoinDaoGovernor is
      * @param _votingPeriod - The voting period.
      * @param _proposalThreshold - The proposal threshold.
      * @param _quorumNumerator - The quorum numerator.
+     * @param _initFundToken - The initial DAO fund token.
      */
     function initialize(
         string memory _name, 
@@ -50,7 +51,8 @@ contract MemecoinDaoGovernor is
         uint48 _votingDelay,
         uint32 _votingPeriod,
         uint256 _proposalThreshold,
-        uint256 _quorumNumerator
+        uint256 _quorumNumerator,
+        address _initFundToken
     ) initializer override external {
         __Governor_init(_name);
         __GovernorSettings_init(
@@ -62,7 +64,7 @@ contract MemecoinDaoGovernor is
         __GovernorStorage_init();
         __GovernorVotes_init(_token);
         __GovernorVotesQuorumFraction_init(_quorumNumerator);
-        __GovernanceCycleIncentive_init();
+        __GovernanceCycleIncentive_init(_initFundToken);
         __UUPSUpgradeable_init();
     }
 

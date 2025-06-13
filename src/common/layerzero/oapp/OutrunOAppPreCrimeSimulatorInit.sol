@@ -7,12 +7,36 @@ import { IOAppPreCrimeSimulator, InboundPacket, Origin } from "@layerzerolabs/oa
 import { OutrunOwnableInit } from "../../OutrunOwnableInit.sol";
 
 /**
- * @title OutrunOAppPreCrimeSimulatorInit
+ * @title OutrunOAppPreCrimeSimulatorInit (Just for minimal proxy)
  * @dev Abstract contract serving as the base for preCrime simulation functionality in an OApp.
  */
 abstract contract OutrunOAppPreCrimeSimulatorInit is IOAppPreCrimeSimulator, OutrunOwnableInit {
-    // The address of the preCrime implementation.
-    address public preCrime;
+    struct OAppPreCrimeSimulatorStorage {
+        // The address of the preCrime implementation.
+        address preCrime;
+    }
+
+    // keccak256(abi.encode(uint256(keccak256("outrun.layerzerov2.storage.OAppPreCrimeSimulator")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant OAPP_PRE_CRIME_SIMULATOR_STORAGE_LOCATION = 0x64ee1c09e489d82d98a23ae0880bbc36a3637a4a59e3c120b24b8998a504ab00;
+
+    function _getOAppPreCrimeSimulatorStorage() internal pure returns (OAppPreCrimeSimulatorStorage storage $) {
+        assembly {
+            $.slot := OAPP_PRE_CRIME_SIMULATOR_STORAGE_LOCATION
+        }
+    }
+
+    /**
+     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
+     * accommodate the different version of Ownable.
+     */
+    function __OutrunOAppPreCrimeSimulator_init() internal onlyInitializing {}
+
+    function __OutrunOAppPreCrimeSimulator_init_unchained() internal onlyInitializing {}
+
+    function preCrime() external view override returns (address) {
+        OAppPreCrimeSimulatorStorage storage $ = _getOAppPreCrimeSimulatorStorage();
+        return $.preCrime;
+    }
 
     /**
      * @dev Retrieves the address of the OApp contract.
@@ -30,7 +54,8 @@ abstract contract OutrunOAppPreCrimeSimulatorInit is IOAppPreCrimeSimulator, Out
      * @param _preCrime The address of the preCrime contract.
      */
     function setPreCrime(address _preCrime) public virtual onlyOwner {
-        preCrime = _preCrime;
+        OAppPreCrimeSimulatorStorage storage $ = _getOAppPreCrimeSimulatorStorage();
+        $.preCrime = _preCrime;
         emit PreCrimeSet(_preCrime);
     }
 

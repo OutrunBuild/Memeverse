@@ -10,7 +10,7 @@ import { TokenHelper } from "../common/TokenHelper.sol";
 import { IYieldDispatcher } from "./interfaces/IYieldDispatcher.sol";
 import { IOFTCompose } from "../common/layerzero/oft/IOFTCompose.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
-import { IGovernanceCycleIncentive } from "../governance/interfaces/IGovernanceCycleIncentive.sol";
+import { IMemecoinDaoGovernor } from "../governance/interfaces/IMemecoinDaoGovernor.sol";
 
 /**
  * @title Memecoin Yield Dispatcher
@@ -64,7 +64,7 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
             if (isMemecoin) {
                 IMemecoinYieldVault(receiver).accumulateYields(amount);
             } else {
-                IGovernanceCycleIncentive(receiver).receiveTreasuryIncome(token, amount);
+                IMemecoinDaoGovernor(receiver).receiveTreasuryIncome(token, amount);
             }
         }
 

@@ -5,41 +5,104 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import { IGovernanceCycleIncentive } from "./interfaces/IGovernanceCycleIncentive.sol";
+import { IGovernanceCycleIncentivizer } from "./interfaces/IGovernanceCycleIncentivizer.sol";
 
 /**
- * @dev Extension of {Governor} for governance cycle incentive.
+ * @dev External expansion of {Governor} for governance cycle incentive.
  */
-abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncentive, Initializable, GovernorUpgradeable {
+contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer, Initializable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     uint256 public constant RATIO = 10000;
     uint256 public constant CYCLE_DURATION = 90 days;
     uint256 public constant MAX_ACCEPTED_TOKENS = 20;
 
-    // keccak256(abi.encode(uint256(keccak256("outrun.storage.GovernanceCycleIncentive")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant GovernanceCycleIncentiveStorageLocation = 0x173bbd0db440ff8dcb0efb05aced4279e21e45a07b4974973a371552ef840a00;
+    // keccak256(abi.encode(uint256(keccak256("outrun.storage.GovernanceCycleIncentivizer")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant GovernanceCycleIncentivizerStorageLocation = 0x173bbd0db440ff8dcb0efb05aced4279e21e45a07b4974973a371552ef840a00;
 
-    function _getGovernanceCycleIncentiveStorage() private pure returns (GovernanceCycleIncentiveStorage storage $) {
+    function _getGovernanceCycleIncentivizerStorage() private pure returns (GovernanceCycleIncentivizerStorage storage $) {
         assembly {
-            $.slot := GovernanceCycleIncentiveStorageLocation
+            $.slot := GovernanceCycleIncentivizerStorageLocation
         }
     }
 
-    function __GovernanceCycleIncentive_init(address initFundToken) internal onlyInitializing {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+    function __GovernanceCycleIncentivizer_init(address governor, address initFundToken) internal onlyInitializing {
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         $._currentCycleId = 1;
         $._rewardRatio = 5000;
         uint128 startTime = uint128(block.timestamp);
         uint128 endTime = uint128(block.timestamp + CYCLE_DURATION);
         $._cycles[1].startTime = startTime;
         $._cycles[1].endTime = endTime;
+        $._governor = governor;
 
         registerToken(initFundToken);
+        address[] memory tokens = new address[](1);
+        tokens[0] = initFundToken;
+        uint256[] memory balances = new uint256[](1);
 
-        emit CycleStarted(1, startTime, endTime);
+        emit CycleStarted(1, startTime, endTime, tokens, balances);
+    }
+
+    modifier onlyGovernance {
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
+        require(msg.sender == $._governor, PermissionDenied());
+        _;
+    }
+
+    /**
+     * @notice Initialize the governanceCycleIncentivizer.
+     * @param governor - The DAO Governor
+     * @param initFundToken - The initial DAO fund token.
+     */
+    function initialize(address governor, address initFundToken) external override initializer {
+        __GovernanceCycleIncentivizer_init(governor, initFundToken);
+        __UUPSUpgradeable_init();
+    }
+
+    /**
+     * @dev Get the contract meta data
+     */
+    function metaData() external view override returns (
+        uint256 currentCycleId, 
+        uint256 rewardRatio, 
+        address governor, 
+        address[] memory acceptedTokenList
+    ) {
+        currentCycleId = _getGovernanceCycleIncentivizerStorage()._currentCycleId;
+        rewardRatio = _getGovernanceCycleIncentivizerStorage()._rewardRatio;
+        governor = _getGovernanceCycleIncentivizerStorage()._governor;
+        acceptedTokenList = _getGovernanceCycleIncentivizerStorage()._acceptedTokenList;
+    }
+
+    /**
+     * @dev Get cycle meta data
+     */
+    function cycleMetaData(uint256 cycleId) external view override returns (
+        uint128 startTime, 
+        uint128 endTime, 
+        uint256 totalVotes
+    ) {
+        Cycle storage cycle = _getGovernanceCycleIncentivizerStorage()._cycles[cycleId];
+        startTime = cycle.startTime;
+        endTime = cycle.endTime;
+        totalVotes = cycle.totalVotes;
+    }
+
+    /**
+     * @dev Get user votes count
+     */
+    function getUserVotesCount(address user, uint256 cycleId) external view returns (uint256) {
+        return _getGovernanceCycleIncentivizerStorage()._cycles[cycleId].userVotes[user];
+    }
+
+    /**
+     * @dev Check accepted token
+     */
+    function isAcceptedToken(address token) external view override returns (bool) {
+        return _getGovernanceCycleIncentivizerStorage()._acceptedTokens[token];
     }
 
     /**
@@ -49,7 +112,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @return The specific token rewards claimable by the user for the previous cycle
      */
     function getClaimableReward(address user, address token) external view override returns (uint256) {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
         
         uint256 userVotes = prevCycle.userVotes[user];
@@ -68,7 +131,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @return rewards - All registered token rewards
      */
     function getClaimableReward(address user) external view override returns (address[] memory tokens, uint256[] memory rewards) {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
         
         uint256 userVotes = prevCycle.userVotes[user];
@@ -92,7 +155,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @return remainingReward - The specific token remaining rewards claimable
      */
     function getRemainingClaimableRewards(address token) external view override returns (uint256 remainingReward) {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
         uint256 totalVotes = prevCycle.totalVotes;
         if (totalVotes != 0) remainingReward = prevCycle.rewardBalances[token];
@@ -104,7 +167,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @return rewards - All registered token rewards
      */
     function getRemainingClaimableRewards() external view override returns (address[] memory tokens, uint256[] memory rewards) {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
 
         uint256 totalVotes = prevCycle.totalVotes;
@@ -119,35 +182,6 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
             }
         }
     }
-    
-    /**
-     * @dev Get the treasury balance for the current cycle
-     * @param token - The token address
-     * @return The treasury balance for the current cycle
-     */
-    function getCurrentTreasuryBalance(address token) external view override returns (uint256) {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
-        return $._cycles[$._currentCycleId].treasuryBalances[token];
-    }
-
-    /**
-     * @dev Get all registered tokens' treasury balances for the current cycle
-     * @return tokens - Tokens Array of token addresses
-     * @return balances - Balances Array of corresponding treasury balances
-     */
-    function getCurrentTreasuryBalances() external view override returns (address[] memory tokens, uint256[] memory balances) {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
-        uint256 length = $._acceptedTokenList.length;
-        tokens = new address[](length);
-        balances = new uint256[](length);
-        uint256 currentCycleId = $._currentCycleId;
-
-        for (uint256 i = 0; i < length; i++) {
-            address token = $._acceptedTokenList[i];
-            tokens[i] = token;
-            balances[i] = $._cycles[currentCycleId].treasuryBalances[token];
-        }
-    }
 
     /**
      * @dev Get treasury balance for a specific cycle
@@ -156,8 +190,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @return The treasury balance for the specific cycle
      */
     function getTreasuryBalance(uint256 cycleId, address token) external view override returns (uint256) {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
-        return $._cycles[cycleId].treasuryBalances[token];
+        return _getGovernanceCycleIncentivizerStorage()._cycles[cycleId].treasuryBalances[token];
     }
 
     /**
@@ -167,7 +200,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @return balances - Balances Array of corresponding treasury balances
      */
     function getTreasuryBalances(uint256 cycleId) external view override returns (address[] memory tokens, uint256[] memory balances) {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         uint256 length = $._acceptedTokenList.length;
         tokens = new address[](length);
         balances = new uint256[](length);
@@ -186,13 +219,12 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      */
     function receiveTreasuryIncome(address token, uint256 amount) external override {
         require(token != address(0) && amount != 0, ZeroInput());
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         require($._acceptedTokens[token], InvalidToken());
 
+        // Record
         uint256 currentCycleId = $._currentCycleId;
         $._cycles[currentCycleId].treasuryBalances[token] += amount;
-
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
         emit TreasuryReceived(currentCycleId, token, msg.sender, amount);
     }
@@ -206,7 +238,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      */
     function sendTreasuryAssets(address token, address to, uint256 amount) external override onlyGovernance {
         require(token != address(0) && to != address(0) && amount != 0, ZeroInput());
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         require($._acceptedTokens[token], InvalidToken());
 
         uint256 currentCycleId = $._currentCycleId;
@@ -215,12 +247,12 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
         
         require(
             currentBalance >= amount &&
-            IERC20(token).balanceOf(address(this)) >= amount, 
+            IERC20(token).balanceOf($._governor) >= amount, 
             InsufficientTreasuryBalance()
         );
 
+        // Record
         currentCycle.treasuryBalances[token] = currentBalance - amount;
-        IERC20(token).safeTransfer(to, amount);
         
         emit TreasurySent(currentCycleId, token, to, amount);
     }
@@ -229,7 +261,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @dev End current cycle and start new cycle
      */
     function finalizeCurrentCycle() external override {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         uint256 currentCycleId = $._currentCycleId;
         uint256 newCycleId = currentCycleId + 1;
         Cycle storage currentCycle = $._cycles[currentCycleId];
@@ -238,6 +270,10 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
         // Process reward distribution
         Cycle storage prevCycle = $._cycles[currentCycleId - 1];
         uint256 length = $._acceptedTokenList.length;
+        address[] memory tokens = new address[](length);
+        uint256[] memory balances = new uint256[](length);
+        uint256[] memory rewards = new uint256[](length);
+
         for (uint256 i = 0; i < length; i++) {
             address token = $._acceptedTokenList[i];
 
@@ -251,15 +287,20 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
             }
 
             // Distribute reward
+            uint256 rewardAmount;
             if (treasuryBalance > 0 && currentCycle.totalVotes > 0) {
-                uint256 rewardAmount = treasuryBalance * $._rewardRatio / RATIO;
+                rewardAmount = treasuryBalance * $._rewardRatio / RATIO;
                 currentCycle.rewardBalances[token] = rewardAmount;
                 treasuryBalance -= rewardAmount;
                 $._cycles[newCycleId].treasuryBalances[token] = treasuryBalance;
             }
+
+            tokens[i] = token;
+            balances[i] = treasuryBalance;
+            rewards[i] = rewardAmount;
         }
 
-        emit CycleFinalized(currentCycleId);
+        emit CycleFinalized(currentCycleId, uint128(block.timestamp), tokens, balances, rewards);
 
         // Start new cycle
         $._currentCycleId++;
@@ -268,14 +309,14 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
         $._cycles[newCycleId].startTime = startTime;
         $._cycles[newCycleId].endTime = endTime;
 
-        emit CycleStarted(newCycleId, startTime, endTime);
+        emit CycleStarted(newCycleId, startTime, endTime, tokens, balances);
     }
 
     /**
      * @dev Claim reward
      */
-    function claimReward() external override {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+    function claimReward() external override onlyGovernance {
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         uint256 prevCycleId = $._currentCycleId - 1;
         Cycle storage prevCycle = $._cycles[prevCycleId];
         
@@ -301,12 +342,26 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
     }
 
     /**
+     * @dev Accumulate cycle votes
+     * @param user - The user address
+     * @param votes - The number of votes
+     */
+    function accumCycleVotes(address user, uint256 votes) external override onlyGovernance {
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
+        uint256 currentCycleId = $._currentCycleId;
+        $._cycles[currentCycleId].userVotes[user] += votes;
+        $._cycles[currentCycleId].totalVotes += votes;
+
+        emit AccumCycleVotes(currentCycleId, user, votes);
+    }
+
+    /**
      * @dev Register for receivable treasury token
      * @param token - The token address
      * @notice MUST confirm that the registered token is not a malicious token
      */
     function registerToken(address token) public override onlyGovernance {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         require($._acceptedTokenList.length < MAX_ACCEPTED_TOKENS, OutOfMaxAcceptedTokens());
         require(token != address(0) && IERC20(token).totalSupply() > 0 &&! $._acceptedTokens[token],  InvalidToken());
 
@@ -321,7 +376,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
      * @param token - The token address
      */
     function unregisterToken(address token) external override onlyGovernance {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         require($._acceptedTokens[token], InvalidToken());
 
         $._acceptedTokens[token] = false;
@@ -344,7 +399,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
     function updateRewardRatio(uint256 newRatio) external override onlyGovernance {
         require(newRatio <= RATIO, InvalidRewardRatio());
         
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         uint256 oldRatio = $._rewardRatio;
         $._rewardRatio = newRatio;
 
@@ -352,16 +407,7 @@ abstract contract GovernanceCycleIncentiveUpgradeable is IGovernanceCycleIncenti
     }
 
     /**
-     * @dev Accumulate cycle votes
-     * @param user - The user address
-     * @param votes - The number of votes
+     * @dev Allowing upgrades to the implementation contract only through governance proposals.
      */
-    function _accumCycleVotes(address user, uint256 votes) internal {
-        GovernanceCycleIncentiveStorage storage $ = _getGovernanceCycleIncentiveStorage();
-        uint256 currentCycleId = $._currentCycleId;
-        $._cycles[currentCycleId].userVotes[user] += votes;
-        $._cycles[currentCycleId].totalVotes += votes;
-
-        emit AccumCycleVotes(currentCycleId, user, votes);
-    }
+    function _authorizeUpgrade(address newImplementation) internal override onlyGovernance {}
 }

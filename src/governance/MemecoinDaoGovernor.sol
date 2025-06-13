@@ -2,6 +2,8 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.28;
 
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
@@ -11,8 +13,7 @@ import { GovernorSettingsUpgradeable } from "@openzeppelin/contracts-upgradeable
 import { GovernorCountingFractionalUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingFractionalUpgradeable.sol";
 import { GovernorVotesQuorumFractionUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesQuorumFractionUpgradeable.sol";
 
-import { IVotes, IMemecoinDaoGovernor } from "./interfaces/IMemecoinDaoGovernor.sol";
-import { GovernanceCycleIncentiveUpgradeable } from "./GovernanceCycleIncentiveUpgradeable.sol";
+import { IVotes, IMemecoinDaoGovernor, IGovernanceCycleIncentivizer } from "./interfaces/IMemecoinDaoGovernor.sol";
 
 /** 
  * @title Memecoin DAO Governor
@@ -28,9 +29,24 @@ contract MemecoinDaoGovernor is
     GovernorStorageUpgradeable, 
     GovernorVotesUpgradeable, 
     GovernorVotesQuorumFractionUpgradeable,
-    GovernanceCycleIncentiveUpgradeable,
     UUPSUpgradeable
 {
+    using SafeERC20 for IERC20;
+
+    // keccak256(abi.encode(uint256(keccak256("outrun.storage.MemecoinDaoGovernor")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant MemecoinDaoGovernorStorageLocation = 0x173bbd0db440ff8dcb0efb05aced4279e21e45a07b4974973a371552ef840a00;
+
+    function _getMemecoinDaoGovernorStorage() private pure returns (MemecoinDaoGovernorStorage storage $) {
+        assembly {
+            $.slot := MemecoinDaoGovernorStorageLocation
+        }
+    }
+
+    function __MemecoinDaoGovernor_init(address governanceCycleIncentivizer) internal onlyInitializing {
+        MemecoinDaoGovernorStorage storage $ = _getMemecoinDaoGovernorStorage();
+        $._governanceCycleIncentivizer = IGovernanceCycleIncentivizer(governanceCycleIncentivizer);
+    }
+
     constructor() {
         _disableInitializers();
     }
@@ -43,7 +59,7 @@ contract MemecoinDaoGovernor is
      * @param _votingPeriod - The voting period.
      * @param _proposalThreshold - The proposal threshold.
      * @param _quorumNumerator - The quorum numerator.
-     * @param _initFundToken - The initial DAO fund token.
+     * @param _governanceCycleIncentivizer - The governanceCycleIncentivizer.
      */
     function initialize(
         string memory _name, 
@@ -52,8 +68,8 @@ contract MemecoinDaoGovernor is
         uint32 _votingPeriod,
         uint256 _proposalThreshold,
         uint256 _quorumNumerator,
-        address _initFundToken
-    ) initializer override external {
+        address _governanceCycleIncentivizer
+    ) external override initializer {
         __Governor_init(_name);
         __GovernorSettings_init(
             _votingDelay,
@@ -64,7 +80,7 @@ contract MemecoinDaoGovernor is
         __GovernorStorage_init();
         __GovernorVotes_init(_token);
         __GovernorVotesQuorumFraction_init(_quorumNumerator);
-        __GovernanceCycleIncentive_init(_initFundToken);
+        __MemecoinDaoGovernor_init(_governanceCycleIncentivizer);
         __UUPSUpgradeable_init();
     }
 
@@ -104,6 +120,36 @@ contract MemecoinDaoGovernor is
         return super.proposalThreshold();
     }
 
+    function GovernanceCycleIncentivizer() external view override returns (address) {
+        return address(_getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer);
+    }
+
+    /**
+     * @dev Receive treasury income
+     * @param token - The token address
+     * @param amount - The amount
+     */
+    function receiveTreasuryIncome(address token, uint256 amount) external override {
+        IGovernanceCycleIncentivizer governanceCycleIncentivizer = _getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer;
+        governanceCycleIncentivizer.receiveTreasuryIncome(token, amount);
+
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    /**
+     * @dev Transfer treasury assets to another address
+     * @param token - The token address
+     * @param to - The receiver address
+     * @param amount - The amount to transfer
+     * @notice All actions to transfer assets from the DAO treasury MUST call this function
+     */
+    function sendTreasuryAssets(address token, address to, uint256 amount) external override onlyGovernance {
+        IGovernanceCycleIncentivizer governanceCycleIncentivizer = _getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer;
+        governanceCycleIncentivizer.sendTreasuryAssets(token, to, amount);
+
+        IERC20(token).safeTransfer(to, amount);
+    }
+
     function _propose(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, string memory description, address proposer)
         internal
         override(GovernorUpgradeable, GovernorStorageUpgradeable)
@@ -120,7 +166,7 @@ contract MemecoinDaoGovernor is
         bytes memory params
     ) internal override returns (uint256) {
         uint256 votes = super._castVote(proposalId, account, support, reason, params);
-        _accumCycleVotes(account, votes);
+        _getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer.accumCycleVotes(account, votes);
         return votes;
     }
 

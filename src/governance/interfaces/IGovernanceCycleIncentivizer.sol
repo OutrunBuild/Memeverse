@@ -2,9 +2,9 @@
 pragma solidity ^0.8.28;
 
 /**
- * @dev Extension of {Governor} for governance cycle incentive.
+ * @dev External expansion of {Governor} for governance cycle incentive.
  */
-interface IGovernanceCycleIncentive {
+interface IGovernanceCycleIncentivizer {
     struct Cycle {
         uint128 startTime;
         uint128 endTime;
@@ -14,13 +14,50 @@ interface IGovernanceCycleIncentive {
         uint256 totalVotes;
     }
 
-    struct GovernanceCycleIncentiveStorage {
+    struct GovernanceCycleIncentivizerStorage {
         uint256 _currentCycleId;
         uint256 _rewardRatio;
         mapping(uint256 cycleId => Cycle) _cycles;
         mapping(address token => bool) _acceptedTokens;
         address[] _acceptedTokenList;
+        address _governor;
     }
+
+    /**
+     * @notice Initialize the governanceCycleIncentivizer.
+     * @param governor - The DAO Governor
+     * @param initFundToken - The initial DAO fund token.
+     */
+    function initialize(address governor, address initFundToken) external;
+
+    /**
+     * @dev Get the contract meta data
+     */
+    function metaData() external view returns (
+        uint256 currentCycleId, 
+        uint256 rewardRatio, 
+        address governor, 
+        address[] memory acceptedTokenList
+    );
+
+    /**
+     * @dev Get cycle meta data
+     */
+    function cycleMetaData(uint256 cycleId) external view returns (
+        uint128 startTime, 
+        uint128 endTime, 
+        uint256 totalVotes
+    );
+
+    /**
+     * @dev Get user votes
+     */
+    function getUserVotesCount(address user, uint256 cycleId) external view returns (uint256);
+
+    /**
+     * @dev Check accepted token
+     */
+    function isAcceptedToken(address token) external view returns (bool);
 
     /**
      * @dev Get the specific token rewards claimable by the user for the previous cycle
@@ -53,20 +90,6 @@ interface IGovernanceCycleIncentive {
     function getRemainingClaimableRewards() external view returns (address[] memory tokens, uint256[] memory rewards);
     
     /**
-     * @dev Get the treasury balance for the current cycle
-     * @param token - The token address
-     * @return The treasury balance for the current cycle
-     */
-    function getCurrentTreasuryBalance(address token) external view returns (uint256);
-
-    /**
-     * @dev Get all registered tokens' treasury balances for the current cycle
-     * @return tokens - Tokens Array of token addresses
-     * @return balances - Balances Array of corresponding treasury balances
-     */
-    function getCurrentTreasuryBalances() external view returns (address[] memory tokens, uint256[] memory balances);
-
-    /**
      * @dev Get treasury balance for a specific cycle
      * @param cycleId - The cycle ID
      * @param token - The token address
@@ -98,7 +121,6 @@ interface IGovernanceCycleIncentive {
      */
     function sendTreasuryAssets(address token,address to,uint256 amount) external;
 
-
     /**
      * @dev End current cycle and start new cycle
      */
@@ -108,6 +130,13 @@ interface IGovernanceCycleIncentive {
      * @dev Claim reward
      */
     function claimReward() external;
+
+    /**
+     * @dev Accumulate cycle votes
+     * @param user - The user address
+     * @param votes - The number of votes
+     */
+    function accumCycleVotes(address user, uint256 votes) external;
 
     /**
      * @dev Register for receivable treasury token
@@ -129,8 +158,8 @@ interface IGovernanceCycleIncentive {
     function updateRewardRatio(uint256 newRatio) external;
 
     // Events
-    event CycleStarted(uint256 indexed cycleId, uint128 startTime, uint128 endTime);
-    event CycleFinalized(uint256 indexed cycleId);
+    event CycleFinalized(uint256 indexed cycleId, uint128 endTime, address[] tokens, uint256[] balances, uint256[] rewards);
+    event CycleStarted(uint256 indexed cycleId, uint128 startTime, uint128 endTime, address[] tokens, uint256[] balances);
     event TokenRegistered(address indexed token);
     event TokenUnregistered(address indexed token);
     event RewardRatioUpdated(uint256 oldRatio, uint256 newRatio);
@@ -153,7 +182,7 @@ interface IGovernanceCycleIncentive {
     error ZeroInput();
     error InvalidToken();
     error CycleNotEnded();
-    error NotGovernance();
+    error PermissionDenied();
     error NoRewardsToClaim();
     error InvalidRewardRatio();
     error OutOfMaxAcceptedTokens();

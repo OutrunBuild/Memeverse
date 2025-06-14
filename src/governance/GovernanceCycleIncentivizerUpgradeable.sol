@@ -28,7 +28,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         }
     }
 
-    function __GovernanceCycleIncentivizer_init(address governor, address initFundToken) internal onlyInitializing {
+    function __GovernanceCycleIncentivizer_init(address governor, address[] calldata initFundTokens) internal onlyInitializing {
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         $._currentCycleId = 1;
         $._rewardRatio = 5000;
@@ -38,10 +38,15 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         $._cycles[1].endTime = endTime;
         $._governor = governor;
 
-        registerToken(initFundToken);
-        address[] memory tokens = new address[](1);
-        tokens[0] = initFundToken;
-        uint256[] memory balances = new uint256[](1);
+        uint256 length = initFundTokens.length;
+        address[] memory tokens = new address[](length);
+        uint256[] memory balances = new uint256[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            address token = initFundTokens[i];
+            registerToken(token);
+            tokens[i] = token;
+        }
 
         emit CycleStarted(1, startTime, endTime, tokens, balances);
     }
@@ -55,13 +60,20 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     /**
      * @notice Initialize the governanceCycleIncentivizer.
      * @param governor - The DAO Governor
-     * @param initFundToken - The initial DAO fund token.
+     * @param initFundTokens - The initial DAO fund tokens.
      */
-    function initialize(address governor, address initFundToken) external override initializer {
-        __GovernanceCycleIncentivizer_init(governor, initFundToken);
+    function initialize(address governor, address[] calldata initFundTokens) external override initializer {
+        __GovernanceCycleIncentivizer_init(governor, initFundTokens);
         __UUPSUpgradeable_init();
     }
 
+    /**
+     * @dev Get current cycle ID
+     */
+    function currentCycleId() external view override returns (uint256) {
+        return _getGovernanceCycleIncentivizerStorage()._currentCycleId;
+    }
+    
     /**
      * @dev Get the contract meta data
      */
@@ -78,9 +90,9 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     }
 
     /**
-     * @dev Get cycle meta data
+     * @dev Get cycle meta info
      */
-    function cycleMetaData(uint256 cycleId) external view override returns (
+    function cycleInfo(uint256 cycleId) external view override returns (
         uint128 startTime, 
         uint128 endTime, 
         uint256 totalVotes
@@ -94,7 +106,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     /**
      * @dev Get user votes count
      */
-    function getUserVotesCount(address user, uint256 cycleId) external view returns (uint256) {
+    function getUserVotesCount(address user, uint256 cycleId) external view override returns (uint256) {
         return _getGovernanceCycleIncentivizerStorage()._cycles[cycleId].userVotes[user];
     }
 

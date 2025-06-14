@@ -26,9 +26,14 @@ interface IGovernanceCycleIncentivizer {
     /**
      * @notice Initialize the governanceCycleIncentivizer.
      * @param governor - The DAO Governor
-     * @param initFundToken - The initial DAO fund token.
+     * @param initFundTokens - The initial DAO fund tokens.
      */
-    function initialize(address governor, address initFundToken) external;
+    function initialize(address governor, address[] calldata initFundTokens) external;
+
+    /**
+     * @dev Get current cycle ID
+     */
+    function currentCycleId() external view returns (uint256);
 
     /**
      * @dev Get the contract meta data
@@ -41,9 +46,9 @@ interface IGovernanceCycleIncentivizer {
     );
 
     /**
-     * @dev Get cycle meta data
+     * @dev Get cycle meta info
      */
-    function cycleMetaData(uint256 cycleId) external view returns (
+    function cycleInfo(uint256 cycleId) external view returns (
         uint128 startTime, 
         uint128 endTime, 
         uint256 totalVotes

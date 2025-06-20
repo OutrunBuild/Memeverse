@@ -292,7 +292,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                         verseId
                     );
                     (verse.governor, verse.incentivizer) = IMemeverseProxyDeployer(memeverseProxyDeployer).deployGovernorAndIncentivizer(
-                        name, UPT, memecoin, yieldVault, verseId, proposalThreshold
+                        name, UPT, memecoin, liquidProof, yieldVault, verseId, proposalThreshold
                     );
                 } else {
                     yieldVault = IMemeverseProxyDeployer(memeverseProxyDeployer).predictYieldVaultAddress(verseId);

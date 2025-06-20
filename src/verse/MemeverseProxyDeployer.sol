@@ -102,13 +102,14 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     /**
      * @dev Deploy Memecoin DAO governor and Incentivizer proxy contract
      * @param memecoinName - The name of memecoin
-     * @param yieldVault - The yield vault of memecoin
+     * @param uniqueId - The verseId
      * @param proposalThreshold - Proposal Threshold
      */
     function deployGovernorAndIncentivizer(
         string calldata memecoinName,
         address UPT,
         address memecoin,
+        address pol,
         address yieldVault,
         uint256 uniqueId,
         uint256 proposalThreshold
@@ -135,9 +136,11 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
             quorumNumerator, 
             incentivizer
         );
-        address[] memory initFundTokens = new address[](2);
+        address[] memory initFundTokens = new address[](4);
         initFundTokens[0] = UPT;
         initFundTokens[1] = memecoin;
+        initFundTokens[2] = pol;
+        initFundTokens[3] = yieldVault;
         IGovernanceCycleIncentivizer(incentivizer).initialize(governor, initFundTokens);
 
         emit DeployGovernorAndIncentivizer(uniqueId, governor, incentivizer);

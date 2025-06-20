@@ -19,6 +19,7 @@ interface IMemeverseProxyDeployer {
         string calldata memecoinName,
         address UPT,
         address memecoin,
+        address pol,
         address yieldVault,
         uint256 uniqueId,
         uint256 proposalThreshold

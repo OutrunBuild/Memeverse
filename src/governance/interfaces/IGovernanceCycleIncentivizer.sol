@@ -8,19 +8,23 @@ interface IGovernanceCycleIncentivizer {
     struct Cycle {
         uint128 startTime;
         uint128 endTime;
+        uint256 totalVotes;
         mapping(address => uint256) treasuryBalances;
         mapping(address => uint256) rewardBalances;
         mapping(address => uint256) userVotes; 
-        uint256 totalVotes;
+        address[] treasuryTokenList;
+        address[] rewardTokenList;
     }
 
     struct GovernanceCycleIncentivizerStorage {
         uint256 _currentCycleId;
         uint256 _rewardRatio;
-        mapping(uint256 cycleId => Cycle) _cycles;
-        mapping(address token => bool) _acceptedTokens;
-        address[] _acceptedTokenList;
         address _governor;
+        mapping(uint256 cycleId => Cycle) _cycles;
+        address[] _treasuryTokenList;
+        mapping(address token => bool) _treasuryTokens;
+        address[] _rewardTokenList;
+        mapping(address token => bool) _rewardTokens;
     }
 
     /**
@@ -42,7 +46,8 @@ interface IGovernanceCycleIncentivizer {
         uint256 currentCycleId, 
         uint256 rewardRatio, 
         address governor, 
-        address[] memory acceptedTokenList
+        address[] memory treasuryTokenList,
+        address[] memory rewardTokenList
     );
 
     /**
@@ -51,7 +56,9 @@ interface IGovernanceCycleIncentivizer {
     function cycleInfo(uint256 cycleId) external view returns (
         uint128 startTime, 
         uint128 endTime, 
-        uint256 totalVotes
+        uint256 totalVotes, 
+        address[] memory treasuryTokenList,
+        address[] memory rewardTokenList
     );
 
     /**
@@ -60,9 +67,14 @@ interface IGovernanceCycleIncentivizer {
     function getUserVotesCount(address user, uint256 cycleId) external view returns (uint256);
 
     /**
-     * @dev Check accepted token
+     * @dev Check treasury token
      */
-    function isAcceptedToken(address token) external view returns (bool);
+    function isTreasuryToken(uint256 cycleId, address token) external view returns (bool);
+
+    /**
+     * @dev Check reward token
+     */
+    function isRewardToken(uint256 cycleId, address token) external view returns (bool);
 
     /**
      * @dev Get the specific token rewards claimable by the user for the previous cycle
@@ -148,13 +160,26 @@ interface IGovernanceCycleIncentivizer {
      * @param token - The token address
      * @notice MUST confirm that the registered token is not a malicious token
      */
-    function registerToken(address token) external;
+    function registerTreasuryToken(address token) external;
+
+    /**
+     * @dev Register for reward token，it MUST first be registered as a treasury token.
+     * @param token - The token address
+     * @notice MUST confirm that the registered token is not a malicious token
+     */
+    function registerRewardToken(address token) external;
 
     /**
      * @dev Unregister for receivable treasury token
      * @param token - The token address
      */
-    function unregisterToken(address token) external;
+    function unregisterTreasuryToken(address token) external;
+
+    /**
+     * @dev Unregister for reward token
+     * @param token - The token address
+     */
+    function unregisterRewardToken(address token) external;
 
     /**
      * @dev Update reward ratio
@@ -163,10 +188,19 @@ interface IGovernanceCycleIncentivizer {
     function updateRewardRatio(uint256 newRatio) external;
 
     // Events
-    event CycleFinalized(uint256 indexed cycleId, uint128 endTime, address[] tokens, uint256[] balances, uint256[] rewards);
+    event CycleFinalized(
+        uint256 indexed cycleId, 
+        uint128 endTime, 
+        address[] treasuryTokens, 
+        uint256[] balances, 
+        address[] rewardTokens,
+        uint256[] rewards
+    );
     event CycleStarted(uint256 indexed cycleId, uint128 startTime, uint128 endTime, address[] tokens, uint256[] balances);
-    event TokenRegistered(address indexed token);
-    event TokenUnregistered(address indexed token);
+    event TreasuryTokenRegistered(address indexed token);
+    event RewardTokenRegistered(address indexed token);
+    event TreasuryTokenUnregistered(address indexed token);
+    event RewardTokenUnregistered(address indexed token);
     event RewardRatioUpdated(uint256 oldRatio, uint256 newRatio);
     event RewardClaimed(address indexed user, uint256 indexed cycleId, address indexed token, uint256 amount);
     event TreasuryReceived(
@@ -185,11 +219,13 @@ interface IGovernanceCycleIncentivizer {
 
     // Errors
     error ZeroInput();
-    error InvalidToken();
     error CycleNotEnded();
+    error RegisteredToken();
+    error NonTreasuryToken();
     error PermissionDenied();
     error NoRewardsToClaim();
+    error NonRegisteredToken();
     error InvalidRewardRatio();
-    error OutOfMaxAcceptedTokens();
+    error OutOfMaxTokensLimit();
     error InsufficientTreasuryBalance();
 }

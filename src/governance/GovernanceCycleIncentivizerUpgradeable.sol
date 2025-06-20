@@ -17,7 +17,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
 
     uint256 public constant RATIO = 10000;
     uint256 public constant CYCLE_DURATION = 90 days;
-    uint256 public constant MAX_ACCEPTED_TOKENS = 20;
+    uint256 public constant MAX_TOKENS_LIMIT = 50;
 
     // keccak256(abi.encode(uint256(keccak256("outrun.storage.GovernanceCycleIncentivizer")) - 1)) & ~bytes32(uint256(0xff))
     bytes32 private constant GovernanceCycleIncentivizerStorageLocation = 0x173bbd0db440ff8dcb0efb05aced4279e21e45a07b4974973a371552ef840a00;
@@ -28,7 +28,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         }
     }
 
-    function __GovernanceCycleIncentivizer_init(address governor, address[] calldata initFundTokens) internal onlyInitializing {
+    function __GovernanceCycleIncentivizer_init(address governor, address[] calldata initTreasuryTokens) internal onlyInitializing {
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         $._currentCycleId = 1;
         $._rewardRatio = 5000;
@@ -38,17 +38,15 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         $._cycles[1].endTime = endTime;
         $._governor = governor;
 
-        uint256 length = initFundTokens.length;
-        address[] memory tokens = new address[](length);
+        uint256 length = initTreasuryTokens.length;
         uint256[] memory balances = new uint256[](length);
 
         for (uint256 i = 0; i < length; i++) {
-            address token = initFundTokens[i];
-            registerToken(token);
-            tokens[i] = token;
+            address token = initTreasuryTokens[i];
+            registerTreasuryToken(token);
         }
 
-        emit CycleStarted(1, startTime, endTime, tokens, balances);
+        emit CycleStarted(1, startTime, endTime, initTreasuryTokens, balances);
     }
 
     modifier onlyGovernance {
@@ -81,12 +79,15 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         uint256 _currentCycleId, 
         uint256 _rewardRatio, 
         address _governor, 
-        address[] memory _acceptedTokenList
+        address[] memory _treasuryTokenList,
+        address[] memory _rewardTokenList
     ) {
-        _currentCycleId = _getGovernanceCycleIncentivizerStorage()._currentCycleId;
-        _rewardRatio = _getGovernanceCycleIncentivizerStorage()._rewardRatio;
-        _governor = _getGovernanceCycleIncentivizerStorage()._governor;
-        _acceptedTokenList = _getGovernanceCycleIncentivizerStorage()._acceptedTokenList;
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
+        _currentCycleId = $._currentCycleId;
+        _rewardRatio = $._rewardRatio;
+        _governor = $._governor;
+        _treasuryTokenList = $._treasuryTokenList;
+        _rewardTokenList = $._rewardTokenList;
     }
 
     /**
@@ -95,12 +96,16 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     function cycleInfo(uint256 cycleId) external view override returns (
         uint128 startTime, 
         uint128 endTime, 
-        uint256 totalVotes
+        uint256 totalVotes, 
+        address[] memory treasuryTokenList,
+        address[] memory rewardTokenList
     ) {
         Cycle storage cycle = _getGovernanceCycleIncentivizerStorage()._cycles[cycleId];
         startTime = cycle.startTime;
         endTime = cycle.endTime;
         totalVotes = cycle.totalVotes;
+        treasuryTokenList = cycle.treasuryTokenList;
+        rewardTokenList = cycle.rewardTokenList;
     }
 
     /**
@@ -111,10 +116,39 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     }
 
     /**
-     * @dev Check accepted token
+     * @dev Check treasury token
      */
-    function isAcceptedToken(address token) external view override returns (bool) {
-        return _getGovernanceCycleIncentivizerStorage()._acceptedTokens[token];
+    function isTreasuryToken(uint256 cycleId, address token) external view override returns (bool) {
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
+        if (cycleId == $._currentCycleId) {
+            return $._treasuryTokens[token];
+        } else {
+            Cycle storage cycle = $._cycles[cycleId];
+            address[] memory treasuryTokenList = cycle.treasuryTokenList;
+            for (uint256 i = 0; i < treasuryTokenList.length; i++) {
+                if (token == treasuryTokenList[i]) return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @dev Check reward token
+     */
+    function isRewardToken(uint256 cycleId, address token) external view override returns (bool) {
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
+        if (cycleId == $._currentCycleId) {
+            return $._rewardTokens[token];
+        } else {
+            Cycle storage cycle = $._cycles[cycleId];
+            address[] memory rewardTokenList = cycle.rewardTokenList;
+            for (uint256 i = 0; i < rewardTokenList.length; i++) {
+                if (token == rewardTokenList[i]) return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -126,7 +160,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     function getClaimableReward(address user, address token) external view override returns (uint256) {
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
-        
+
         uint256 userVotes = prevCycle.userVotes[user];
         if (userVotes == 0) return 0;
         uint256 rewardBalance = prevCycle.rewardBalances[token];
@@ -145,16 +179,15 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     function getClaimableReward(address user) external view override returns (address[] memory tokens, uint256[] memory rewards) {
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
-        
+
         uint256 userVotes = prevCycle.userVotes[user];
         if (userVotes != 0) {
             uint256 totalVotes = prevCycle.totalVotes;
-            uint256 length = $._acceptedTokenList.length;
-            tokens = new address[](length);
+            tokens = prevCycle.rewardTokenList;
+            uint256 length = tokens.length;
             rewards = new uint256[](length);
             for (uint256 i = 0; i < length; i++) {
-                address token = $._acceptedTokenList[i];
-                tokens[i] = token;
+                address token = tokens[i];
                 uint256 rewardBalance = prevCycle.rewardBalances[token];
                 rewards[i] = Math.mulDiv(rewardBalance, userVotes, totalVotes);
             }
@@ -169,6 +202,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     function getRemainingClaimableRewards(address token) external view override returns (uint256 remainingReward) {
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
         Cycle storage prevCycle = $._cycles[$._currentCycleId - 1];
+
         uint256 totalVotes = prevCycle.totalVotes;
         if (totalVotes != 0) remainingReward = prevCycle.rewardBalances[token];
     }
@@ -184,12 +218,11 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
 
         uint256 totalVotes = prevCycle.totalVotes;
         if (totalVotes != 0) {
-            uint256 length = $._acceptedTokenList.length;
-            tokens = new address[](length);
+            tokens = prevCycle.rewardTokenList;
+            uint256 length = tokens.length;
             rewards = new uint256[](length);
             for (uint256 i = 0; i < length; i++) {
-                address token = $._acceptedTokenList[i];
-                tokens[i] = token;
+                address token = tokens[i];
                 rewards[i] = prevCycle.rewardBalances[token];
             }
         }
@@ -213,14 +246,15 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
      */
     function getTreasuryBalances(uint256 cycleId) external view override returns (address[] memory tokens, uint256[] memory balances) {
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
-        uint256 length = $._acceptedTokenList.length;
-        tokens = new address[](length);
+        Cycle storage cycle = $._cycles[cycleId];
+        tokens = cycleId == $._currentCycleId ? $._treasuryTokenList : cycle.treasuryTokenList;
+
+        uint256 length = tokens.length;
         balances = new uint256[](length);
 
         for (uint256 i = 0; i < length; i++) {
-            address token = $._acceptedTokenList[i];
-            tokens[i] = token;
-            balances[i] = $._cycles[cycleId].treasuryBalances[token];
+            address token = tokens[i];
+            balances[i] = cycle.treasuryBalances[token];
         }
     }
 
@@ -232,7 +266,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     function receiveTreasuryIncome(address token, uint256 amount) external override {
         require(token != address(0) && amount != 0, ZeroInput());
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
-        require($._acceptedTokens[token], InvalidToken());
+        require($._treasuryTokens[token], NonTreasuryToken());
 
         // Record
         uint256 _currentCycleId = $._currentCycleId;
@@ -251,7 +285,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
     function sendTreasuryAssets(address token, address to, uint256 amount) external override onlyGovernance {
         require(token != address(0) && to != address(0) && amount != 0, ZeroInput());
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
-        require($._acceptedTokens[token], InvalidToken());
+        require($._treasuryTokens[token], NonTreasuryToken());
 
         uint256 _currentCycleId = $._currentCycleId;
         Cycle storage currentCycle = $._cycles[_currentCycleId];
@@ -280,18 +314,22 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         require(block.timestamp >= currentCycle.endTime, CycleNotEnded());
 
         // Process reward distribution
-        Cycle storage prevCycle = $._cycles[_currentCycleId - 1];
-        uint256 length = $._acceptedTokenList.length;
-        address[] memory tokens = new address[](length);
-        uint256[] memory balances = new uint256[](length);
-        uint256[] memory rewards = new uint256[](length);
+        uint256 treasuryLength = $._treasuryTokenList.length;
+        address[] memory treasuryTokens = new address[](treasuryLength);
+        uint256[] memory balances = new uint256[](treasuryLength);
+        uint256 rewardLength = $._rewardTokenList.length;
+        address[] memory rewardTokens = new address[](rewardLength);
+        uint256[] memory rewards = new uint256[](rewardLength);
 
-        for (uint256 i = 0; i < length; i++) {
-            address token = $._acceptedTokenList[i];
+        Cycle storage prevCycle = $._cycles[_currentCycleId - 1];
+
+        uint256 j = 0;
+        for (uint256 i = 0; i < treasuryLength; i++) {
+            address token = $._treasuryTokenList[i];
 
             // Transfer remaining reward balance to current cycle treasury
-            uint256 prevRewardBalance = prevCycle.rewardBalances[token];
             uint256 treasuryBalance = currentCycle.treasuryBalances[token];
+            uint256 prevRewardBalance = prevCycle.rewardBalances[token];
             if (prevRewardBalance > 0) {
                 prevCycle.rewardBalances[token] = 0;
                 treasuryBalance += prevRewardBalance;
@@ -300,28 +338,34 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
 
             // Distribute reward
             uint256 rewardAmount;
-            if (treasuryBalance > 0 && currentCycle.totalVotes > 0) {
+            if ($._rewardTokens[token] && treasuryBalance > 0 && currentCycle.totalVotes > 0) {
                 rewardAmount = treasuryBalance * $._rewardRatio / RATIO;
                 currentCycle.rewardBalances[token] = rewardAmount;
                 treasuryBalance -= rewardAmount;
-                $._cycles[newCycleId].treasuryBalances[token] = treasuryBalance;
+
+                rewardTokens[j] = token;
+                rewards[j] = rewardAmount;
+                j++;
             }
 
-            tokens[i] = token;
+            $._cycles[newCycleId].treasuryBalances[token] = treasuryBalance;
+            treasuryTokens[i] = token;
             balances[i] = treasuryBalance;
-            rewards[i] = rewardAmount;
         }
 
-        emit CycleFinalized(_currentCycleId, uint128(block.timestamp), tokens, balances, rewards);
+        currentCycle.treasuryTokenList = treasuryTokens;
+        currentCycle.rewardTokenList = rewardTokens;
+
+        emit CycleFinalized(_currentCycleId, uint128(block.timestamp), treasuryTokens, balances, rewardTokens, rewards);
 
         // Start new cycle
-        $._currentCycleId++;
+        $._currentCycleId = newCycleId;
         uint128 startTime = uint128(block.timestamp);
         uint128 endTime = uint128(block.timestamp + CYCLE_DURATION);
         $._cycles[newCycleId].startTime = startTime;
         $._cycles[newCycleId].endTime = endTime;
 
-        emit CycleStarted(newCycleId, startTime, endTime, tokens, balances);
+        emit CycleStarted(newCycleId, startTime, endTime, treasuryTokens, balances);
     }
 
     /**
@@ -337,10 +381,11 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
 
         prevCycle.userVotes[msg.sender] = 0;
         uint256 totalVotes = prevCycle.totalVotes;
-        uint256 length = $._acceptedTokenList.length;
+        address[] memory rewardTokenList = prevCycle.rewardTokenList;
+        uint256 length = rewardTokenList.length;
 
         for (uint256 i = 0; i < length; i++) {
-            address token = $._acceptedTokenList[i];
+            address token = rewardTokenList[i];
             uint256 rewardBalance = prevCycle.rewardBalances[token];
             if(rewardBalance > 0) {
                 uint256 rewardAmount = Math.mulDiv(rewardBalance, userVotes, totalVotes);
@@ -372,36 +417,73 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
      * @param token - The token address
      * @notice MUST confirm that the registered token is not a malicious token
      */
-    function registerToken(address token) public override onlyGovernance {
+    function registerTreasuryToken(address token) public override onlyGovernance {
+        require(token != address(0),  ZeroInput());
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
-        require($._acceptedTokenList.length < MAX_ACCEPTED_TOKENS, OutOfMaxAcceptedTokens());
-        require(token != address(0) && IERC20(token).totalSupply() > 0 &&! $._acceptedTokens[token],  InvalidToken());
+        require(!$._treasuryTokens[token],  RegisteredToken());
+        require($._treasuryTokenList.length < MAX_TOKENS_LIMIT, OutOfMaxTokensLimit());
 
-        $._acceptedTokens[token] = true;
-        $._acceptedTokenList.push(token);
+        $._treasuryTokenList.push(token);
+        $._treasuryTokens[token] = true;
+        $._cycles[$._currentCycleId].treasuryBalances[token] = IERC20(token).balanceOf(address(this));
 
-        emit TokenRegistered(token);
+        emit TreasuryTokenRegistered(token);
+    }
+
+    /**
+     * @dev Register for reward token，it MUST first be registered as a treasury token.
+     * @param token - The token address
+     * @notice MUST confirm that the registered token is not a malicious token
+     */
+    function registerRewardToken(address token) public override onlyGovernance {
+        require(token != address(0),  ZeroInput());
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
+        require(!$._rewardTokens[token],  RegisteredToken());
+        require($._treasuryTokens[token],  NonTreasuryToken());
+        require($._rewardTokenList.length < MAX_TOKENS_LIMIT, OutOfMaxTokensLimit());
+
+        $._rewardTokens[token] = true;
+        $._rewardTokenList.push(token);
+
+        emit RewardTokenRegistered(token);
     }
 
     /**
      * @dev Unregister for receivable treasury token
      * @param token - The token address
      */
-    function unregisterToken(address token) external override onlyGovernance {
+    function unregisterTreasuryToken(address token) external override onlyGovernance {
         GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
-        require($._acceptedTokens[token], InvalidToken());
+        require($._treasuryTokens[token], NonRegisteredToken());
 
-        $._acceptedTokens[token] = false;
-        uint256 length = $._acceptedTokenList.length;
+        $._treasuryTokens[token] = false;
+        $._cycles[$._currentCycleId].treasuryBalances[token] = 0;
+
+        uint256 length = $._treasuryTokenList.length;
         for (uint256 i = 0; i < length; i++) {
-            if ($._acceptedTokenList[i] == token) {
-                $._acceptedTokenList[i] = $._acceptedTokenList[length - 1];
-                $._acceptedTokenList.pop();
+            if ($._treasuryTokenList[i] == token) {
+                $._treasuryTokenList[i] = $._treasuryTokenList[length - 1];
+                $._treasuryTokenList.pop();
                 break;
             }
         }
+        
+        // Unregister Reward Token
+        if ($._rewardTokens[token]) _unregisterRewardToken(token);
 
-        emit TokenUnregistered(token);
+        emit TreasuryTokenUnregistered(token);
+    }
+
+    /**
+     * @dev Unregister for reward token
+     * @param token - The token address
+     */
+    function unregisterRewardToken(address token) external override onlyGovernance {
+        require(_getGovernanceCycleIncentivizerStorage()._rewardTokens[token], NonRegisteredToken());
+
+        _unregisterRewardToken(token);
+
+        emit RewardTokenUnregistered(token);
     }
 
     /**
@@ -416,6 +498,22 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         $._rewardRatio = newRatio;
 
         emit RewardRatioUpdated(oldRatio, newRatio);
+    }
+
+    function _unregisterRewardToken(address token) internal {
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
+
+        $._rewardTokens[token] = false;
+        $._cycles[$._currentCycleId].rewardBalances[token] = 0;
+
+        uint256 length = $._rewardTokenList.length;
+        for (uint256 i = 0; i < length; i++) {
+            if ($._rewardTokenList[i] == token) {
+                $._rewardTokenList[i] = $._rewardTokenList[length - 1];
+                $._rewardTokenList.pop();
+                break;
+            }
+        }
     }
 
     /**

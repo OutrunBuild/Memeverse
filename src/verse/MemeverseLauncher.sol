@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
@@ -277,7 +278,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 );
                 verse.liquidProof = liquidProof;
 
-                // Deploy Memecoin Yield Vault and Memecoin DAO Governor on Governance Chain
+                // Deploy Yield Vault, DAO Governor and Incentivizer on Governance Chain
                 uint32 govChainId = verse.omnichainIds[0];
                 uint256 proposalThreshold = IMemecoin(memecoin).totalSupply() / 50;
                 address yieldVault;
@@ -290,10 +291,12 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                         memecoin,
                         verseId
                     );
-                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).deployDAOGovernor(name, UPT, yieldVault, verseId, proposalThreshold);
+                    (verse.governor, verse.incentivizer) = IMemeverseProxyDeployer(memeverseProxyDeployer).deployGovernorAndIncentivizer(
+                        name, UPT, memecoin, yieldVault, verseId, proposalThreshold
+                    );
                 } else {
                     yieldVault = IMemeverseProxyDeployer(memeverseProxyDeployer).predictYieldVaultAddress(verseId);
-                    verse.governor = IMemeverseProxyDeployer(memeverseProxyDeployer).computeDAOGovernorAddress(name, UPT, yieldVault, verseId, proposalThreshold);
+                    (verse.governor, verse.incentivizer) = IMemeverseProxyDeployer(memeverseProxyDeployer).computeGovernorAndIncentivizerAddress(verseId);
                 }
                 verse.yieldVault = yieldVault;
 
@@ -487,6 +490,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         address UPT = verse.UPT;
         address memecoin = verse.memecoin;
         address pair = OutrunAMMLibrary.pairFor(outrunAMMFactory, memecoin, UPT, SWAP_FEERATE);
+        require(IERC20(pair).balanceOf(address(this)) >= amountInPOL, InsufficientLPBalance());
+        
         _safeApproveInf(pair, liquidityRouter);
         (uint256 amountInUPT, uint256 amountInMemecoin) = IMemeverseLiquidityRouter(liquidityRouter).removeLiquidity(
             UPT,

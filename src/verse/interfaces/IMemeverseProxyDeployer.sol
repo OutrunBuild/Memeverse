@@ -7,13 +7,7 @@ pragma solidity ^0.8.28;
 interface IMemeverseProxyDeployer {
     function predictYieldVaultAddress(uint256 uniqueId) external view returns (address);
 
-    function computeDAOGovernorAddress(
-        string calldata memecoinName,
-        address UPT,
-        address yieldVault,
-        uint256 uniqueId,
-        uint256 proposalThreshold
-    ) external view returns (address);
+    function computeGovernorAndIncentivizerAddress(uint256 uniqueId) external view returns (address governor, address incentivizer);
     
     function deployMemecoin(uint256 uniqueId) external returns (address memecoin);
 
@@ -21,13 +15,14 @@ interface IMemeverseProxyDeployer {
 
     function deployYieldVault(uint256 uniqueId) external returns (address yieldVault);
 
-    function deployDAOGovernor(
+    function deployGovernorAndIncentivizer(
         string calldata memecoinName,
         address UPT,
+        address memecoin,
         address yieldVault,
         uint256 uniqueId,
         uint256 proposalThreshold
-    ) external returns (address daoGovernor);
+    ) external returns (address governor, address incentivizer);
 
     function setQuorumNumerator(uint256 quorumNumerator) external;
 
@@ -37,7 +32,7 @@ interface IMemeverseProxyDeployer {
 
     event DeployYieldVault(uint256 indexed uniqueId, address yieldVault);
 
-    event DeployDAOGovernor(uint256 indexed uniqueId, address daoGovernor);
+    event DeployGovernorAndIncentivizer(uint256 indexed uniqueId, address governor, address incentivizer);
 
     event SetQuorumNumerator(uint256 quorumNumerator);
 

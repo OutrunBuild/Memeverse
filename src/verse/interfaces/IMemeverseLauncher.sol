@@ -22,6 +22,7 @@ interface IMemeverseLauncher {
         address liquidProof;            // POL token address
         address yieldVault;             // Memecoin yield vault
         address governor;               // Memecoin DAO governor
+        address incentivizer;           // Governance cycle incentivizer
         uint128 endTime;                // End time of Genesis stage 
         uint128 unlockTime;             // UnlockTime of liquidity
         uint32[] omnichainIds;          // ChainIds of the token's omnichain(EVM),The first chainId is main governance chain
@@ -145,6 +146,8 @@ interface IMemeverseLauncher {
     error InsufficientLzFee();
 
     error ReachedFinalStage();
+    
+    error InsufficientLPBalance();
 
     error InsufficientUserFunds();
     

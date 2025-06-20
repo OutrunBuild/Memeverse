@@ -9,6 +9,7 @@ import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy
 
 import { IMemeverseProxyDeployer } from "./interfaces/IMemeverseProxyDeployer.sol";
 import { IMemecoinDaoGovernor } from "../governance/interfaces/IMemecoinDaoGovernor.sol";
+import { IGovernanceCycleIncentivizer } from "../governance/interfaces/IGovernanceCycleIncentivizer.sol";
 
 /**
  * @title MemeverseProxyDeployer Contract
@@ -21,6 +22,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     address public immutable polImplementation;
     address public immutable vaultImplementation;
     address public immutable governorImplementation;
+    address public immutable incentivizerImplementation;
 
     uint256 public quorumNumerator;
 
@@ -36,6 +38,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         address _polImplementation,
         address _vaultImplementation,
         address _governorImplementation,
+        address _incentivizerImplementation,
         uint256 _quorumNumerator
     ) Ownable(_owner) {
         memeverseLauncher = _memeverseLauncher;
@@ -43,6 +46,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         polImplementation = _polImplementation;
         vaultImplementation = _vaultImplementation;
         governorImplementation = _governorImplementation;
+        incentivizerImplementation = _incentivizerImplementation;
         quorumNumerator = _quorumNumerator;
     }
 
@@ -54,18 +58,18 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     }
 
     /**
-     * @dev Compute memecoin DAO governor contract address
+     * @dev Compute memecoin DAO governor and Incentivizer contract address
      */
-    function computeDAOGovernorAddress(
-        string calldata memecoinName,
-        address UPT,
-        address yieldVault,
-        uint256 uniqueId,
-        uint256 proposalThreshold
-    ) external view override returns (address) {
-        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, UPT, yieldVault, proposalThreshold);
+    function computeGovernorAndIncentivizerAddress(uint256 uniqueId) external view override returns (address governor, address incentivizer) {
+        governor = Create2.computeAddress(
+            keccak256(abi.encode(uniqueId)), 
+            keccak256(abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(governorImplementation, bytes(''))))
+        );
 
-        return Create2.computeAddress(keccak256(abi.encode(uniqueId)), keccak256(proxyBytecode));
+        incentivizer = Create2.computeAddress(
+            keccak256(abi.encode(uniqueId)), 
+            keccak256(abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(incentivizerImplementation, bytes(''))))
+        );
     }
 
     /**
@@ -96,40 +100,47 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     }
 
     /**
-     * @dev Deploy memecoin DAO governor proxy contract
+     * @dev Deploy Memecoin DAO governor and Incentivizer proxy contract
      * @param memecoinName - The name of memecoin
      * @param yieldVault - The yield vault of memecoin
      * @param proposalThreshold - Proposal Threshold
      */
-    function deployDAOGovernor(
+    function deployGovernorAndIncentivizer(
         string calldata memecoinName,
         address UPT,
+        address memecoin,
         address yieldVault,
         uint256 uniqueId,
         uint256 proposalThreshold
-    ) external onlyMemeverseLauncher override returns (address daoGovernor) {
-        bytes memory proxyBytecode = _computeProxyBytecode(memecoinName, UPT, yieldVault, proposalThreshold);
-
-        daoGovernor = Create2.deploy(0, keccak256(abi.encode(uniqueId)), proxyBytecode);
-
-        emit DeployDAOGovernor(uniqueId, daoGovernor);
-    }
-
-    function _computeProxyBytecode(string memory memecoinName, address UPT, address yieldVault, uint256 proposalThreshold) internal view returns (bytes memory proxyBytecode) {
-        bytes memory initData = abi.encodeWithSelector(
-            IMemecoinDaoGovernor.initialize.selector,
-            string(abi.encodePacked(memecoinName, " DAO")),
-            IVotes(yieldVault),    // voting token
-            1 days,                 // voting delay
-            1 weeks,                // voting period
-            proposalThreshold,     // proposal threshold
-            quorumNumerator,        // quorum (quorumNumerator%)
-            UPT
+    ) external override onlyMemeverseLauncher  returns (address governor, address incentivizer) {
+        // Deploy
+        governor = Create2.deploy(
+            0, 
+            keccak256(abi.encode(uniqueId)), 
+            abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(governorImplementation, bytes('')))
         );
-        proxyBytecode = abi.encodePacked(
-            type(ERC1967Proxy).creationCode,
-            abi.encode(governorImplementation, initData)
+        incentivizer = Create2.deploy(
+            0, 
+            keccak256(abi.encode(uniqueId)), 
+            abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(incentivizerImplementation, bytes('')))
         );
+
+        // Initialize
+        IMemecoinDaoGovernor(governor).initialize(
+            string(abi.encodePacked(memecoinName, " DAO")), 
+            IVotes(yieldVault), 
+            1 days, 
+            1 weeks, 
+            proposalThreshold, 
+            quorumNumerator, 
+            incentivizer
+        );
+        address[] memory initFundTokens = new address[](2);
+        initFundTokens[0] = UPT;
+        initFundTokens[1] = memecoin;
+        IGovernanceCycleIncentivizer(incentivizer).initialize(governor, initFundTokens);
+
+        emit DeployGovernorAndIncentivizer(uniqueId, governor, incentivizer);
     }
 
     /**

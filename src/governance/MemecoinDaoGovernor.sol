@@ -126,28 +126,28 @@ contract MemecoinDaoGovernor is
 
     /**
      * @dev Receive treasury income
-     * @param token - The token address
-     * @param amount - The amount
+     * @param _token - The token address
+     * @param _amount - The amount
      */
-    function receiveTreasuryIncome(address token, uint256 amount) external override {
+    function receiveTreasuryIncome(address _token, uint256 _amount) external override {
         IGovernanceCycleIncentivizer governanceCycleIncentivizer = _getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer;
-        governanceCycleIncentivizer.receiveTreasuryIncome(token, amount);
+        governanceCycleIncentivizer.receiveTreasuryIncome(_token, _amount);
 
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
     }
 
     /**
      * @dev Transfer treasury assets to another address
-     * @param token - The token address
-     * @param to - The receiver address
-     * @param amount - The amount to transfer
+     * @param _token - The token address
+     * @param _to - The receiver address
+     * @param _amount - The amount to transfer
      * @notice All actions to transfer assets from the DAO treasury MUST call this function
      */
-    function sendTreasuryAssets(address token, address to, uint256 amount) external override onlyGovernance {
+    function sendTreasuryAssets(address _token, address _to, uint256 _amount) external override onlyGovernance {
         IGovernanceCycleIncentivizer governanceCycleIncentivizer = _getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer;
-        governanceCycleIncentivizer.sendTreasuryAssets(token, to, amount);
+        governanceCycleIncentivizer.sendTreasuryAssets(_token, _to, _amount);
 
-        IERC20(token).safeTransfer(to, amount);
+        IERC20(_token).safeTransfer(_to, _amount);
     }
 
     function _propose(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, string memory description, address proposer)

@@ -7,17 +7,17 @@ import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTCom
 
 import { IBurnable } from "../common/IBurnable.sol";
 import { TokenHelper } from "../common/TokenHelper.sol";
-import { IYieldDispatcher } from "./interfaces/IYieldDispatcher.sol";
 import { IOFTCompose } from "../common/layerzero/oft/IOFTCompose.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
+import { IMemeverseOFTDispatcher } from "./interfaces/IMemeverseOFTDispatcher.sol";
 import { IMemecoinDaoGovernor } from "../governance/interfaces/IMemecoinDaoGovernor.sol";
 
 /**
- * @title Memecoin Yield Dispatcher
+ * @title Memeverse OFT Dispatcher
  * @dev The contract is designed to interact with LayerZero's Omnichain Fungible Token (OFT) Standard, 
  *      accepts Memecoin Yield from other chains and then forwards it to the corresponding yield vault.
  */
-contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
+contract MemeverseOFTDispatcher is IMemeverseOFTDispatcher, TokenHelper, Ownable {
     using Strings for string;
 
     address public immutable localEndpoint;
@@ -46,13 +46,13 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
 
         bool isBurned;
         uint256 amount;
-        bool isMemecoin;
+        TokenType tokenType;
         address receiver;
         if (msg.sender ==  memeverseLauncher) {
-            (receiver, isMemecoin, amount) = abi.decode(message, (address, bool, uint256));
+            (receiver, tokenType, amount) = abi.decode(message, (address, TokenType, uint256));
         } else {
             amount = OFTComposeMsgCodec.amountLD(message);
-            (receiver, isMemecoin) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (address, bool));
+            (receiver, tokenType) = abi.decode(OFTComposeMsgCodec.composeMsg(message), (address, TokenType));
             IOFTCompose(token).notifyComposeExecuted(guid);
         }
 
@@ -61,13 +61,13 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
             isBurned = true;
         } else {
             _safeApproveInf(token, receiver);
-            if (isMemecoin) {
+            if (tokenType == TokenType.MEMECOIN) {
                 IMemecoinYieldVault(receiver).accumulateYields(amount);
             } else {
                 IMemecoinDaoGovernor(receiver).receiveTreasuryIncome(token, amount);
             }
         }
 
-        emit OmnichainYieldsProcessed(guid, token, isMemecoin, receiver, amount, isBurned);
+        emit OFTProcessed(guid, token, tokenType, receiver, amount, isBurned);
     }
 }

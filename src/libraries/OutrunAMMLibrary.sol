@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 
-import { IOutrunAMMFactory } from "../common/IOutrunAMMFactory.sol";
+import { IOutrunAMMFactory } from "../common/interfaces/IOutrunAMMFactory.sol";
 
 library OutrunAMMLibrary {
     /**

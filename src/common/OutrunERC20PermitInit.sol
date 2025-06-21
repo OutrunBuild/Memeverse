@@ -2,10 +2,10 @@
 // OpenZeppelin Contracts (last updated v5.1.0) (token/ERC20/extensions/ERC20Permit.sol)
 pragma solidity ^0.8.28;
 
-import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
+import { OutrunNoncesInit } from "./OutrunNoncesInit.sol";
 import { OutrunERC20Init } from "./OutrunERC20Init.sol";
 import { OutrunEIP712Init } from "./cryptography/OutrunEIP712Init.sol";
 
@@ -18,7 +18,7 @@ import { OutrunEIP712Init } from "./cryptography/OutrunEIP712Init.sol";
  * presenting a message signed by the account. By not relying on `{IERC20-approve}`, the token holder account doesn't
  * need to send a transaction, and thus is not required to hold Ether at all.
  */
-abstract contract OutrunERC20PermitInit is OutrunERC20Init, IERC20Permit, OutrunEIP712Init, Nonces {
+abstract contract OutrunERC20PermitInit is OutrunERC20Init, IERC20Permit, OutrunEIP712Init, OutrunNoncesInit {
     bytes32 private constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
@@ -69,7 +69,7 @@ abstract contract OutrunERC20PermitInit is OutrunERC20Init, IERC20Permit, Outrun
     /**
      * @inheritdoc IERC20Permit
      */
-    function nonces(address owner) public view virtual override(IERC20Permit, Nonces) returns (uint256) {
+    function nonces(address owner) public view virtual override(IERC20Permit, OutrunNoncesInit) returns (uint256) {
         return super.nonces(owner);
     }
 

@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
-import { OutrunVotes } from "./OutrunVotes.sol";
+import { OutrunVotesInit } from "./OutrunVotesInit.sol";
 import { OutrunERC20Init } from "../../common/OutrunERC20Init.sol";
 
 /**
@@ -20,11 +20,18 @@ import { OutrunERC20Init } from "../../common/OutrunERC20Init.sol";
  * By default, token balance does not account for voting power. This makes transfers cheaper. The downside is that it
  * requires users to delegate to themselves in order to activate checkpoints and have their voting power tracked.
  */
-abstract contract OutrunERC20Votes is OutrunERC20Init, OutrunVotes {
+abstract contract OutrunERC20VotesInit is OutrunERC20Init, OutrunVotesInit {
     /**
      * @dev Total supply cap has been exceeded, introducing a risk of votes overflowing.
      */
     error ERC20ExceededSafeSupply(uint256 increasedSupply, uint256 cap);
+
+    
+    function __OutrunERC20Votes_init() internal onlyInitializing {
+    }
+
+    function __OutrunERC20Votes_init_unchained() internal onlyInitializing {
+    }
 
     /**
      * @dev Maximum token supply. Defaults to `type(uint208).max` (2^208^ - 1).

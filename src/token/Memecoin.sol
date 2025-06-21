@@ -9,12 +9,6 @@ import { OutrunOFTInit } from "../common/layerzero/oft/OutrunOFTInit.sol";
  */
 contract Memecoin is IMemecoin, OutrunOFTInit {
     address public memeverseLauncher;
-    address public genesisLiquidityPool;
-
-    modifier onlyMemeverseLauncher {
-        require(msg.sender == memeverseLauncher, PermissionDenied());
-        _;
-    }
 
     /**
      * @param _lzEndpoint The local LayerZero endpoint address.
@@ -26,7 +20,7 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
      * @param name_ - The name of the memecoin.
      * @param symbol_ - The symbol of the memecoin.
      * @param _memeverseLauncher - The address of the memeverse launcher.
-     * @param _delegate - The address of the delegate.
+     * @param _delegate - The address of the OFT delegate.
      */
     function initialize(
         string memory name_, 
@@ -45,7 +39,8 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
      * @param account - The address of the account.
      * @param amount - The amount of the memecoin.
      */
-    function mint(address account, uint256 amount) external override onlyMemeverseLauncher {
+    function mint(address account, uint256 amount) external override {
+        require(msg.sender == memeverseLauncher, PermissionDenied());
         _mint(account, amount);
     }
 
@@ -54,8 +49,6 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
      * @param amount - The amount of the memecoin.
      */
     function burn(uint256 amount) external override {
-        address msgSender = msg.sender;
-        require(balanceOf(msgSender) >= amount, InsufficientBalance());
-        _burn(msgSender, amount);
+        _burn(msg.sender, amount);
     }
 }

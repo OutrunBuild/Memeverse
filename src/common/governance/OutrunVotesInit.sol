@@ -2,7 +2,6 @@
 // OpenZeppelin Contracts (last updated v5.2.0) (governance/utils/Votes.sol)
 pragma solidity ^0.8.28;
 
-import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
 import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 import { Context } from "@openzeppelin/contracts/utils/Context.sol";
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
@@ -11,7 +10,9 @@ import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
+import { OutrunNoncesInit } from "../OutrunNoncesInit.sol";
 import { OutrunEIP712Init } from "../cryptography/OutrunEIP712Init.sol";
+
 
 /**
  * @dev This is a base abstract contract that tracks voting units, which are a measure of voting power that can be
@@ -31,17 +32,28 @@ import { OutrunEIP712Init } from "../cryptography/OutrunEIP712Init.sol";
  * {ERC721-balanceOf}), and can use {_transferVotingUnits} to track a change in the distribution of those units (in the
  * previous example, it would be included in {ERC721-_update}).
  */
-abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
+abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit, IERC5805 {
     using Checkpoints for Checkpoints.Trace208;
 
     bytes32 private constant DELEGATION_TYPEHASH =
         keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
+    
+    struct VotesStorage {
+        mapping(address account => address) _delegatee;
 
-    mapping(address account => address) private _delegatee;
+        mapping(address delegatee => Checkpoints.Trace208) _delegateCheckpoints;
 
-    mapping(address delegatee => Checkpoints.Trace208) private _delegateCheckpoints;
+        Checkpoints.Trace208 _totalCheckpoints;
+    }
 
-    Checkpoints.Trace208 private _totalCheckpoints;
+    // keccak256(abi.encode(uint256(keccak256("outrun.storage.Votes")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant VOTES_STORAGE_LOCATION = 0xe8b26c30fad74198956032a3533d903385d56dd795af560196f9c78d4af40d00;
+
+    function _getVotesStorage() private pure returns (VotesStorage storage $) {
+        assembly {
+            $.slot := VOTES_STORAGE_LOCATION
+        }
+    }
 
     /**
      * @dev The clock was incorrectly modified.
@@ -52,6 +64,12 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
      * @dev Lookup to future votes is not available.
      */
     error ERC5805FutureLookup(uint256 timepoint, uint48 clock);
+
+    function __OutrunVotes_init() internal onlyInitializing {
+    }
+
+    function __OutrunVotes_init_unchained() internal onlyInitializing {
+    }
 
     /**
      * @dev Clock used for flagging checkpoints. Can be overridden to implement timestamp based
@@ -86,7 +104,8 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
      * @dev Returns the current amount of votes that `account` has.
      */
     function getVotes(address account) public view virtual returns (uint256) {
-        return _delegateCheckpoints[account].latest();
+        VotesStorage storage $ = _getVotesStorage();
+        return $._delegateCheckpoints[account].latest();
     }
 
     /**
@@ -98,7 +117,8 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
      * - `timepoint` must be in the past. If operating using block numbers, the block must be already mined.
      */
     function getPastVotes(address account, uint256 timepoint) public view virtual returns (uint256) {
-        return _delegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
+        VotesStorage storage $ = _getVotesStorage();
+        return $._delegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
     }
 
     /**
@@ -114,21 +134,24 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
      * - `timepoint` must be in the past. If operating using block numbers, the block must be already mined.
      */
     function getPastTotalSupply(uint256 timepoint) public view virtual returns (uint256) {
-        return _totalCheckpoints.upperLookupRecent(_validateTimepoint(timepoint));
+        VotesStorage storage $ = _getVotesStorage();
+        return $._totalCheckpoints.upperLookupRecent(_validateTimepoint(timepoint));
     }
 
     /**
      * @dev Returns the current total supply of votes.
      */
     function _getTotalSupply() internal view virtual returns (uint256) {
-        return _totalCheckpoints.latest();
+        VotesStorage storage $ = _getVotesStorage();
+        return $._totalCheckpoints.latest();
     }
 
     /**
      * @dev Returns the delegate that `account` has chosen.
      */
     function delegates(address account) public view virtual returns (address) {
-        return _delegatee[account];
+        VotesStorage storage $ = _getVotesStorage();
+        return $._delegatee[account];
     }
 
     /**
@@ -169,8 +192,9 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
      * Emits events {IVotes-DelegateChanged} and {IVotes-DelegateVotesChanged}.
      */
     function _delegate(address account, address delegatee) internal virtual {
+        VotesStorage storage $ = _getVotesStorage();
         address oldDelegate = delegates(account);
-        _delegatee[account] = delegatee;
+        $._delegatee[account] = delegatee;
 
         emit DelegateChanged(account, oldDelegate, delegatee);
         _moveDelegateVotes(oldDelegate, delegatee, _getVotingUnits(account));
@@ -181,11 +205,12 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
      * should be zero. Total supply of voting units will be adjusted with mints and burns.
      */
     function _transferVotingUnits(address from, address to, uint256 amount) internal virtual {
+        VotesStorage storage $ = _getVotesStorage();
         if (from == address(0)) {
-            _push(_totalCheckpoints, _add, SafeCast.toUint208(amount));
+            _push($._totalCheckpoints, _add, SafeCast.toUint208(amount));
         }
         if (to == address(0)) {
-            _push(_totalCheckpoints, _subtract, SafeCast.toUint208(amount));
+            _push($._totalCheckpoints, _subtract, SafeCast.toUint208(amount));
         }
         _moveDelegateVotes(delegates(from), delegates(to), amount);
     }
@@ -194,10 +219,11 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
      * @dev Moves delegated votes from one delegate to another.
      */
     function _moveDelegateVotes(address from, address to, uint256 amount) internal virtual {
+        VotesStorage storage $ = _getVotesStorage();
         if (from != to && amount > 0) {
             if (from != address(0)) {
                 (uint256 oldValue, uint256 newValue) = _push(
-                    _delegateCheckpoints[from],
+                    $._delegateCheckpoints[from],
                     _subtract,
                     SafeCast.toUint208(amount)
                 );
@@ -205,7 +231,7 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
             }
             if (to != address(0)) {
                 (uint256 oldValue, uint256 newValue) = _push(
-                    _delegateCheckpoints[to],
+                    $._delegateCheckpoints[to],
                     _add,
                     SafeCast.toUint208(amount)
                 );
@@ -218,7 +244,8 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
      * @dev Get number of checkpoints for `account`.
      */
     function _numCheckpoints(address account) internal view virtual returns (uint32) {
-        return SafeCast.toUint32(_delegateCheckpoints[account].length());
+        VotesStorage storage $ = _getVotesStorage();
+        return SafeCast.toUint32($._delegateCheckpoints[account].length());
     }
 
     /**
@@ -228,7 +255,8 @@ abstract contract OutrunVotes is Context, OutrunEIP712Init, Nonces, IERC5805 {
         address account,
         uint32 pos
     ) internal view virtual returns (Checkpoints.Checkpoint208 memory) {
-        return _delegateCheckpoints[account].at(pos);
+        VotesStorage storage $ = _getVotesStorage();
+        return $._delegateCheckpoints[account].at(pos);
     }
 
     function _push(

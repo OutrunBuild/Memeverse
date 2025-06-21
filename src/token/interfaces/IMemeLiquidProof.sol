@@ -14,17 +14,19 @@ interface IMemeLiquidProof is IERC20 {
     function memeverseLauncher() external view returns (address);
 
     /**
-     * @notice Initialize the memeverse proof.
-     * @param _name - The name of the memeverse proof.
-     * @param _symbol - The symbol of the memeverse proof.
-     * @param _memecoin - The address of the memecoin.
-     * @param _memeverseLauncher - The address of the memeverse launcher.
+     * @notice Initialize the memecoin liquidProof.
+     * @param name_ - The name of the memecoin liquidProof.
+     * @param symbol_ - The symbol of the memecoin liquidProof.
+     * @param memecoin_ - The address of the memecoin.
+     * @param memeverseLauncher_ - The address of the memeverse launcher.
+     * @param delegate_ - The address of the OFT delegate.
      */
     function initialize(
-        string memory _name, 
-        string memory _symbol, 
-        address _memecoin, 
-        address _memeverseLauncher
+        string memory name_, 
+        string memory symbol_, 
+        address memecoin_, 
+        address memeverseLauncher_,
+        address delegate_
     ) external;
 
     /**
@@ -40,16 +42,4 @@ interface IMemeLiquidProof is IERC20 {
      * @param amount - The amount of the memeverse proof.
      */
     function burn(address account, uint256 amount) external;
-
-    /**
-     * @notice Permission denied.
-     */
-    error PermissionDenied();
-
-    /**
-     * @notice Insufficient balance.
-     */
-    error InsufficientBalance();
-
-    event MemeLiquidProofFlashLoan(address receiver, uint256 value, uint256 fee, bytes data);
 }

@@ -9,18 +9,18 @@ import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/Opti
 import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import { ILayerZeroComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
 
-import { IBurnable } from "../common/IBurnable.sol";
 import { TokenHelper } from "../common/TokenHelper.sol";
 import { IMemecoin } from "../token/interfaces/IMemecoin.sol";
-import { IOutrunAMMPair } from "../common/IOutrunAMMPair.sol";
+import { IBurnable } from "../common/interfaces/IBurnable.sol";
 import { OutrunAMMLibrary } from "../libraries/OutrunAMMLibrary.sol";
+import { IOutrunAMMPair } from "../common/interfaces/IOutrunAMMPair.sol";
 import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
 import { IMemeLiquidProof } from "../token/interfaces/IMemeLiquidProof.sol";
 import { IMemeverseCommonInfo } from "./interfaces/IMemeverseCommonInfo.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 import { IMemeverseProxyDeployer } from "./interfaces/IMemeverseProxyDeployer.sol";
-import { IMemeverseLiquidityRouter } from "../common/IMemeverseLiquidityRouter.sol";
 import { IMemecoinDaoGovernor } from "../governance/interfaces/IMemecoinDaoGovernor.sol";
+import { IMemeverseLiquidityRouter } from "../common/interfaces/IMemeverseLiquidityRouter.sol";
 
 /**
  * @title Trapping into the memeverse
@@ -371,6 +371,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             string(abi.encodePacked("POL-", name)), 
             string(abi.encodePacked("POL-", symbol)), 
             memecoin, 
+            address(this),
             address(this)
         );
     }
@@ -642,6 +643,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param amountUPTMin - Minimum amount of UPT
      * @param amountMemecoinMin - Minimum amount of memecoin
      * @param deadline - Transaction deadline
+     * @notice User must have approved this contract to spend UPT
      */
     function redeemLiquidity(
         uint256 verseId,

@@ -5,8 +5,8 @@ import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
-import { IBurnable } from "../common/IBurnable.sol";
 import { TokenHelper } from "../common/TokenHelper.sol";
+import { IBurnable } from "../common/interfaces/IBurnable.sol";
 import { IOFTCompose } from "../common/layerzero/oft/IOFTCompose.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 import { IMemeverseOFTDispatcher } from "./interfaces/IMemeverseOFTDispatcher.sol";

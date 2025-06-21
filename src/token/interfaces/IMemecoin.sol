@@ -39,9 +39,4 @@ interface IMemecoin is IERC20 {
      * @param amount - The amount of the memecoin.
      */
     function burn(uint256 amount) external;
-
-    /**
-     * @notice Insufficient balance.
-     */
-    error InsufficientBalance();
 }

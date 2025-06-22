@@ -40,6 +40,7 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
      * @param amount - The amount of the memecoin.
      */
     function mint(address account, uint256 amount) external override {
+        require(amount != 0, ZeroInput());
         require(msg.sender == memeverseLauncher, PermissionDenied());
         _mint(account, amount);
     }
@@ -49,6 +50,7 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
      * @param amount - The amount of the memecoin.
      */
     function burn(uint256 amount) external override {
+        require(amount != 0, ZeroInput());
         _burn(msg.sender, amount);
     }
 }

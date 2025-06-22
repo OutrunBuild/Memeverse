@@ -14,11 +14,6 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
     address public memecoin;
     address public memeverseLauncher;
 
-    modifier onlyMemeverseLauncher() {
-        require(msg.sender == memeverseLauncher, PermissionDenied());
-        _;
-    }
-
     /**
      * @param _lzEndpoint The local LayerZero endpoint address.
      */
@@ -61,6 +56,7 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
      * @notice Only the memeverse launcher can mint the memeverse proof.
      */
     function mint(address account, uint256 amount) external override {
+        require(amount != 0, ZeroInput());
         require(msg.sender == memeverseLauncher, PermissionDenied());
         _mint(account, amount);
     }
@@ -72,11 +68,13 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
      * @notice User must have approved msg.sender to spend UPT
      */
     function burn(address account, uint256 amount) external {
+        require(amount != 0, ZeroInput());
         if(msg.sender != account) _spendAllowance(account, msg.sender, amount);
         _burn(account, amount);
     }
 
     function burn(uint256 amount) external {
+        require(amount != 0, ZeroInput());
         _burn(msg.sender, amount);
     }
 

@@ -42,4 +42,6 @@ interface IMemeLiquidProof is IERC20 {
      * @param amount - The amount of the memeverse proof.
      */
     function burn(address account, uint256 amount) external;
+
+    error ZeroInput();
 }

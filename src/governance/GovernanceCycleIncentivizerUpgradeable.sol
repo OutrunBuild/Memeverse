@@ -55,6 +55,10 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         _;
     }
 
+    constructor() {
+        _disableInitializers();
+    }
+
     /**
      * @notice Initialize the governanceCycleIncentivizer.
      * @param governor - The DAO Governor

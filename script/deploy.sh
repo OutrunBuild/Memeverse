@@ -1,7 +1,7 @@
 source ../.env
 
 forge script MemeverseScript.s.sol:MemeverseScript --rpc-url bsc_testnet \
-    --with-gas-price 3000000000 \
+    --with-gas-price 1000000000 \
     --optimize --optimizer-runs 1000 \
     --via-ir \
     --broadcast --ffi -vvvv \
@@ -82,6 +82,7 @@ forge script MemeverseScript.s.sol:MemeverseScript --rpc-url arbitrum_sepolia \
 #     --with-gas-price 25000000 \
 #     --optimize --optimizer-runs 100000 \
 #     --via-ir \
+#     --skip-simulation \
 #     --broadcast --ffi -vvvv \
 #     --verify
 
@@ -93,7 +94,7 @@ forge script MemeverseScript.s.sol:MemeverseScript --rpc-url arbitrum_sepolia \
 #     --broadcast --ffi -vvvv
 
 # forge script TestScript.s.sol:TestScript --rpc-url bsc_testnet \
-#     --with-gas-price 3000000000 \
+#     --with-gas-price 1000000000 \
 #     --via-ir \
 #     --broadcast --ffi -vvvv \
 
@@ -105,14 +106,14 @@ forge script MemeverseScript.s.sol:MemeverseScript --rpc-url arbitrum_sepolia \
 # forge script TestScript.s.sol:TestScript --rpc-url polygon_amoy \
 #     --priority-gas-price 40000000000 --with-gas-price 50000000000 \
 #     --via-ir \
-#     --broadcast --ffi -vvvv \
+#     --broadcast --ffi -vvvv
 
 # forge script TestScript.s.sol:TestScript --rpc-url scroll_sepolia \
 #     --priority-gas-price 1000 --with-gas-price 600000000 \
 #     --via-ir \
-#     --broadcast --ffi -vvvv \
+#     --broadcast --ffi -vvvv
 
 # forge script TestScript.s.sol:TestScript --rpc-url base_sepolia \
 #     --with-gas-price 1200000 \
 #     --via-ir \
-#     --broadcast --ffi -vvvv \
+#     --broadcast --ffi -vvvv

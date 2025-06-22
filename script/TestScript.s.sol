@@ -30,9 +30,11 @@ contract TestScript is BaseScript {
         MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
 
         // _registerTest();
-        _testBlockNum();
+        // _testBlockNum();
         // _memecoinDaoGovernorData();
         // _testQuoteDistributionLzFee();
+
+        console.logBytes32(keccak256(abi.encode(uint256(keccak256("outrun.storage.Nonces")) - 1)) & ~bytes32(uint256(0xff)));
     }
 
     function _registerTest() internal {

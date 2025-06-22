@@ -47,7 +47,7 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
     }
 
     // keccak256(abi.encode(uint256(keccak256("outrun.storage.Votes")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant VOTES_STORAGE_LOCATION = 0xe8b26c30fad74198956032a3533d903385d56dd795af560196f9c78d4af40d00;
+    bytes32 private constant VOTES_STORAGE_LOCATION = 0x208f5ae36e3aa0934f277adce61242847ae71fe37b1a71ca90478a975291f400;
 
     function _getVotesStorage() private pure returns (VotesStorage storage $) {
         assembly {

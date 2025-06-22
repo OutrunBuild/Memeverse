@@ -18,7 +18,7 @@ abstract contract OutrunNoncesInit is Initializable {
     }
 
     // keccak256(abi.encode(uint256(keccak256("outrun.storage.Nonces")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant NONCES_STORAGE_LOCATION = 0x5ab42ced628888259c08ac98db1eb0cf702fc1501344311d8b100cd1bfe4bb00;
+    bytes32 private constant NONCES_STORAGE_LOCATION = 0xbc43161bd6c888bfd7c69c0710419a94949c687678098a4e6d8f37f01804b400;
 
     function _getNoncesStorage() private pure returns (NoncesStorage storage $) {
         assembly {

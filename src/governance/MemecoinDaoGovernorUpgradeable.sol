@@ -42,9 +42,9 @@ contract MemecoinDaoGovernorUpgradeable is
         }
     }
 
-    function __MemecoinDaoGovernor_init(address governanceCycleIncentivizer) internal onlyInitializing {
+    function __MemecoinDaoGovernor_init(address _governanceCycleIncentivizer) internal onlyInitializing {
         MemecoinDaoGovernorStorage storage $ = _getMemecoinDaoGovernorStorage();
-        $._governanceCycleIncentivizer = IGovernanceCycleIncentivizer(governanceCycleIncentivizer);
+        $._governanceCycleIncentivizer = IGovernanceCycleIncentivizer(_governanceCycleIncentivizer);
     }
 
     constructor() {
@@ -120,7 +120,7 @@ contract MemecoinDaoGovernorUpgradeable is
         return super.proposalThreshold();
     }
 
-    function GovernanceCycleIncentivizer() external view override returns (address) {
+    function governanceCycleIncentivizer() external view override returns (address) {
         return address(_getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer);
     }
 
@@ -130,8 +130,8 @@ contract MemecoinDaoGovernorUpgradeable is
      * @param _amount - The amount
      */
     function receiveTreasuryIncome(address _token, uint256 _amount) external override {
-        IGovernanceCycleIncentivizer governanceCycleIncentivizer = _getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer;
-        governanceCycleIncentivizer.receiveTreasuryIncome(_token, _amount);
+        IGovernanceCycleIncentivizer _governanceCycleIncentivizer = _getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer;
+        _governanceCycleIncentivizer.receiveTreasuryIncome(_token, _amount);
 
         IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
     }
@@ -144,8 +144,8 @@ contract MemecoinDaoGovernorUpgradeable is
      * @notice All actions to transfer assets from the DAO treasury MUST call this function
      */
     function sendTreasuryAssets(address _token, address _to, uint256 _amount) external override onlyGovernance {
-        IGovernanceCycleIncentivizer governanceCycleIncentivizer = _getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer;
-        governanceCycleIncentivizer.sendTreasuryAssets(_token, _to, _amount);
+        IGovernanceCycleIncentivizer _governanceCycleIncentivizer = _getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer;
+        _governanceCycleIncentivizer.sendTreasuryAssets(_token, _to, _amount);
 
         IERC20(_token).safeTransfer(_to, _amount);
     }

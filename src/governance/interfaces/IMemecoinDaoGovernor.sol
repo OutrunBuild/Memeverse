@@ -23,7 +23,7 @@ interface IMemecoinDaoGovernor {
         address _governanceCycleIncentivizer
     ) external;
 
-    function GovernanceCycleIncentivizer() external view returns (address);
+    function governanceCycleIncentivizer() external view returns (address);
 
     function receiveTreasuryIncome(address token, uint256 amount) external;
 

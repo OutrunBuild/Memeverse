@@ -20,7 +20,7 @@ import { IVotes, IMemecoinDaoGovernor, IGovernanceCycleIncentivizer } from "./in
  * @notice This contract is a modified version of the GovernorUpgradeable contract from OpenZeppelin.   
  * @dev It is used to manage the DAO of the Memecoin project, also as Memecoin DAO Treasury.
  */
-contract MemecoinDaoGovernor is 
+contract MemecoinDaoGovernorUpgradeable is 
     IMemecoinDaoGovernor, 
     Initializable, 
     GovernorUpgradeable, 

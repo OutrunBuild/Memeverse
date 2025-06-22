@@ -131,7 +131,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage >= Stage.Locked, NotReachedLockedStage());
 
-        uint256 totalFunds = genesisFunds[verseId].totalMemecoinFunds + genesisFunds[verseId].totalLiquidProofFunds;
+        GenesisFund storage genesisFund = genesisFunds[verseId];
+        uint256 totalFunds = genesisFund.totalMemecoinFunds + genesisFund.totalLiquidProofFunds + genesisFund.totalDAOFunds;
         uint256 userFunds = userTotalFunds[verseId][msg.sender];
         uint256 totalPOLs = totalClaimablePOLs[verseId];
         claimableAmount = totalPOLs * userFunds / totalFunds;

@@ -83,8 +83,6 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
         uint256 deadline
     ) external;
 
-    function redeemUnlockedCoins(uint256 verseId) external;
-
     function mintPOLToken(
         uint256 verseId, 
         uint256 amountInUPTDesired,
@@ -194,7 +192,7 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
         uint256 executorReward
     );
 
-    event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 liquidity);
+    event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 liquidity, uint256 amountInUPT, uint256 amountInMemecoin);
 
     event RedeemUnlockedCoins(uint256 indexed verseId, address indexed sender, uint256 amountInMemecoin);
     

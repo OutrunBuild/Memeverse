@@ -50,7 +50,6 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     mapping(uint256 verseId => uint256) public totalClaimablePOLs;
     mapping(uint256 verseId => uint256) public totalTreasuryPOLs;
     mapping(uint256 verseId => mapping(address account => uint256)) public userTotalFunds;
-    mapping(uint256 verseId => mapping(address account => uint256)) public toBeUnlockedCoins;
     mapping(uint256 verseId => mapping(uint256 provider => string)) public communitiesMap;     // provider -> 0:Website, 1:X, 2:Discord, 3:Telegram, >4:Others
 
     constructor(
@@ -354,7 +353,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         verse.incentivizer = incentivizer;
 
         // Deploy liquidity
-        _deployLiquidity(verseId, govChainId, governor, UPT, memecoin, pol, totalMemecoinFunds, totalLiquidProofFunds, totalDAOFunds);
+        uint256 unlockTime = verse.unlockTime;
+        _deployLiquidity(verseId, govChainId, governor, UPT, memecoin, pol, unlockTime, totalMemecoinFunds, totalLiquidProofFunds, totalDAOFunds);
     }
 
     /**
@@ -423,6 +423,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param UPT - UPT address
      * @param memecoin - Memecoin address
      * @param pol - POL address
+     * @param unlockTime - Memeverse genesis liquidity unlockTime
      * @param totalMemecoinFunds - Total memecoin funds
      * @param totalLiquidProofFunds - Total liquid proof funds
      * @param totalDAOFunds - Total DAO funds
@@ -434,6 +435,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         address UPT,
         address memecoin,
         address pol,
+        uint256 unlockTime,
         uint128 totalMemecoinFunds,
         uint128 totalLiquidProofFunds,
         uint256 totalDAOFunds
@@ -454,6 +456,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             memecoinLiquidityFund,
             memecoinAmount,
             address(this),
+            unlockTime,
             block.timestamp
         );
 
@@ -481,6 +484,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             totalLiquidProofFunds,
             polAmount,
             address(0),
+            0,
             block.timestamp
         );
         totalClaimablePOLs[verseId] = memecoinLiquidity - treasuryPOL - polAmount;
@@ -643,7 +647,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param amountUPTMin - Minimum amount of UPT
      * @param amountMemecoinMin - Minimum amount of memecoin
      * @param deadline - Transaction deadline
-     * @notice User must have approved this contract to spend UPT
+     * @notice User must have approved this contract to spend POL
      */
     function redeemLiquidity(
         uint256 verseId,
@@ -669,37 +673,11 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
             amountInPOL, 
             amountUPTMin, 
             amountMemecoinMin, 
-            address(this), 
+            msg.sender, 
             deadline
         );
-        _transferOut(UPT, msg.sender, amountInUPT);
-        if (block.timestamp > verse.unlockTime + 3 days) {
-            _transferOut(memecoin, msg.sender, amountInMemecoin);
-        } else {
-            unchecked {
-                toBeUnlockedCoins[verseId][msg.sender] += amountInMemecoin;
-            }
-        }
 
-        emit RedeemLiquidity(verseId, msg.sender, amountInPOL);
-    }
-
-    /**
-     * @dev Redeem Unlocked Coins
-     * @param verseId - Memeverse id
-     */
-    function redeemUnlockedCoins(uint256 verseId) external whenNotPaused override {
-        Memeverse storage verse = memeverses[verseId];
-        require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
-        require(block.timestamp > verse.unlockTime + 3 days, LiquidityProtectionPeriod());
-
-        uint256 amountInMemecoin = toBeUnlockedCoins[verseId][msg.sender];
-        require(amountInMemecoin > 0, NoCoinsToUnlock());
-
-        toBeUnlockedCoins[verseId][msg.sender] = 0;
-        _transferOut(verse.memecoin, msg.sender, amountInMemecoin);
-
-        emit RedeemUnlockedCoins(verseId, msg.sender, amountInMemecoin);
+        emit RedeemLiquidity(verseId, msg.sender, amountInPOL, amountInUPT, amountInMemecoin);
     }
 
     /**
@@ -740,6 +718,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
                 amountInUPTMin,
                 amountInMemecoinMin,
                 address(this),
+                0,
                 deadline
             );
         } else {

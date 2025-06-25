@@ -22,7 +22,7 @@ For more details, please refer to the product documentation : [Outrun Official D
 
 ### MemeverseProxyDeployer
 
-0x27243389BE5eeFa6031c00608299f77F0dc352eA
+0x45A33B21e1b57044BD26510132c843797A6EF3ad
 
 ### MemeverseOFTDispatcher
 
@@ -60,4 +60,4 @@ For more details, please refer to the product documentation : [Outrun Official D
 
 #### GovernanceCycleIncentivizerImplementation
 
-0xf0467C412C1A2E2Dd5f9610023AE730bb959Be9b
+0xA1858aDa000c9B0665Dee4CFaB0E53CCD9CF3893

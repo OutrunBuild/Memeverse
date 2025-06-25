@@ -82,6 +82,8 @@ contract MemeverseScript is BaseScript {
         omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351];
         _chainsInit();
 
+        IMemeverseLauncher(0x932D9a2D453e4520E93d194C73A334Ba16903Afe).setMemeverseProxyDeployer(0x45A33B21e1b57044BD26510132c843797A6EF3ad);
+
         // _getDeployedImplementation(12);
 
         // _getDeployedRegistrationCenter(20);
@@ -108,7 +110,7 @@ contract MemeverseScript is BaseScript {
         // _deployOmnichainMemecoinStaker(20);
         
         // Update OutrunRouter after deployed
-        _deployMemeverseLauncher(20);    // optimizer-runs: 1000
+        // _deployMemeverseLauncher(20);    // optimizer-runs: 1000
     }
 
     function _chainsInit() internal {
@@ -227,12 +229,12 @@ contract MemeverseScript is BaseScript {
             abi.encode(endpoints[uint32(block.chainid)])
         );
 
-        address memecoinImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, memecoinCreationCode);
-        address memecoinYieldVaultImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinYieldVaultSalt, type(MemecoinYieldVault).creationCode);
+        //address memecoinImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, memecoinCreationCode);
+        //address memecoinYieldVaultImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinYieldVaultSalt, type(MemecoinYieldVault).creationCode);
         address cycleIncentivizerImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(incentivizerSalt, type(GovernanceCycleIncentivizerUpgradeable).creationCode);
 
-        console.log("MemecoinImplementation deployed on %s", memecoinImplementation);
-        console.log("MemecoinYieldVaultImplementation deployed on %s", memecoinYieldVaultImplementation);
+        //console.log("MemecoinImplementation deployed on %s", memecoinImplementation);
+        //console.log("MemecoinYieldVaultImplementation deployed on %s", memecoinYieldVaultImplementation);
         console.log("GovernanceCycleIncentivizerImplementation deployed on %s", cycleIncentivizerImplementation);
     }
 

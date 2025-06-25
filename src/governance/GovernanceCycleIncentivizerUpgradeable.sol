@@ -43,7 +43,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
 
         for (uint256 i = 0; i < length; i++) {
             address token = initTreasuryTokens[i];
-            registerTreasuryToken(token);
+            _registerTreasuryToken(token, $);
         }
 
         emit CycleStarted(1, startTime, endTime, initTreasuryTokens, balances);
@@ -427,11 +427,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         require(!$._treasuryTokens[token],  RegisteredToken());
         require($._treasuryTokenList.length < MAX_TOKENS_LIMIT, OutOfMaxTokensLimit());
 
-        $._treasuryTokenList.push(token);
-        $._treasuryTokens[token] = true;
-        $._cycles[$._currentCycleId].treasuryBalances[token] = IERC20(token).balanceOf(address(this));
-
-        emit TreasuryTokenRegistered(token);
+        _registerTreasuryToken(token, $);
     }
 
     /**
@@ -446,10 +442,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         require($._treasuryTokens[token],  NonTreasuryToken());
         require($._rewardTokenList.length < MAX_TOKENS_LIMIT, OutOfMaxTokensLimit());
 
-        $._rewardTokens[token] = true;
-        $._rewardTokenList.push(token);
-
-        emit RewardTokenRegistered(token);
+        _registerRewardToken(token, $);
     }
 
     /**
@@ -473,7 +466,7 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         }
         
         // Unregister Reward Token
-        if ($._rewardTokens[token]) _unregisterRewardToken(token);
+        if ($._rewardTokens[token]) _unregisterRewardToken(token, $);
 
         emit TreasuryTokenUnregistered(token);
     }
@@ -483,9 +476,10 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
      * @param token - The token address
      */
     function unregisterRewardToken(address token) external override onlyGovernance {
-        require(_getGovernanceCycleIncentivizerStorage()._rewardTokens[token], NonRegisteredToken());
+        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
+        require($._rewardTokens[token], NonRegisteredToken());
 
-        _unregisterRewardToken(token);
+        _unregisterRewardToken(token, $);
 
         emit RewardTokenUnregistered(token);
     }
@@ -504,9 +498,22 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
         emit RewardRatioUpdated(oldRatio, newRatio);
     }
 
-    function _unregisterRewardToken(address token) internal {
-        GovernanceCycleIncentivizerStorage storage $ = _getGovernanceCycleIncentivizerStorage();
+    function _registerTreasuryToken(address token, GovernanceCycleIncentivizerStorage storage $) internal {
+        $._treasuryTokenList.push(token);
+        $._treasuryTokens[token] = true;
+        $._cycles[$._currentCycleId].treasuryBalances[token] = IERC20(token).balanceOf(address(this));
 
+        emit TreasuryTokenRegistered(token);
+    }
+
+    function _registerRewardToken(address token, GovernanceCycleIncentivizerStorage storage $) internal {
+        $._rewardTokens[token] = true;
+        $._rewardTokenList.push(token);
+
+        emit RewardTokenRegistered(token);
+    }
+
+    function _unregisterRewardToken(address token, GovernanceCycleIncentivizerStorage storage $) internal {
         $._rewardTokens[token] = false;
         $._cycles[$._currentCycleId].rewardBalances[token] = 0;
 

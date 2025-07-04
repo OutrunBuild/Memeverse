@@ -307,7 +307,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         bool meetMinTotalFund = totalMemecoinFunds + totalLiquidProofFunds + totalDAOFunds >= fundMetaDatas[UPT].minTotalFund;
         uint256 endTime = verse.endTime;
         require(
-            endTime != 0 && (currentTime > endTime || (verse.flashGenesis && meetMinTotalFund)), 
+            endTime != 0 && meetMinTotalFund && (currentTime > endTime || verse.flashGenesis), 
             StillInGenesisStage(endTime)
         );
 

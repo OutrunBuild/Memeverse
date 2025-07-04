@@ -19,7 +19,7 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
         string symbol;                  // Token symbol
         string uri;                     // Token icon uri
         string desc;                    // Description
-        address UPT;                    // Genesis fund type
+        address UPT;                    // Genesis fund UPT address
         address memecoin;               // Omnichain memecoin address
         address liquidProof;            // POL token address
         address yieldVault;             // Memecoin yield vault

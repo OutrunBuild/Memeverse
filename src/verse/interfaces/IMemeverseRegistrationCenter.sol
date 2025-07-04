@@ -56,6 +56,8 @@ interface IMemeverseRegistrationCenter {
         address refundAddress
     ) external payable;
 
+    function setSupportedUPT(address UPT, bool isSupported) external;
+
     function setDurationDaysRange(uint128 minDurationDays, uint128 maxDurationDays) external;
 
     function setLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays) external;
@@ -70,6 +72,8 @@ interface IMemeverseRegistrationCenter {
 
     event RemoveGasDust(address indexed receiver, uint256 dust);
 
+    event SetSupportedUPT(address UPT, bool isSupported);
+
     event SetDurationDaysRange(uint128 minDurationDays, uint128 maxDurationDays);
 
     event SetLockupDaysRange(uint128 minLockupDays, uint128 maxLockupDays);
@@ -79,11 +83,11 @@ interface IMemeverseRegistrationCenter {
 
     error ZeroInput();
 
+    error InvalidUPT();
+
     error InvalidInput();
 
     error InvalidLength();
-
-    error ZeroUPTAddress();
 
     error PermissionDenied();
 

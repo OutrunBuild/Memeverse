@@ -35,6 +35,8 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     // Symbol history mapping, storing all valid registration records
     mapping(string symbol => mapping(uint256 uniqueId => SymbolRegistration)) public symbolHistory;
 
+    mapping(address UPT => bool) supportedUPTs;
+
     /**
      * @notice Constructor
      * @param _owner - The owner of the contract
@@ -219,7 +221,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32, InvalidLength());
         require(bytes(param.uri).length > 0, InvalidLength());
         require(bytes(param.desc).length > 0 && bytes(param.desc).length < 256, InvalidLength());
-        require(param.UPT != address(0), ZeroUPTAddress());
+        require(supportedUPTs[param.UPT], InvalidUPT());
 
         uint32[] memory omnichainIds = param.omnichainIds;
         require(omnichainIds.length > 0 && omnichainIds.length < 32, InvalidLength());
@@ -274,6 +276,18 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     /*/////////////////////////////////////////////////////
                 Memeverse Registration Config
     /////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Set supported UPT genesis fund
+     * @param UPT - Address of UPT 
+     * @param isSupported - Is Supported?
+     */
+    function setSupportedUPT(address UPT, bool isSupported) external override onlyOwner {
+        require(UPT != address(0), ZeroInput());
+        supportedUPTs[UPT] = isSupported;
+
+        emit SetSupportedUPT(UPT, isSupported);
+    }
 
     /**
      * @dev Set genesis stage duration days range

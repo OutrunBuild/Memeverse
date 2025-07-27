@@ -35,7 +35,6 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
     struct GenesisFund {
         uint128 totalMemecoinFunds;     // Initial fundraising(UPT) for memecoin liquidity
         uint128 totalLiquidProofFunds;  // Initial fundraising(UPT) for liquidProof liquidity
-        uint256 totalDAOFunds;          // Initial fundraising(UPT) for DAO
     }
 
     struct FundMetaData{
@@ -73,15 +72,9 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
     function claimPOLs(uint256 verseId) external returns (uint256 amount);
 
     function redeemAndDistributeFees(uint256 verseId, address rewardReceiver) external payable 
-    returns (uint256 govFee, uint256 memecoinFee, uint256 executorReward);
+    returns (uint256 govFee, uint256 memecoinFee, uint256 liquidProofFee, uint256 executorReward);
 
-    function redeemLiquidity(
-        uint256 verseId,
-        uint256 amountInPOL,
-        uint256 amountUPTMin,
-        uint256 amountMemecoinMin,
-        uint256 deadline
-    ) external;
+    function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external;
 
     function mintPOLToken(
         uint256 verseId, 
@@ -142,8 +135,6 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
 
     error FeeRateOverFlow();
 
-    error NoCoinsToUnlock();
-
     error PermissionDenied();
 
     error NotUnlockedStage();
@@ -160,10 +151,6 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
 
     error InsufficientTreasuryPOL();
 
-    error LiquidityProtectionPeriod();
-
-    error ExpiredSignature(uint256 deadline);
-
     error StillInGenesisStage(uint256 endTime);
 
     error InvalidOmnichainId(uint32 omnichainId);
@@ -172,7 +159,6 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
     event Genesis(
         uint256 indexed verseId,
         address indexed depositer,
-        uint256 increasedDAOFund,
         uint256 increasedMemecoinFund,
         uint256 increasedLiquidProofFund
     );
@@ -189,12 +175,11 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
         uint256 indexed verseId, 
         uint256 govFee, 
         uint256 memecoinFee, 
+        uint256 liquidProofFee, 
         uint256 executorReward
     );
 
-    event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 liquidity, uint256 amountInUPT, uint256 amountInMemecoin);
-
-    event RedeemUnlockedCoins(uint256 indexed verseId, address indexed sender, uint256 amountInMemecoin);
+    event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 memecoinLiquidity, uint256 polLiquidity);
     
     event MintPOLToken(
         uint256 indexed verseId, 

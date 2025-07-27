@@ -42,6 +42,11 @@ interface IMemeLiquidProof is IERC20 {
      * @param amount - The amount of the memeverse proof.
      */
     function burn(address account, uint256 amount) external;
+    
+    /**
+     * @dev If the DAO contract on governance chain cannot be deployed, burn the POL tokens in the DAO address.
+     */
+    function burnDAO() external;
 
     error ZeroInput();
 }

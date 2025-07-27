@@ -5,6 +5,7 @@ import { OutrunNoncesInit } from "../common/OutrunNoncesInit.sol";
 import { IMemeLiquidProof } from "./interfaces/IMemeLiquidProof.sol";
 import { OutrunOFTInit } from "../common/layerzero/oft/OutrunOFTInit.sol";
 import { OutrunERC20PermitInit } from "../common/OutrunERC20PermitInit.sol";
+import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
 import { OutrunERC20Init, OutrunERC20VotesInit } from "../common/governance/OutrunERC20VotesInit.sol";
 
 /**
@@ -20,7 +21,7 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
     constructor(address _lzEndpoint) OutrunOFTInit(_lzEndpoint) {}
 
     /**
-     * @notice Initialize the memecoin liquidProof.
+     * @dev Initialize the memecoin liquidProof.
      * @param name_ - The name of the memecoin liquidProof.
      * @param symbol_ - The symbol of the memecoin liquidProof.
      * @param memecoin_ - The address of the memecoin.
@@ -50,7 +51,7 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
     }
 
     /**
-     * @notice Mint the memeverse proof.
+     * @dev Mint the memeverse proof.
      * @param account - The address of the account.
      * @param amount - The amount of the memeverse proof.
      * @notice Only the memeverse launcher can mint the memeverse proof.
@@ -62,7 +63,7 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
     }
 
     /**
-     * @notice Burn the memecoin liquid proof.
+     * @dev Burn the memecoin liquid proof.
      * @param account - The address of the account.
      * @param amount - The amount of the memecoin liquid proof.
      * @notice User must have approved msg.sender to spend UPT
@@ -73,9 +74,22 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
         _burn(account, amount);
     }
 
+    /**
+     * @dev Burn the liquid proof by self.
+     */
     function burn(uint256 amount) external {
         require(amount != 0, ZeroInput());
         _burn(msg.sender, amount);
+    }
+
+    /**
+     * @dev If the DAO contract on governance chain cannot be deployed, burn the POL tokens in the DAO address.
+     */
+    function burnDAO() external {
+        IMemeverseLauncher.Memeverse memory verse = IMemeverseLauncher(memeverseLauncher).getMemeverseByMemecoin(memecoin);
+        if (block.chainid == verse.omnichainIds[0] && verse.currentStage == IMemeverseLauncher.Stage.Refund) {
+            _burn(verse.governor, balanceOf(verse.governor));
+        }
     }
 
     function nonces(address owner) public view override(OutrunERC20PermitInit, OutrunNoncesInit) returns (uint256) {

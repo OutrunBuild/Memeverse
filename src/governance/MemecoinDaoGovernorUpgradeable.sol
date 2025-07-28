@@ -124,6 +124,49 @@ contract MemecoinDaoGovernorUpgradeable is
         return address(_getMemecoinDaoGovernorStorage()._governanceCycleIncentivizer);
     }
 
+    function propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) public override returns (uint256) {
+        // Restrict each address from submitting new proposals while it has unfinalized proposal
+        MemecoinDaoGovernorStorage storage $ = _getMemecoinDaoGovernorStorage();
+        uint256 unfinalizedProposalId = $.userUnfinalizedProposalId[msg.sender];
+        require(unfinalizedProposalId == 0 || state(unfinalizedProposalId) == ProposalState.Defeated, UserHasUnfinalizedProposal());
+
+        uint256 proposalId = super.propose(targets, values, calldatas, description);
+        $.userUnfinalizedProposalId[msg.sender] = proposalId;
+
+        return proposalId;
+    }
+
+    function execute(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) public payable override returns (uint256) {
+        uint256 proposalId = super.execute(targets, values, calldatas, descriptionHash);
+
+        _getMemecoinDaoGovernorStorage().userUnfinalizedProposalId[proposalProposer(proposalId)] = 0;
+
+        return proposalId;
+    }
+
+    function _cancel(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override returns (uint256) {
+        uint256 proposalId = super._cancel(targets, values, calldatas, descriptionHash);
+
+        _getMemecoinDaoGovernorStorage().userUnfinalizedProposalId[proposalProposer(proposalId)] = 0;
+
+        return proposalId;
+    }
+
     /**
      * @dev Receive treasury income
      * @param _token - The token address

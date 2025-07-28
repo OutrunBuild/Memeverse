@@ -11,6 +11,7 @@ import { IGovernanceCycleIncentivizer } from "./IGovernanceCycleIncentivizer.sol
 interface IMemecoinDaoGovernor {
     struct MemecoinDaoGovernorStorage {
         IGovernanceCycleIncentivizer _governanceCycleIncentivizer;
+        mapping(address => uint256) userUnfinalizedProposalId;
     }
 
     function initialize(
@@ -28,4 +29,6 @@ interface IMemecoinDaoGovernor {
     function receiveTreasuryIncome(address token, uint256 amount) external;
 
     function sendTreasuryAssets(address token, address to, uint256 amount) external;
+
+    error UserHasUnfinalizedProposal();
 }

@@ -6,6 +6,9 @@ import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
+
 import "./BaseScript.s.sol";
 import { IMemecoinDaoGovernor } from "../src/governance/interfaces/IMemecoinDaoGovernor.sol";
 import { IMemeverseRegistrarAtLocal } from "../src/verse/interfaces/IMemeverseRegistrarAtLocal.sol";
@@ -34,7 +37,7 @@ contract TestScript is BaseScript {
         // _memecoinDaoGovernorData();
         // _testQuoteDistributionLzFee();
 
-        console.logBytes32(keccak256(abi.encode(uint256(keccak256("outrun.storage.Nonces")) - 1)) & ~bytes32(uint256(0xff)));
+        //console.logBytes32(keccak256(abi.encode(uint256(keccak256("outrun.storage.Nonces")) - 1)) & ~bytes32(uint256(0xff)));
     }
 
     function _registerTest() internal {

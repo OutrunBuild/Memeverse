@@ -1,5 +1,12 @@
 source ../.env
 
+# forge script MemeverseScript.s.sol:MemeverseScript --rpc-url sepolia \
+#     --priority-gas-price 500000000 --with-gas-price 1500000000 \
+#     --optimize --optimizer-runs 100000 \
+#     --via-ir \
+#     --broadcast --ffi -vvvv \
+#     --verify
+
 forge script MemeverseScript.s.sol:MemeverseScript --rpc-url bsc_testnet \
     --with-gas-price 1000000000 \
     --optimize --optimizer-runs 100000 \
@@ -7,19 +14,19 @@ forge script MemeverseScript.s.sol:MemeverseScript --rpc-url bsc_testnet \
     --broadcast --ffi -vvvv \
     --verify
 
-forge script MemeverseScript.s.sol:MemeverseScript --rpc-url base_sepolia \
-    --with-gas-price 1200000 \
-    --optimize --optimizer-runs 100000 \
-    --via-ir \
-    --broadcast --ffi -vvvv \
-    --verify
+# forge script MemeverseScript.s.sol:MemeverseScript --rpc-url base_sepolia \
+#     --with-gas-price 1200000 \
+#     --optimize --optimizer-runs 100000 \
+#     --via-ir \
+#     --broadcast --ffi -vvvv \
+#     --verify
 
-forge script MemeverseScript.s.sol:MemeverseScript --rpc-url arbitrum_sepolia \
-    --with-gas-price 3000000000 \
-    --optimize --optimizer-runs 100000 \
-    --via-ir \
-    --broadcast --ffi -vvvv \
-    --verify
+# forge script MemeverseScript.s.sol:MemeverseScript --rpc-url arbitrum_sepolia \
+#     --with-gas-price 3000000000 \
+#     --optimize --optimizer-runs 100000 \
+#     --via-ir \
+#     --broadcast --ffi -vvvv \
+#     --verify
 
 # forge script MemeverseScript.s.sol:MemeverseScript --rpc-url avalanche_fuji \
 #     --priority-gas-price 1000000001 --with-gas-price 1000000001 \

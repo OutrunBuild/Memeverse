@@ -79,38 +79,35 @@ contract MemeverseScript is BaseScript {
         OMNICHAIN_MEMECOIN_STAKER = vm.envAddress("OMNICHAIN_MEMECOIN_STAKER");
 
         // OutrunTODO Testnet id
-        omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351];
+        omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351, 11155111];
         _chainsInit();
 
-        IMemeverseLauncher(0x932D9a2D453e4520E93d194C73A334Ba16903Afe).setMemeverseProxyDeployer(0x45A33B21e1b57044BD26510132c843797A6EF3ad);
+        // _getDeployedImplementation(0);
 
-        // _getDeployedImplementation(12);
+        // _getDeployedRegistrationCenter(0);
 
-        // _getDeployedRegistrationCenter(20);
+        // _getDeployedMemeverseCommonInfo(0);
+        // _getDeployedMemeverseRegistrar(0);
+        // _getDeployedMemeverseProxyDeployer(0);
+        // _getDeployedMemeverseOFTDispatcher(0);
+        // _getDeployedMemeverseOmnichainInteroperation(0);
+        // _getDeployedOmnichainMemecoinStaker(0);
+        // _getDeployedMemeverseLauncher(0);
 
-        // _getDeployedMemeverseCommonInfo(20);
-        // _getDeployedMemeverseRegistrar(20);
-        // _getDeployedMemeverseProxyDeployer(20);
-        // _getDeployedMemeverseOFTDispatcher(20);
-        // _getDeployedMemeverseOmnichainInteroperation(20);
-        // _getDeployedOmnichainMemecoinStaker(20);
-        // _getDeployedMemeverseLauncher(20);
-
-        // _deployImplementation(12);
-        // _deployMemecoinPOLImplementation(12);        // optimizer-runs: 20000
-        // _deployMemecoinGovernorImplementation(12);   // optimizer-runs: 2000
-
-        // _deployRegistrationCenter(20);
-
-        // _deployMemeverseCommonInfo(20);
-        // _deployMemeverseRegistrar(20);
-        // _deployMemeverseProxyDeployer(20);
-        // _deployMemeverseOFTDispatcher(20);
-        // _deployMemeverseOmnichainInteroperation(20);
-        // _deployOmnichainMemecoinStaker(20);
-        
         // Update OutrunRouter after deployed
-        // _deployMemeverseLauncher(20);    // optimizer-runs: 1000
+        // _deployMemeverseLauncher(0);                 // optimizer-runs: 1000
+        // _deployMemecoinGovernorImplementation(0);    // optimizer-runs: 2000
+        // _deployMemecoinPOLImplementation(0);         // optimizer-runs: 20000
+        // _deployImplementation(0);
+
+        // _deployMemeverseCommonInfo(0);
+        // _deployMemeverseRegistrar(0);
+        // _deployMemeverseProxyDeployer(0);
+        // _deployMemeverseOFTDispatcher(0);
+        // _deployMemeverseOmnichainInteroperation(0);
+        // _deployOmnichainMemecoinStaker(0);
+
+        _deployRegistrationCenter(0);
     }
 
     function _chainsInit() internal {
@@ -122,6 +119,7 @@ contract MemeverseScript is BaseScript {
         endpoints[57054] = vm.envAddress("SONIC_BLAZE_ENDPOINT");
         endpoints[168587773] = vm.envAddress("BLAST_SEPOLIA_ENDPOINT");
         endpoints[534351] = vm.envAddress("SCROLL_SEPOLIA_ENDPOINT");
+        endpoints[11155111] = vm.envAddress("ETHEREUM_SEPOLIA_ENDPOINT");
         // endpoints[10143] = vm.envAddress("MONAD_TESTNET_ENDPOINT");
         // endpoints[11155420] = vm.envAddress("OPTIMISTIC_SEPOLIA_ENDPOINT");
         // endpoints[300] = vm.envAddress("ZKSYNC_SEPOLIA_ENDPOINT");
@@ -135,6 +133,7 @@ contract MemeverseScript is BaseScript {
         endpointIds[57054] = uint32(vm.envUint("SONIC_BLAZE_EID"));
         endpointIds[168587773] = uint32(vm.envUint("BLAST_SEPOLIA_EID"));
         endpointIds[534351] = uint32(vm.envUint("SCROLL_SEPOLIA_EID"));
+        endpointIds[11155111] = uint32(vm.envUint("ETHEREUM_SEPOLIA_EID"));
         // endpointIds[10143] = uint32(vm.envUint("MONAD_TESTNET_EID"));
         // endpointIds[11155420] = uint32(vm.envUint("OPTIMISTIC_SEPOLIA_EID"));
         // endpointIds[300] = uint32(vm.envUint("ZKSYNC_SEPOLIA_EID"));
@@ -229,12 +228,12 @@ contract MemeverseScript is BaseScript {
             abi.encode(endpoints[uint32(block.chainid)])
         );
 
-        //address memecoinImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, memecoinCreationCode);
-        //address memecoinYieldVaultImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinYieldVaultSalt, type(MemecoinYieldVault).creationCode);
+        address memecoinImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, memecoinCreationCode);
+        address memecoinYieldVaultImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinYieldVaultSalt, type(MemecoinYieldVault).creationCode);
         address cycleIncentivizerImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(incentivizerSalt, type(GovernanceCycleIncentivizerUpgradeable).creationCode);
 
-        //console.log("MemecoinImplementation deployed on %s", memecoinImplementation);
-        //console.log("MemecoinYieldVaultImplementation deployed on %s", memecoinYieldVaultImplementation);
+        console.log("MemecoinImplementation deployed on %s", memecoinImplementation);
+        console.log("MemecoinYieldVaultImplementation deployed on %s", memecoinYieldVaultImplementation);
         console.log("GovernanceCycleIncentivizerImplementation deployed on %s", cycleIncentivizerImplementation);
     }
 
@@ -299,6 +298,7 @@ contract MemeverseScript is BaseScript {
             IMessageLibManager(localEndpoint).setConfig(centerAddr, receiveLib, params);
         }
 
+        IMemeverseRegistrationCenter(centerAddr).setSupportedUPT(UETH, true);
         IMemeverseRegistrationCenter(centerAddr).setRegisterGasLimit(1000000);
         IMemeverseRegistrationCenter(centerAddr).setDurationDaysRange(1, 3);
         IMemeverseRegistrationCenter(centerAddr).setLockupDaysRange(1, 365);

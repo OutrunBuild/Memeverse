@@ -106,6 +106,26 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
     }
 
     /**
+     * @notice Get the Stage by verse id.
+     * @param verseId - The verse id.
+     * @return stage - The memeverse current stage.
+     */
+    function getStageByVerseId(uint256 verseId) external view override returns (Stage stage) {
+        require(verseId != 0, ZeroInput());
+        stage = memeverses[verseId].currentStage;
+    }
+
+    /**
+     * @notice Get the Stage by memecoin.
+     * @param memecoin - The address of the memecoin.
+     * @return stage - The memeverse current stage.
+     */
+    function getStageByMemecoin(address memecoin) external view override returns (Stage stage) {
+        require(memecoin != address(0), ZeroInput());
+        stage = memeverses[memecoinToIds[memecoin]].currentStage;
+    }
+
+    /**
      * @notice Get the yield vault by verse id.
      * @param verseId - The verse id.
      * @return yieldVault - The yield vault.

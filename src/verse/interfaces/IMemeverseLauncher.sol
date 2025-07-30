@@ -48,6 +48,10 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
 
     function getMemeverseByMemecoin(address memecoin) external view returns (Memeverse memory verse);
 
+    function getStageByVerseId(uint256 verseId) external view returns (Stage stage);
+
+    function getStageByMemecoin(address memecoin) external view returns (Stage stage);
+
     function getYieldVaultByVerseId(uint256 verseId) external view returns (address yieldVault);
 
     function getGovernorByVerseId(uint256 verseId) external view returns (address governor);

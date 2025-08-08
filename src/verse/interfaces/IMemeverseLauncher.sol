@@ -65,7 +65,7 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
     function quoteProcessTreasuryPolLzFee(uint256 verseId) external view returns (uint256 lzFee);
 
 
-    function genesis(uint256 verseId, uint256 amountInUPT, address user) external;
+    function genesis(uint256 verseId, uint128 amountInUPT, address user) external;
 
     function changeStage(uint256 verseId) external returns (Stage currentStage);
 
@@ -135,6 +135,8 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
     
     error NotRefundStage();
 
+    error InvalidVerseId();
+
     error NotGenesisStage();
 
     error FeeRateOverFlow();
@@ -163,8 +165,8 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
     event Genesis(
         uint256 indexed verseId,
         address indexed depositer,
-        uint256 increasedMemecoinFund,
-        uint256 increasedLiquidProofFund
+        uint128 increasedMemecoinFund,
+        uint128 increasedLiquidProofFund
     );
 
     event ChangeStage(uint256 indexed verseId, Stage currentStage);

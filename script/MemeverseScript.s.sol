@@ -35,6 +35,7 @@ contract MemeverseScript is BaseScript {
     address internal factory;
     address internal router;
 
+    address internal UUSD;
     address internal UETH;
     address internal OUTRUN_DEPLOYER;
 
@@ -61,6 +62,7 @@ contract MemeverseScript is BaseScript {
         signer = vm.envAddress("SIGNER");
         factory = vm.envAddress("OUTRUN_AMM_FACTORY");
         router = vm.envAddress("LIQUIDITY_ROUTER");
+        UUSD = vm.envAddress("UUSD");
         UETH = vm.envAddress("UETH");
         OUTRUN_DEPLOYER = vm.envAddress("OUTRUN_DEPLOYER");
 
@@ -107,7 +109,9 @@ contract MemeverseScript is BaseScript {
         // _deployMemeverseOmnichainInteroperation(0);
         // _deployOmnichainMemecoinStaker(0);
 
-        _deployRegistrationCenter(0);
+        // _deployRegistrationCenter(0);
+
+        IMemeverseLauncher(0xCf60756f76d436604a39DEF456A17Fe7680b9801).setFundMetaData(UUSD, 50000 * 1e18, 200);
     }
 
     function _chainsInit() internal {
@@ -433,6 +437,7 @@ contract MemeverseScript is BaseScript {
         bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
         address memeverseLauncherAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
         IMemeverseLauncher(memeverseLauncherAddr).setFundMetaData(UETH, 1e19, 1000000);
+        IMemeverseLauncher(memeverseLauncherAddr).setFundMetaData(UUSD, 50000 * 1e18, 200);
 
         console.log("MemeverseLauncher deployed on %s", memeverseLauncherAddr);
     }

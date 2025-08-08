@@ -14,8 +14,9 @@ contract MemeverseCommonInfo is IMemeverseCommonInfo, Ownable {
     constructor(address _owner) Ownable(_owner) {}
 
     function setLzEndpointIdMap(LzEndpointIdPair[] calldata pairs) external override onlyOwner {
-        for (uint256 i = 0; i < pairs.length; i++) {
+        for (uint256 i = 0; i < pairs.length;) {
             LzEndpointIdPair calldata pair = pairs[i];
+            unchecked { i++; }
             if (pair.chainId == 0 || pair.endpointId == 0) continue;
 
             lzEndpointIdMap[pair.chainId] = pair.endpointId;

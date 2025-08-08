@@ -3,13 +3,15 @@ pragma solidity ^0.8.28;
 
 import { SafeERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-abstract contract TokenHelper {
+import { ReentrancyGuard } from "./ReentrancyGuard.sol";
+
+abstract contract TokenHelper is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     address internal constant NATIVE = address(0);
     uint256 internal constant LOWER_BOUND_APPROVAL = type(uint96).max / 2; // some tokens use 96 bits for approval
 
-    function _transferIn(address token, address from, uint256 amount) internal {
+    function _transferIn(address token, address from, uint256 amount) internal nonReentrant {
         if (token == NATIVE) require(msg.value == amount, "eth mismatch");
         else if (amount != 0) IERC20(token).safeTransferFrom(from, address(this), amount);
     }
@@ -18,7 +20,7 @@ abstract contract TokenHelper {
         if (amount != 0) token.safeTransferFrom(from, to, amount);
     }
 
-    function _transferOut(address token, address to, uint256 amount) internal {
+    function _transferOut(address token, address to, uint256 amount) internal nonReentrant {
         if (amount == 0) return;
         if (token == NATIVE) {
             (bool success, ) = to.call{value: amount}("");

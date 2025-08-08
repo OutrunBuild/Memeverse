@@ -83,23 +83,23 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         uint32 currentChainId = uint32(block.chainid); 
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(registerGasLimit) , 0);
         
-        unchecked {
-            for (uint256 i = 0; i < length; i++) {
-                uint32 omnichainId = omnichainIds[i];
-                if (omnichainId == currentChainId) {
-                    fees[i] = 0;
-                    eids[i] = 0;
-                    continue;
-                }
-
-                uint32 eid = IMemeverseCommonInfo(MEMEVERSE_COMMON_INFO).lzEndpointIdMap(omnichainId);
-                require(eid != 0, InvalidOmnichainId(omnichainId));
-
-                uint256 fee = _quote(eid, message, options, false).nativeFee;
-                totalFee += fee;
-                fees[i] = fee;
-                eids[i] = eid;
+        for (uint256 i = 0; i < length;) {
+            uint32 omnichainId = omnichainIds[i];
+            if (omnichainId == currentChainId) {
+                fees[i] = 0;
+                eids[i] = 0;
+                unchecked { i++; }
+                continue;
             }
+
+            uint32 eid = IMemeverseCommonInfo(MEMEVERSE_COMMON_INFO).lzEndpointIdMap(omnichainId);
+            require(eid != 0, InvalidOmnichainId(omnichainId));
+
+            uint256 fee = _quote(eid, message, options, false).nativeFee;
+            totalFee += fee;
+            fees[i] = fee;
+            eids[i] = eid;
+            unchecked { i++; }
         }
 
         return (totalFee, fees, eids);
@@ -190,9 +190,10 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(msg.value >= totalFee, InsufficientLzFee());
 
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(registerGasLimit) , 0);
-        for (uint256 i = 0; i < eids.length; i++) {
+        for (uint256 i = 0; i < eids.length;) {
             uint256 fee = fees[i];
             uint32 eid = eids[i];
+            unchecked { i++; }
             if (eid == 0) {
                 IMemeverseRegistrarAtLocal(MEMEVERSE_REGISTRAR).localRegistration(param);
                 continue;
@@ -237,23 +238,27 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         uint uniqueCount = 0;
         bool found;
 
-        for (uint i = 0; i < input.length; i++) {
+        for (uint i = 0; i < input.length;) {
             found = false;
-            for (uint j = 0; j < uniqueCount; j++) {
+            for (uint j = 0; j < uniqueCount;) {
                 if (temp[j] == input[i]) {
                     found = true;
+                    unchecked { j++; }
                     break;
                 }
+                unchecked { j++; }
             }
             if (!found) {
                 temp[uniqueCount] = input[i];
                 uniqueCount++;
             }
+            unchecked { i++; }
         }
 
         uint32[] memory unique = new uint32[](uniqueCount);
-        for (uint i = 0; i < uniqueCount; i++) {
+        for (uint i = 0; i < uniqueCount;) {
             unique[i] = temp[i];
+            unchecked { i++; }
         }
 
         return unique;

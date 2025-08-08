@@ -66,12 +66,13 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         uint256 length = param.omnichainIds.length;
         RegistrationGasLimit memory _registrationGasLimit = registrationGasLimit;
         uint80 gasLimit = _registrationGasLimit.baseRegistrationGasLimit;
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length;) {
             if (param.omnichainIds[i] == REGISTRATION_CENTER_CHAINID) {
                 gasLimit += _registrationGasLimit.localRegistrationGasLimit;
             } else {
                 gasLimit += _registrationGasLimit.omnichainRegistrationGasLimit;
             }
+            unchecked { i++; }
         }
         
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, value);
@@ -91,12 +92,13 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         uint256 length = param.omnichainIds.length;
         RegistrationGasLimit memory _registrationGasLimit = registrationGasLimit;
         uint80 gasLimit = _registrationGasLimit.baseRegistrationGasLimit;
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length;) {
             if (param.omnichainIds[i] == REGISTRATION_CENTER_CHAINID) {
                 gasLimit += _registrationGasLimit.localRegistrationGasLimit;
             } else {
                 gasLimit += _registrationGasLimit.omnichainRegistrationGasLimit;
             }
+            unchecked { i++; }
         }
 
         bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, value);

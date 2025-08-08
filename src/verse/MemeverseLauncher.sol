@@ -75,6 +75,11 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         oftDispatcherGasLimit = _oftDispatcherGasLimit;
     }
 
+    modifier versIdValidate(uint256 verseId) {
+        require(memeverses[verseId].memecoin != address(0), InvalidVerseId());
+        _;
+    }
+
     /**
      * @notice Get the verse id by memecoin.
      * @param memecoin -The address of the memecoin.
@@ -271,15 +276,15 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param user - Address of user participating in the genesis
      * @notice Approve fund token first
      */
-    function genesis(uint256 verseId, uint256 amountInUPT, address user) external whenNotPaused override {
+    function genesis(uint256 verseId, uint128 amountInUPT, address user) external versIdValidate(verseId) whenNotPaused override {
         require(verseId != 0 && amountInUPT != 0 && user != address(0), ZeroInput());
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage == Stage.Genesis, NotGenesisStage());
 
         _transferIn(verse.UPT, msg.sender, amountInUPT);
 
-        uint256 increasedMemecoinFund;
-        uint256 increasedLiquidProofFund;
+        uint128 increasedMemecoinFund;
+        uint128 increasedLiquidProofFund;
         unchecked {
             increasedLiquidProofFund = amountInUPT / 5;
             increasedMemecoinFund = amountInUPT - increasedLiquidProofFund;
@@ -287,8 +292,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
 
         GenesisFund storage genesisFund = genesisFunds[verseId];
         unchecked {
-            genesisFund.totalMemecoinFunds += uint128(increasedMemecoinFund);
-            genesisFund.totalLiquidProofFunds += uint128(increasedLiquidProofFund);
+            genesisFund.totalMemecoinFunds += increasedMemecoinFund;
+            genesisFund.totalLiquidProofFunds += increasedLiquidProofFund;
             userTotalFunds[verseId][user] += amountInUPT;
         }
 
@@ -300,7 +305,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param verseId - Memeverse id
      * @return currentStage - The current stage.
      */
-    function changeStage(uint256 verseId) external whenNotPaused override returns (Stage currentStage) {
+    function changeStage(uint256 verseId) external versIdValidate(verseId) whenNotPaused override returns (Stage currentStage) {
         require(verseId != 0, ZeroInput());
         uint256 currentTime = block.timestamp;
         Memeverse storage verse = memeverses[verseId];
@@ -806,8 +811,9 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint32 currentChainId = uint32(block.chainid);
 
         // Use default config
-        for (uint256 i = 0; i < omnichainIds.length; i++) {
+        for (uint256 i = 0; i < omnichainIds.length;) {
             uint32 omnichainId = omnichainIds[i];
+            unchecked { i++; }
             if (omnichainId == currentChainId) continue;
 
             uint32 remoteEndpointId = IMemeverseCommonInfo(memeverseCommonInfo).lzEndpointIdMap(omnichainId);
@@ -955,8 +961,9 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         if (bytes(uri).length != 0) memeverses[verseId].uri = uri;
         if (bytes(description).length != 0) memeverses[verseId].desc = description;
         if (communities.length != 0) {
-            for (uint256 i = 0; i < communities.length; i++) {
+            for (uint256 i = 0; i < communities.length;) {
                 communitiesMap[verseId][i] = communities[i];
+                unchecked { i++; }
             }
         }
 

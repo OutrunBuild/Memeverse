@@ -11,7 +11,7 @@ abstract contract TokenHelper is ReentrancyGuard {
     address internal constant NATIVE = address(0);
     uint256 internal constant LOWER_BOUND_APPROVAL = type(uint96).max / 2; // some tokens use 96 bits for approval
 
-    function _transferIn(address token, address from, uint256 amount) internal nonReentrant {
+    function _transferIn(address token, address from, uint256 amount) internal {
         if (token == NATIVE) require(msg.value == amount, "eth mismatch");
         else if (amount != 0) IERC20(token).safeTransferFrom(from, address(this), amount);
     }

@@ -129,9 +129,9 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
             return $._treasuryTokens[token];
         } else {
             Cycle storage cycle = $._cycles[cycleId];
-            address[] memory treasuryTokenList = cycle.treasuryTokenList;
-            for (uint256 i = 0; i < treasuryTokenList.length;) {
-                if (token == treasuryTokenList[i]) return true;
+            uint256 length = cycle.treasuryTokenList.length;
+            for (uint256 i = 0; i < length;) {
+                if (token == cycle.treasuryTokenList[i]) return true;
                 unchecked { i++; }
             }
         }
@@ -148,9 +148,9 @@ contract GovernanceCycleIncentivizerUpgradeable is IGovernanceCycleIncentivizer,
             return $._rewardTokens[token];
         } else {
             Cycle storage cycle = $._cycles[cycleId];
-            address[] memory rewardTokenList = cycle.rewardTokenList;
-            for (uint256 i = 0; i < rewardTokenList.length;) {
-                if (token == rewardTokenList[i]) return true;
+            uint256 length = cycle.rewardTokenList.length;
+            for (uint256 i = 0; i < length;) {
+                if (token == cycle.rewardTokenList[i]) return true;
                 unchecked { i++; }
             }
         }

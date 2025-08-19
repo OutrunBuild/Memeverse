@@ -30,14 +30,19 @@ interface IMemeLiquidProof is IERC20 {
     ) external;
 
     /**
-     * @notice Mint the memeverse proof.
+     * @dev Set pair address after deploying liquidity
+     */
+    function setPair(address pair) external;
+
+    /**
+     * @dev Mint the memeverse proof.
      * @param account - The address of the account.
      * @param amount - The amount of the memeverse proof.
      */
     function mint(address account, uint256 amount) external;
 
     /**
-     * @notice Burn the memeverse proof.
+     * @dev Burn the memeverse proof.
      * @param account - The address of the account.
      * @param amount - The amount of the memeverse proof.
      */

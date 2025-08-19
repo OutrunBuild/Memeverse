@@ -12,8 +12,14 @@ import { OutrunERC20Init, OutrunERC20VotesInit } from "../common/governance/Outr
  * @title Omnichain Memecoin Proof Of Liquidity(POL) Token
  */
 contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20VotesInit, OutrunOFTInit {
+    address public pair;
     address public memecoin;
     address public memeverseLauncher;
+
+    modifier onlyMemeverseLauncher {
+        require(msg.sender == memeverseLauncher, PermissionDenied());
+        _;
+    }
 
     /**
      * @param _lzEndpoint The local LayerZero endpoint address.
@@ -51,14 +57,22 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
     }
 
     /**
+     * @dev Set pair address after deploying liquidity
+     */
+    function setPair(address _pair) external override onlyMemeverseLauncher {
+        require(_pair != address(0), ZeroInput());
+        pair = _pair;
+    }
+
+    /**
      * @dev Mint the memeverse proof.
      * @param account - The address of the account.
      * @param amount - The amount of the memeverse proof.
      * @notice Only the memeverse launcher can mint the memeverse proof.
      */
-    function mint(address account, uint256 amount) external override {
+    function mint(address account, uint256 amount) external override onlyMemeverseLauncher {
         require(amount != 0, ZeroInput());
-        require(msg.sender == memeverseLauncher, PermissionDenied());
+        
         _mint(account, amount);
     }
 

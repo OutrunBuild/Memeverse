@@ -78,7 +78,10 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
     function redeemAndDistributeFees(uint256 verseId, address rewardReceiver) external payable 
     returns (uint256 govFee, uint256 memecoinFee, uint256 liquidProofFee, uint256 executorReward);
 
-    function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external;
+    function redeemLiquidity(
+        uint256 verseId, 
+        uint256 amountInPOL
+    ) external returns (uint256 amountInMemecoinLP, uint256 amountInLiquidProofLP) ;
 
     function mintPOLToken(
         uint256 verseId, 

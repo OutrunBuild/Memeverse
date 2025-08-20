@@ -665,7 +665,10 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
      * @param amountInPOL - Burned liquid proof token amount
      * @notice User must have approved this contract to spend POL
      */
-    function redeemLiquidity(uint256 verseId, uint256 amountInPOL) external whenNotPaused override {
+    function redeemLiquidity(
+        uint256 verseId, 
+        uint256 amountInPOL
+    ) external whenNotPaused override returns (uint256 amountInMemecoinLP, uint256 amountInLiquidProofLP) {
         require(verseId != 0 && amountInPOL != 0, ZeroInput());
         Memeverse storage verse = memeverses[verseId];
         require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
@@ -674,17 +677,19 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         address UPT = verse.UPT;
         address memecoinPair = OutrunAMMLibrary.pairFor(outrunAMMFactory, verse.memecoin, UPT, SWAP_FEERATE);
         address liquidProofPair = OutrunAMMLibrary.pairFor(outrunAMMFactory, verse.liquidProof, UPT, SWAP_FEERATE);
-        uint256 liquidProofLPAmount = amountInPOL / 5;
+
+        amountInMemecoinLP = amountInPOL;
+        amountInLiquidProofLP = amountInPOL / 5;
         require(
-            IERC20(memecoinPair).balanceOf(address(this)) >= amountInPOL &&
-            IERC20(liquidProofPair).balanceOf(address(this)) >= liquidProofLPAmount, 
+            IERC20(memecoinPair).balanceOf(address(this)) >= amountInMemecoinLP &&
+            IERC20(liquidProofPair).balanceOf(address(this)) >= amountInLiquidProofLP, 
             InsufficientLPBalance()
         );
 
-        _transferOut(memecoinPair, msg.sender, amountInPOL);
-        _transferOut(liquidProofPair, msg.sender, liquidProofLPAmount);
+        _transferOut(memecoinPair, msg.sender, amountInMemecoinLP);
+        _transferOut(liquidProofPair, msg.sender, amountInLiquidProofLP);
 
-        emit RedeemLiquidity(verseId, msg.sender, amountInPOL, liquidProofLPAmount);
+        emit RedeemLiquidity(verseId, msg.sender, amountInMemecoinLP, amountInLiquidProofLP);
     }
 
     /**

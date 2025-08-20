@@ -784,8 +784,8 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         address pol = IMemeverseProxyDeployer(memeverseProxyDeployer).deployPOL(uniqueId);
         IMemecoin(memecoin).initialize(name, symbol, address(this), address(this));
         IMemeLiquidProof(pol).initialize(
-            string(abi.encodePacked("POL ", name)), 
-            string(abi.encodePacked("POL ", symbol)), 
+            string(abi.encodePacked("POL-", name)), 
+            string(abi.encodePacked("POL-", symbol)), 
             memecoin, 
             address(this),
             address(this)

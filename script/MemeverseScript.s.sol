@@ -81,22 +81,22 @@ contract MemeverseScript is BaseScript {
         omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351, 11155111];
         _chainsInit();
 
-        _getDeployedImplementation(0);
+        // _getDeployedImplementation(0);
 
-        _getDeployedRegistrationCenter(0);
+        // _getDeployedRegistrationCenter(0);
 
-        _getDeployedMemeverseCommonInfo(0);
-        _getDeployedMemeverseRegistrar(0);
-        _getDeployedMemeverseProxyDeployer(0);
-        _getDeployedMemeverseOFTDispatcher(0);
-        _getDeployedMemeverseOmnichainInteroperation(0);
-        _getDeployedOmnichainMemecoinStaker(0);
-        _getDeployedMemeverseLauncher(0);
+        // _getDeployedMemeverseCommonInfo(0);
+        // _getDeployedMemeverseRegistrar(0);
+        // _getDeployedMemeverseProxyDeployer(0);
+        // _getDeployedMemeverseOFTDispatcher(0);
+        // _getDeployedMemeverseOmnichainInteroperation(0);
+        // _getDeployedOmnichainMemecoinStaker(0);
+        // _getDeployedMemeverseLauncher(0);
 
         // Update OutrunRouter after deployed
-        // _deployMemeverseLauncher(0);                 // optimizer-runs: 1000
+        _deployMemeverseLauncher(0);                 // optimizer-runs: 200
         // _deployMemecoinGovernorImplementation(0);    // optimizer-runs: 2000
-        // _deployMemecoinPOLImplementation(0);         // optimizer-runs: 20000
+        // _deployMemecoinPOLImplementation(0);         // optimizer-runs: 5000
         // _deployImplementation(0);
 
         // _deployMemeverseCommonInfo(0);
@@ -107,8 +107,6 @@ contract MemeverseScript is BaseScript {
         // _deployOmnichainMemecoinStaker(0);
 
         // _deployRegistrationCenter(0);
-
-        IMemeverseLauncher(0xCf60756f76d436604a39DEF456A17Fe7680b9801).setFundMetaData(UUSD, 50000 * 1e18, 200);
     }
 
     function _chainsInit() internal {

@@ -451,15 +451,13 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         _safeApproveInf(UPT, liquidityRouter);
         _safeApproveInf(memecoin, liquidityRouter);
         
-        (,, uint256 memecoinLiquidity) = IMemeverseLiquidityRouter(liquidityRouter).addExactTokensForLiquidity(
+        (,, uint256 memecoinLiquidity) = _addExactTokensForLiquidity(
             UPT,
             memecoin,
-            SWAP_FEERATE,
             totalMemecoinFunds,
             memecoinAmount,
             totalMemecoinFunds,
             memecoinAmount,
-            address(this),
             unlockTime,
             block.timestamp
         );
@@ -480,15 +478,13 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         _safeApproveInf(UPT, liquidityRouter);
         _safeApproveInf(pol, liquidityRouter);
         uint256 deployedPOL = memecoinLiquidity / 8;
-        IMemeverseLiquidityRouter(liquidityRouter).addExactTokensForLiquidity(
+        _addExactTokensForLiquidity(
             UPT,
             pol,
-            SWAP_FEERATE,
             totalLiquidProofFunds,
             deployedPOL,
             totalLiquidProofFunds,
             deployedPOL,
-            address(this),
             unlockTime,
             block.timestamp
         );
@@ -721,28 +717,25 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         _transferIn(memecoin, msg.sender, amountInMemecoinDesired);
         _safeApproveInf(UPT, liquidityRouter);
         _safeApproveInf(memecoin, liquidityRouter);
+        
         if (amountOutDesired == 0) {
-            (amountInUPT, amountInMemecoin, amountOut) = IMemeverseLiquidityRouter(liquidityRouter).addExactTokensForLiquidity(
+            (amountInUPT, amountInMemecoin, amountOut) = _addExactTokensForLiquidity(
                 UPT,
                 memecoin,
-                SWAP_FEERATE,
                 amountInUPTDesired,
                 amountInMemecoinDesired,
                 amountInUPTMin,
                 amountInMemecoinMin,
-                address(this),
                 0,
                 deadline
             );
         } else {
-            (amountInUPT, amountInMemecoin, amountOut) = IMemeverseLiquidityRouter(liquidityRouter).addTokensForExactLiquidity(
+            (amountInUPT, amountInMemecoin, amountOut) = _addTokensForExactLiquidity(
                 UPT, 
                 memecoin, 
-                SWAP_FEERATE, 
                 amountOutDesired, 
                 amountInUPTDesired, 
                 amountInMemecoinDesired, 
-                address(this), 
                 deadline
             );
         }
@@ -976,6 +969,50 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         emit SetExternalInfo(verseId, uri, description, communities);
     }
 
+    function _addExactTokensForLiquidity(
+        address UPT, 
+        address memecoin,
+        uint256 amountInUPTDesired,
+        uint256 amountInMemecoinDesired,
+        uint256 amountInUPTMin,
+        uint256 amountInMemecoinMin,
+        uint256 triggerTime,
+        uint256 deadline
+    ) internal returns (uint256 amountInUPT, uint256 amountInMemecoin, uint256 amountOut){
+        (amountInUPT, amountInMemecoin, amountOut) = IMemeverseLiquidityRouter(liquidityRouter).addExactTokensForLiquidity(
+            UPT,
+            memecoin,
+            SWAP_FEERATE,
+            amountInUPTDesired,
+            amountInMemecoinDesired,
+            amountInUPTMin,
+            amountInMemecoinMin,
+            address(this),
+            triggerTime,
+            deadline
+        );
+    }
+
+    function _addTokensForExactLiquidity(
+        address UPT, 
+        address memecoin,
+        uint256 amountInUPTDesired,
+        uint256 amountInMemecoinDesired,
+        uint256 amountOutDesired,
+        uint256 deadline
+    ) internal returns (uint256 amountInUPT, uint256 amountInMemecoin, uint256 amountOut){
+        (amountInUPT, amountInMemecoin, amountOut) = IMemeverseLiquidityRouter(liquidityRouter).addTokensForExactLiquidity(
+            UPT, 
+            memecoin, 
+            SWAP_FEERATE, 
+            amountOutDesired, 
+            amountInUPTDesired, 
+            amountInMemecoinDesired, 
+            address(this), 
+            deadline
+        );
+    }
+    
     function _buildSendParamAndMessagingFee(
         uint32 govEndpointId,
         uint256 amount,

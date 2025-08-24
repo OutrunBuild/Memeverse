@@ -7,7 +7,6 @@ import { Context } from "@openzeppelin/contracts/utils/Context.sol";
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
 import { OutrunNoncesInit } from "../OutrunNoncesInit.sol";

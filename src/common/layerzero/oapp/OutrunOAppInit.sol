@@ -2,8 +2,8 @@
 pragma solidity ^0.8.28;
 
 import { OutrunOAppCoreInit } from "./OutrunOAppCoreInit.sol";
-import { OutrunOAppReceiverInit, Origin } from "./OutrunOAppReceiverInit.sol";
-import { OutrunOAppSenderInit, MessagingFee, MessagingReceipt } from "./OutrunOAppSenderInit.sol";
+import { OutrunOAppReceiverInit } from "./OutrunOAppReceiverInit.sol";
+import { OutrunOAppSenderInit } from "./OutrunOAppSenderInit.sol";
 
 /**
  * @title OutrunOAppInit (Just for minimal proxy)

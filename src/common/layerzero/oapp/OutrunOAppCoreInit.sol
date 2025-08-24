@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
-import { Initializable } from "../../Initializable.sol";
 import { OutrunOwnableInit } from "../../OutrunOwnableInit.sol";
 import { IOAppCore, ILayerZeroEndpointV2 } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 

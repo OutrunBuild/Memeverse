@@ -2,8 +2,6 @@
 
 pragma solidity ^0.8.20;
 
-import { MessagingReceipt, MessagingFee } from "@layerzerolabs/oapp-evm/contracts/oapp/OAppSender.sol";
-
 /**
  * @title IOFTCompose
  * @dev Handle the logic related to OFT Compose

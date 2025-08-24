@@ -5,7 +5,6 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 import { IMemeverseRegistrar } from "./interfaces/IMemeverseRegistrar.sol";
 import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
-import { IMemeverseCommonInfo } from "../verse/interfaces/IMemeverseCommonInfo.sol";
 
 /**
  * @title MemeverseRegistrar Abstract Contract

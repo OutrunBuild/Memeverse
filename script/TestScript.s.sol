@@ -3,16 +3,10 @@ pragma solidity ^0.8.28;
 
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
-import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
-
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
 
 import "./BaseScript.s.sol";
 import { IMemecoinDaoGovernor } from "../src/governance/interfaces/IMemecoinDaoGovernor.sol";
-import { IMemeverseRegistrarAtLocal } from "../src/verse/interfaces/IMemeverseRegistrarAtLocal.sol";
-import { IMemeverseRegistrarOmnichain } from "../src/verse/interfaces/IMemeverseRegistrarOmnichain.sol";
 import { IMemeverseRegistrar, IMemeverseRegistrationCenter } from "../src/verse/interfaces/IMemeverseRegistrar.sol";
 
 contract TestScript is BaseScript {

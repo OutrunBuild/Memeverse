@@ -13,7 +13,6 @@ import { MemeLiquidProof } from "../src/token/MemeLiquidProof.sol";
 import { MemecoinYieldVault } from "../src/yield/MemecoinYieldVault.sol";
 import { MemeverseProxyDeployer } from "../src/verse/MemeverseProxyDeployer.sol";
 import { MemeverseOFTDispatcher } from "../src/verse/MemeverseOFTDispatcher.sol";
-import { IMemeverseRegistrar } from "../src/verse/interfaces/IMemeverseRegistrar.sol";
 import { MemeverseRegistrarAtLocal } from "../src/verse/MemeverseRegistrarAtLocal.sol";
 import { MemeverseRegistrationCenter } from "../src/verse/MemeverseRegistrationCenter.sol";
 import { MemeverseRegistrarOmnichain } from "../src/verse/MemeverseRegistrarOmnichain.sol";
@@ -31,7 +30,6 @@ contract MemeverseScript is BaseScript {
     uint256 public constant DAY = 24 * 3600;
 
     address internal owner;
-    address internal signer;
     address internal factory;
     address internal router;
 
@@ -59,7 +57,6 @@ contract MemeverseScript is BaseScript {
 
     function run() public broadcaster {
         owner = vm.envAddress("OWNER");
-        signer = vm.envAddress("SIGNER");
         factory = vm.envAddress("OUTRUN_AMM_FACTORY");
         router = vm.envAddress("LIQUIDITY_ROUTER");
         UUSD = vm.envAddress("UUSD");
@@ -84,17 +81,17 @@ contract MemeverseScript is BaseScript {
         omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351, 11155111];
         _chainsInit();
 
-        // _getDeployedImplementation(0);
+        _getDeployedImplementation(0);
 
-        // _getDeployedRegistrationCenter(0);
+        _getDeployedRegistrationCenter(0);
 
-        // _getDeployedMemeverseCommonInfo(0);
-        // _getDeployedMemeverseRegistrar(0);
-        // _getDeployedMemeverseProxyDeployer(0);
-        // _getDeployedMemeverseOFTDispatcher(0);
-        // _getDeployedMemeverseOmnichainInteroperation(0);
-        // _getDeployedOmnichainMemecoinStaker(0);
-        // _getDeployedMemeverseLauncher(0);
+        _getDeployedMemeverseCommonInfo(0);
+        _getDeployedMemeverseRegistrar(0);
+        _getDeployedMemeverseProxyDeployer(0);
+        _getDeployedMemeverseOFTDispatcher(0);
+        _getDeployedMemeverseOmnichainInteroperation(0);
+        _getDeployedOmnichainMemecoinStaker(0);
+        _getDeployedMemeverseLauncher(0);
 
         // Update OutrunRouter after deployed
         // _deployMemeverseLauncher(0);                 // optimizer-runs: 1000

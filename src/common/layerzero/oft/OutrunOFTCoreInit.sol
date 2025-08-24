@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.28;
 
+import { Origin } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppReceiver.sol";
 import { IOAppMsgInspector } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppMsgInspector.sol";
 import { IOFT, SendParam, OFTLimit, OFTReceipt, OFTFeeDetail, MessagingReceipt, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import { OFTMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
 import { IOFTCompose } from "./IOFTCompose.sol";
-import { OutrunOAppInit, Origin } from "../oapp/OutrunOAppInit.sol";
+import { OutrunOAppInit } from "../oapp/OutrunOAppInit.sol";
 import { OutrunOAppOptionsType3Init } from "../oapp/OutrunOAppOptionsType3Init.sol";
 import { OutrunOAppPreCrimeSimulatorInit } from "../oapp/OutrunOAppPreCrimeSimulatorInit.sol";
 
@@ -372,6 +373,7 @@ abstract contract OutrunOFTCoreInit is IOFT, IOFTCompose, OutrunOAppInit, Outrun
      * @dev eg. uint(123) with a conversion rate of 100 becomes uint(100).
      */
     function _removeDust(uint256 _amountLD) internal view virtual returns (uint256 amountLD) {
+        // forge-lint: disable-next-line(divide-before-multiply)
         return (_amountLD / decimalConversionRate) * decimalConversionRate;
     }
 

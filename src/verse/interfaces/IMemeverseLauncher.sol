@@ -32,14 +32,21 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
         bool flashGenesis;              // Allowing the transition to the liquidity lock stage once the minimum funding requirement is met, without waiting for the genesis stage to end.
     }
 
+    struct FundMetaData{
+        uint256 minTotalFund;           // The minimum participation genesis fund corresponding to UPT
+        uint256 fundBasedAmount;        // The number of Memecoins minted per unit of Memecoin genesis fund
+    }
+
     struct GenesisFund {
         uint128 totalMemecoinFunds;     // Initial fundraising(UPT) for memecoin liquidity
         uint128 totalLiquidProofFunds;  // Initial fundraising(UPT) for liquidProof liquidity
     }
 
-    struct FundMetaData{
-        uint256 minTotalFund;           // The minimum participation genesis fund corresponding to UPT
-        uint256 fundBasedAmount;        // The number of Memecoins minted per unit of Memecoin genesis fund
+    struct GenesisData {
+        uint256 genesisFund;            // The amount of UPT user has contributed to the genesis fund
+        bool isRefunded;                // Whether the user has refunded the UPT
+        bool isClaimed;                 // Whether the user has claimed the POL
+        bool isRedeemed;                // Whether the user has redeemed the POL liquidity
     }
 
     function getVerseIdByMemecoin(address memecoin) external view returns (uint256 verseId);
@@ -56,13 +63,11 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
 
     function getGovernorByVerseId(uint256 verseId) external view returns (address governor);
 
-    function userClaimablePOLs(uint256 verseId) external view returns (uint256 claimableAmount);
+    function claimablePOLToken(uint256 verseId) external view returns (uint256 claimableAmount);
 
     function previewGenesisMakerFees(uint256 verseId) external view returns (uint256 UPTFee, uint256 memecoinFee);
 
     function quoteDistributionLzFee(uint256 verseId) external view returns (uint256 lzFee);
-
-    function quoteProcessTreasuryPolLzFee(uint256 verseId) external view returns (uint256 lzFee);
 
 
     function genesis(uint256 verseId, uint128 amountInUPT, address user) external;
@@ -71,17 +76,14 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
 
     function refund(uint256 verseId) external returns (uint256 userFunds);
 
-    function processNonGovChainTreasuryPOL(uint256 verseId) external payable;
-
-    function claimPOLs(uint256 verseId) external returns (uint256 amount);
+    function claimPOLToken(uint256 verseId) external returns (uint256 amount);
 
     function redeemAndDistributeFees(uint256 verseId, address rewardReceiver) external payable 
     returns (uint256 govFee, uint256 memecoinFee, uint256 liquidProofFee, uint256 executorReward);
 
-    function redeemLiquidity(
-        uint256 verseId, 
-        uint256 amountInPOL
-    ) external returns (uint256 amountInMemecoinLP, uint256 amountInLiquidProofLP) ;
+    function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL) external returns (uint256 amountInLP);
+
+    function redeemPolLiquidity(uint256 verseId) external returns (uint256 amountInLP);
 
     function mintPOLToken(
         uint256 verseId, 
@@ -133,6 +135,10 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
     error ZeroInput();
 
     error InvalidLength();
+
+    error InvalidRefund();
+
+    error InvalidRedeem();
     
     error NoPOLAvailable();
     
@@ -153,12 +159,8 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
     error ReachedFinalStage();
     
     error InsufficientLPBalance();
-
-    error InsufficientUserFunds();
     
     error NotReachedLockedStage();
-
-    error InsufficientTreasuryPOL();
 
     error StillInGenesisStage(uint256 endTime);
 
@@ -174,11 +176,9 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
 
     event ChangeStage(uint256 indexed verseId, Stage currentStage);
 
-    event ProcessNonGovChainTreasuryPOL(uint256 indexed verseId, uint256 treasuryPOL);
-
     event Refund(uint256 indexed verseId, address indexed receiver, uint256 refundAmount);
 
-    event ClaimPOLs(uint256 indexed verseId, address indexed receiver, uint256 claimedAmount);
+    event ClaimPOLToken(uint256 indexed verseId, address indexed receiver, uint256 claimedAmount);
 
     event RedeemAndDistributeFees(
         uint256 indexed verseId, 
@@ -188,7 +188,9 @@ interface IMemeverseLauncher is MemeverseOFTEnum {
         uint256 executorReward
     );
 
-    event RedeemLiquidity(uint256 indexed verseId, address indexed receiver, uint256 memecoinLiquidity, uint256 polLiquidity);
+    event RedeemMemecoinLiquidity(uint256 indexed verseId, address indexed receiver, uint256 memecoinLiquidity);
+
+    event RedeemPolLiquidity(uint256 indexed verseId, address indexed receiver, uint256 polLiquidity);
     
     event MintPOLToken(
         uint256 indexed verseId, 

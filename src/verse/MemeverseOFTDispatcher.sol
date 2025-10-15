@@ -8,7 +8,6 @@ import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTCom
 import { TokenHelper } from "../common/TokenHelper.sol";
 import { IBurnable } from "../common/interfaces/IBurnable.sol";
 import { IOFTCompose } from "../common/layerzero/oft/IOFTCompose.sol";
-import { IMemeverseLauncher } from "./interfaces/IMemeverseLauncher.sol";
 import { IMemecoinYieldVault } from "../yield/interfaces/IMemecoinYieldVault.sol";
 import { IMemeverseOFTDispatcher } from "./interfaces/IMemeverseOFTDispatcher.sol";
 import { IMemecoinDaoGovernor } from "../governance/interfaces/IMemecoinDaoGovernor.sol";
@@ -72,14 +71,6 @@ contract MemeverseOFTDispatcher is IMemeverseOFTDispatcher, TokenHelper, Ownable
             } else {
                 _safeApproveInf(token, receiver);
                 IMemecoinDaoGovernor(receiver).receiveTreasuryIncome(token, amount);
-            }
-        } else {
-            IMemeverseLauncher.Stage stage = IMemeverseLauncher(memeverseLauncher).getStageByMemecoin(token);
-            if (receiver.code.length == 0 && stage == IMemeverseLauncher.Stage.Refund) {
-                IBurnable(token).burn(amount);
-                isBurned = true;
-            } else {
-                _transferOut(token, receiver, amount);
             }
         }
 

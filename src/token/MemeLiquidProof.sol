@@ -5,7 +5,6 @@ import { OutrunNoncesInit } from "../common/OutrunNoncesInit.sol";
 import { IMemeLiquidProof } from "./interfaces/IMemeLiquidProof.sol";
 import { OutrunOFTInit } from "../common/layerzero/oft/OutrunOFTInit.sol";
 import { OutrunERC20PermitInit } from "../common/OutrunERC20PermitInit.sol";
-import { IMemeverseLauncher } from "../verse/interfaces/IMemeverseLauncher.sol";
 import { OutrunERC20Init, OutrunERC20VotesInit } from "../common/governance/OutrunERC20VotesInit.sol";
 
 /**
@@ -94,16 +93,6 @@ contract MemeLiquidProof is IMemeLiquidProof, OutrunERC20PermitInit, OutrunERC20
     function burn(uint256 amount) external {
         require(amount != 0, ZeroInput());
         _burn(msg.sender, amount);
-    }
-
-    /**
-     * @dev If the DAO contract on governance chain cannot be deployed, burn the POL tokens in the DAO address.
-     */
-    function burnDAO() external {
-        IMemeverseLauncher.Memeverse memory verse = IMemeverseLauncher(memeverseLauncher).getMemeverseByMemecoin(memecoin);
-        if (block.chainid == verse.omnichainIds[0] && verse.currentStage == IMemeverseLauncher.Stage.Refund) {
-            _burn(verse.governor, balanceOf(verse.governor));
-        }
     }
 
     function nonces(address owner) public view override(OutrunERC20PermitInit, OutrunNoncesInit) returns (uint256) {

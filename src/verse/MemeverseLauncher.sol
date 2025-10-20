@@ -253,7 +253,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         uint128 increasedMemecoinFund;
         uint128 increasedLiquidProofFund;
         unchecked {
-            increasedLiquidProofFund = amountInUPT / 3;
+            increasedLiquidProofFund = amountInUPT / 4;
             increasedMemecoinFund = amountInUPT - increasedLiquidProofFund;
         }
 
@@ -432,7 +432,7 @@ contract MemeverseLauncher is IMemeverseLauncher, TokenHelper, Pausable, Ownable
         // Deploy POL liquidity
         _safeApproveInf(UPT, liquidityRouter);
         _safeApproveInf(pol, liquidityRouter);
-        uint256 deployedPOL = memecoinLiquidity / 5;
+        uint256 deployedPOL = memecoinLiquidity / 3;
         (,, uint256 polLiquidity) = _addExactTokensForLiquidity(
             UPT,
             pol,

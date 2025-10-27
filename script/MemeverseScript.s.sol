@@ -81,32 +81,32 @@ contract MemeverseScript is BaseScript {
         omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351, 11155111];
         _chainsInit();
 
-        // _getDeployedImplementation(0);
+        // _getDeployedImplementation(2);
 
-        // _getDeployedRegistrationCenter(0);
+        // _getDeployedRegistrationCenter(2);
 
-        // _getDeployedMemeverseCommonInfo(0);
-        // _getDeployedMemeverseRegistrar(0);
-        // _getDeployedMemeverseProxyDeployer(0);
-        // _getDeployedMemeverseOFTDispatcher(0);
-        // _getDeployedMemeverseOmnichainInteroperation(0);
-        // _getDeployedOmnichainMemecoinStaker(0);
-        // _getDeployedMemeverseLauncher(0);
+        // _getDeployedMemeverseCommonInfo(2);
+        // _getDeployedMemeverseRegistrar(2);
+        // _getDeployedMemeverseProxyDeployer(2);
+        // _getDeployedMemeverseOFTDispatcher(2);
+        // _getDeployedMemeverseOmnichainInteroperation(2);
+        // _getDeployedOmnichainMemecoinStaker(2);
+        // _getDeployedMemeverseLauncher(2);
 
         // Update OutrunRouter after deployed
-        _deployMemeverseLauncher(0);                 // optimizer-runs: 200
-        // _deployMemecoinGovernorImplementation(0);    // optimizer-runs: 2000
-        // _deployMemecoinPOLImplementation(0);         // optimizer-runs: 5000
-        // _deployImplementation(0);
+        // _deployMemeverseLauncher(2);                 // optimizer-runs: 200
+        // _deployMemecoinGovernorImplementation(2);    // optimizer-runs: 2000
+        // _deployMemecoinPOLImplementation(2);         // optimizer-runs: 5000
+        // _deployImplementation(2);
 
-        // _deployMemeverseCommonInfo(0);
-        // _deployMemeverseRegistrar(0);
-        // _deployMemeverseProxyDeployer(0);
-        // _deployMemeverseOFTDispatcher(0);
-        // _deployMemeverseOmnichainInteroperation(0);
-        // _deployOmnichainMemecoinStaker(0);
+        // _deployMemeverseCommonInfo(2);
+        // _deployMemeverseRegistrar(2);
+        // _deployMemeverseProxyDeployer(2);
+        // _deployMemeverseOFTDispatcher(2);
+        // _deployMemeverseOmnichainInteroperation(2);
+        // _deployOmnichainMemecoinStaker(2);
 
-        // _deployRegistrationCenter(0);
+        _deployRegistrationCenter(2);
     }
 
     function _chainsInit() internal {
@@ -298,9 +298,10 @@ contract MemeverseScript is BaseScript {
         }
 
         IMemeverseRegistrationCenter(centerAddr).setSupportedUPT(UETH, true);
+        IMemeverseRegistrationCenter(centerAddr).setSupportedUPT(UUSD, true);
         IMemeverseRegistrationCenter(centerAddr).setRegisterGasLimit(1000000);
         IMemeverseRegistrationCenter(centerAddr).setDurationDaysRange(1, 3);
-        IMemeverseRegistrationCenter(centerAddr).setLockupDaysRange(1, 365);
+        IMemeverseRegistrationCenter(centerAddr).setLockupDaysRange(1, 365);    // Min: 180
 
         console.log("MemeverseRegistrationCenter deployed on %s", centerAddr);
     }

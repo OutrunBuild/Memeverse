@@ -15,7 +15,6 @@ import { MemeverseProxyDeployer } from "../src/verse/MemeverseProxyDeployer.sol"
 import { MemeverseOFTDispatcher } from "../src/verse/MemeverseOFTDispatcher.sol";
 import { MemeverseRegistrarAtLocal } from "../src/verse/MemeverseRegistrarAtLocal.sol";
 import { MemeverseRegistrationCenter } from "../src/verse/MemeverseRegistrationCenter.sol";
-import { MemeverseRegistrarOmnichain } from "../src/verse/MemeverseRegistrarOmnichain.sol";
 import { MemeverseLauncher, IMemeverseLauncher } from "../src/verse/MemeverseLauncher.sol";
 import { OmnichainMemecoinStaker } from "../src/interoperation/OmnichainMemecoinStaker.sol";
 import { MemeverseCommonInfo, IMemeverseCommonInfo } from "../src/verse/MemeverseCommonInfo.sol";
@@ -97,16 +96,16 @@ contract MemeverseScript is BaseScript {
         // _deployMemeverseLauncher(2);                 // optimizer-runs: 200
         // _deployMemecoinGovernorImplementation(2);    // optimizer-runs: 2000
         // _deployMemecoinPOLImplementation(2);         // optimizer-runs: 5000
-        // _deployImplementation(2);
+        _deployImplementation(2);
 
-        // _deployMemeverseCommonInfo(2);
-        // _deployMemeverseRegistrar(2);
-        // _deployMemeverseProxyDeployer(2);
-        // _deployMemeverseOFTDispatcher(2);
-        // _deployMemeverseOmnichainInteroperation(2);
-        // _deployOmnichainMemecoinStaker(2);
+        _deployMemeverseCommonInfo(2);
+        _deployMemeverseRegistrar(2);
+        _deployMemeverseProxyDeployer(2);
+        _deployMemeverseOFTDispatcher(2);
+        _deployMemeverseOmnichainInteroperation(2);
+        _deployOmnichainMemecoinStaker(2);
 
-        _deployRegistrationCenter(2);
+        // _deployRegistrationCenter(2);
     }
 
     function _chainsInit() internal {
@@ -119,6 +118,7 @@ contract MemeverseScript is BaseScript {
         endpoints[168587773] = vm.envAddress("BLAST_SEPOLIA_ENDPOINT");
         endpoints[534351] = vm.envAddress("SCROLL_SEPOLIA_ENDPOINT");
         endpoints[11155111] = vm.envAddress("ETHEREUM_SEPOLIA_ENDPOINT");
+        endpoints[545] = vm.envAddress("FLOW_TESTNET_ENDPOINT");
         // endpoints[10143] = vm.envAddress("MONAD_TESTNET_ENDPOINT");
         // endpoints[11155420] = vm.envAddress("OPTIMISTIC_SEPOLIA_ENDPOINT");
         // endpoints[300] = vm.envAddress("ZKSYNC_SEPOLIA_ENDPOINT");
@@ -133,6 +133,7 @@ contract MemeverseScript is BaseScript {
         endpointIds[168587773] = uint32(vm.envUint("BLAST_SEPOLIA_EID"));
         endpointIds[534351] = uint32(vm.envUint("SCROLL_SEPOLIA_EID"));
         endpointIds[11155111] = uint32(vm.envUint("ETHEREUM_SEPOLIA_EID"));
+        endpointIds[545] = uint32(vm.envUint("FLOW_TESTNET_EID"));
         // endpointIds[10143] = uint32(vm.envUint("MONAD_TESTNET_EID"));
         // endpointIds[11155420] = uint32(vm.envUint("OPTIMISTIC_SEPOLIA_EID"));
         // endpointIds[300] = uint32(vm.envUint("ZKSYNC_SEPOLIA_EID"));
@@ -268,35 +269,6 @@ contract MemeverseScript is BaseScript {
         );
         address centerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
-        uint256 chainCount = omnichainIds.length;
-        for (uint32 i = 0; i < chainCount; i++) {
-            uint32 chainId = omnichainIds[i];
-            uint32 endpointId = endpointIds[chainId];
-            if (block.chainid == chainId) continue;
-
-            IOAppCore(centerAddr).setPeer(endpointId, bytes32(abi.encode(MEMEVERSE_REGISTRAR)));
-
-            UlnConfig memory config = UlnConfig({
-                confirmations: 1,
-                requiredDVNCount: 0,
-                optionalDVNCount: 0,
-                optionalDVNThreshold: 0,
-                requiredDVNs: new address[](0),
-                optionalDVNs: new address[](0)
-            });
-            SetConfigParam[] memory params = new SetConfigParam[](1);
-            params[0] = SetConfigParam({
-                eid: endpointId,
-                configType: 2,
-                config: abi.encode(config)
-            });
-        
-            address sendLib = IMessageLibManager(localEndpoint).getSendLibrary(centerAddr, endpointId);
-            (address receiveLib, ) = IMessageLibManager(localEndpoint).getReceiveLibrary(centerAddr, endpointId);
-            IMessageLibManager(localEndpoint).setConfig(centerAddr, sendLib, params);
-            IMessageLibManager(localEndpoint).setConfig(centerAddr, receiveLib, params);
-        }
-
         IMemeverseRegistrationCenter(centerAddr).setSupportedUPT(UETH, true);
         IMemeverseRegistrationCenter(centerAddr).setSupportedUPT(UUSD, true);
         IMemeverseRegistrationCenter(centerAddr).setRegisterGasLimit(1000000);
@@ -327,31 +299,13 @@ contract MemeverseScript is BaseScript {
     }
 
     function _deployMemeverseRegistrar(uint256 nonce) internal {
-        bytes memory encodedArgs;
-        bytes memory creationBytecode;
-        address localEndpoint = endpoints[uint32(block.chainid)];
-        if (block.chainid == vm.envUint("BSC_TESTNET_CHAINID")) {
-            encodedArgs = abi.encode(
+        bytes memory encodedArgs = abi.encode(
                 owner,
                 MEMEVERSE_REGISTRATION_CENTER,
                 MEMEVERSE_LAUNCHER,
                 MEMEVERSE_COMMON_INFO
             );
-            creationBytecode = type(MemeverseRegistrarAtLocal).creationCode;
-        } else {
-            encodedArgs = abi.encode(
-                owner,
-                localEndpoint,
-                MEMEVERSE_LAUNCHER,
-                MEMEVERSE_COMMON_INFO,
-                uint32(vm.envUint("BSC_TESTNET_EID")),
-                uint32(vm.envUint("BSC_TESTNET_CHAINID")),
-                150000,
-                750000,
-                250000
-            );
-            creationBytecode = type(MemeverseRegistrarOmnichain).creationCode;
-        }
+        bytes memory creationBytecode = type(MemeverseRegistrarAtLocal).creationCode;
 
         bytes32 salt = keccak256(abi.encodePacked("MemeverseRegistrar", nonce));
         bytes memory creationCode = abi.encodePacked(
@@ -360,34 +314,6 @@ contract MemeverseScript is BaseScript {
         );
         address memeverseRegistrarAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
         console.log("MemeverseRegistrar deployed on %s", memeverseRegistrarAddr);
-
-        if (block.chainid != vm.envUint("BSC_TESTNET_CHAINID")) {
-            uint32 centerEndpointId = uint32(vm.envUint("BSC_TESTNET_EID"));
-            IOAppCore(memeverseRegistrarAddr).setPeer(
-                centerEndpointId, 
-                bytes32(abi.encode(MEMEVERSE_REGISTRATION_CENTER))
-            );
-            
-            UlnConfig memory config = UlnConfig({
-                confirmations: 1,
-                requiredDVNCount: 0,
-                optionalDVNCount: 0,
-                optionalDVNThreshold: 0,
-                requiredDVNs: new address[](0),
-                optionalDVNs: new address[](0)
-            });
-            SetConfigParam[] memory params = new SetConfigParam[](1);
-            params[0] = SetConfigParam({
-                eid: centerEndpointId,
-                configType: 2,
-                config: abi.encode(config)
-            });
-
-            address sendLib = IMessageLibManager(localEndpoint).getSendLibrary(memeverseRegistrarAddr, centerEndpointId);
-            (address receiveLib, ) = IMessageLibManager(localEndpoint).getReceiveLibrary(memeverseRegistrarAddr, centerEndpointId);
-            IMessageLibManager(localEndpoint).setConfig(memeverseRegistrarAddr, sendLib, params);
-            IMessageLibManager(localEndpoint).setConfig(memeverseRegistrarAddr, receiveLib, params);
-        }
     }
 
     function _deployMemeverseProxyDeployer(uint256 nonce) internal {

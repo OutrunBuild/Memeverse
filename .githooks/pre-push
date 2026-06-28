@@ -4,4 +4,10 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-npm run gate
+# gate:fast (targeted tests) misses cross-file regressions where a prod/script
+# change breaks an untouched test file (test_mapping is near-empty for script/).
+# CI runs the full suite; gate:ci --all mirrors that locally so the push is
+# blocked here (~12-15 min via_ir build + full forge test) instead of failing
+# in CI after the push lands. pre-commit stays on gate:fast for a fast fmt/lint
+# pre-check; the heavy full run is deferred to push.
+npm run gate:ci -- --all

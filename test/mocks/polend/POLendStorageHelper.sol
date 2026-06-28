@@ -77,13 +77,6 @@ abstract contract POLendStorageHelper is StorageSlotPrimitives {
         _writeSlot(proxy, bytes32(uint256(base) + OFF_LM_STATE), bytes32(uint256(uint8(IPOLend.MarketState.Locked))));
     }
 
-    /// @notice Set $.lendMarkets[verseId].state = Genesis and totalLeveragedInterest = totalLeveragedInterest.
-    function setGenesisStateForTest(address proxy, uint256 verseId, uint256 totalLeveragedInterest) internal {
-        bytes32 base = _mappingSlot(OFF_LEND_MARKETS, verseId);
-        _writeSlot(proxy, bytes32(uint256(base) + OFF_LM_TOTAL_INTEREST), bytes32(totalLeveragedInterest));
-        _writeSlot(proxy, bytes32(uint256(base) + OFF_LM_STATE), bytes32(uint256(uint8(IPOLend.MarketState.Genesis))));
-    }
-
     /// @notice Write $.residualStates[verseId] = {residualUAsset, residualMemecoin},
     ///         $.lendMarkets[verseId].totalLeveragedInterest = totalLeveragedInterest,
     ///         and $.lendMarkets[verseId].state = Settled.

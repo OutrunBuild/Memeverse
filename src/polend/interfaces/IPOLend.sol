@@ -71,19 +71,6 @@ interface IPOLend {
         uint256 indexed verseId, address indexed uAsset, uint256 ptAmount, uint256 uAssetBacking, address mintTo
     );
     event SettlementDustReserveConfigured(address indexed uAsset, uint128 oldMaxReserve, uint128 newMaxReserve);
-    /// @notice Emitted when leveraged-genesis finalization splits the real-uAsset interest between
-    ///         the per-uAsset settlement-dust reserve and the protocol treasury.
-    /// @dev `realInterest` is the uAsset portion of the leveraged-genesis interest only (i.e.
-    ///      `market.totalLeveragedInterest - market.totalCreditInterest`). Credit-funded interest is
-    ///      handled separately by burning the escrowed GenesisCredit (see `CreditBurned`).
-    event SettlementDustReservedFromInterest(
-        uint256 indexed verseId,
-        address indexed uAsset,
-        uint256 realInterest,
-        uint256 credited,
-        uint256 treasuryInterest,
-        uint256 reserveAfter
-    );
     /// @notice Emitted when leveraged-genesis finalization burns the GenesisCredit escrowed by
     ///         POLend for credit-funded participants of `verseId`.
     /// @dev `totalCreditInterest` mirrors `market.totalCreditInterest` at finalization and matches

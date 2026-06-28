@@ -365,11 +365,22 @@ filter_command_output() {
                 cat "$output_file"
                 ;;
             info|warn|error)
-                if [ "$log_level" = "error" ]; then
-                    grep -i -E '(error|FAIL|failed|✖|Revert|revert)' -C 3 "$output_file" || cat "$output_file"
-                else
-                    grep -i -E '(warning|warn |error|FAIL|failed|✖|Revert|revert)' -C 3 "$output_file" || cat "$output_file"
-                fi
+                # Strip Foundry successful-run noise: [PASS] lines, the
+                # per-suite "Suite result: ok." summary, and the
+                # "Compiler run successful!" compile banner. Keep everything else,
+                # including "Suite result: FAILED.", the final "Ran N suites
+                # in Xs:" line and its indented "tests passed, M failed"
+                # summary, revert traces, and tool diagnostics (npm/solhint).
+                # On the failure path everything remaining IS error-oriented
+                # (diffs, source locations, traces, gas mismatches), so all log
+                # levels share this behavior; the docs/VERIFICATION.md log_level
+                # contract still holds on the success path above. Narrowing to
+                # keyword anchors was found to silently drop real failure context
+                # (forge fmt diffs, `--> file:line` pointers, traces). The old
+                # `Ran ... 0 failed` branch was dead code: forge puts the count
+                # on a separate indented line.
+                local successful_output_regex='^[[:space:]]*\[PASS[^]]*\]|^[[:space:]]*Suite result: ok\.|^[[:space:]]*Compiler run successful!'
+                grep -avE "$successful_output_regex" "$output_file" || true
                 ;;
         esac
     fi

@@ -78,7 +78,7 @@ contract POLend layout at erc7201("outrun.storage.POLend")
     /// @param initialOwner Address to grant contract ownership.
     /// @param interestRate_ Default interest rate (1e18-scaled; (0, 1e18]).
     /// @param leveragedDebtFactor_ Leveraged-debt factor applied to the launcher debt cap.
-    /// @param treasury_ Protocol treasury receiving excess interest and reserve overflow.
+    /// @param treasury_ Protocol treasury receiving the full real-uAsset leveraged interest slice at finalize, plus dust-reserve overflow from over-capacity funding.
     /// @param launcher_ MemeverseLauncher authorized to drive verse lifecycle.
     /// @param splitter_ POLSplitter authorized to redeem PTs and burn backing.
     /// @param creditFactory_ GenesisCreditFactory issuing credit tokens.
@@ -295,10 +295,13 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         market.state = MarketState.Refund;
     }
 
-    /// @notice Finalize a verse's leveraged genesis and lock its debt (onlyLauncher). Credits the
-    ///         real-uAsset interest into the dust reserve and treasury, mints the aggregate debt as
-    ///         uAsset to the launcher, burns the escrowed GenesisCredit for the credit-funded slice,
-    ///         and accrues the verse debt to the per-uAsset global ledger.
+    /// @notice Finalize a verse's leveraged genesis and lock its debt (onlyLauncher). Sweeps the
+    ///         full real-uAsset interest to the treasury, mints the aggregate debt as uAsset to the
+    ///         launcher, burns the escrowed GenesisCredit for the credit-funded slice, and accrues
+    ///         the verse debt to the per-uAsset global ledger.
+    /// @dev The per-uAsset settlement-dust reserve is NOT funded from interest here — it is funded
+    ///      solely by the Launcher's bootstrap unused uAsset (`_handleBootstrapResiduals` ->
+    ///      `fundSettlementDustReserve`) and manual `fundSettlementDustReserve` calls.
     /// @param verseId Verse identifier to finalize.
     function finalizeLeveragedGenesis(uint256 verseId) external onlyLauncher {
         LendMarket storage market = polendStorage.lendMarkets[verseId];
@@ -309,23 +312,21 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         address marketUAsset = market.uAsset;
         uint256 totalLeveragedInterest = market.totalLeveragedInterest;
         uint256 totalCredit = market.totalCreditInterest;
-        // Only the real-uAsset slice of the leveraged-genesis interest is actually escrowed in
-        // this contract as `marketUAsset`. Credit-funded participants paid in GenesisCredit
-        // (escrowed separately), so the dust-reserve + treasury split must operate on the real
-        // portion only — otherwise we'd try to transfer uAsset we don't hold.
+        // Only the real-uAsset slice was actually escrowed in this contract as `marketUAsset`;
+        // sweep it in full to the treasury. Credit-funded interest has no uAsset inflow and is
+        // burned below. The settlement-dust reserve is funded solely by the Launcher's bootstrap
+        // unused uAsset (`_handleBootstrapResiduals` -> `fundSettlementDustReserve`) and manual
+        // `fundSettlementDustReserve` calls — no longer from leveraged interest.
         uint256 realInterest = totalLeveragedInterest - totalCredit;
-
-        (uint256 credited, uint256 treasuryInterest, uint256 reserveAfter) =
-            _creditSettlementDustReserve(marketUAsset, realInterest);
 
         market.state = MarketState.Locked;
         polendStorage.globalDebtByUAsset[marketUAsset] += debt;
 
         // Debt minting uses the aggregate (real + credit) interest via `_totalLeveragedDebt`, so
-        // credit interest still backs `debt` for the launcher — the only behavioral split is on
-        // dust/treasury sweeps and the credit-burn below.
+        // credit interest still backs `debt` for the launcher — the only behavioral change is that
+        // the real-uAsset slice now sweeps entirely to treasury instead of being split reserve/treasury.
         IUniversalAssets(marketUAsset).mint(polendStorage.launcher, debt);
-        if (treasuryInterest != 0) IERC20(marketUAsset).safeTransfer(polendStorage.treasury, treasuryInterest);
+        if (realInterest != 0) IERC20(marketUAsset).safeTransfer(polendStorage.treasury, realInterest);
 
         // Burn the escrowed GenesisCredit so the credit-funded portion exits supply at finalize
         // time. Per-verse `totalCreditInterest` is exclusive of other verses (state machine
@@ -340,10 +341,6 @@ contract POLend layout at erc7201("outrun.storage.POLend")
             IGenesisCredit(credit).burn(totalCredit);
             emit CreditBurned(verseId, marketUAsset, totalCredit);
         }
-
-        emit SettlementDustReservedFromInterest(
-            verseId, marketUAsset, realInterest, credited, treasuryInterest, reserveAfter
-        );
     }
 
     /// @notice Record the YT token and its total supply for a locked verse (onlyLauncher). Enables
@@ -602,7 +599,7 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         return polendStorage.leveragedDebtFactor;
     }
 
-    /// @notice Protocol treasury that receives excess interest and dust-reserve overflow.
+    /// @notice Protocol treasury that receives the full real-uAsset leveraged interest slice at finalize, plus dust-reserve overflow from over-capacity funding.
     /// @return Configured treasury address.
     function treasury() external view returns (address) {
         return polendStorage.treasury;
@@ -803,25 +800,6 @@ contract POLend layout at erc7201("outrun.storage.POLend")
 
             return Math.mulDiv(a, b, 1e18);
         }
-    }
-
-    function _creditSettlementDustReserve(address uAsset, uint256 amount)
-        internal
-        returns (uint256 credited, uint256 excess, uint256 reserveAfter)
-    {
-        SettlementDustState storage state = polendStorage.settlementDustStates[uAsset];
-        uint256 maxReserve = state.maxReserve;
-        if (maxReserve == 0) revert InvalidConfig();
-
-        uint256 reserve = state.reserve;
-        uint256 capacity = maxReserve - reserve;
-        credited = Math.min(amount, capacity);
-        excess = amount - credited;
-        reserveAfter = reserve + credited;
-        // Skip the no-op SSTORE when nothing was credited (pure-credit finalize with
-        // realInterest == 0, or reserve already at capacity). reserveAfter == reserve here,
-        // so omitting the write leaves state identical.
-        if (credited != 0) state.reserve = uint128(reserveAfter);
     }
 
     function _consumeClaimFlag(uint256 verseId, address account, uint8 mask) internal {

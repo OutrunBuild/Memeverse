@@ -198,6 +198,10 @@ contract MockReadinessPOLend {
         splitter = splitter_;
     }
 
+    function setCreditFactory(address creditFactory_) external {
+        creditFactory = creditFactory_;
+    }
+
     function setReserve(address uAsset, uint128 maxReserve) external {
         maxReserves[uAsset] = maxReserve;
     }
@@ -964,6 +968,18 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         scriptHarness.requireDeploymentReadyHarness(readySwapRouter, readySwapHook);
     }
 
+    // readiness 校验 POLend.creditFactory() 指向有 code 的合约（POLEND_CREDIT_FACTORY_NOT_READY）。
+    // 该检查在 reserve/sibling 检查之前，接好全部依赖后把 creditFactory 置空，应即回退。
+    function testRequireDeploymentReadyRevertsWhenPolendCreditFactoryHasNoCode() external {
+        MockReadinessLauncher readyLauncher =
+            _configureReadyDependencies(address(0), address(0), address(0), address(0));
+        MockReadinessPOLend polend = MockReadinessPOLend(readyLauncher.polend());
+        polend.setCreditFactory(address(0));
+
+        vm.expectRevert("POLEND_CREDIT_FACTORY_NOT_READY");
+        scriptHarness.requireDeploymentReadyHarness(readySwapRouter, readySwapHook);
+    }
+
     function testEnvAddressWithFallbackUsesPrimaryWhenPresent() external {
         vm.setEnv("TEST_PRIMARY_LZ_ENDPOINT_REGISTRY", "0x0000000000000000000000000000000000001234");
         vm.setEnv("TEST_FALLBACK_MEMEVERSE_COMMON_INFO", "0x0000000000000000000000000000000000005678");
@@ -1011,6 +1027,11 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         dispatcher.setLauncher(dispatcherLauncher == address(0) ? launcherAddress : dispatcherLauncher);
         polend.setDependencies(launcherAddress, address(splitter));
         splitter.setDependencies(launcherAddress, address(polend));
+        // readiness checks POLend.creditFactory() points at a contract with code
+        // (POLEND_CREDIT_FACTORY_NOT_READY); wire a coded address so the check passes.
+        address creditFactoryAddr = address(uint160(0x6001));
+        vm.etch(creditFactoryAddr, type(MockReadinessHook).creationCode);
+        polend.setCreditFactory(creditFactoryAddr);
         polend.setReserve(UETH, 1);
         polend.setReserve(UUSD, 1);
         launcher.setFundMetaData(UETH, 1, 1);

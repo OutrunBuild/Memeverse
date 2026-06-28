@@ -141,6 +141,13 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
 
         assertEq(uint256(launcher.changeStage(VERSE_ID)), uint256(IMemeverseLauncher.Stage.Locked), "still locked");
 
+        // Auto-refill from interest was removed; manually fund the reserve so the settlement
+        // dust deficit (50) is covered. This mirrors the new operational model.
+        // MAX_SETTLEMENT_DUST is 100 wei in this test; fund up to the cap (covers the 50 deficit).
+        uAsset.mint(address(this), MAX_SETTLEMENT_DUST);
+        uAsset.approve(address(polend), MAX_SETTLEMENT_DUST);
+        polend.fundSettlementDustReserve(address(uAsset), MAX_SETTLEMENT_DUST);
+
         (uint128 reserveBeforeSettlement,) = polend.settlementDustStates(address(uAsset));
         uint256 treasuryBeforeSettlement = uAsset.balanceOf(TREASURY);
         uint256 globalDebtBeforeSettlement = polend.getTotalDebtByUAsset(address(uAsset));
@@ -199,6 +206,7 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
         router.setPairOutputPerLp(pt, address(pol), 0, 0);
 
         uint256 globalDebtBeforeSettlement = polend.getTotalDebtByUAsset(address(uAsset));
+        (uint128 reserveBeforeSettlement,) = polend.settlementDustStates(address(uAsset));
         IMemeverseLauncher.Memeverse memory verse = launcher.getMemeverseByVerseId(VERSE_ID);
         vm.warp(verse.unlockTime + 1);
         assertEq(uint256(launcher.changeStage(VERSE_ID)), uint256(IMemeverseLauncher.Stage.Unlocked), "unlocked");
@@ -222,7 +230,7 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
         );
         assertEq(polend.getTotalDebtByUAsset(address(uAsset)), 0, "global debt cleared");
         (uint128 reserveAfterSettlement,) = polend.settlementDustStates(address(uAsset));
-        assertEq(reserveAfterSettlement, MAX_SETTLEMENT_DUST, "reserve unchanged");
+        assertEq(reserveAfterSettlement, reserveBeforeSettlement, "reserve unchanged (no deficit)");
         assertEq(residualUAsset, 0, "exact recovery");
         assertEq(polUAssetLpAmount, 0, "pol/uAsset lp consumed");
         assertEq(ptUAssetLpAmount, 0, "pt/uAsset lp consumed");
@@ -270,8 +278,10 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
             router.pulledForPair(pt, address(uAsset), address(uAsset)), expectedPtUAsset, "pt/uAsset backing spend"
         );
         (uint128 reserveAfterLock,) = polend.settlementDustStates(address(uAsset));
-        assertEq(reserveAfterLock, LEVERAGED_INTEREST + expectedUnusedUAsset, "unused bootstrap reserve");
-        assertEq(uAsset.balanceOf(TREASURY), treasuryBefore, "no treasury excess");
+        // New model: reserve holds bootstrap residual only (auto-refill from interest removed);
+        // full LEVERAGED_INTEREST now sweeps to treasury.
+        assertEq(reserveAfterLock, expectedUnusedUAsset, "unused bootstrap reserve");
+        assertEq(uAsset.balanceOf(TREASURY) - treasuryBefore, LEVERAGED_INTEREST, "interest swept to treasury");
     }
 
     function testRealPathFundBasedAmountAboveOneCoversSettlementPTBacking() external {
@@ -495,7 +505,10 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
     uint256 public settlementDustReserveAfter;
     uint256 public residualUAsset;
     uint256 public totalLeveragedInterest;
-    uint256 public autoReserve;
+    /// @dev Reserve snapshot taken right after the Genesis->Locked transition. Under the post-auto-refill
+    ///      model this is only the bootstrap residual (finalize no longer credits interest to the reserve),
+    ///      so the name reflects the snapshot timing, not an interest-funded "auto" credit.
+    uint256 public reserveAfterLock;
     uint256 public treasuryInterest;
     uint256 public bootstrapUnusedUAsset;
     uint256 public extraReserve;
@@ -613,8 +626,8 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
         vm.warp(block.timestamp + 1 days + 1);
         launcher.changeStage(VERSE_ID);
         totalLeveragedInterest = polend.getTotalLeveragedInterest(VERSE_ID);
-        (uint128 reserveAfterLock,) = polend.settlementDustStates(address(uAsset));
-        autoReserve = reserveAfterLock;
+        (uint128 reserveAfterLockSnap,) = polend.settlementDustStates(address(uAsset));
+        reserveAfterLock = reserveAfterLockSnap;
         treasuryInterest = uAsset.balanceOf(TREASURY) - treasuryBeforeLock;
         debt = polend.getTotalLeveragedDebt(VERSE_ID);
         (address pt,,,,,,,,,,) = splitter.splitInfos(VERSE_ID);
@@ -969,16 +982,18 @@ contract MemeverseLauncherPOLendSettlementStdInvariantTest is StdInvariant, Test
             handler.recoveredUAsset() > handler.debt() ? handler.recoveredUAsset() - handler.debt() : 0;
 
         assertEq(
-            handler.autoReserve() + handler.treasuryInterest(),
+            handler.reserveAfterLock() + handler.treasuryInterest(),
             handler.totalLeveragedInterest() + handler.bootstrapUnusedUAsset(),
-            "lock funding split"
+            "lock funding conserved (reserve snapshot + treasury == leveraged interest + bootstrap residual)"
         );
         assertEq(
             handler.consumedSettlementDust() + handler.reserveAfterSettlement(),
             handler.reserveBeforeSettlement(),
             "reserve split"
         );
-        assertGe(handler.reserveBeforeSettlement(), handler.autoReserve() + handler.extraReserve(), "reserve source");
+        assertGe(
+            handler.reserveBeforeSettlement(), handler.reserveAfterLock() + handler.extraReserve(), "reserve source"
+        );
         assertEq(handler.residualUAsset(), expectedResidual, "residual from recovered");
     }
 

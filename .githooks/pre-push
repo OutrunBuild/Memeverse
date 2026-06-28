@@ -4,4 +4,12 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-npm run gate
+# Local pre-push runs gate:fast --all: forge build + targeted tests (only mapped
+# test files) + fmt/lint. No slither, coverage, or full forge suite here -- the
+# full ci gate (forge_test_full + coverage + slither, ~12-15 min via_ir build)
+# runs on GitHub Actions (.github/workflows/test.yml -> ci-gate-entrypoint.sh)
+# on every push/PR, so the regressions fast's targeted tests miss (untouched /
+# unmapped test files, cross-file breaks) are caught in CI, not at push time.
+# --all checks every surface file instead of the worktree diff, since changes
+# are already committed and the worktree is usually clean at push time.
+npm run gate:fast -- --all

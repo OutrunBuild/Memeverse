@@ -324,8 +324,8 @@ contract MemeverseLauncherPreorderSuccessInvariantTest is StdInvariant, Memevers
         _registerVerse(launcher, address(uAsset));
 
         IMemeverseLauncher.Memeverse memory verse = launcher.getMemeverseByVerseId(VERSE_ID);
-        hook.setProtocolFeeCurrency(Currency.wrap(address(uAsset)));
-        hook.setProtocolFeeCurrency(Currency.wrap(verse.memecoin));
+        hook.setProtocolFeeCurrency(Currency.wrap(address(uAsset)), true);
+        hook.setProtocolFeeCurrency(Currency.wrap(verse.memecoin), true);
 
         uAsset.mint(ALICE, 1_000 ether);
         uAsset.mint(BOB, 1_000 ether);

@@ -57,7 +57,7 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
     }
 
     function testAfterSwapUsesCachedProtocolFeeSideFromBeforeSwap() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         vm.warp(block.timestamp + 900);
 
         SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
@@ -71,8 +71,8 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
         vm.prank(address(mockManager));
         hook.beforeSwap(address(this), key, params, bytes(""));
 
-        hook.setProtocolFeeCurrencySupport(key.currency0, false);
-        hook.setProtocolFeeCurrencySupport(key.currency1, true);
+        hook.setProtocolFeeCurrency(key.currency0, false);
+        hook.setProtocolFeeCurrency(key.currency1, true);
 
         BalanceDelta delta = toBalanceDelta(-int128(int256(expectedPoolInput)), int128(int256(50 ether)));
 

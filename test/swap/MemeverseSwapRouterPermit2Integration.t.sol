@@ -25,7 +25,7 @@ contract MemeverseSwapRouterPermit2IntegrationTest is RealisticSwapIntegrationBa
     }
 
     function testPermit2_ExactInput_OutputFee_FullFill_Succeeds() external {
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
 
         SwapParams memory params = SwapParams({
@@ -67,7 +67,7 @@ contract MemeverseSwapRouterPermit2IntegrationTest is RealisticSwapIntegrationBa
     }
 
     function testPermit2_ExactInput_OutputFee_PartialFill_RevertsAndRollsBack() external {
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
 
         vm.prank(alice);
         router.swapWithPermit2(

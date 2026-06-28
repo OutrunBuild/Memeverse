@@ -25,7 +25,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
@@ -116,10 +115,8 @@ contract RealV4SwapIntegrator is IUnlockCallback {
     }
 }
 
-/// @notice Proves the referral-rebate CurrencyNotSettled bug against the REAL v4-core PoolManager.
+/// @notice Minimal non-RPC regression guard for referral-rebate settlement on the REAL v4-core PoolManager.
 contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
-    using PoolIdLibrary for PoolKey;
-
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
     address internal constant REFERRER = address(0xCAFE);
 
@@ -131,7 +128,6 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
     MockERC20 internal token1;
     address internal treasury;
     PoolKey internal key;
-    PoolId internal poolId;
 
     function setUp() public {
         // 1. Deploy the REAL v4-core PoolManager via creation bytecode (solc 0.8.26).
@@ -177,7 +173,6 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
             tickSpacing: 200,
             hooks: IHooks(address(hook))
         });
-        poolId = key.toId();
 
         // 7. Initialize pool on the real PoolManager (hook.beforeInitialize deploys LP token).
         hook.setPoolInitializer(address(this));
@@ -197,21 +192,19 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
 
         // 9. Enable input-side protocol fee on currency0 so _beforeSwap charges it and routes
         //    through _collectProtocolFee -> accrueRebate (the buggy path).
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         // 10. Push past the launch-fee decay window so the fee is the stable base fee.
         vm.warp(block.timestamp + 900);
     }
 
     // ---------------------------------------------------------------------
-    // Positive: referrer + rebate > 0 -> swap succeeds on real v4 PoolManager
+    // Minimal regression: referrer + rebate > 0 succeeds on real v4 PoolManager
     // ---------------------------------------------------------------------
 
-    /// @notice A swap carrying a referrer succeeds on the real v4 PoolManager after the fix:
-    ///         the hook performs the rebate `take` to the engine's address (delta on the hook,
-    ///         offset by its specifiedDelta credit), so no unsettled engine delta remains and
-    ///         the rebate accrues. Before the fix this reverted with CurrencyNotSettled because
-    ///         accrueRebate's own poolManager.take() left a -rebate delta on the engine.
+    /// @notice This is the mandatory non-RPC guard for the delta-accounting bug. Fork tests cover
+    ///         broader mainnet scenarios, but they skip when ETH_MAINNET_RPC is absent. This local
+    ///         real-v4 test keeps the critical CurrencyNotSettled regression covered everywhere.
     function test_SwapWithReferrer_Succeeds_OnRealV4() public {
         // Sanity: default rebate is 1000 bps (10% of total fee) -> rebate > 0 on any fee.
         assertEq(engine.referrerRebateBps(), 1000, "default rebate bps");
@@ -226,30 +219,9 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
         assertGt(engine.pendingRebateOf(REFERRER, key.currency0), 0, "rebate accrued");
     }
 
-    // ---------------------------------------------------------------------
-    // Negative 1: no referrer -> swap succeeds (no accrueRebate, hook delta nets to 0)
-    // ---------------------------------------------------------------------
-
-    /// @notice Without a referrer, _collectProtocolFee skips accrueRebate (referrer == 0),
-    ///         the hook's beforeSwapReturnDelta exactly offsets its take() calls, and all
-    ///         deltas settle to zero at unlock end -> swap succeeds.
-    function test_SwapWithoutReferrer_Succeeds_OnRealV4() public {
-        BalanceDelta delta = integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), bytes(""));
-
-        // zeroForOne exact-input: paid token0 (amount0 < 0), received token1 (amount1 > 0).
-        assertLt(delta.amount0(), 0, "paid token0");
-        assertGt(delta.amount1(), 0, "received token1");
-        // No rebate accrued without a referrer.
-        assertEq(engine.pendingRebateOf(REFERRER, key.currency0), 0, "no rebate without referrer");
-    }
-
-    // ---------------------------------------------------------------------
-    // Negative 2: referrer but rebateBps == 0 -> swap succeeds (rebate == 0, accrueRebate
-    //             early-returns; the if (rebate > 0) guard in _collectProtocolFee skips it)
-    // ---------------------------------------------------------------------
-
-    /// @notice With rebateBps set to 0, _collectProtocolFee computes rebate = 0 and never
-    ///         calls accrueRebate, so no engine delta is created and the swap settles cleanly.
+    /// @notice With a referrer but rebateBps set to zero, the swap still settles on real v4 and
+    ///         records no rebate. This keeps the disabled-rebate branch covered without the broader
+    ///         duplicate no-referrer case that the fork/mock rebate suites already exercise.
     function test_SwapWithReferrerZeroRebate_Succeeds_OnRealV4() public {
         hook.setReferrerRebateBps(0);
         assertEq(engine.referrerRebateBps(), 0, "rebate disabled");

@@ -158,7 +158,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @notice Verifies single-permit swaps pull input and execute successfully.
     /// @dev Confirms the router requests the expected Permit2 transfer and completes the swap path.
     function testSwapWithPermit2_TransfersInputAndExecutes() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(token0), 100 ether);
@@ -193,7 +193,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @notice Verifies the Permit2 swap path stays below the current gas ceiling.
     /// @dev This keeps the Permit2 witness and prefund flow from regressing after router-only refactors.
     function testSwapWithPermit2_GasStaysBelowCeiling() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(token0), 100 ether);
@@ -238,7 +238,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         guardedHook.setPoolInitializer(address(this));
         guardedHook.authorizePoolInitialization(guardedKey, SQRT_PRICE_1_1);
         guardedManager.initialize(guardedKey, SQRT_PRICE_1_1);
-        guardedHook.setProtocolFeeCurrency(guardedKey.currency0);
+        guardedHook.setProtocolFeeCurrency(guardedKey.currency0, true);
         (bool setOk, bytes memory setData) = _setPublicSwapResumeTime(
             address(guardedHook), address(token0), address(token1), uint40(block.timestamp + 1 hours)
         );
@@ -276,7 +276,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @notice Covers the local manager revert surface when Permit2 execution swaps pass a zero price limit.
     /// @dev Locks that the Permit2 prefund path still forwards the swap params into the mock execution path, so `0` reverts locally.
     function testSwapWithPermit2_RevertsWhenExecutionPriceLimitIsZero() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         manager.setEnforceV4PriceLimitValidation(true);
 
@@ -301,7 +301,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @notice Covers the Permit2 exact-output prefund-and-refund branch under the local router harness.
     /// @dev This locks local budget plumbing parity with the regular router path rather than proving real execution semantics.
     function testSwapWithPermit2_ExactOutputRefundsUnusedPrefundedInput() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         uint256 balance0Before = token0.balanceOf(alice);
         uint256 amountInMaximum = 500 ether;
         IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(token0), amountInMaximum);
@@ -329,7 +329,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @notice Covers the local fail-closed Permit2 branch for exact-input underfills on output-side fee pools.
     /// @dev Uses the mock harness to witness payer, treasury, and LP-fee rollback when the hook rejects the swap.
     function testSwapWithPermit2_RevertsWhenExactInputPartialFillsOnOutputFeePool() external {
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         IMemeverseSwapRouter.Permit2SingleParams memory seedPermit = _singlePermit(address(token0), 10 ether);
         vm.prank(alice);
@@ -400,7 +400,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @notice Covers the mirrored local fail-closed Permit2 branch for one-for-zero exact-input underfills on output-fee pools.
     /// @dev Uses the mock harness to witness rollback symmetry on the Permit2 path rather than proving full production partial-fill semantics.
     function testSwapWithPermit2_RevertsWhenOneForZeroExactInputPartialFillsOnOutputFeePool() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         IMemeverseSwapRouter.Permit2SingleParams memory seedPermit = _singlePermit(address(token1), 10 ether);
         vm.prank(alice);
@@ -470,7 +470,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
 
     /// @notice Verifies the single Permit2 path now surfaces Permit2's own amount check.
     function testSwapWithPermit2_RevertsWhenPermittedAmountBelowRequestedAmount() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         uint256 amountIn = 100 ether;
@@ -788,7 +788,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @notice Verifies canonical Permit2 witness signing works for swaps.
     /// @dev Uses the signature-verifying Permit2 mock to cover the canonical witness format.
     function testSwapWithPermit2_RealPermit2CanonicalWitnessExecutes() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         uint256 amountIn = 100 ether;

@@ -214,14 +214,6 @@ contract POLendTest is Test, POLendStorageHelper {
         uint256 indexed verseId, address indexed uAsset, uint256 ptAmount, uint256 uAssetBacking, address mintTo
     );
     event SettlementDustReserveConfigured(address indexed uAsset, uint128 oldMaxReserve, uint128 newMaxReserve);
-    event SettlementDustReservedFromInterest(
-        uint256 indexed verseId,
-        address indexed uAsset,
-        uint256 totalLeveragedInterest,
-        uint256 credited,
-        uint256 treasuryInterest,
-        uint256 reserveAfter
-    );
     event SettlementDustReserveFunded(
         address indexed uAsset, address indexed funder, uint256 amount, uint256 credited, uint256 excess
     );
@@ -989,14 +981,10 @@ contract POLendTest is Test, POLendStorageHelper {
         IPOLend.LendMarket memory market = polend.getLendMarket(VERSE_ID);
         assertEq(uint256(market.state), 2, "state locked");
         assertEq(uAsset.balanceOf(address(launcher)), 100 ether, "minted debt to launcher");
-        assertEq(
-            uAsset.balanceOf(address(this)) - treasuryBefore,
-            10 ether - MAX_SETTLEMENT_DUST,
-            "interest swept to treasury"
-        );
+        assertEq(uAsset.balanceOf(address(this)) - treasuryBefore, 10 ether, "interest swept to treasury");
     }
 
-    function testFinalizeLeveragedGenesis_CreditsGlobalReserveAndTransfersTreasuryInterest() external {
+    function testFinalizeLeveragedGenesis_SweepsFullInterestToTreasuryNoReserveCredit() external {
         uAsset.mint(ALICE, 10 ether);
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
@@ -1004,63 +992,20 @@ contract POLendTest is Test, POLendStorageHelper {
         polend.leveragedGenesis(VERSE_ID, 10 ether);
         uint256 treasuryBefore = uAsset.balanceOf(address(this));
 
-        vm.expectEmit(true, true, false, true);
-        emit SettlementDustReservedFromInterest(
-            VERSE_ID,
-            address(uAsset),
-            10 ether,
-            MAX_SETTLEMENT_DUST,
-            10 ether - MAX_SETTLEMENT_DUST,
-            MAX_SETTLEMENT_DUST
-        );
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
 
         (uint128 reserve,) = polend.settlementDustStates(address(uAsset));
-        assertEq(reserve, uint128(MAX_SETTLEMENT_DUST), "reserve");
-        assertEq(uAsset.balanceOf(address(this)), treasuryBefore + 10 ether - MAX_SETTLEMENT_DUST, "treasury");
-        assertEq(uAsset.balanceOf(address(polend)), MAX_SETTLEMENT_DUST, "polend reserve");
-    }
-
-    function testFinalizeLeveragedGenesis_ReserveIsCappedByInterest() external {
-        BurnableMockERC20 extraUAsset = new BurnableMockERC20("EXTRA", "EXTRA");
-        uint256 verseId = 399;
-        launcher.setVerseUAsset(verseId, address(extraUAsset));
-        launcher.setGenesisFunds(verseId, 1_000 ether);
-        launcher.setFundMetaData(address(extraUAsset), 1_000 ether, 1);
-        polend.setMaxSettlementDustReserve(address(extraUAsset), uint128(10 ether));
-        vm.prank(address(launcher));
-        polend.registerLendMarket(verseId);
-
-        extraUAsset.mint(ALICE, 1 ether);
-        vm.prank(ALICE);
-        extraUAsset.approve(address(polend), 1 ether);
-        vm.prank(ALICE);
-        polend.leveragedGenesis(verseId, 1 ether);
-
-        vm.prank(address(launcher));
-        polend.finalizeLeveragedGenesis(verseId);
-
-        (uint128 reserve,) = polend.settlementDustStates(address(extraUAsset));
-        assertEq(reserve, uint128(1 ether), "reserve capped by interest");
-        assertEq(extraUAsset.balanceOf(address(polend)), 1 ether, "all interest reserved");
-    }
-
-    function testFinalizeLeveragedGenesis_RevertsWhenDustCapUnset() external {
-        seedSettlementDustStateForTest(address(polend), address(uAsset), 0, 0);
-        setGenesisStateForTest(address(polend), VERSE_ID, 10 ether);
-        uAsset.mint(address(polend), 10 ether);
-
-        vm.prank(address(launcher));
-        vm.expectRevert(IPOLend.InvalidConfig.selector);
-        polend.finalizeLeveragedGenesis(VERSE_ID);
+        assertEq(reserve, 0, "no reserve credit from interest");
+        assertEq(uAsset.balanceOf(address(this)), treasuryBefore + 10 ether, "full treasury sweep");
+        assertEq(uAsset.balanceOf(address(polend)), 0, "all interest swept out of polend");
     }
 
     // --- finalizeLeveragedGenesis: credit-aware split & burn ---
 
-    /// @notice Mixed-source finalize: only the real-uAsset slice funds the dust reserve and
-    ///         treasury sweep; the credit-funded slice is burned in-place from POLend's escrow.
-    function test_Finalize_ReserveTreasuryOnlyOnRealInterest() external {
+    /// @notice Mixed-source finalize: the full real-uAsset slice sweeps to the treasury; the
+    ///         credit-funded slice is burned in-place from POLend's escrow.
+    function test_Finalize_RealInterestSweepsToTreasuryCreditBurned() external {
         // Real 100e18 (uAsset) + credit 50e18 (mock credit) => aggregate 150e18 interest,
         // debt = 150e18 / 0.1e18 = 1_500e18.
         uAsset.mint(ALICE, 100 ether);
@@ -1077,31 +1022,17 @@ contract POLendTest is Test, POLendStorageHelper {
         uint256 polendCreditBefore = credit.balanceOf(address(polend));
         assertEq(polendCreditBefore, 50 ether, "polend escrows credit pre-finalize");
 
-        // Reserve/treasury split is over real 100e18 only (not aggregate 150e18).
         vm.expectEmit(true, true, false, true);
         emit CreditBurned(VERSE_ID, address(uAsset), 50 ether);
-        vm.expectEmit(true, true, false, true);
-        emit SettlementDustReservedFromInterest(
-            VERSE_ID,
-            address(uAsset),
-            100 ether,
-            MAX_SETTLEMENT_DUST,
-            100 ether - MAX_SETTLEMENT_DUST,
-            MAX_SETTLEMENT_DUST
-        );
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
 
         // Aggregate debt still minted to launcher.
         assertEq(uAsset.balanceOf(address(launcher)), 1_500 ether, "aggregate debt minted");
-        // Reserve capped at MAX_SETTLEMENT_DUST, the rest of real interest goes to treasury.
-        assertEq(
-            uAsset.balanceOf(address(this)) - treasuryBefore,
-            100 ether - MAX_SETTLEMENT_DUST,
-            "treasury swept real-only excess"
-        );
+        // Full real interest sweeps to treasury; no reserve credit from interest.
+        assertEq(uAsset.balanceOf(address(this)) - treasuryBefore, 100 ether, "full real interest to treasury");
         (uint128 reserve,) = polend.settlementDustStates(address(uAsset));
-        assertEq(reserve, uint128(MAX_SETTLEMENT_DUST), "reserve credited from real interest");
+        assertEq(reserve, 0, "no reserve credit from interest");
         // Credit escrow burned to zero; no credit transferred elsewhere.
         assertEq(credit.balanceOf(address(polend)), 0, "credit burned from escrow");
         assertEq(credit.totalSupply(), 0, "credit supply reduced by burn");
@@ -1179,9 +1110,6 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.expectEmit(true, true, false, true);
         emit CreditBurned(VERSE_ID, address(uAsset), 10 ether);
-        // realInterest == 0 => credited/treasuryInterest both zero, reserve unchanged.
-        vm.expectEmit(true, true, false, true);
-        emit SettlementDustReservedFromInterest(VERSE_ID, address(uAsset), 0, 0, 0, reserveBefore);
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
 
@@ -1209,7 +1137,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uint256 polendCreditBefore = credit.balanceOf(address(polend));
         uint256 treasuryBefore = uAsset.balanceOf(address(this));
 
-        // Only the dust event fires; no CreditBurned. Real interest == aggregate.
+        // No CreditBurned fires; the full real interest sweeps to treasury.
         vm.recordLogs();
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
@@ -1223,11 +1151,7 @@ contract POLendTest is Test, POLendStorageHelper {
         assertEq(credit.totalSupply(), creditSupplyBefore, "credit supply unchanged");
         assertEq(credit.balanceOf(address(polend)), polendCreditBefore, "no credit escrow change");
         assertEq(uAsset.balanceOf(address(launcher)), 100 ether, "debt minted");
-        assertEq(
-            uAsset.balanceOf(address(this)) - treasuryBefore,
-            10 ether - MAX_SETTLEMENT_DUST,
-            "treasury swept real interest"
-        );
+        assertEq(uAsset.balanceOf(address(this)) - treasuryBefore, 10 ether, "treasury swept real interest");
     }
 
     function testClaimRefund_ReturnsInterestOnlyInRefund() external {

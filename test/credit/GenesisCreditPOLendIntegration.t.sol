@@ -179,8 +179,8 @@ contract IntegrationSplitter {
 ///         full POLend lifecycle (Genesis -> Locked -> Settled). Verifies the credit-path
 ///         invariants that the per-function unit tests in `POLend.t.sol` cannot exercise together:
 ///         - GenesisCredit escrowed at genesis, burned at finalize (supply reduced, no stray transfer).
-///         - Debt minted from the aggregate (real + credit) interest, but the dust reserve / treasury
-///           sweep split only the real-uAsset slice.
+///         - Debt minted from the aggregate (real + credit) interest, while the full real-uAsset
+///           slice sweeps to treasury; finalize does not fund the settlement dust reserve.
 ///         - `claimLeveragedYT` and `claimResidual` split pro-rata over the aggregate interest, so a
 ///           credit-only participant is never blocked by a real-only gate and conservation holds:
 ///           aliceYT + bobYT == totalLeveragedYT, and aliceResidual + bobResidual == residual per asset.
@@ -283,7 +283,7 @@ contract GenesisCreditPOLendIntegration is Test {
         assertEq(polend.getTotalLeveragedDebt(VERSE_ID), 150 ether, "aggregate debt");
         assertEq(credit.balanceOf(address(polend)), 5 ether, "credit escrowed pre-finalize");
 
-        // --- Finalize: real slice -> dust+treasury, credit slice -> burn, aggregate debt minted ---
+        // --- Finalize: full real slice sweeps to treasury, credit slice burns, aggregate debt mints ---
         uint256 treasuryBefore = uAsset.balanceOf(address(this));
         uint256 creditSupplyBefore = credit.totalSupply();
 
@@ -293,8 +293,8 @@ contract GenesisCreditPOLendIntegration is Test {
         assertEq(uint256(polend.getLendMarket(VERSE_ID).state), uint256(IPOLend.MarketState.Locked), "locked");
         // Aggregate debt (real + credit) is minted to the launcher from the real-uAsset token.
         assertEq(uAsset.balanceOf(address(launcher)), 150 ether, "aggregate debt minted to launcher");
-        // Treasury receives only the real slice excess (realInterest - dust reserve); credit funds nothing here.
-        assertEq(uAsset.balanceOf(address(this)) - treasuryBefore, 10 ether - MAX_DUST, "treasury real-only");
+        // Treasury receives the full real-uAsset interest sweep; credit funds nothing here.
+        assertEq(uAsset.balanceOf(address(this)) - treasuryBefore, 10 ether, "treasury real-only");
         // Credit escrow burned in-place; supply reduced by exactly the credit-funded interest.
         assertEq(credit.balanceOf(address(polend)), 0, "credit escrow burned");
         assertEq(credit.totalSupply(), creditSupplyBefore - 5 ether, "credit supply reduced");

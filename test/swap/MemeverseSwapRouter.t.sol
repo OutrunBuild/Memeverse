@@ -156,7 +156,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     /// @notice Configures which currency the hook should collect protocol fees in.
     /// @dev Helper invoked by tests before swaps to keep protocol-fee context consistent.
     function _setProtocolFeeCurrency(Currency feeCurrency) internal {
-        hook.setProtocolFeeCurrency(feeCurrency);
+        hook.setProtocolFeeCurrency(feeCurrency, true);
     }
 
     /// @notice Verifies router quotes are delegated through the configured hook lens.
@@ -449,7 +449,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         guardedHook.authorizePoolInitialization(guardedKey, SQRT_PRICE_1_1);
         guardedManager.initialize(guardedKey, SQRT_PRICE_1_1);
         guardedHook.setPoolInitializer(address(guardedRouter));
-        guardedHook.setProtocolFeeCurrency(guardedKey.currency0);
+        guardedHook.setProtocolFeeCurrency(guardedKey.currency0, true);
         (bool setOk, bytes memory setData) = _setPublicSwapResumeTime(
             address(guardedHook), address(token0), address(token1), uint40(block.timestamp + 1 hours)
         );
@@ -540,8 +540,8 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         guardedHook.setPoolInitializer(address(guardedRouter));
         seedActiveLiquiditySharesForTest(address(guardedHook), blockedKey.toId(), address(this), 1e18);
         seedActiveLiquiditySharesForTest(address(guardedHook), openKey.toId(), address(this), 1e18);
-        guardedHook.setProtocolFeeCurrency(blockedKey.currency0);
-        guardedHook.setProtocolFeeCurrency(openKey.currency0);
+        guardedHook.setProtocolFeeCurrency(blockedKey.currency0, true);
+        guardedHook.setProtocolFeeCurrency(openKey.currency0, true);
         (bool setOk, bytes memory setData) = _setPublicSwapResumeTime(
             address(guardedHook), address(token0), address(token1), uint40(block.timestamp + 1 hours)
         );
@@ -725,7 +725,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         pristineHook.authorizePoolInitialization(pristineKey, postSettlementPrice);
         pristineManager.initialize(pristineKey, postSettlementPrice);
         seedActiveLiquiditySharesForTest(address(pristineHook), pristineKey.toId(), address(this), 1e18);
-        pristineHook.setProtocolFeeCurrency(pristineKey.currency0);
+        pristineHook.setProtocolFeeCurrency(pristineKey.currency0, true);
         pristineHook.setDefaultLaunchFeeConfig(
             IMemeverseDynamicFeeEngine.LaunchFeeConfig({startFeeBps: 100, minFeeBps: 100, decayDurationSeconds: 1})
         );
@@ -762,7 +762,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         guardedHook.setPoolInitializer(address(this));
         guardedHook.authorizePoolInitialization(guardedKey, SQRT_PRICE_1_1);
         guardedManager.initialize(guardedKey, SQRT_PRICE_1_1);
-        guardedHook.setProtocolFeeCurrency(guardedKey.currency0);
+        guardedHook.setProtocolFeeCurrency(guardedKey.currency0, true);
         (bool setOk, bytes memory setData) = _setPublicSwapResumeTime(
             address(guardedHook), address(token0), address(token1), uint40(block.timestamp + 1 hours)
         );

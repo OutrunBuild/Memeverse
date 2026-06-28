@@ -6,7 +6,7 @@ import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
-import {MemeversePOLMinter} from "../../src/verse/MemeversePOLMinter.sol";
+import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -397,7 +397,7 @@ contract MemeverseLauncherMintPOLInvariantTest is StdInvariant, Test, MemeverseL
             )
         );
         launcher = IMemeverseLauncher(launcherProxy);
-        launcher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         router = new MockSwapRouter(address(launcher));
         dispatcher = new MockOFTDispatcher();
         uAsset = new MockERC20("UASSET", "UASSET", 18);

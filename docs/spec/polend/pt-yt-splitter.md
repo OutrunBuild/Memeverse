@@ -95,7 +95,7 @@ burn POL collateral
 - 普通用户领取到地址上的 PT fee
 - 普通用户后续 `redeemPT`
 - `executeGlobalSettlement` 后真实 `redeemPT`
-- `src/verse/MemeverseFeeDistributor.sol::captureLockedAuxiliaryFees` 捕获进 `pendingAuxiliaryGovFeeStates.pendingPTFee` 的 PT fee
+- `src/verse/MemeverseSettlementImpl.sol::_captureLockedAuxiliaryFees` 捕获进 `pendingAuxiliaryGovFeeStates.pendingPTFee` 的 PT fee
 
 不变量：
 

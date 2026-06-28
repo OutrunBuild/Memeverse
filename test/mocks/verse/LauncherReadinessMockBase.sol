@@ -4,12 +4,12 @@ pragma solidity ^0.8.35;
 import {IMemeverseLauncher} from "../../../src/verse/interfaces/IMemeverseLauncher.sol";
 
 /// @notice Dummy contract used as the bootstrap implementation in readiness tests.
-/// @dev The script-side readiness check (`_requireContractCode(bootstrapImpl, ...)`) only verifies
+/// @dev The script-side readiness check (`_requireContractCode(launchImpl, ...)`) only verifies
 /// the address has bytecode. Using a distinct dummy contract — instead of the launcher mock itself —
 /// preserves the production invariant that the launcher and its bootstrap sibling are different
-/// addresses; if a wiring bug ever made the launcher return its own address as `bootstrapImpl`,
+/// addresses; if a wiring bug ever made the launcher return its own address as `launchImpl`,
 /// the mock would still expose that bug instead of rubber-stamping it.
-contract BootstrapImplDummy {}
+contract LaunchImplDummy {}
 
 /// @notice Shared launcher mock for script readiness tests.
 /// @dev Owns the fields that back the production `getLauncherContracts()` view and the
@@ -18,20 +18,20 @@ contract BootstrapImplDummy {}
 /// suite needs.
 contract LauncherReadinessMockBase {
     address public owner;
-    address public memeverseRegistrar;
-    address public memeverseProxyDeployer;
-    address public yieldDispatcher;
+    address internal memeverseRegistrar;
+    address internal memeverseProxyDeployer;
+    address internal yieldDispatcher;
     address public polend;
-    address public polSplitter;
-    address public memeverseSwapRouter;
-    address public memeverseUniswapHook;
-    address public bootstrapImpl;
-    address public feeDistributorImpl;
-    address public feePreviewReader;
-    address public polMinterImpl;
+    address internal polSplitter;
+    address internal memeverseSwapRouter;
+    address internal memeverseUniswapHook;
+    address internal launchImpl;
+    address internal settlementImpl;
+    address internal feePreviewReader;
+    address internal liquidityImpl;
 
     constructor() {
-        bootstrapImpl = address(new BootstrapImplDummy());
+        launchImpl = address(new LaunchImplDummy());
     }
 
     function setOwner(address owner_) external {
@@ -46,16 +46,16 @@ contract LauncherReadinessMockBase {
         memeverseUniswapHook = hook_;
     }
 
-    function setFeeDistributorImpl(address impl) external {
-        feeDistributorImpl = impl;
+    function setSettlementImpl(address impl) external {
+        settlementImpl = impl;
     }
 
     function setFeePreviewReader(address reader) external {
         feePreviewReader = reader;
     }
 
-    function setPOLMinterImpl(address impl) external {
-        polMinterImpl = impl;
+    function setLiquidityImpl(address impl) external {
+        liquidityImpl = impl;
     }
 
     /// @dev Returns a struct literal — every field of `LauncherContracts` is named explicitly.
@@ -71,11 +71,11 @@ contract LauncherReadinessMockBase {
             memeverseProxyDeployer: memeverseProxyDeployer,
             memeverseSwapRouter: memeverseSwapRouter,
             polSplitter: polSplitter,
-            bootstrapImpl: bootstrapImpl,
+            launchImpl: launchImpl,
             memeverseUniswapHook: memeverseUniswapHook,
-            feeDistributorImpl: feeDistributorImpl,
+            settlementImpl: settlementImpl,
             feePreviewReader: feePreviewReader,
-            polMinterImpl: polMinterImpl
+            liquidityImpl: liquidityImpl
         });
     }
 }

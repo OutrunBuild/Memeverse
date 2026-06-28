@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import {SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
@@ -17,7 +16,7 @@ import {IMemeverseFeePreviewReader} from "./interfaces/IMemeverseFeePreviewReade
 /// @title MemeverseFeePreviewReader
 /// @notice Independent view contract that previews genesis maker fees and quotes the LayerZero fee for
 ///         fee distribution. Relocated from the MemeverseLauncher facade (Step C).
-/// @dev Unlike the delegatecall siblings (MemeverseBootstrap, MemeverseFeeDistributor), this reader does
+/// @dev Unlike the delegatecall siblings (MemeverseLaunchImpl, MemeverseSettlementImpl, MemeverseLiquidityImpl), this reader does
 ///      NOT bind the launcher ERC-7201 slot and does NOT receive delegatecalls. It staticcalls the proxy's
 ///      public getters to read state, so it cannot mutate proxy storage. `address(this)` in the original
 ///      facade preview bodies referred to the fee accumulator (the proxy); here it is replaced by the
@@ -154,21 +153,23 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         );
     }
 
-    // MUST mirror MemeverseFeeDistributor._splitAuxiliaryGovFees — drift breaks preview accuracy.
+    // Shared via MemeverseLauncherLib.splitAuxiliaryGovFees; the settlement impl uses the same lib helper, so
+    // the two callers cannot drift on the split formula (only their input fetch differs: proxy getter vs storage).
     function _splitAuxiliaryGovFees(
         uint256 verseId,
         uint256 totalUAssetFee,
         uint256 totalPTFee,
         bool preserveNormalShare
     ) internal view returns (uint256 govUAssetFee, uint256 govPTFee) {
+        // GR-001: short-circuit before the proxy SLOAD + external getTotalLeveragedDebt fetch on the
+        // Unlocked-stage path (preserveNormalShare == false). Mirrors the lib helper's own first-line guard;
+        // restoring pre-refactor gas. Same return values; only skips the wasted fetch on the false branch.
         if (!preserveNormalShare) return (totalUAssetFee, totalPTFee);
         uint256 normalFunds = IMemeverseLauncher(PROXY).totalNormalFunds(verseId);
         uint256 totalLeveragedDebt = IPOLend(IMemeverseLauncher(PROXY).polend()).getTotalLeveragedDebt(verseId);
-        uint256 totalFunds = MemeverseLauncherLib.checkedTotalGenesisFunds(normalFunds, totalLeveragedDebt);
-        if (totalFunds == 0) return (totalUAssetFee, totalPTFee);
-
-        govUAssetFee = FullMath.mulDiv(totalUAssetFee, totalLeveragedDebt, totalFunds);
-        govPTFee = FullMath.mulDiv(totalPTFee, totalLeveragedDebt, totalFunds);
+        return MemeverseLauncherLib.splitAuxiliaryGovFees(
+            normalFunds, totalLeveragedDebt, totalUAssetFee, totalPTFee, preserveNormalShare
+        );
     }
 
     function _previewPairFees(address tokenA, address tokenB)

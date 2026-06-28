@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -173,6 +174,8 @@ contract MemeverseLauncherRegistrationTest is Test, MemeverseLauncherTestHelper 
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
         launcher.setLzEndpointRegistry(address(registry));
         launcher.setFundMetaData(address(0x7777), 10 ether, 1);
+        // Phase 3B: registerMemeverse delegatecalls the launch sibling; bind it before tests call it.
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
         vm.stopPrank();
     }
 

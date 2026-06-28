@@ -9,6 +9,8 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
+import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
@@ -123,6 +125,11 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
             )
         );
         launcher = IMemeverseLauncher(launcherProxy);
+        // Phase 4B: refund/claimNormalYT/claimUnlockedPreorderMemecoin delegatecall the settlement sibling,
+        // so wire it for the views suite just as the proxy owner would in production.
+        launcher.setSettlementImpl(address(new MemeverseSettlementImpl()));
+        // Phase 3B: genesis/preorder delegatecall the launch sibling; bind it for the genesis/preorder view tests.
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
         feePreviewReader = new MemeverseFeePreviewReader(launcherProxy);
 
         // Deploy a pure proxy (implementation = pure MemeverseLauncher, no *ForTest helpers)
@@ -234,10 +241,10 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         signatures[39] = "registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool)";
         signatures[40] = "remainingGenesisCapacity(uint256)";
         signatures[41] = "removeGasDust(address)";
-        signatures[42] = "setBootstrapImpl(address)";
+        signatures[42] = "setLaunchImpl(address)";
         signatures[43] = "setExecutorRewardRate(uint256)";
         signatures[44] = "setExternalInfo(uint256,string,string,string[])";
-        signatures[45] = "setFeeDistributorImpl(address)";
+        signatures[45] = "setSettlementImpl(address)";
         signatures[46] = "setFeePreviewReader(address)";
         signatures[47] = "setFundMetaData(address,uint256,uint256)";
         signatures[48] = "setGasLimits(uint128,uint128)";
@@ -246,7 +253,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         signatures[51] = "setMemeverseRegistrar(address)";
         signatures[52] = "setMemeverseSwapRouter(address)";
         signatures[53] = "setMemeverseUniswapHook(address)";
-        signatures[54] = "setPOLMinterImpl(address)";
+        signatures[54] = "setLiquidityImpl(address)";
         signatures[55] = "setPreorderConfig(uint256,uint256)";
         signatures[56] = "setYieldDispatcher(address)";
         signatures[57] = "settleLeveragedAuxiliaryLiquidity(uint256)";

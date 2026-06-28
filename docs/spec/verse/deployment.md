@@ -16,8 +16,9 @@
 - `MemeverseRegistrationCenter`：中心链注册入口与 fan-out。`[代码已证]`
 - `MemeverseRegistrarAtLocal` 或 `MemeverseRegistrarOmnichain`：注册执行层。`[代码已证]`
 - `MemeverseLauncher`：verse 生命周期与资金总编排；当前为 `IOutrunDeployer` CREATE3 部署的 `ERC1967Proxy + UUPS` proxy。`[代码已证]`
-- `MemeverseBootstrap`：bootstrap 流动性部署 sibling；Launcher facade 经 `delegatecall` 调用的纯逻辑合约，与 Launcher 共享同一 ERC-7201 storage namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct，在 proxy storage 上下文执行主池+三辅助池创建、preorder settlement 接线与 residual 处置。本身非 proxy（无 `Initializable`、无自身 storage），部署期由 owner `setBootstrapImpl` 接线。`[代码已证]`
-- `MemeverseFeeDistributor`：fee 分发 delegatecall sibling；与 Launcher/Bootstrap 共享同一 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct，在 proxy storage 上下文执行 fee 收集/分发（redeem fee 捕获、POL burn、executor reward 拆分、同链/跨链分发）。本身非 proxy、无自身 storage，部署期由 owner `setFeeDistributorImpl` 接线。`[代码已证]`
+- `MemeverseLaunchImpl`：launch 生命周期 delegatecall sibling；Launcher facade 经 `delegatecall` 调用的纯逻辑合约，与 Launcher 共享同一 ERC-7201 storage namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct，在 proxy storage 上下文执行 registerMemeverse / genesis / preorder / `changeStage` stage dispatcher / 治理组件部署编排。本身非 proxy（无 `Initializable`、无自身 storage），部署期由 owner `setLaunchImpl` 接线。`[代码已证]`
+- `MemeverseSettlementImpl`：settlement / claim / fee 分发 delegatecall sibling；与 Launcher 共享同一 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct，在 proxy storage 上下文执行 fee 收集/分发（redeem fee 捕获、POL burn、executor reward 拆分、同链/跨链分发）、refund / refundPreorder / claimNormalYT / claimNormalFees / claimUnlockedPreorderMemecoin / `redeemAndDistributeFees`、Locked→Unlocked 解算编排（`unlockFromLocked`）、post-unlock 公开 swap 保护。本身非 proxy、无自身 storage，部署期由 owner `setSettlementImpl` 接线。`[代码已证]`
+- `MemeverseLiquidityImpl`：bootstrap 流动性 / POL mint / LP 赎回 delegatecall sibling；与 Launcher 共享同一 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct，在 proxy storage 上下文执行主池+三辅助池创建、preorder settlement 接线、residual 处置、`mintPOLToken`、`redeemAuxiliaryLiquidity`、`settleLeveragedAuxiliaryLiquidity`、`redeemMemecoinLiquidity`、LP helper。本身非 proxy、无自身 storage，部署期由 owner `setLiquidityImpl` 接线。`[代码已证]`
 - `MemeverseFeePreviewReader`：fee 预览独立 view 合约（genesis maker fee 预览、fee 分发 LayerZero fee 报价）；通过 immutable `PROXY` staticcall proxy getter 读状态，不绑名域、不被 delegatecall、不改 proxy storage。构造注入 proxy 地址，部署期由 owner `setFeePreviewReader` 接线。`[代码已证]`
 - `MemeverseProxyDeployer`：per-verse clone/proxy 部署器。`[代码已证]`
 - `YieldDispatcher`：收益 OFT compose 分发器。`[代码已证]`
@@ -69,8 +70,8 @@
 ## 4. 关键部署依赖事实
 
 - Launcher 配置 router / hook 时的 set-time 三重校验与 write-once 语义见 [docs/spec/invariants.md](../invariants.md) INV-04；`Genesis -> Locked` 执行建池前会做 launch-time preflight 复核，避免配置漂移到运行建池时才失败。`[代码已证]`
-- `Genesis -> Locked` 的 bootstrap 流动性部署由 Launcher facade `::_deployLiquidity` 经 `delegatecall` 委托 `MemeverseBootstrap`（`src/verse/MemeverseBootstrap.sol::deployLiquidity` / `src/verse/interfaces/IMemeverseBootstrap.sol::deployLiquidity`）。sibling 与 Launcher facade 共享同一 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct，在 proxy storage 上下文执行；sibling 地址由 owner `setBootstrapImpl` 配置（`src/verse/MemeverseLauncher.sol::setBootstrapImpl`），未配置时 `Genesis -> Locked` 回退 `BootstrapImplNotSet`。`[代码已证]`
-- fee 分发的 delegatecall 委托路径：Launcher facade `::redeemAndDistributeFees`（`src/verse/MemeverseLauncher.sol::redeemAndDistributeFees`）与 `changeStage` 的 Locked→Unlocked 分支（`::captureLockedAuxiliaryFees`）经 `delegatecall` 委托 `MemeverseFeeDistributor`（`src/verse/MemeverseFeeDistributor.sol::collectAndDistributeFees` / `::captureLockedAuxiliaryFees`）。sibling 地址由 owner `setFeeDistributorImpl` 配置（`src/verse/MemeverseLauncher.sol::setFeeDistributorImpl`），未配置时 delegatecall 前置点回退 `FeeDistributorImplNotSet`。sibling 与 Launcher/Bootstrap 共享同一 ERC-7201 namespace 与 struct，在 proxy storage 上下文执行。`[代码已证]`
+- `Genesis -> Locked` 的 bootstrap 流动性部署由 `MemeverseLaunchImpl`（`src/verse/MemeverseLaunchImpl.sol::_deployLiquidity`）经 `delegatecall` 委托 `MemeverseLiquidityImpl`（`src/verse/MemeverseLiquidityImpl.sol::deployBootstrapLiquidity` / `src/verse/interfaces/IMemeverseLiquidityImpl.sol::deployBootstrapLiquidity`；原 `deployLiquidity` selector 变更为 `deployBootstrapLiquidity`）。sibling 与 Launcher facade 共享同一 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct，在 proxy storage 上下文执行；sibling 地址由 owner `setLiquidityImpl` 配置（`src/verse/MemeverseLauncher.sol::setLiquidityImpl`），未配置时 `Genesis -> Locked` 回退 `LiquidityImplNotSet`。`[代码已证]`
+- fee 分发的 delegatecall 委托路径：Launcher facade `::redeemAndDistributeFees`（`src/verse/MemeverseLauncher.sol::redeemAndDistributeFees`）与 `changeStage` 的 Locked→Unlocked 分支（`::unlockFromLocked`）经 `delegatecall` 委托 `MemeverseSettlementImpl`（`src/verse/MemeverseSettlementImpl.sol::collectAndDistributeFees` / `::unlockFromLocked`）。sibling 地址由 owner `setSettlementImpl` 配置（`src/verse/MemeverseLauncher.sol::setSettlementImpl`），未配置时 delegatecall 前置点回退 `SettlementImplNotSet`。sibling 与 Launcher 共享同一 ERC-7201 namespace 与 struct，在 proxy storage 上下文执行。`[代码已证]`
 - `polend` 与 `polSplitter` 都是 Launcher proxy 初始化写入的必需接线，当前代码不存在 unset 或运行中换地址路径。注册、创世部署、fee preview/claim、unlock settlement 都直接依赖这两个固定地址。`[代码已证]`
 - 具体接线语义：
   - `polend`：注册时 `registerLendMarket`，部署时 `finalizeLeveragedGenesis`，Locked governor PT fee 预兑付时 `preRedeemPTFee`，unlock settlement 时按需 `executeGlobalSettlement`
@@ -96,10 +97,10 @@
 
 脚本支持两种部署模式：
 
-- **单角色部署**（`deployCaller == initialOwner`，如同一 EOA 既部署又持有 owner）：脚本在部署过程中直接写入 `setFundMetaData`，并部署两个 delegatecall sibling `MemeverseBootstrap` / `MemeverseFeeDistributor` 与独立 view 合约 `MemeverseFeePreviewReader`，再调用 `launcher.setBootstrapImpl(...)` / `launcher.setFeeDistributorImpl(...)` / `launcher.setFeePreviewReader(...)` 接线。readiness check 通过后即可打开 registration。`[代码已证]`
-证据：`script/MemeverseScript.s.sol:_deployMemeverseLauncher, _setMemeverseLauncherFundMetaData`；`src/verse/MemeverseLauncher.sol::setBootstrapImpl`、`::setFeeDistributorImpl`、`::setFeePreviewReader`
-- **双角色部署**（`deployCaller != initialOwner`，如 DevOps 负责部署、multisig 持有 owner）：脚本部署 proxy 并执行 `initialize`，但跳过 `setFundMetaData` 与 bootstrap/fee-distributor/fee-preview 三个 setter 写入。`initialOwner` 必须在单独交易中调用 `launcher.setFundMetaData(...)`、`launcher.setBootstrapImpl(...)`、`launcher.setFeeDistributorImpl(...)`、`launcher.setFeePreviewReader(...)`，完成后才能通过 readiness check 并打开 registration。脚本在检测到双角色部署时输出 console 警告。`[代码已证]`
-证据：`script/MemeverseScript.s.sol:_deployMemeverseLauncher`（条件跳过 + 警告 log，文案为 `"WARNING: deployCaller(%s) != initialOwner(%s) -- fund metadata, bootstrapImpl, feeDistributorImpl and feePreviewReader must be set by initialOwner"`）
+- **单角色部署**（`deployCaller == initialOwner`，如同一 EOA 既部署又持有 owner）：脚本在部署过程中直接写入 `setFundMetaData`，并部署三个 delegatecall sibling `MemeverseLaunchImpl` / `MemeverseSettlementImpl` / `MemeverseLiquidityImpl` 与独立 view 合约 `MemeverseFeePreviewReader`，再调用 `launcher.setLaunchImpl(...)` / `launcher.setSettlementImpl(...)` / `launcher.setFeePreviewReader(...)` / `launcher.setLiquidityImpl(...)` 接线。四个 setter 彼此无顺序依赖；该顺序仅对齐当前部署脚本与 WARNING 文案，readiness check 只要求四者最终均已接线且有代码。readiness check 通过后即可打开 registration。`[代码已证]`
+证据：`script/MemeverseScript.s.sol:_deployMemeverseLauncher, _setMemeverseLauncherFundMetaData`；`src/verse/MemeverseLauncher.sol::setLaunchImpl`、`::setSettlementImpl`、`::setFeePreviewReader`、`::setLiquidityImpl`
+- **双角色部署**（`deployCaller != initialOwner`，如 DevOps 负责部署、multisig 持有 owner）：脚本部署 proxy 并执行 `initialize`，但跳过 `setFundMetaData` 与 launch/settlement/fee-preview/liquidity 四个 setter 写入。`initialOwner` 必须在单独交易中调用 `launcher.setFundMetaData(...)`、`launcher.setLaunchImpl(...)`、`launcher.setSettlementImpl(...)`、`launcher.setFeePreviewReader(...)`、`launcher.setLiquidityImpl(...)`，完成后才能通过 readiness check 并打开 registration。脚本在检测到双角色部署时输出 console 警告。`[代码已证]`
+证据：`script/MemeverseScript.s.sol:_deployMemeverseLauncher`（条件跳过 + 警告 log，文案为 `"WARNING: deployCaller(%s) != initialOwner(%s) -- fund metadata, launchImpl, settlementImpl, feePreviewReader and liquidityImpl must be set by initialOwner"`）
 
 Launcher、`POLend`、`POLSplitter`、`lpTokenImplementation`、`preorderSettlementExecutor` 使用同一 `DEPLOYMENT_NONCE` 派生各自 salt；脚本输出的 `DeploymentResult` 必须把这些地址作为 first-class fields 返回，不能只把后两者当作内部临时地址。
 
@@ -119,24 +120,24 @@ Launcher、`POLend`、`POLSplitter`、`lpTokenImplementation`、`preorderSettlem
 3. `_deployMemeverseLauncher(nonce)`：部署 Launcher implementation（salt = `MemeverseLauncherImplementation + nonce`），用预测的 POLend 和 POLSplitter 地址构建 proxy creation code，部署 Launcher proxy（salt = `MemeverseLauncher + nonce`）。
 4. `_deployPOLSplitter(nonce)`：部署 POLSplitter implementation（salt = `POLSplitterImplementation + nonce`），用已部署的 Launcher 地址构建 proxy creation code，部署 POLSplitter proxy（salt = `POLSplitter + nonce`）。`POLSplitter.initialize` 内部调用 `launcher.polend()` 获取 POLend 地址，因此 Launcher 必须先部署。
 5. 部署 `lpTokenImplementation` 与 `preorderSettlementExecutor`，并写入 `DeploymentResult.lpTokenImplementation`、`DeploymentResult.preorderSettlementExecutor`。
-6. 单角色部署模式下，脚本部署两个 delegatecall sibling `MemeverseBootstrap` / `MemeverseFeeDistributor` 与独立 view 合约 `MemeverseFeePreviewReader` 并分别调用 `launcher.setBootstrapImpl(...)` / `launcher.setFeeDistributorImpl(...)` / `launcher.setFeePreviewReader(...)` 接线（双角色模式跳过，由 `initialOwner` 在单独交易中完成）。
-7. 打开 registration 前执行 readiness checks。fund metadata 与 bootstrapImpl readiness 取决于部署模式：单角色部署时脚本已在部署中写入 `setFundMetaData` 与 bootstrap/fee-distributor/fee-preview 三个 setter；双角色部署时 `initialOwner` 须在单独交易中调用 `launcher.setFundMetaData(...)`、`launcher.setBootstrapImpl(...)`、`launcher.setFeeDistributorImpl(...)`、`launcher.setFeePreviewReader(...)`。
+6. 单角色部署模式下，脚本部署三个 delegatecall sibling `MemeverseLaunchImpl` / `MemeverseSettlementImpl` / `MemeverseLiquidityImpl` 与独立 view 合约 `MemeverseFeePreviewReader` 并分别调用 `launcher.setLaunchImpl(...)` / `launcher.setSettlementImpl(...)` / `launcher.setFeePreviewReader(...)` / `launcher.setLiquidityImpl(...)` 接线（双角色模式跳过，由 `initialOwner` 在单独交易中完成）。`[代码已证]`
+7. 打开 registration 前执行 readiness checks。fund metadata 与 launchImpl readiness 取决于部署模式：单角色部署时脚本已在部署中写入 `setFundMetaData` 与 launch/settlement/fee-preview/liquidity 四个 setter；双角色部署时 `initialOwner` 须在单独交易中调用 `launcher.setFundMetaData(...)`、`launcher.setLaunchImpl(...)`、`launcher.setSettlementImpl(...)`、`launcher.setFeePreviewReader(...)`、`launcher.setLiquidityImpl(...)`。
 
 Readiness checks 至少包括：`[代码已证]`
 证据：`script/MemeverseScript.s.sol:_checkMemeverseLauncherDeployment, _checkPOLendDeployment, _checkPOLSplitterDeployment, _requireDeploymentReady`
 
 - Launcher proxy 地址有代码（`code.length > 0`）。脚本不显式比较 implementation 地址；若误填 implementation 地址，后续 `owner()` / getter 一致性检查会以具体 getter 不匹配报错。
 - `launcher.owner() == initialOwner`。
-- `launcher.memeverseRegistrar() == MEMEVERSE_REGISTRAR`，且 registrar back-reference 指向 Launcher proxy。
-- `launcher.memeverseProxyDeployer() == MEMEVERSE_PROXY_DEPLOYER`，且 proxy deployer back-reference 指向 Launcher proxy。
-- `launcher.yieldDispatcher() == MEMEVERSE_YIELD_DISPATCHER`，且 yield dispatcher back-reference 指向 Launcher proxy。
+- `launcher.getLauncherContracts().memeverseRegistrar == MEMEVERSE_REGISTRAR`，且 registrar back-reference 指向 Launcher proxy。
+- `launcher.getLauncherContracts().memeverseProxyDeployer == MEMEVERSE_PROXY_DEPLOYER`，且 proxy deployer back-reference 指向 Launcher proxy。
+- `launcher.getLauncherContracts().yieldDispatcher == MEMEVERSE_YIELD_DISPATCHER`，且 yield dispatcher back-reference 指向 Launcher proxy。
 - `launcher.polend() == polendProxy`。
-- `launcher.polSplitter() == polSplitterProxy`。
+- `launcher.getLauncherContracts().polSplitter == polSplitterProxy`。
 - `polend.owner() == initialOwner`、`polend.launcher() == launcherProxy`、`polend.splitter() == polSplitterProxy`、`polend.treasury() == POLEND_TREASURY`。
 - `polSplitter.owner() == initialOwner`、`polSplitter.launcher() == launcherProxy`、`polSplitter.polend() == polendProxy`。
 - `DeploymentResult.lpTokenImplementation` 与 `DeploymentResult.preorderSettlementExecutor` 均为非零地址且 `code.length > 0`。
-- `bootstrapImpl`（`LauncherContracts` 第 8 字段）非零且有代码；脚本 `_readLauncherImplSiblings` 取值后 `_requireContractCode(bootstrapImpl, "BOOTSTRAP_IMPL_NOT_READY")`。`[代码已证]`
-- `feeDistributorImpl`（`LauncherContracts` 第 10 字段）与 `feePreviewReader`（第 11 字段）进 readiness check：脚本 `_readLauncherImplSiblings` 取值后分别 `_requireContractCode(feeDistributorImpl, "FEE_DISTRIBUTOR_IMPL_NOT_READY")` 与 `_requireContractCode(feePreviewReader, "FEE_PREVIEW_READER_NOT_READY")`，与 `bootstrapImpl` 对称。未接线时 readiness 失败、阻断 registration 打开；运行时 `FeeDistributorImplNotSet` 守卫仅作兜底。`[代码已证]`
+- `launchImpl`（`LauncherContracts` 字段）非零且有代码；脚本 typed decode `getLauncherContracts()` 后 `_requireContractCode(launchImpl, "LAUNCH_IMPL_NOT_READY")`。`[代码已证]`
+- `settlementImpl` / `feePreviewReader` / `liquidityImpl` 与 `launchImpl` 同步进 readiness check：脚本 typed decode `getLauncherContracts()` 后分别 `_requireContractCode(settlementImpl, "SETTLEMENT_IMPL_NOT_READY")`、`_requireContractCode(feePreviewReader, "FEE_PREVIEW_READER_NOT_READY")`、`_requireContractCode(liquidityImpl, "LIQUIDITY_IMPL_NOT_READY")`，四者对称。未接线时 readiness 失败、阻断 registration 打开；运行时 `LaunchImplNotSet` / `SettlementImplNotSet` / `LiquidityImplNotSet` 守卫仅作兜底。`[代码已证]`
 - `POLend.creditFactory()` 进 readiness check：脚本 `_readAddress(POLEND, "creditFactory()")` 取值后 `_requireContractCode(..., "POLEND_CREDIT_FACTORY_NOT_READY")`，与 bootstrap/fee sibling 同类（均为用户路径接线指针）。校验"有代码"而非"非零"——`_buildPOLendCreationCode` 在未设 `CREDIT_FACTORY_PROXY` 时会兜底写入 `initialOwner`（非零 EOA），仅 `code.length > 0` 才能拦住占位、阻断 registration 打开。`[代码已证]`
 - 同一 nonce 复用时，`lpTokenImplementation` 与 `preorderSettlementExecutor` 必须和按当前 salt 预测出的地址一致；二者的运行期 codehash 都必须等于预期值（`lpTokenImplementation` 对应 `EXPECTED_LP_TOKEN_IMPLEMENTATION_CODEHASH`，`preorderSettlementExecutor` 对应 `EXPECTED_PREORDER_SETTLEMENT_EXECUTOR_CODEHASH`，见 `script/DeployMemeverseHookProxy.s.sol::_validateExistingImplementationCodehashes`），同时要求地址非零且有代码。
 - 每个支持的 `uAsset` 都有非零 `fundMetaDatas(uAsset).minTotalFund` 与 `fundMetaDatas(uAsset).fundBasedAmount`。

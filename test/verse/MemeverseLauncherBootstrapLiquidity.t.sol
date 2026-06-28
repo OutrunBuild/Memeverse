@@ -6,7 +6,9 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
-import {MemeverseBootstrap} from "../../src/verse/MemeverseBootstrap.sol";
+import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
+import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
+import {DelegatecallOnly} from "../../src/common/access/DelegatecallOnly.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 
@@ -20,10 +22,12 @@ import {
     MockLzEndpointRegistry
 } from "../mocks/verse/LauncherLifecycleMocks.sol";
 
-/// @notice Targeted guard tests for the `bootstrapImpl` zero-address check in `_deployLiquidity`.
-/// @dev The launcher facade delegatecalls the `MemeverseBootstrap` sibling to deploy liquidity; if the
-///      sibling is unset the facade reverts with `BootstrapImplNotSet` before the delegatecall.
-contract MemeverseLauncherBootstrapImplTest is Test, MemeverseLauncherTestHelper {
+/// @notice Targeted guard tests for the nested launch->liquidity delegatecall chain in `changeStage`.
+/// @dev The facade's `changeStage` delegatecalls the launch sibling, which (in the Genesis->Locked branch)
+///      delegatecalls the liquidity sibling to deploy bootstrap liquidity. The guard chain is:
+///      facade.changeStage -> (LaunchImplNotSet guard on facade) -> launchImpl.changeStage ->
+///      _deployLiquidity -> (LiquidityImplNotSet guard in launchImpl) -> liquidityImpl.deployBootstrapLiquidity.
+contract MemeverseLauncherBootstrapLiquidityTest is Test, MemeverseLauncherTestHelper {
     IMemeverseLauncher internal launcher;
     address internal launcherProxy;
     MockSwapRouter internal router;
@@ -38,9 +42,12 @@ contract MemeverseLauncherBootstrapImplTest is Test, MemeverseLauncherTestHelper
     MockERC20 internal pt;
     MockERC20 internal yt;
 
-    /// @notice Deploys the launcher proxy and supporting mocks, but intentionally leaves `bootstrapImpl` unset.
-    /// @dev Mirrors `MemeverseLauncherLifecycleTest.setUp` minus the `setBootstrapImpl` call so each test
-    ///      can control sibling availability explicitly.
+    /// @notice Deploys the launcher proxy and supporting mocks and binds the launch sibling, but intentionally
+    ///         leaves `liquidityImpl` unset.
+    /// @dev Mirrors `MemeverseLauncherLifecycleTest.setUp` minus the `setLiquidityImpl` call so each test can
+    ///      control liquidity-sibling availability explicitly. The launch sibling is bound here so the
+    ///      facade's `changeStage` clears its `LaunchImplNotSet` guard and reaches the liquidity guard inside
+    ///      `MemeverseLaunchImpl._deployLiquidity`.
     function setUp() external {
         dispatcher = new MockOFTDispatcher();
         uAsset = new MockERC20("UASSET", "UASSET", 18);
@@ -81,7 +88,10 @@ contract MemeverseLauncherBootstrapImplTest is Test, MemeverseLauncherTestHelper
 
         launcher.setMemeverseUniswapHook(address(router.hook()));
         launcher.setMemeverseSwapRouter(address(router));
-        // Deliberately omitted: launcher.setBootstrapImpl(...). Each test asserts the guard explicitly.
+        // Bind the launch sibling so the facade's LaunchImplNotSet guard does not fire and the call reaches
+        // the liquidity guard inside MemeverseLaunchImpl._deployLiquidity.
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        // Deliberately omitted: launcher.setLiquidityImpl(...). Each test asserts the guard explicitly.
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
         launcher.setLzEndpointRegistry(address(registry));
@@ -122,17 +132,19 @@ contract MemeverseLauncherBootstrapImplTest is Test, MemeverseLauncherTestHelper
         arr[0] = value;
     }
 
-    /// @notice Verifies `changeStage` reverts when `bootstrapImpl` is unset even though funding qualifies for launch.
-    /// @dev Exercises the zero-address guard in `_deployLiquidity`; the revert must surface as `BootstrapImplNotSet`.
-    function test_revertsWhenBootstrapImplNotSet() external {
+    /// @notice Verifies `changeStage` reverts when `liquidityImpl` is unset even though funding qualifies for launch.
+    /// @dev The call traverses facade.changeStage -> launchImpl.changeStage -> launchImpl._deployLiquidity, where
+    ///      the zero-address guard fires and surfaces as `LiquidityImplNotSet` (the launch sibling is already bound).
+    function test_revertsWhenLiquidityImplNotSet() external {
         uint256 verseId = 1;
         _seedFlashGenesisVerseReadyToLock(verseId);
 
-        vm.expectRevert(IMemeverseLauncher.BootstrapImplNotSet.selector);
+        vm.expectRevert(IMemeverseLauncher.LiquidityImplNotSet.selector);
         launcher.changeStage(verseId);
 
-        // Reaching `_deployLiquidity` means Genesis pre-checks passed and the verse was about to lock;
-        // the guard must leave the stage untouched so the call is safe to retry after binding a sibling.
+        // Reaching `_deployLiquidity` inside the launch sibling means Genesis pre-checks passed and the
+        // verse was about to lock; the guard must leave the stage untouched so the call is safe to retry
+        // after binding a sibling.
         assertEq(
             uint256(launcher.getStageByVerseId(verseId)),
             uint256(IMemeverseLauncher.Stage.Genesis),
@@ -140,39 +152,40 @@ contract MemeverseLauncherBootstrapImplTest is Test, MemeverseLauncherTestHelper
         );
     }
 
-    /// @notice Verifies the bootstrap sibling runs via delegatecall once bound, advancing the verse to `Locked`.
-    /// @dev Same fixture as the guard test, but `setBootstrapImpl` is invoked first; the sibling deploys the
-    ///      main and POL pools, mints POL, and records bootstrap residual state in the facade's storage.
+    /// @notice Verifies the bootstrap liquidity sibling runs via the nested delegatecall chain once bound,
+    ///         advancing the verse to `Locked`.
+    /// @dev Same fixture as the guard test, but `setLiquidityImpl` is invoked first; facade.changeStage
+    ///      delegatecalls launchImpl.changeStage, which delegatecalls liquidityImpl.deployBootstrapLiquidity.
+    ///      The liquidity sibling deploys the main and POL pools, mints POL, and records bootstrap residual
+    ///      state in the facade's storage.
     function test_bootstrapRunsViaSiblingAfterSet() external {
         uint256 verseId = 1;
         _seedFlashGenesisVerseReadyToLock(verseId);
 
-        launcher.setBootstrapImpl(address(new MemeverseBootstrap()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
 
         IMemeverseLauncher.Stage stage = launcher.changeStage(verseId);
 
         assertEq(uint256(stage), uint256(IMemeverseLauncher.Stage.Locked), "returned stage");
         assertEq(uint256(launcher.getStageByVerseId(verseId)), uint256(IMemeverseLauncher.Stage.Locked), "stored stage");
-        // The bootstrap sibling records the POL/uAsset LP amount in the facade's auxiliary-liquidity slot.
+        // The liquidity sibling records the POL/uAsset LP amount in the facade's auxiliary-liquidity slot.
         (uint256 polUAssetLp,,) = MemeverseLauncher(launcherProxy).auxiliaryLiquidities(verseId);
         assertGt(polUAssetLp, 0, "bootstrap deployed POL/uAsset liquidity");
     }
 
-    /// @notice A direct (non-delegatecall) invocation of sibling.deployLiquidity must revert.
-    /// @dev The sibling has no initializer and no setter, so its own storage is permanently
-    ///      uninitialized: memeverseSwapRouter / memeverseUniswapHook read as address(0), and
-    ///      MemeverseLauncherLib.validateSettlementWiring reverts on its zero-address require. Locks the
-    ///      "deployLiquidity is facade-delegatecall-only" invariant so a future initializer/setter
+    /// @notice A direct (non-delegatecall) invocation of sibling.deployBootstrapLiquidity must revert.
+    /// @dev The sibling inherits `DelegatecallOnly`, so a direct call reverts with `DelegatecallOnlyCall`
+    ///      at the `onlyDelegatecall` guard before any storage access. Locks the
+    ///      "deployBootstrapLiquidity is facade-delegatecall-only" invariant so a future initializer/setter
     ///      added to the sibling cannot silently break it.
     function test_directCallToSiblingReverts() external {
-        MemeverseBootstrap sibling = new MemeverseBootstrap();
+        MemeverseLiquidityImpl sibling = new MemeverseLiquidityImpl();
         address attacker = makeAddr("attacker");
 
-        // Non-zero _polend / _polSplitter bypass deployLiquidity's first require so the call reaches
-        // MemeverseLauncherLib.validateSettlementWiring, where empty sibling storage forces the revert.
+        // Direct call hits the inherited `onlyDelegatecall` guard and reverts before the body runs.
         vm.prank(attacker);
-        vm.expectRevert(IMemeverseLauncher.InvalidPreorderSettlementConfig.selector);
-        sibling.deployLiquidity(
+        vm.expectRevert(DelegatecallOnly.DelegatecallOnlyCall.selector);
+        sibling.deployBootstrapLiquidity(
             1, address(uAsset), address(memecoin), address(liquidProof), 0, address(polend), address(splitter)
         );
     }

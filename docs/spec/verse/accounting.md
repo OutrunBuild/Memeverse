@@ -146,7 +146,7 @@
 - `mainPoolGovFee = mainPoolUAssetFee - executorReward`，减法必须保持 checked arithmetic 语义。
 - 执行者奖励直接发给 `rewardReceiver`。
 - `quoteDistributionLzFee` 与 `redeemAndDistributeFees` 必须共享同一套执行者奖励分账算术语义；quote 口径不得因中间乘法溢出而偏离 redeem 实际执行结果。
-- 上述 quote 与 redeem 共享的分账算术通过内部库 `src/verse/libraries/MemeverseLauncherLib.sol::splitExecutorReward` 落地：`MemeverseFeeDistributor._splitExecutorReward` 与 `MemeverseFeePreviewReader._splitExecutorReward` 仅作为薄 wrapper 调用同一实现，二者之间仅在如何读取 `executorRewardRate` 上不同。[代码已证]
+- 上述 quote 与 redeem 共享的分账算术通过内部库 `src/verse/libraries/MemeverseLauncherLib.sol::splitExecutorReward` 落地：`MemeverseSettlementImpl._splitExecutorReward` 与 `MemeverseFeePreviewReader._splitExecutorReward` 仅作为薄 wrapper 调用同一实现，二者之间仅在如何读取 `executorRewardRate` 上不同。[代码已证]
 - 辅助 governor 路径的 `uAsset` fee 与 `PT` 转换后的 `uAsset` 会在主池分账之后并入 governor treasury 路径，不额外再拆执行者奖励。
 
 ### 5.4 治理链本地/异链分发

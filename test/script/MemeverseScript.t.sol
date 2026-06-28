@@ -39,8 +39,8 @@ contract MockScriptLauncher is LauncherReadinessMockBase {
         return (data.minTotalFund, data.fundBasedAmount);
     }
 
-    function setBootstrapImpl(address impl) external {
-        bootstrapImpl = impl;
+    function setLaunchImpl(address impl) external {
+        launchImpl = impl;
     }
 }
 
@@ -71,6 +71,7 @@ contract MockScriptYieldDispatcher {
 contract MockScriptPOLend {
     address public launcher;
     address public splitter;
+    address public creditFactory;
     mapping(address => DustState) internal dustStates;
 
     struct DustState {
@@ -81,6 +82,7 @@ contract MockScriptPOLend {
     constructor(address launcher_, address splitter_) {
         launcher = launcher_;
         splitter = splitter_;
+        creditFactory = address(this);
     }
 
     function setSplitter(address splitter_) external {
@@ -378,21 +380,20 @@ contract MemeverseScriptTest is Test {
         launcher.setMemeverseSwapRouter(address(router));
         launcher.setMemeverseUniswapHook(readyHook);
 
-        // readiness 校验四个 delegatecall/view sibling 有代码（_readLauncherImplSiblings 的
-        // BOOTSTRAP/FEE_DISTRIBUTOR/FEE_PREVIEW/POL_MINTER 检查）；etch 有代码的地址并接线。
-        address bootstrapImplAddr = address(uint160(0x5001));
-        address feeDistributorImplAddr = address(uint160(0x5002));
+        // Readiness requires code at every launch/settlement/view/liquidity sibling before opening.
+        address launchImplAddr = address(uint160(0x5001));
+        address settlementImplAddr = address(uint160(0x5002));
         address feePreviewReaderAddr = address(uint160(0x5003));
-        address polMinterImplAddr = address(uint160(0x5004));
+        address liquidityImplAddr = address(uint160(0x5004));
         bytes memory siblingCode = address(hookImpl).code;
-        vm.etch(bootstrapImplAddr, siblingCode);
-        vm.etch(feeDistributorImplAddr, siblingCode);
+        vm.etch(launchImplAddr, siblingCode);
+        vm.etch(settlementImplAddr, siblingCode);
         vm.etch(feePreviewReaderAddr, siblingCode);
-        vm.etch(polMinterImplAddr, siblingCode);
-        launcher.setBootstrapImpl(bootstrapImplAddr);
-        launcher.setFeeDistributorImpl(feeDistributorImplAddr);
+        vm.etch(liquidityImplAddr, siblingCode);
+        launcher.setLaunchImpl(launchImplAddr);
+        launcher.setSettlementImpl(settlementImplAddr);
         launcher.setFeePreviewReader(feePreviewReaderAddr);
-        launcher.setPOLMinterImpl(polMinterImplAddr);
+        launcher.setLiquidityImpl(liquidityImplAddr);
         return (address(router), readyHook);
     }
 

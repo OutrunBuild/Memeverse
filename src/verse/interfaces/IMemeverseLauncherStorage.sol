@@ -5,7 +5,7 @@ import {IMemeverseLauncher} from "./IMemeverseLauncher.sol";
 
 /// @notice Storage layout for the MemeverseLauncher ERC-7201 namespace.
 ///         Shared between the MemeverseLauncher facade and its delegatecall siblings
-///         (MemeverseBootstrap, MemeverseFeeDistributor) so all bind the same struct to the same
+///         (MemeverseLaunchImpl, MemeverseSettlementImpl, MemeverseLiquidityImpl) so all bind the same struct to the same
 ///         ERC-7201 base slot via `layout at erc7201(...)`.
 ///         Nested value types (Memeverse, FundMetaData, etc.) are members of `IMemeverseLauncher`,
 ///         so they are referenced via that interface rather than redeclared here.
@@ -42,8 +42,8 @@ struct MemeverseLauncherStorage {
     mapping(uint256 verseId => IMemeverseLauncher.NormalFeeState) normalFeeStates;
     mapping(uint256 verseId => mapping(address account => IMemeverseLauncher.UserNormalFeeClaim)) userNormalFeeClaims;
     mapping(uint256 verseId => IMemeverseLauncher.PendingAuxiliaryGovFeeState) pendingAuxiliaryGovFeeStates;
-    address bootstrapImpl; // appended at end — ERC-7201 allows append-only growth
-    address feeDistributorImpl; // appended — delegatecall target for fee distribution (Step C)
+    address launchImpl; // appended at end — ERC-7201 allows append-only growth
+    address settlementImpl; // appended — delegatecall target for fee distribution (Step C)
     address feePreviewReader; // appended — independent view contract for fee previews (Step C)
-    address polMinterImpl; // appended — delegatecall target for POL minting (Step D)
+    address liquidityImpl; // appended — delegatecall target for POL minting (Step D)
 }

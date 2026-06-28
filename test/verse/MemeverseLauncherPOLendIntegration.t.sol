@@ -8,10 +8,10 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
-import {MemeverseBootstrap} from "../../src/verse/MemeverseBootstrap.sol";
-import {MemeverseFeeDistributor} from "../../src/verse/MemeverseFeeDistributor.sol";
+import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
+import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
-import {MemeversePOLMinter} from "../../src/verse/MemeversePOLMinter.sol";
+import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {POLend} from "../../src/polend/POLend.sol";
 import {POLSplitter} from "../../src/polend/POLSplitter.sol";
@@ -97,10 +97,10 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         launcher.setMemeverseUniswapHook(address(hook));
         hook.setPoolInitializer(address(router));
         launcher.setMemeverseSwapRouter(address(router));
-        launcher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        launcher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        launcher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         launcher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(launcher))));
-        launcher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
         launcher.setFundMetaData(address(uAsset), 10 ether, 1);

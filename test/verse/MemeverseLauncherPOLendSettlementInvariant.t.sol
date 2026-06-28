@@ -25,10 +25,10 @@ import {
 } from "../mocks/verse/LauncherSettlementMocks.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
-import {MemeverseBootstrap} from "../../src/verse/MemeverseBootstrap.sol";
-import {MemeverseFeeDistributor} from "../../src/verse/MemeverseFeeDistributor.sol";
+import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
+import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
-import {MemeversePOLMinter} from "../../src/verse/MemeversePOLMinter.sol";
+import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 
 contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLauncherTestHelper {
     uint256 internal constant VERSE_ID = 1;
@@ -98,10 +98,10 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
         launcher.setMemeverseUniswapHook(address(hook));
         hook.setPoolInitializer(address(router));
         launcher.setMemeverseSwapRouter(address(router));
-        launcher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        launcher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        launcher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         launcher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(launcher))));
-        launcher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(new MockProxyDeployerForPOLendIntegration()));
         setPolSplitterForTest(launcherProxy, address(splitter));
@@ -803,10 +803,10 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
         IMemeverseLauncher(launcher_).setMemeverseUniswapHook(address(hook_));
         hook_.setPoolInitializer(address(router_));
         IMemeverseLauncher(launcher_).setMemeverseSwapRouter(address(router_));
-        IMemeverseLauncher(launcher_).setBootstrapImpl(address(new MemeverseBootstrap()));
-        IMemeverseLauncher(launcher_).setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        IMemeverseLauncher(launcher_).setLaunchImpl(address(new MemeverseLaunchImpl()));
+        IMemeverseLauncher(launcher_).setSettlementImpl(address(new MemeverseSettlementImpl()));
         IMemeverseLauncher(launcher_).setFeePreviewReader(address(new MemeverseFeePreviewReader(launcher_)));
-        IMemeverseLauncher(launcher_).setPOLMinterImpl(address(new MemeversePOLMinter()));
+        IMemeverseLauncher(launcher_).setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         IMemeverseLauncher(launcher_).setYieldDispatcher(address(dispatcher_));
         IMemeverseLauncher(launcher_).setMemeverseProxyDeployer(address(new MockProxyDeployerForPOLendIntegration()));
         setPolSplitterForTest(launcher_, address(splitter_));

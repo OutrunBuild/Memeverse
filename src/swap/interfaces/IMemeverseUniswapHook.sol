@@ -176,6 +176,13 @@ interface IMemeverseUniswapHook {
     /// @param config New default launch-fee schedule.
     function setDefaultLaunchFeeConfig(IMemeverseDynamicFeeEngine.LaunchFeeConfig calldata config) external;
 
+    /// @notice Updates whether a currency is eligible to receive protocol fees.
+    /// @dev Implementations are expected to restrict this to an admin or owner role. If both pool sides are supported,
+    /// the swap path prefers charging protocol fees on the input side.
+    /// @param currency The currency whose support flag is being updated.
+    /// @param supported Whether protocol fees may settle in `currency`.
+    function setProtocolFeeCurrency(Currency currency, bool supported) external;
+
     /**
      * @notice Returns stored pool information for a hook-managed pool.
      * @dev Exposes the LP token address and fee-per-share accumulators.

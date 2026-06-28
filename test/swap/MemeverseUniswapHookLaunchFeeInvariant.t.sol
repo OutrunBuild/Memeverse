@@ -166,8 +166,8 @@ contract DirectPreorderSettlementHandler is Test {
         uint256 netOutputAmount = grossOutputAmount - protocolFeeOutputAmount;
 
         vm.startPrank(owner);
-        hook.setProtocolFeeCurrencySupport(key.currency0, useCurrency0AsFeeSide);
-        hook.setProtocolFeeCurrencySupport(key.currency1, !useCurrency0AsFeeSide);
+        hook.setProtocolFeeCurrency(key.currency0, useCurrency0AsFeeSide);
+        hook.setProtocolFeeCurrency(key.currency1, !useCurrency0AsFeeSide);
         vm.stopPrank();
 
         BalanceDelta delta = hook.executePreorderSettlement(
@@ -266,7 +266,7 @@ contract MemeverseUniswapHookLaunchFeeQuoteInvariantTest is StdInvariant, Test, 
         hook.setPoolInitializer(address(this));
         hook.authorizePoolInitialization(key, SQRT_PRICE_1_1);
         manager.initialize(key, SQRT_PRICE_1_1);
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         handler = new LaunchFeeQuoteHandler(hook, lens, key);
         targetContract(address(handler));
@@ -357,7 +357,7 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
         hook.authorizePoolInitialization(key, SQRT_PRICE_1_1);
         manager.initialize(key, SQRT_PRICE_1_1);
         seedActiveLiquiditySharesForTest(address(hook), poolId, address(this), 1e18);
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         handler = new DirectPreorderSettlementHandler(hook, key, token0, token1, address(this), settlementRecipient);
         hook.setLauncher(address(handler));

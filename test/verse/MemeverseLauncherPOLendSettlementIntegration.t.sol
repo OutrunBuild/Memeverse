@@ -201,9 +201,9 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
 
         // 10. Mark the freshly-deployed memecoin/pol/uAsset as fee currencies on the hook.
         IMemeverseLauncher.Memeverse memory verse = launcher.getMemeverseByVerseId(VERSE_ID);
-        hook.setProtocolFeeCurrency(Currency.wrap(address(uAsset)));
-        hook.setProtocolFeeCurrency(Currency.wrap(verse.memecoin));
-        hook.setProtocolFeeCurrency(Currency.wrap(verse.pol));
+        hook.setProtocolFeeCurrency(Currency.wrap(address(uAsset)), true);
+        hook.setProtocolFeeCurrency(Currency.wrap(verse.memecoin), true);
+        hook.setProtocolFeeCurrency(Currency.wrap(verse.pol), true);
     }
 
     /// @dev Locks the verse by supplying 1 ether of leveraged interest through the real POLend, then

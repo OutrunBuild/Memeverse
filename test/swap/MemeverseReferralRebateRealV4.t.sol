@@ -197,7 +197,7 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
 
         // 9. Enable input-side protocol fee on currency0 so _beforeSwap charges it and routes
         //    through _collectProtocolFee -> accrueRebate (the buggy path).
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         // 10. Push past the launch-fee decay window so the fee is the stable base fee.
         vm.warp(block.timestamp + 900);

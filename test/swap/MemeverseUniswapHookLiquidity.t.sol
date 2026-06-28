@@ -572,7 +572,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @notice Verifies `updateUserSnapshot` handles zero LP balances by only moving offsets.
     /// @dev Covers the zero-balance early branch without accruing pending fees.
     function testUpdateUserSnapshot_ZeroBalanceOnlyUpdatesOffsets() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         router.addLiquidity(
             key.currency0, key.currency1, 100 ether, 100 ether, 90 ether, 90 ether, address(this), block.timestamp
         );
@@ -621,7 +621,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @dev With no permanently locked LP, all minted liquidity participates in fee growth.
     function testLpFeeGrowth_UsesEffectiveSupplyAndQ128Accumulator() external {
         uint128 liquidity = _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
@@ -649,7 +649,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @dev Locks both public swap fee collection and launch-settlement LP fee credit to the hook-side cached supply path.
     function testLpFeeHotPaths_UseCachedSupplyInsteadOfExternalTotalSupply() external {
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         (address lpToken,,) = hook.poolInfo(poolId);
         vm.mockCallRevert(lpToken, abi.encodeWithSelector(TOTAL_SUPPLY_SELECTOR), bytes("unexpected totalSupply"));
@@ -754,7 +754,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @dev Zero address remains fee-neutral because it receives no LP balance.
     function testFirstLiquidityAdd_DoesNotMintLockedZeroAddressShares() external {
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         (address lpToken,,) = hook.poolInfo(poolId);
 
         vm.prank(address(mockManager));
@@ -790,7 +790,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         router.addLiquidity(
             key.currency0, key.currency1, 100 ether, 100 ether, 90 ether, 90 ether, address(this), block.timestamp
         );
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         vm.prank(address(mockManager));
         hook.beforeSwap(
@@ -826,10 +826,10 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         assertEq(hook.treasury(), address(0xBEEF), "treasury");
 
         vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
-        hook.setProtocolFeeCurrency(CurrencyLibrary.ADDRESS_ZERO);
+        hook.setProtocolFeeCurrency(CurrencyLibrary.ADDRESS_ZERO, true);
 
         vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
-        hook.setProtocolFeeCurrencySupport(CurrencyLibrary.ADDRESS_ZERO, true);
+        hook.setProtocolFeeCurrency(CurrencyLibrary.ADDRESS_ZERO, true);
     }
 
     /// @notice Verifies swap quoting reverts when neither side is enabled for protocol fees.
@@ -856,7 +856,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     }
 
     function testQuoteSwapReverts_WhenPoolKeyUsesDifferentHook() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         PoolKey memory mismatchedKey = PoolKey({
             currency0: key.currency0,
@@ -888,7 +888,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @custom:dev-only-harness Uses the hook-liquidity manager mock to witness fee-accounting rollback on revert.
     function testDirectManagerSwapReverts_WhenExactInputPartialFills() external {
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
             key, SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: 0}), bytes("")
@@ -910,7 +910,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @custom:dev-only-harness Locks hook-side handling under the local hook-liquidity manager mock instead of proving full v4 execution semantics.
     function testDirectManagerSwapPasses_WhenOneForZeroExactInputUsesNetPoolInputOnOutputFeePool() external {
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         vm.warp(block.timestamp + 900);
 
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
@@ -936,7 +936,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @custom:dev-only-harness Uses the hook-liquidity manager mock to witness atomic rollback instead of proving production partial-fill semantics.
     function testDirectManagerSwapReverts_WhenExactInputPartialFillsOnInputFeePool() external {
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0); // input-side fee for zeroForOne=true
+        hook.setProtocolFeeCurrency(key.currency0, true); // input-side fee for zeroForOne=true
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
             key, SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: 0}), bytes("")
@@ -958,7 +958,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @custom:dev-only-harness Uses the hook-liquidity manager mock to witness rollback symmetry instead of proving production partial-fill semantics.
     function testDirectManagerSwapReverts_WhenOneForZeroExactInputPartialFillsOnOutputFeePool() external {
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
             key, SwapParams({zeroForOne: false, amountSpecified: -10 ether, sqrtPriceLimitX96: 0}), bytes("")
@@ -980,7 +980,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @custom:dev-only-harness Uses the hook-liquidity manager mock to witness rollback for balances, fee growth, and dynamic state.
     function testExecutePreorderSettlement_RevertsWhenExactInputPartiallyFills() external {
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
@@ -1007,7 +1007,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
     function testExecutePreorderSettlement_RevertsWhenDynamicFeeEngineUnauthorized() external {
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
 
@@ -1030,7 +1030,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @notice Verifies launch fee floor dominates immediately after pool initialization and decays to the minimum fee.
     /// @dev Covers the new launch fee scheduler on top of the existing dynamic fee engine.
     function testQuoteSwap_UsesLaunchFeeFloorAndDecaysToMinFee() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         IMemeverseUniswapHook.SwapQuote memory initialQuote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
@@ -1053,7 +1053,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
     /// @notice Verifies preorder settlement can only be initiated by the bound launcher.
     function testExecutePreorderSettlement_RevertsWhenCallerNotLauncher() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         hook.setLauncher(address(0xABCD));
 
         vm.expectRevert(IMemeverseUniswapHook.Unauthorized.selector);
@@ -1068,7 +1068,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
     function testExecutePreorderSettlement_RevertsWhenPairUsesNativeCurrency() external {
         PoolKey memory nativeKey = _dynamicPoolKey(CurrencyLibrary.ADDRESS_ZERO, Currency.wrap(address(token1)));
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         hook.setLauncher(address(this));
 
         vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
@@ -1093,7 +1093,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
             tickSpacing: 200,
             hooks: IHooks(address(uninitializedHook))
         });
-        uninitializedHook.setProtocolFeeCurrency(uninitializedKey.currency0);
+        uninitializedHook.setProtocolFeeCurrency(uninitializedKey.currency0, true);
         uninitializedHook.setLauncher(address(this));
 
         vm.expectRevert(IMemeverseUniswapHook.PoolNotInitialized.selector);
@@ -1112,7 +1112,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     function testExecutePreorderSettlement_OutputSideProtocolFee() external {
         _addLiquidity();
         // currency1 is the output currency for zeroForOne=true swaps.
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
         // Mint output tokens to the mock manager so it can pay out the swap result.
@@ -1231,7 +1231,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     function testExecutePreorderSettlement_RevertsOnFeeMismatch() external {
         _addLiquidity();
         // Use output-side protocol fee so the mismatch branch is exercised.
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
         token1.mint(address(mockManager), 1_000_000 ether);
@@ -1381,7 +1381,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         // Configure the settlement path: evil as the input-side fee currency, this contract as launcher,
         // and a public-swap-block window so the reentrant swap fails closed and deterministically.
-        hook.setProtocolFeeCurrency(Currency.wrap(address(evil)));
+        hook.setProtocolFeeCurrency(Currency.wrap(address(evil)), true);
         hook.setLauncher(address(this));
         _setPublicSwapResumeTime(address(evil), address(token1), uint40(block.timestamp + 1 hours));
         evil.approve(address(hook), type(uint256).max);
@@ -1434,7 +1434,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.authorizePoolInitialization(evilKey, SQRT_PRICE_1_1);
         mockManager.initialize(evilKey, SQRT_PRICE_1_1);
         seedActiveLiquiditySharesForTest(address(hook), evilPoolId, address(this), 100 ether);
-        hook.setProtocolFeeCurrency(Currency.wrap(address(evil)));
+        hook.setProtocolFeeCurrency(Currency.wrap(address(evil)), true);
         hook.setLauncher(address(this));
         evil.approve(address(hook), type(uint256).max);
         token1.mint(address(mockManager), 1_000_000 ether);
@@ -1841,7 +1841,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         // Accumulate non-trivial fee state on V1 through the bound hook.
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         vm.warp(block.timestamp + 900);
         mockManager.swapAsUnlocked(
             key, SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: 0}), bytes("")
@@ -1914,7 +1914,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         assertEq(address(hook.dynamicFeeEngine()), address(newEngine), "engine pointer");
 
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         vm.warp(block.timestamp + 900);
 
         BalanceDelta delta = mockManager.swapAsUnlocked(
@@ -1935,7 +1935,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.upgradeDynamicFeeEngine(newEngine);
 
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         vm.warp(block.timestamp + 900);
 
         // First swap — engine state starts accumulating
@@ -1965,7 +1965,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         vm.store(address(hook), bytes32(uint256(baseSlot) + 11), bytes32(uint256(uint160(address(newEngine)))));
 
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         vm.warp(block.timestamp + 900);
 
         vm.expectRevert(abi.encodeWithSelector(IMemeverseDynamicFeeEngine.UnauthorizedCaller.selector, address(hook)));

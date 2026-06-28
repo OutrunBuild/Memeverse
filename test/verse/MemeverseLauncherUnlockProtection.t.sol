@@ -172,7 +172,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         _initializeHookPool(guardedHook, guardedManager, address(pt), address(liquidProof));
         guardedHook.setPoolInitializer(address(guardedRouter));
         seedActiveLiquiditySharesForTest(address(guardedHook), key.toId(), address(this), 1e18);
-        guardedHook.setProtocolFeeCurrency(key.currency0);
+        guardedHook.setProtocolFeeCurrency(key.currency0, true);
         memecoin.mint(address(this), 1_000_000 ether);
         uAsset.mint(address(this), 1_000_000 ether);
         memecoin.mint(address(guardedManager), 1_000_000 ether);

@@ -26,7 +26,7 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
     ///      side, and token conservation across all holders (hook + treasury + manager + recipient).
     ///      10 ether stays well inside the 100-ether pool.
     function _assertPreorderConservation(bool zeroForOne, Currency feeCurrency) internal {
-        _hook().setProtocolFeeCurrency(feeCurrency);
+        _hook().setProtocolFeeCurrency(feeCurrency, true);
 
         Currency inputCurrency = zeroForOne ? key.currency0 : key.currency1;
         Currency outputCurrency = zeroForOne ? key.currency1 : key.currency0;
@@ -115,7 +115,7 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
     /// @dev Adversarial: a preorder settlement writes the hook's transient bypass marker only for
     ///      its own call. The next public swap must use the normal fee path and pay treasury.
     function testPreorderThenPublicSwap_FeePathRestored() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
 
         SwapParams memory preorderParams = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
@@ -140,7 +140,7 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
     /// @dev Adversarial: public -> preorder -> public catches both marker leakage directions: a public
     ///      swap must not block preorder, and preorder must not make the following public swap fee-free.
     function testPublicSwapThenPreorderThenPublicSwap_AllSucceed() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         SwapParams memory publicParams = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
@@ -167,7 +167,7 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
     /// @dev executePreorderSettlement is launcher-only (hook onlyLauncher modifier -> Unauthorized).
     ///      A non-launcher caller is rejected at the hook entry. Hook-level error, exact selector.
     function test_RevertWhen_Preorder_NonLauncher() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         address attacker = makeAddr("attacker");
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)

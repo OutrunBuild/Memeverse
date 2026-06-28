@@ -34,7 +34,7 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
         engine = IMemeverseDynamicFeeEngine(address(MemeverseUniswapHook(address(hook)).dynamicFeeEngine()));
         // Charge the protocol fee on the input currency (currency0 for zeroForOne swaps) so a
         // single exact-input swap accrues rebate in token0.
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         // Push the pool past the launch-fee decay window so the quoted fee is the stable base fee,
         // keeping the 65/25/10 amounts deterministic across runs.
         _matureLaunchWindow();

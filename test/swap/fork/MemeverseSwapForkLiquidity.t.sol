@@ -16,7 +16,7 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
     }
 
     function testAddLiquidity_RemoveLiquidity_ClaimFees() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         // Second LP joins.
@@ -63,7 +63,7 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
     }
 
     function testRemoveAllLiquidity_ZeroLiquiditySwapDoesNotRevert() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         address lpToken = router.lpToken(address(token0), address(token1));
@@ -114,7 +114,7 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
     /// @dev Two equal LPs (100 ether each) -> accrued fee split equally. feePerShare accumulates
     ///      proportionally, so equal balances claim equal fees. Guards against any per-LP fee bias.
     function testMultipleLp_FeeDistributedProportionally() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         // lp2 joins with the same 100 ether as the base LP (address(this)).

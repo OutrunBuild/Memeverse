@@ -1283,18 +1283,11 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
         _dynamicFeeEngine().setReferrerRebateBps(bps);
     }
 
-    /// @notice Enables a currency as a supported protocol-fee settlement currency.
-    /// @dev This is a convenience wrapper for `setProtocolFeeCurrencySupport(currency, true)`.
-    /// @param currency The currency to enable for protocol-fee settlement.
-    function setProtocolFeeCurrency(Currency currency) external onlyOwner {
-        _setProtocolFeeCurrencySupport(currency, true);
-    }
-
     /// @notice Updates whether a currency is eligible to receive protocol fees.
     /// @dev If both pool sides are supported, the swap path will prefer charging protocol fees on the input side.
     /// @param currency The currency whose support flag is being updated.
     /// @param supported Whether protocol fees may settle in `currency`.
-    function setProtocolFeeCurrencySupport(Currency currency, bool supported) external onlyOwner {
+    function setProtocolFeeCurrency(Currency currency, bool supported) external onlyOwner {
         _setProtocolFeeCurrencySupport(currency, supported);
     }
 

@@ -456,6 +456,123 @@
             "src/common/token/extensions/governance/OutrunERC20VotesInit.sol",
             "src/common/token/extensions/governance/OutrunVotesInit.sol"
           ]
+        },
+        {
+          "change_tests": [
+            "test/credit/GenesisCredit.t.sol"
+          ],
+          "evidence_tests": [
+            "test/credit/GenesisCredit.t.sol"
+          ],
+          "id": "credit-genesis-core",
+          "paths": [
+            "src/credit/GenesisCredit.sol",
+            "src/credit/interfaces/IGenesisCredit.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/credit/GenesisCreditFactory.t.sol"
+          ],
+          "evidence_tests": [
+            "test/credit/GenesisCreditFactory.t.sol"
+          ],
+          "id": "credit-factory",
+          "paths": [
+            "src/credit/GenesisCreditFactory.sol",
+            "src/credit/interfaces/IGenesisCreditFactory.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/MemeverseDynamicFeeEngine.t.sol",
+            "test/swap/MemeverseDynamicFeeEngineRevertPropagation.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/MemeverseDynamicFeeEngine.t.sol",
+            "test/swap/MemeverseDynamicFeeEngineRevertPropagation.t.sol"
+          ],
+          "id": "swap-dynamic-fee-engine",
+          "paths": [
+            "src/swap/MemeverseDynamicFeeEngine.sol",
+            "src/swap/interfaces/IMemeverseDynamicFeeEngine.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/common/token/TokenHelper.t.sol"
+          ],
+          "evidence_tests": [
+            "test/common/token/TokenHelper.t.sol"
+          ],
+          "id": "common-token-helper",
+          "paths": [
+            "src/common/token/TokenHelper.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/libraries/CurrencySettler.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/libraries/CurrencySettler.t.sol"
+          ],
+          "id": "swap-currency-settler",
+          "paths": [
+            "src/swap/libraries/CurrencySettler.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/FeeMath.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/FeeMath.t.sol"
+          ],
+          "id": "swap-fee-math",
+          "paths": [
+            "src/swap/libraries/FeeMath.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/MemeverseTransientState.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/MemeverseTransientState.t.sol"
+          ],
+          "id": "swap-transient-state",
+          "paths": [
+            "src/swap/libraries/MemeverseTransientState.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/script/MemeverseScript.t.sol",
+            "test/verse/deployment/MemeverseProxyDeployer.t.sol"
+          ],
+          "evidence_tests": [
+            "test/script/MemeverseScript.t.sol",
+            "test/verse/deployment/MemeverseProxyDeployer.t.sol"
+          ],
+          "id": "script-memeverse-script",
+          "paths": [
+            "script/MemeverseScript.s.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/script/DeployMemeverseHookProxy.t.sol"
+          ],
+          "evidence_tests": [
+            "test/script/DeployMemeverseHookProxy.t.sol"
+          ],
+          "id": "script-hook-proxy-deploy",
+          "paths": [
+            "script/DeployMemeverseHookProxy.s.sol",
+            "script/deployment/OutrunDeployer.sol",
+            "script/deployment/interfaces/IOutrunDeployer.sol"
+          ]
         }
       ]
     }

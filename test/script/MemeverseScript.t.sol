@@ -71,6 +71,7 @@ contract MockScriptYieldDispatcher {
 contract MockScriptPOLend {
     address public launcher;
     address public splitter;
+    address public creditFactory;
     mapping(address => DustState) internal dustStates;
 
     struct DustState {
@@ -85,6 +86,10 @@ contract MockScriptPOLend {
 
     function setSplitter(address splitter_) external {
         splitter = splitter_;
+    }
+
+    function setCreditFactory(address creditFactory_) external {
+        creditFactory = creditFactory_;
     }
 
     function setSettlementDustState(address uAsset, uint128 reserve, uint128 maxReserve) external {
@@ -211,6 +216,10 @@ contract MemeverseScriptTest is Test {
         splitter = new MockScriptPOLSplitter(address(launcher), address(0));
         polend = new MockScriptPOLend(address(launcher), address(splitter));
         splitter.setPolend(address(polend));
+        // readiness checks POLend.creditFactory() points at a contract with code
+        // (POLEND_CREDIT_FACTORY_NOT_READY); wire a coded address so the check passes.
+        vm.etch(address(0x6001), address(lens).code);
+        polend.setCreditFactory(address(0x6001));
 
         launcher.setOwner(address(script));
         launcher.setLauncherDependencies(address(registrar), address(proxyDeployer), address(yieldDispatcher));
@@ -236,6 +245,15 @@ contract MemeverseScriptTest is Test {
         polend.setSettlementDustState(UUSD, 0, 1);
 
         vm.expectRevert("UETH_RESERVE_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // readiness 校验 POLend.creditFactory() 指向有 code 的合约（POLEND_CREDIT_FACTORY_NOT_READY）。
+    // 该检查在 reserve/sibling 检查之前，接好全部依赖后把 creditFactory 置空，应即回退。
+    function testReadinessRevertsWhenPolendCreditFactoryHasNoCode() external {
+        polend.setCreditFactory(address(0));
+
+        vm.expectRevert("POLEND_CREDIT_FACTORY_NOT_READY");
         script.requireDeploymentReady(address(0), address(0));
     }
 

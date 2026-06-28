@@ -218,7 +218,7 @@ contract MemeverseSwapRouterSettlementInvariantTest is StdInvariant, Test, HookS
         hook.setPoolInitializer(address(this));
         hook.authorizePoolInitialization(key, SQRT_PRICE_1_1);
         manager.initialize(key, SQRT_PRICE_1_1);
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         accountingHandler = new RouterSettlementAccountingHandler(hook, token0, treasury, key);
         router = new MemeverseSwapRouter(

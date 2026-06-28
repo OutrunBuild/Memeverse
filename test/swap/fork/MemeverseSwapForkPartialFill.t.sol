@@ -20,7 +20,7 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
     ///      actual pool input < net input -> hook reverts ExactInputPartialFill (wrapped by mainnet
     ///      V4, hence expectRevert() with no selector). State must roll back fully.
     function testExactInput_PriceLimitExhaustion_RevertsAndRollsBack() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         uint160 tightLimit = SQRT_PRICE_1_1 - 1;
@@ -36,7 +36,7 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
     /// @dev Boundary-near success case: the 1% sqrt-price cushion is close enough to exercise the
     ///      partial-fill guard but still leaves enough room for a full 1-token exact-input swap.
     function testExactInput_NearLimitButFillable_SucceedsAndMutatesState() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         uint160 nearLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
@@ -57,7 +57,7 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
     /// @dev Boundary-near exact-output success case: request well below the pool's deliverable output.
     ///      Use the quote as max input because the router pulls the full exact-output budget up front.
     function testExactOutput_NearAvailableLiquidity_Succeeds() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         SwapParams memory params = SwapParams({
@@ -77,7 +77,7 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
     ///      requested output. The router pulls a finite budget the test account owns, so the swap reaches
     ///      V4/hook and exercises ExactOutputPartialFill instead of failing during router pre-funding.
     function testExactOutput_InsufficientLiquidity_RevertsAndRollsBack() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         uint160 tightLimit = SQRT_PRICE_1_1 - 1;

@@ -57,7 +57,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
     ///      router's quote formula against real V4 swap math on every token flow: user input
     ///      spend, user output, treasury protocol fee, LP fee-per-share growth, and BalanceDelta.
     function _assertQuoteMatchesActual(bool zeroForOne, bool exactOutput, Currency feeCurrency) internal {
-        _hook().setProtocolFeeCurrency(feeCurrency);
+        _hook().setProtocolFeeCurrency(feeCurrency, true);
         _matureLaunchWindow();
 
         // token0 == key.currency0 (base guarantee). Direction decides input vs output token.
@@ -114,7 +114,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
     }
 
     function testLaunchFeeWindow_FeeAboveBase() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         // Do NOT mature the window — pool just initialized, elapsed=0, launch fee = startFeeBps.
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
@@ -126,7 +126,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
 
     /// @dev Asserts the launch-fee COMPONENT is monotonically non-increasing across warps.
     function testLaunchFeeWindow_ComponentMonotonicAcrossWarp() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -0.001 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
@@ -140,7 +140,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
     }
 
     function testPublicSwapBlocked_RevertsBeforeResumeTime() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         _blockPublicSwap(block.timestamp + 3600);
         SwapParams memory params = SwapParams({
@@ -154,7 +154,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
     }
 
     function testPublicSwapResumes_AfterResumeTime() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         _blockPublicSwap(block.timestamp + 3600);
         vm.warp(block.timestamp + 3601);
@@ -165,7 +165,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
     }
 
     function test_RevertWhen_NativeCurrencyUnsupported() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         PoolKey memory badKey = PoolKey({
             currency0: Currency.wrap(address(0)),
@@ -202,7 +202,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
     ///      does not match parameterized errors (selector 0x13ff959c is correct, but bytes4 matching
     ///      fails on the (actual, minimum) payload); setUp isolates this as the only revert cause.
     function test_RevertWhen_OutputAmountBelowMinimum() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
@@ -220,7 +220,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
     ///      sub-quote caps; this test pins the actually-reachable failure so the boundary is
     ///      documented and guards regressions if the pull/cap split ever changes.
     function test_RevertWhen_ExactOutput_InputCapBelowActual_SettleFails() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
@@ -234,7 +234,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
 
     /// @dev deadline < block.timestamp -> router ExpiredPastDeadline (pre-swap, router-level).
     function test_RevertWhen_ExpiredDeadline() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
@@ -245,7 +245,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
 
     /// @dev amountSpecified == 0 -> router SwapAmountCannotBeZero (pre-swap, router-level).
     function test_RevertWhen_ZeroAmount() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         SwapParams memory params =
             SwapParams({zeroForOne: true, amountSpecified: 0, sqrtPriceLimitX96: _validExecutionPriceLimit(true)});
@@ -261,7 +261,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
     ///      (hook:577-579). Verify no revert and no spurious fee accrual: the user's 1 wei reaches
     ///      the pool untouched (delta0 = -1) and pool fee-per-share is unchanged.
     function testAdversarial_1WeiSwap_FeeZeroSkipsTake() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         (, uint256 fee0Before,) = _hook().poolInfo(poolId);
         SwapParams memory params =

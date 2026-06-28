@@ -58,7 +58,7 @@ contract MemeverseDynamicFeeEngineRevertPropagationTest is RealisticSwapIntegrat
         _setUpIntegration(IPermit2(address(0)));
 
         // Register a supported protocol fee currency so _resolveSwapFeeContext passes.
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
 
         // Cast the real engine deployed by _setUpIntegration.
         engine = MemeverseDynamicFeeEngine(address(hook.dynamicFeeEngine()));
@@ -133,8 +133,8 @@ contract MemeverseDynamicFeeEngineRevertPropagationTest is RealisticSwapIntegrat
 
     function test_prepareSwapFee_RevertPropagates_ExactOutputOutputSideFee_SwapReverts() external {
         _matureLaunchWindow();
-        hook.setProtocolFeeCurrencySupport(key.currency0, false);
-        hook.setProtocolFeeCurrencySupport(key.currency1, true);
+        hook.setProtocolFeeCurrency(key.currency0, false);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         _swapToUnauthorizedEngine();
 
         vm.expectRevert(_unauthorizedCallerRevert());

@@ -201,9 +201,9 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
 
         // 10. Fee currencies on the hook.
         IMemeverseLauncher.Memeverse memory verse = launcher.getMemeverseByVerseId(VERSE_ID);
-        hook.setProtocolFeeCurrency(Currency.wrap(address(uAsset)));
-        hook.setProtocolFeeCurrency(Currency.wrap(verse.memecoin));
-        hook.setProtocolFeeCurrency(Currency.wrap(verse.pol));
+        hook.setProtocolFeeCurrency(Currency.wrap(address(uAsset)), true);
+        hook.setProtocolFeeCurrency(Currency.wrap(verse.memecoin), true);
+        hook.setProtocolFeeCurrency(Currency.wrap(verse.pol), true);
     }
 
     /// @dev Locks the verse by supplying 1 ether of GenesisCredit through the real POLend, then

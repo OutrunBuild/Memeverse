@@ -16,7 +16,7 @@ contract MemeverseSwapForkPermit2Test is MemeverseSwapForkBase {
     function setUp() public {
         permit2 = IPermit2(V4_PERMIT2);
         _setUpBase(permit2);
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         aliceSigner = vm.addr(ALICE_PK);

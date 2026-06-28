@@ -19,7 +19,7 @@ contract MemeverseSwapForkFuzzLargeInputTest is MemeverseSwapForkBase {
 
     function setUp() public {
         _setUpBase(IPermit2(address(0)));
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         _addHighLiquidity();
     }
@@ -76,7 +76,7 @@ contract MemeverseSwapForkFuzzExactOutputTest is MemeverseSwapForkBase {
 
     function setUp() public {
         _setUpBase(IPermit2(address(0)));
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
     }
 
@@ -154,8 +154,8 @@ contract MemeverseSwapForkFuzzExactOutputTest is MemeverseSwapForkBase {
     function _setOnlyProtocolFeeCurrency(Currency feeCurrency) internal {
         Currency otherCurrency =
             Currency.unwrap(feeCurrency) == Currency.unwrap(key.currency0) ? key.currency1 : key.currency0;
-        _hook().setProtocolFeeCurrencySupport(otherCurrency, false);
-        _hook().setProtocolFeeCurrency(feeCurrency);
+        _hook().setProtocolFeeCurrency(otherCurrency, false);
+        _hook().setProtocolFeeCurrency(feeCurrency, true);
     }
 
     function _balanceOfCurrency(Currency currency, address account) internal view returns (uint256) {

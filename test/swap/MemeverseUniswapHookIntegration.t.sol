@@ -18,7 +18,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testDirectManager_ExactInput_InputFee_PartialFill_RevertsAndRollsBack() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         integrator.swap(
             key,
             SwapParams({
@@ -46,7 +46,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testDirectManager_ExactInput_OutputFee_FullFill_Succeeds() external {
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
 
         SwapParams memory params = SwapParams({
@@ -77,7 +77,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testDirectManager_ExactOutput_InputFee_Underfill_RevertsAndRollsBack() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         manager.setNextExactOutputAmount(poolId, 9 ether);
@@ -97,7 +97,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testDirectManager_ExactOutput_OutputFee_GrossUnderfill_RevertsAndRollsBack() external {
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
 
         SwapParams memory params = SwapParams({
@@ -115,7 +115,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testDirectManager_ExactOutput_OutputFee_OverfillKeepsSurplusWithRecipient() external {
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
 
         SwapParams memory params = SwapParams({
@@ -145,7 +145,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testDirectManager_ExactOutput_ZeroFill_RevertsAndRollsBack() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         manager.setNextExactOutputAmount(poolId, 0);
@@ -165,7 +165,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testDirectManager_RawTransferBypass_RevertsAtUnlock() external {
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
 
         vm.expectRevert(RealisticSwapManagerHarness.CurrencyNotSettled.selector);
@@ -190,7 +190,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     ///         and passes it to the engine. A just-initialized pool has a recent launch
     ///         timestamp, so the launch fee should be higher than the base fee.
     function testQuoteSwapContext_LaunchTimestampWiring() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         // Do NOT mature the launch window — pool was just initialized, so launch fee is active.
         SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -10_000 ether, sqrtPriceLimitX96: 0});
 
@@ -204,7 +204,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     /// @notice Verifies the hook reads `defaultLaunchFeeConfig` from its storage and
     ///         passes it to the engine. Changing the config should change the quoted fee.
     function testQuoteSwapContext_LaunchFeeConfigWiring() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -10_000 ether, sqrtPriceLimitX96: 0});
 
         IMemeverseUniswapHook.SwapQuote memory defaultQuote =
@@ -224,7 +224,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     ///         and passes it to the engine. Adding more liquidity should reduce the dynamic
     ///         fee because the same trade size causes less price impact.
     function testQuoteSwapContext_LiquidityWiring() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         // First swap to build up volatility state so the dynamic fee is sensitive to liquidity.
         integrator.swap(
@@ -257,14 +257,14 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -10_000 ether, sqrtPriceLimitX96: 0});
 
         // Input side: currency0 is the input for zeroForOne.
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         IMemeverseUniswapHook.SwapQuote memory inputSideQuote =
             lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
         assertTrue(inputSideQuote.protocolFeeOnInput, "fee on input when input currency supported");
 
         // Output side: disable input currency, enable output currency only.
-        hook.setProtocolFeeCurrencySupport(key.currency0, false);
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency0, false);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         IMemeverseUniswapHook.SwapQuote memory outputSideQuote =
             lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
         assertFalse(outputSideQuote.protocolFeeOnInput, "fee on output when only output currency supported");
@@ -274,7 +274,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     ///         and passes it to the engine. After a swap moves the price, a subsequent quote
     ///         should reflect the new price, not the original.
     function testQuoteSwapContext_SqrtPriceWiring() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -10_000 ether, sqrtPriceLimitX96: 0});
 

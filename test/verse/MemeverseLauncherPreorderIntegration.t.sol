@@ -123,8 +123,8 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
         );
 
         IMemeverseLauncher.Memeverse memory verse = launcher.getMemeverseByVerseId(1);
-        hook.setProtocolFeeCurrency(Currency.wrap(address(uAsset)));
-        hook.setProtocolFeeCurrency(Currency.wrap(verse.memecoin));
+        hook.setProtocolFeeCurrency(Currency.wrap(address(uAsset)), true);
+        hook.setProtocolFeeCurrency(Currency.wrap(verse.memecoin), true);
 
         uAsset.mint(ALICE, 210 ether);
         uAsset.mint(BOB, 20 ether);

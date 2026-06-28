@@ -23,7 +23,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
 
     function setUp() public {
         _setUpBase(IPermit2(address(0)));
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
     }
 
@@ -119,7 +119,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
     ///      touched only inside an unlock callback. MockERC20 has no recipient hook, so recipient-side
     ///      reentrancy is not reachable in this fork setup.
     function testClaimRebate_ToPoolManager_DoesNotBreakFutureSwap() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
@@ -154,15 +154,14 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
     ///      The output-side combos (A1, A3) exercise the hook's output-currency take; if `afterSwap`
     ///      returns a mismatched unspecified delta, the real V4 unlock reverts here.
     ///
-    ///      `setProtocolFeeCurrency` is additive (it only flips a currency to supported, never clears
-    ///      the other side), and `_resolveSwapFeeContext` prefers the input side when both are
-    ///      supported. The rebate.t.sol setUp already registered currency0, so to force a specific
-    ///      fee side we must explicitly disable the other currency first — otherwise zeroForOne
-    ///      always resolves to input-side (currency0) regardless of the requested feeCurrency.
+    ///      `_resolveSwapFeeContext` prefers the input side when both pool sides are supported.
+    ///      The rebate.t.sol setUp already registered currency0, so to force a specific fee side we
+    ///      must explicitly disable the other currency first — otherwise zeroForOne always resolves
+    ///      to input-side (currency0) regardless of the requested feeCurrency.
     function _assertRebateSucceeds(bool zeroForOne, Currency feeCurrency) internal {
         Currency otherCurrency = Currency.unwrap(feeCurrency) == address(token0) ? key.currency1 : key.currency0;
-        _hook().setProtocolFeeCurrencySupport(otherCurrency, false);
-        _hook().setProtocolFeeCurrency(feeCurrency);
+        _hook().setProtocolFeeCurrency(otherCurrency, false);
+        _hook().setProtocolFeeCurrency(feeCurrency, true);
         MockERC20 feeToken = Currency.unwrap(feeCurrency) == address(token0) ? token0 : token1;
         SwapParams memory params = SwapParams({
             zeroForOne: zeroForOne,
@@ -209,7 +208,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
     ///      fee state (ewvwap, adverse flag), so the second swap's fee can exceed the first. We read
     ///      the actual accrued balance after each swap and assert monotonic growth + solvency.
     function testRebate_MultipleSwaps_AccumulateSolvency() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
@@ -232,7 +231,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
     ///      Does NOT assume the re-accrued amount equals the pre-claim amount (fee state drifts), only
     ///      that the claim fully zeroed pending and the next swap accrues a fresh positive balance.
     function testRebate_ClaimThenReaccrue_NoInterference() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
@@ -261,7 +260,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
     ///      `_takeToTreasury` skips the zero-amount take; verify delta still closes (no
     ///      CurrencyNotSettled), treasury unchanged, engine receives the full protocol fee.
     function testAdversarial_FullRebateBps_TreasurySkipsTake() external {
-        _hook().setProtocolFeeCurrency(key.currency0);
+        _hook().setProtocolFeeCurrency(key.currency0, true);
         _hook().setReferrerRebateBps(FeeMath.PROTOCOL_FEE_SHARE_BPS);
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)

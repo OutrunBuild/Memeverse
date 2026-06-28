@@ -16,7 +16,7 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testExactInput_InputFee_FullFill_Succeeds() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         SwapParams memory params = SwapParams({
@@ -55,7 +55,7 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testExactInput_OutputFee_FullFill_Succeeds() external {
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
 
         SwapParams memory params = SwapParams({
@@ -85,7 +85,7 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testExactInput_OneForZero_InputFee_FullFill_Succeeds() external {
-        hook.setProtocolFeeCurrency(key.currency1);
+        hook.setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
 
         SwapParams memory params = SwapParams({
@@ -108,7 +108,7 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testExactOutput_OneForZero_OutputFee_FullFill_Succeeds() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
         SwapParams memory params = SwapParams({
@@ -131,7 +131,7 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function testExactInput_InputFee_PartialFill_RevertsAndRollsBack() external {
-        hook.setProtocolFeeCurrency(key.currency0);
+        hook.setProtocolFeeCurrency(key.currency0, true);
         router.swap(
             key,
             SwapParams({

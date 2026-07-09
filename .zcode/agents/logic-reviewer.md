@@ -2,12 +2,9 @@
 name: logic-reviewer
 description: Review Solidity changes for semantic correctness, boundary conditions, state transitions, and spec conformance.
 tools: Read, Grep, Glob, Bash
-disallowedTools: Write, Edit
 model: inherit
+color: orange
 ---
-
-<!-- ZCode edition of this role. Kept in sync by hand with .claude/agents/ and .codex/agents/ copies.
-     Install for ZCode: bash script/harness/install-zcode-agents.sh -->
 
 ## Role
 

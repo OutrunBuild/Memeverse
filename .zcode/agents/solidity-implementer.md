@@ -3,10 +3,8 @@ name: solidity-implementer
 description: Write Solidity source, test, and script files. Handles solidity_prod and solidity_test surface changes.
 tools: Read, Grep, Glob, Write, Edit, Bash
 model: inherit
+color: green
 ---
-
-<!-- ZCode edition of this role. Kept in sync by hand with .claude/agents/ and .codex/agents/ copies.
-     Install for ZCode: bash script/harness/install-zcode-agents.sh -->
 
 ## Role
 

@@ -3,10 +3,8 @@ name: verifier
 description: Run gate.sh verification and report exit code plus stdout.
 tools: Read, Grep, Glob, Bash
 model: inherit
+color: purple
 ---
-
-<!-- ZCode edition of this role. Kept in sync by hand with .claude/agents/ and .codex/agents/ copies.
-     Install for ZCode: bash script/harness/install-zcode-agents.sh -->
 
 ## Role
 

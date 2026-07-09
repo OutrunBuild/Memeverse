@@ -64,3 +64,20 @@ When production Solidity changes, `gate:fast` resolves targeted tests from `poli
 ## Git Hooks
 
 `.githooks/` calls the same gate entrypoints when enabled with `core.hooksPath=.githooks`.
+
+## Multi-tool Support (Claude Code / Codex / ZCode)
+
+The repository's harness (policy, gate, reviewer/implementer roles) works across Claude Code, Codex, and ZCode. Each tool loads the shared pieces differently:
+
+| Piece | Claude Code | Codex | ZCode |
+|---|---|---|---|
+| Instructions | `AGENTS.md` + `CLAUDE.md` | `AGENTS.md` (native) | `AGENTS.md` (native) |
+| Subagents | `.claude/agents/*.md` (workspace) | `.codex/agents/*.toml` (workspace) | `.zcode/agents/*.md` (workspace) |
+| Hooks | `.claude/settings.json` (PreToolUse) | — | `.zcode/config.json` (`hooks.events`, needs `enabled:true`) |
+| Permissions | `.claude/settings.json` allow/deny | — | client permission mode + hooks (no workspace allow/deny file) |
+
+The seven roles (`solidity-implementer`, `process-implementer`, `spec-reviewer`, `logic-reviewer`, `security-reviewer`, `gas-reviewer`, `verifier`) are kept in three hand-maintained copies. When you change a role, update all three.
+
+ZCode discovers workspace-scoped subagents from `.zcode/agents/` directly (no install step). The `.zcode/agents/` and `.zcode/config.json` files are version-controlled, so `git worktree add` and fresh clones carry them automatically. ZCode also reads user-scoped agents from `~/.zcode/agents/`, but only in the desktop runtime; this repo relies on the workspace scope, which works everywhere.
+
+Hook differences: Claude Code's `EnterWorktree` block has no ZCode equivalent (ZCode supports seven events and `EnterWorktree` is not among them). The `Agent` `isolation:"worktree"` block is effective in Claude Code, where the `Agent` tool has an `isolation` parameter; ZCode's `Agent` tool has no such parameter, so there is nothing to block there, and Codex has no hook mechanism. The harness hook scripts (`pre-edit-check.sh`, `block-agent-worktree-isolation.sh`) are shared; `block-agent-worktree-isolation.sh` uses `exit 2` so it blocks correctly under both the Claude Code and ZCode PreToolUse contracts.

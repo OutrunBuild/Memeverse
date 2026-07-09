@@ -5,6 +5,8 @@
 - Policy schema: .harness/schemas/policy.schema.json
 - Claude agents: .claude/agents/*
 - Codex agents: .codex/agents/*
+- ZCode agents: .zcode/agents/* (workspace-scoped, version-controlled)
+- ZCode hooks: .zcode/config.json
 - Enforcement entrypoint: script/harness/gate.sh
 - CI gate entrypoint: script/harness/ci-gate-entrypoint.sh
 

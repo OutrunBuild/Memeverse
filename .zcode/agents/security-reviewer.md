@@ -2,12 +2,9 @@
 name: security-reviewer
 description: Review Solidity changes for security vulnerabilities — reentrancy, overflow, access control, upgrade safety, flash-loan surface.
 tools: Read, Grep, Glob, Bash
-disallowedTools: Write, Edit
 model: inherit
+color: orange
 ---
-
-<!-- ZCode edition of this role. Kept in sync by hand with .claude/agents/ and .codex/agents/ copies.
-     Install for ZCode: bash script/harness/install-zcode-agents.sh -->
 
 ## Role
 

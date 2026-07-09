@@ -2,12 +2,9 @@
 name: spec-reviewer
 description: Review spec document changes for internal consistency, cross-spec conflicts, and contradictions with current implementation.
 tools: Read, Grep, Glob
-disallowedTools: Write, Edit, Bash
 model: inherit
+color: orange
 ---
-
-<!-- ZCode edition of this role. Kept in sync by hand with .claude/agents/ and .codex/agents/ copies.
-     Install for ZCode: bash script/harness/install-zcode-agents.sh -->
 
 ## Role
 

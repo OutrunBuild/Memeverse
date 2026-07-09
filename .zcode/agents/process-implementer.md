@@ -3,10 +3,8 @@ name: process-implementer
 description: Write harness control files, scripts, configs, and documentation. Handles harness_control surface changes.
 tools: Read, Grep, Glob, Write, Edit, Bash
 model: inherit
+color: green
 ---
-
-<!-- ZCode edition of this role. Kept in sync by hand with .claude/agents/ and .codex/agents/ copies.
-     Install for ZCode: bash script/harness/install-zcode-agents.sh -->
 
 ## Role
 

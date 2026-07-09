@@ -176,6 +176,14 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
      *      transfer-in, and emit. Under delegatecall `msg.sender` is the original caller (transfer-in payer).
      */
     function genesis(uint256 verseId, uint256 amountInUAsset, address user) external onlyDelegatecall {
+        _genesis(verseId, amountInUAsset, user);
+    }
+
+    /**
+     * @dev Genesis deposit core logic, shared by `genesis` and `genesisAndPreorder`. Owns the stage check,
+     *      the aggregate cap check, the accounting update, the transfer-in, and the emit. CEI-ordered.
+     */
+    function _genesis(uint256 verseId, uint256 amountInUAsset, address user) internal {
         require(verseId != 0 && amountInUAsset != 0 && user != address(0), IMemeverseLauncher.ZeroInput());
         IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
         require(verse.currentStage == IMemeverseLauncher.Stage.Genesis, IMemeverseLauncher.NotGenesisStage());
@@ -207,6 +215,16 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
      *      funds.
      */
     function preorder(uint256 verseId, uint256 amountInUAsset, address user) external onlyDelegatecall {
+        _preorder(verseId, amountInUAsset, user);
+    }
+
+    /**
+     * @dev Preorder deposit core logic, shared by `preorder` and `genesisAndPreorder`. Reads the live
+     *      `totalNormalFunds` (already incremented when called right after `_genesis` in the combined entry, so
+     *      the capacity check reflects the genesis top-up) and enforces the cap with `InvalidLength`.
+     *      CEI-ordered.
+     */
+    function _preorder(uint256 verseId, uint256 amountInUAsset, address user) internal {
         require(verseId != 0 && amountInUAsset != 0 && user != address(0), IMemeverseLauncher.ZeroInput());
         IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
         require(verse.currentStage == IMemeverseLauncher.Stage.Genesis, IMemeverseLauncher.NotGenesisStage());
@@ -225,6 +243,28 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         _transferIn(verse.uAsset, msg.sender, amountInUAsset);
 
         emit IMemeverseLauncher.Preorder(verseId, msg.sender, user, amountInUAsset);
+    }
+
+    /**
+     * @notice Atomically contribute uAsset to genesis then preorder for the same `user` in one transaction.
+     * @dev Invoked via delegatecall by the facade's `genesisAndPreorder`. Runs `_genesis` first (which writes
+     *      `totalNormalFunds` before returning) so the subsequent `_preorder` capacity check sees the enlarged
+     *      base, letting the same payer secure preorder capacity the genesis top-up just opened. Both helpers
+     *      re-check the Genesis stage and emit their own events. If `_preorder` reverts (e.g. the preorder
+     *      amount exceeds the enlarged cap), the whole transaction reverts, so genesis accounting and the
+     *      uAsset transfer-in never partially apply. Under delegatecall `msg.sender` is the original caller
+     *      (transfer-in payer for both legs).
+     */
+    function genesisAndPreorder(uint256 verseId, uint256 genesisAmount, uint256 preorderAmount, address user)
+        external
+        onlyDelegatecall
+    {
+        require(
+            verseId != 0 && genesisAmount != 0 && preorderAmount != 0 && user != address(0),
+            IMemeverseLauncher.ZeroInput()
+        );
+        _genesis(verseId, genesisAmount, user);
+        _preorder(verseId, preorderAmount, user);
     }
 
     // =========================================================================================================

@@ -109,6 +109,13 @@ contract MemeverseLauncherSiblingDirectCall is Test {
         sibling.genesis(1, 1 ether, ALICE);
     }
 
+    function test_DirectCall_LaunchImplGenesisAndPreorder_Reverts() external {
+        MemeverseLaunchImpl sibling = new MemeverseLaunchImpl();
+        bytes4 selector = DelegatecallOnly.DelegatecallOnlyCall.selector;
+        vm.expectRevert(abi.encodeWithSelector(selector));
+        sibling.genesisAndPreorder(1, 1 ether, 1 ether, ALICE);
+    }
+
     function test_DirectCall_LaunchImplChangeStage_Reverts() external {
         MemeverseLaunchImpl sibling = new MemeverseLaunchImpl();
         bytes4 selector = DelegatecallOnly.DelegatecallOnlyCall.selector;

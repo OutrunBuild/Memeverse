@@ -146,7 +146,80 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
         vm.prank(BOB);
         launcher.preorder(1, 0.5 ether, BOB);
 
-        IMemeverseLauncher.Memeverse memory verseBefore = launcher.getMemeverseByVerseId(1);
+        _provideLiquiditySettleAndAssert(1);
+    }
+
+    /// @notice The combined genesis+preorder entry reaches the same settled state as the two-call path.
+    /// @dev Replaces the standalone `genesis` + `preorder` pair with a single `genesisAndPreorder`, then reuses
+    ///      the real launcher-router-hook settlement path. Also asserts the combined entry applies both legs'
+    ///      accounting and emits `Genesis` then `Preorder` exactly once.
+    function testGenesisAndPreorder_SettlesThroughRealLauncherRouterHookPath() external {
+        // Genesis then Preorder, emitted in order by the two helpers under the single call.
+        vm.expectEmit(true, true, false, true);
+        emit IMemeverseLauncher.Genesis(1, ALICE, 10 ether);
+        vm.expectEmit(true, true, true, true);
+        emit IMemeverseLauncher.Preorder(1, ALICE, ALICE, 1 ether);
+        vm.prank(ALICE);
+        launcher.genesisAndPreorder(1, 10 ether, 1 ether, ALICE);
+
+        vm.prank(BOB);
+        launcher.preorder(1, 0.5 ether, BOB);
+
+        // The genesis leg enlarged the preorder base and both legs credited the shared `user`.
+        assertEq(launcher.totalNormalFunds(1), 10 ether, "genesis enlarged normal funds");
+        (uint256 aliceGenesisFund,,) = launcher.userGenesisData(1, ALICE);
+        assertEq(aliceGenesisFund, 10 ether, "alice genesis fund");
+        (uint256 alicePreorderFunds,,) = launcher.userPreorderData(1, ALICE);
+        assertEq(alicePreorderFunds, 1 ether, "alice preorder funds");
+        (uint256 bobPreorderFunds,,) = launcher.userPreorderData(1, BOB);
+        assertEq(bobPreorderFunds, 0.5 ether, "bob preorder funds");
+
+        // Both legs debited the shared payer atomically: genesisAmount + preorderAmount left ALICE's balance.
+        assertEq(uAsset.balanceOf(ALICE), 199 ether, "alice paid 11e uAsset (10 genesis + 1 preorder)");
+
+        _provideLiquiditySettleAndAssert(1);
+    }
+
+    /// @notice A preorder amount over the capacity the genesis leg just opened must revert, and the genesis
+    ///         leg's transfer-in and accounting must roll back atomically.
+    /// @dev After a 10 ether genesis (totalLeveragedDebt = 0 here), the preorder cap is
+    ///      `10e18 * 7 * 2500 / (10 * 10000) = 1.75 ether`. A 2 ether preorder exceeds it, so `_preorder`
+    ///      reverts `InvalidLength`; because `_genesis` ran first in the same call, its `totalNormalFunds`
+    ///      write, user-genesis credit, and uAsset transfer-in are all undone.
+    function testGenesisAndPreorder_RevertWhen_PreorderExceedsCap_RollsBackAtomically() external {
+        assertEq(launcher.totalNormalFunds(1), 0, "clean slate");
+        uint256 aliceBalanceBefore = uAsset.balanceOf(ALICE);
+
+        vm.expectPartialRevert(IMemeverseLauncher.InvalidLength.selector);
+        vm.prank(ALICE);
+        launcher.genesisAndPreorder(1, 10 ether, 2 ether, ALICE);
+
+        // Atomic rollback: the genesis leg's effects never partially apply.
+        assertEq(launcher.totalNormalFunds(1), 0, "totalNormalFunds rolled back");
+        (uint256 aliceGenesisFund,,) = launcher.userGenesisData(1, ALICE);
+        assertEq(aliceGenesisFund, 0, "genesis fund rolled back");
+        assertEq(uAsset.balanceOf(ALICE), aliceBalanceBefore, "alice uAsset rolled back");
+    }
+
+    /// @notice A zero genesis amount is rejected before either leg runs.
+    function testGenesisAndPreorder_RevertWhen_GenesisAmountZero() external {
+        vm.expectPartialRevert(IMemeverseLauncher.ZeroInput.selector);
+        vm.prank(ALICE);
+        launcher.genesisAndPreorder(1, 0, 1 ether, ALICE);
+    }
+
+    /// @notice A zero preorder amount is rejected before either leg runs.
+    function testGenesisAndPreorder_RevertWhen_PreorderAmountZero() external {
+        vm.expectPartialRevert(IMemeverseLauncher.ZeroInput.selector);
+        vm.prank(ALICE);
+        launcher.genesisAndPreorder(1, 10 ether, 0, ALICE);
+    }
+
+    /// @notice Shared settlement + linear-vesting claim assertions for the real launcher-router-hook preorder path.
+    /// @dev Called by both preorder tests after their test-specific deposit setup. Seeds the three pools, advances
+    ///      to Locked, and asserts the fixed 0.35% protocol fee plus the preorder memecoin vesting schedule.
+    function _provideLiquiditySettleAndAssert(uint256 verseId) internal {
+        IMemeverseLauncher.Memeverse memory verseBefore = launcher.getMemeverseByVerseId(verseId);
         vm.prank(address(launcher));
         MockIntegrationLiquidProof(verseBefore.pol).mint(address(this), 300 ether);
         pt.mint(address(this), 200 ether);
@@ -167,7 +240,7 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
         hook.setLauncher(address(launcher));
         uint256 treasuryUAssetBalanceBefore = uAsset.balanceOf(address(this));
 
-        IMemeverseLauncher.Stage stage = launcher.changeStage(1);
+        IMemeverseLauncher.Stage stage = launcher.changeStage(verseId);
         assertEq(uint256(stage), uint256(IMemeverseLauncher.Stage.Locked), "locked");
 
         uint256 treasuryUAssetBalance = uAsset.balanceOf(address(this)) - treasuryUAssetBalanceBefore;
@@ -176,9 +249,9 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
         vm.warp(block.timestamp + 3 days + 12 hours);
 
         vm.prank(ALICE);
-        uint256 aliceHalf = launcher.claimablePreorderMemecoin(1);
+        uint256 aliceHalf = launcher.claimablePreorderMemecoin(verseId);
         vm.prank(BOB);
-        uint256 bobHalf = launcher.claimablePreorderMemecoin(1);
+        uint256 bobHalf = launcher.claimablePreorderMemecoin(verseId);
 
         assertEq(aliceHalf, 0.2475 ether, "alice half claimable");
         assertEq(bobHalf, 0.12375 ether, "bob half claimable");
@@ -186,9 +259,9 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
         vm.warp(block.timestamp + 3 days + 12 hours + 1);
 
         vm.prank(ALICE);
-        uint256 aliceClaimed = launcher.claimUnlockedPreorderMemecoin(1);
+        uint256 aliceClaimed = launcher.claimUnlockedPreorderMemecoin(verseId);
         vm.prank(BOB);
-        uint256 bobClaimed = launcher.claimUnlockedPreorderMemecoin(1);
+        uint256 bobClaimed = launcher.claimUnlockedPreorderMemecoin(verseId);
 
         assertEq(aliceClaimed, 0.495 ether, "alice total");
         assertEq(bobClaimed, 0.2475 ether, "bob total");

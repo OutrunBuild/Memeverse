@@ -408,6 +408,32 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
         );
     }
 
+    /**
+     * @notice Atomically contribute uAsset to genesis then preorder for the same `user` in one transaction.
+     * @dev Eliminates the two-tx race where a standalone `preorder` could be front-run and fill the capacity
+     *      the standalone `genesis` just opened. Thin delegatecall to the launch sibling, which runs both legs
+     *      and emits `Genesis` and `Preorder`; the facade emits nothing (avoiding a double-emit under
+     *      delegatecall).
+     * @param verseId Memeverse id.
+     * @param genesisAmount uAsset contributed to the genesis pool (enlarges the preorder base).
+     * @param preorderAmount uAsset contributed to the preorder pool.
+     * @param user Address credited for both the genesis and the preorder participation.
+     */
+    function genesisAndPreorder(uint256 verseId, uint256 genesisAmount, uint256 preorderAmount, address user)
+        external
+        override
+        versIdValidate(verseId)
+        whenNotPaused
+    {
+        address impl = memeverseLauncherStorage.launchImpl;
+        require(impl != address(0), LaunchImplNotSet());
+        impl.functionDelegateCall(
+            abi.encodeWithSelector(
+                IMemeverseLaunchImpl.genesisAndPreorder.selector, verseId, genesisAmount, preorderAmount, user
+            )
+        );
+    }
+
     /// @notice Adaptively advance the verse stage (Genesis -> Locked/Refund, Locked -> Unlocked).
     /// @dev Delegatecalls the launch sibling, which owns the eligibility checks, stage transition, nested
     ///      delegatecalls into the liquidity/settlement siblings, and the `ChangeStage` emit. The facade keeps

@@ -35,6 +35,8 @@
 
 除标注为目标事件规格的条目外，以上均为 `[代码已证]`。
 
+**`genesisAndPreorder(...)` 合并入口事件**：该原子入口依次 emit `Genesis(verseId, user, genesisAmount)` 与 `Preorder(verseId, caller, user, preorderAmount)` 各一次，字段结构分别与单次 `genesis` / `preorder` 调用完全一致（`Preorder.caller` 仍为 `msg.sender`/payer），不新增事件。语义与容量校验见 [docs/spec/polend/genesis.md §2](polend/genesis.md)。
+
 ### 2.2 POLend / POLSplitter 目标事件面
 
 本节描述 [docs/spec/polend/README.md](polend/README.md) 要求的目标事件面。若当前代码未 emit，对索引器而言是 current vs target gap，不能标成 `[代码已证]`。

@@ -32,6 +32,7 @@
 `preorderCap = (totalNormalFunds + totalLeveragedDebt) * 70% * preorderCapRatio / RATIO`
 - `totalLeveragedDebt` 由当前 market 利率和 `totalLeveragedInterest` 推导；无杠杆参与时视为 0。
 - `Refund` 状态下，preorder 用户按 `userPreorderFunds` 一次性退回该 verse 的 `uAsset`。
+- 原子合并入口 `genesisAndPreorder(verseId, genesisAmount, preorderAmount, user)`（`MemeverseLaunchImpl.sol::genesisAndPreorder`）在一笔交易内先完成 genesis 入账（`totalNormalFunds` 增加）、再完成 preorder 入账（`totalPreorderFunds` 增加）。preorder 容量在 preorder 步实时基于已更新的 `totalNormalFunds` + `totalLeveragedDebt` 计算（公式同上），故 genesis 步入金即时抬升本笔可用的 preorder 容量；`genesisAmount` 与 `preorderAmount` 均须 > 0，`user` 为两步共同受益人，`msg.sender` 为 payer。容量、退款与结算口径均与两次独立调用完全一致，不引入新记账口径。
 
 ### 2.4 公开预览接口
 

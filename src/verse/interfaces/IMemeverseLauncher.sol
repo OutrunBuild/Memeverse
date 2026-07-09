@@ -299,6 +299,17 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
     /// @param user Account credited for the preorder participation.
     function preorder(uint256 verseId, uint256 amountInUAsset, address user) external;
 
+    /// @notice Atomically contribute uAsset to genesis then preorder for the same `user` in one transaction.
+    /// @dev Runs genesis first to enlarge the preorder base, then preorder against the enlarged capacity,
+    ///      removing the two-tx race where a standalone preorder could be front-run and fill the capacity the
+    ///      genesis just opened. Both legs emit their own events and re-check the Genesis stage; a preorder cap
+    ///      revert rolls back the genesis leg too.
+    /// @param verseId Target verse id.
+    /// @param genesisAmount uAsset contributed to the genesis pool.
+    /// @param preorderAmount uAsset contributed to the preorder pool.
+    /// @param user Account credited for both the genesis and the preorder participation.
+    function genesisAndPreorder(uint256 verseId, uint256 genesisAmount, uint256 preorderAmount, address user) external;
+
     /// @notice Advances a verse to the next valid launcher stage.
     /// @dev Depending on timing and funding, this may settle Genesis, deploy liquidity, or move into Refund/Unlocked.
     /// @param verseId Target verse id.

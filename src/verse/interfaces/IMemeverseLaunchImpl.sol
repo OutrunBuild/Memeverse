@@ -36,6 +36,14 @@ interface IMemeverseLaunchImpl {
     ///      original caller (transfer-in payer) and `address(this)` is the launcher proxy.
     function preorder(uint256 verseId, uint256 amountInUAsset, address user) external;
 
+    /// @notice Atomically deposit into the genesis pool then the preorder pool for the same `user`.
+    /// @dev Invoked via delegatecall by the facade's `genesisAndPreorder`. Runs the genesis leg first so the
+    ///      preorder leg's capacity check sees the enlarged `totalNormalFunds`. Signature must match the
+    ///      implementation byte-for-byte so the delegatecall selector resolves correctly. Under delegatecall
+    ///      `msg.sender` is the original caller (transfer-in payer for both legs) and `address(this)` is the
+    ///      launcher proxy.
+    function genesisAndPreorder(uint256 verseId, uint256 genesisAmount, uint256 preorderAmount, address user) external;
+
     /// @notice Adaptively advance the verse stage (Genesis -> Locked/Refund, Locked -> Unlocked).
     /// @dev Invoked via delegatecall by the facade's `changeStage`. Owns the stage transition, the nested
     ///      delegatecalls into the liquidity and settlement siblings, and the `ChangeStage` emit. Under

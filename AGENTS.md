@@ -73,7 +73,7 @@ Do not override policy or gate evidence with natural-language guesses.
 - Many tiny single-use helpers make code harder to follow because readers must jump around.
 - Extract a helper only when it clearly improves readability, naming, reuse, or testability.
 - Inline trivial single-use logic unless extraction clearly improves comprehension.
-- Solidity style and best practices auto-load by scope from `.claude/rules/` (`solidity-contracts.md` for `src/`, `solidity-tests.md` for `test/`, `solidity-scripts.md` for `script/`) when editing `.sol` files. Follow them when writing or modifying Solidity code; no manual read needed.
+- Solidity style and best practices live in `.claude/rules/` (`solidity-contracts.md` for `src/`, `solidity-tests.md` for `test/`, `solidity-scripts.md` for `script/`). Claude Code auto-loads them by scope when editing `.sol` files (no manual read needed); Codex and ZCode do not auto-load them, so when working in those tools read the relevant rule file manually before writing Solidity. Follow them when writing or modifying Solidity code.
 
 ## Test Code Rules
 

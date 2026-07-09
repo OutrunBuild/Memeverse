@@ -2,7 +2,9 @@
 set -euo pipefail
 
 input="$(cat || true)"
-file_path="$(printf '%s' "$input" | jq -r '.file_path // empty' 2>/dev/null || true)"
+# file_path lives under .tool_input.file_path in both Claude Code and ZCode
+# PreToolUse stdin JSON; fall back to the top-level field for older shapes.
+file_path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // .file_path // empty' 2>/dev/null || true)"
 
 if [ -z "$file_path" ]; then
     exit 0

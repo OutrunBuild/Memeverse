@@ -79,6 +79,8 @@
       "^\\.claude/rules/.*$",
       "^\\.claude/settings\\.json$",
       "^\\.codex/agents/.*$",
+      "^\\.zcode/agents/.*$",
+      "^\\.zcode/config\\.json$",
       "^\\.githooks/.*$",
       "^\\.github/pull_request_template\\.md$",
       "^\\.github/workflows/.*$",

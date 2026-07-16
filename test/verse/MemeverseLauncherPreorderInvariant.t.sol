@@ -13,10 +13,10 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
-import {MemeverseBootstrap} from "../../src/verse/MemeverseBootstrap.sol";
-import {MemeverseFeeDistributor} from "../../src/verse/MemeverseFeeDistributor.sol";
+import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
+import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
-import {MemeversePOLMinter} from "../../src/verse/MemeversePOLMinter.sol";
+import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
@@ -308,10 +308,10 @@ contract MemeverseLauncherPreorderSuccessInvariantTest is StdInvariant, Memevers
 
         launcher.setMemeverseUniswapHook(address(router.hook()));
         launcher.setMemeverseSwapRouter(address(router));
-        launcher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        launcher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        launcher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         launcher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(launcher))));
-        launcher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         assertEq(address(router.hook()), address(hook), "router hook");
         assertEq(hook.launcher(), address(launcher), "hook launcher");
         assertEq(hook.poolInitializer(), address(router), "hook initializer");
@@ -464,6 +464,9 @@ contract MemeverseLauncherPreorderRefundInvariantTest is StdInvariant, Memeverse
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
         launcher.setLzEndpointRegistry(address(registry));
         launcher.setFundMetaData(address(uAsset), 10 ether, 4);
+        // Phase 3B: registerMemeverse/genesis/preorder delegatecall the launch sibling; bind it
+        // before _registerVerse (which exercises registerMemeverse) or setUp reverts LaunchImplNotSet.
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
         polend.setLendMarket(address(pt), address(yt));
 
         registry.setEndpoint(REMOTE_GOV_CHAIN_ID, REMOTE_EID);

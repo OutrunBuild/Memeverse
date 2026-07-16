@@ -57,9 +57,9 @@ normalPTFee = totalPTFee - govPTFee
 
 #### 1.3 Locked -> Unlocked 最后捕获
 
-`Locked -> Unlocked` 时，facade `src/verse/MemeverseLauncher.sol::changeStage` 必定先经 delegatecall 调用 `src/verse/MemeverseFeeDistributor.sol::captureLockedAuxiliaryFees(verseId, polSplitter, hook)`，作为 `Locked` 阶段最后一次辅助池 fee 捕获（stage 翻转为 `Unlocked` 之前完成）。
+`Locked -> Unlocked` 时，facade `src/verse/MemeverseLauncher.sol::changeStage` 经 delegatecall 入 `src/verse/MemeverseLaunchImpl.sol::changeStage` dispatcher，dispatcher 在 Locked 分支经嵌套 delegatecall 调用 `src/verse/MemeverseSettlementImpl.sol::unlockFromLocked(verseId, polSplitter, hook)`，其内部首步 `_captureLockedAuxiliaryFees` 作为 `Locked` 阶段最后一次辅助池 fee 捕获（stage 翻转为 `Unlocked` 之前完成）。
 
-`captureLockedAuxiliaryFees`：
+`_captureLockedAuxiliaryFees`：
 
 - 只在 `Locked -> Unlocked` 调用一次
 - 捕获三个辅助池 fee
@@ -263,7 +263,7 @@ normal share 取余数，不能另建永久 launcher bucket。
 
 `Launcher.changeStage` 在 `Locked -> Unlocked` 时按顺序执行（以下步骤在同一笔交易内原子执行，任一步骤失败则全部回滚）：
 
-1. 经 delegatecall 委托 `src/verse/MemeverseFeeDistributor.sol::captureLockedAuxiliaryFees(verseId, polSplitter, hook)`（由 facade `src/verse/MemeverseLauncher.sol::changeStage` 发起，捕获在 stage 翻转为 Unlocked 之前完成）
+1. 经 delegatecall 委托 `src/verse/MemeverseSettlementImpl.sol::unlockFromLocked(verseId, polSplitter, hook)`（由 facade `src/verse/MemeverseLauncher.sol::changeStage` 经 `src/verse/MemeverseLaunchImpl.sol::changeStage` dispatcher 的 Locked 分支嵌套 delegatecall 发起；`unlockFromLocked` 内部首步 `_captureLockedAuxiliaryFees` 完成捕获，stage 翻转为 Unlocked 之前完成）
 2. `verse.currentStage = Unlocked`
 3. `POLSplitter.settle(verseId)`
 4. 若 `getTotalLeveragedDebt(verseId) > 0`，调用 `POLend.executeGlobalSettlement(verseId)`
@@ -763,7 +763,7 @@ Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金�
 | `setLeveragedDebtFactor` | owner | 任意 | `newFactor != 0`；`newFactor <= uint128.max * 1e18`；`newFactor` 与当前 `defaultInterestRate` 满足杠杆约束 | 仅影响可继续新增杠杆创世的 `None / Genesis` market 后续 debt cap / `remainingAdditionalInterest` |
 | `setMaxSettlementDustReserve` | owner | 任意 | `uAsset != address(0)`，`maxReserve > 0`，且下调时当前 `reserve <= maxReserve` | 配置该 `uAsset` 全局 settlement dust reserve 上限；不支持用 0 作为 launch-supported 运行模式 |
 | upgrade authorization | owner（UUPS `_authorizeUpgrade`） | 按升级框架 | 新实现初始化与存储布局必须兼容 | 不改变既有 market 语义 |
-| pause behavior | pauser / owner policy | 任意 | pause 不得阻断必要的 unlock / refund / repay 安全出口；`fundSettlementDustReserve` 视为 unlock / repay 安全出口 | pause 只限制新增资金入口和非必要领取入口。受 `whenNotPaused` 阻断的函数清单：`MemeverseLauncher.genesis`、`MemeverseLauncher.preorder`、`MemeverseLauncher.claimNormalYT`、`MemeverseLauncher.claimNormalFees`、`MemeverseLauncher.redeemAuxiliaryLiquidity`、`MemeverseLauncher.claimUnlockedPreorderMemecoin`、`MemeverseLauncher.redeemAndDistributeFees`、`POLend.leveragedGenesis`、`POLend.leveragedGenesisWithCredit`。不受 pause 阻断的安全出口：`POLend.claimRefund`、`POLend.claimLeveragedYT`、`POLend.claimResidual`、`POLend.fundSettlementDustReserve`、`POLend.executeGlobalSettlement`、`POLSplitter.redeemPT`、`POLSplitter.redeemYT`、`POLSplitter.settle` |
+| pause behavior | pauser / owner policy | 任意 | pause 不得阻断必要的 unlock / refund / repay 安全出口；`fundSettlementDustReserve` 视为 unlock / repay 安全出口 | pause 只限制新增资金入口和非必要领取入口。受 `whenNotPaused` 阻断的 Launcher 入口：`MemeverseLauncher.genesis`、`MemeverseLauncher.preorder`、`MemeverseLauncher.claimNormalYT`、`MemeverseLauncher.claimNormalFees`、`MemeverseLauncher.redeemAuxiliaryLiquidity`、`MemeverseLauncher.claimUnlockedPreorderMemecoin`、`MemeverseLauncher.redeemAndDistributeFees`、`MemeverseLauncher.mintPOLToken`、`MemeverseLauncher.registerMemeverse`。受 `whenNotPaused` 阻断的 POLend 入口：`POLend.leveragedGenesis`、`POLend.leveragedGenesisWithCredit`。不受 pause 阻断的安全出口：`POLend.claimRefund`、`POLend.claimLeveragedYT`、`POLend.claimResidual`、`POLend.fundSettlementDustReserve`、`POLend.executeGlobalSettlement`、`POLSplitter.redeemPT`、`POLSplitter.redeemYT`、`POLSplitter.settle` |
 
 #### 10.2 输入校验矩阵
 
@@ -861,15 +861,20 @@ function splitInfos(uint256 verseId) external view returns (address pt, address 
 - 初始化 `PrincipalToken / YieldToken` implementation
 - 必须先于任何 `initializeVerse / split / settle / redeem` 路径完成
 
-`MemeverseFeeDistributor` 是 delegatecall-only sibling：无 owner 入口、无独立业务入口，只由 facade `src/verse/MemeverseLauncher.sol::changeStage` / `redeemAndDistributeFees` 经 delegatecall 调用。runtime integration ABI（`IMemeverseFeeDistributor`）：
+`MemeverseSettlementImpl` 是 delegatecall-only sibling：无 owner 入口、无独立业务入口，由 facade `src/verse/MemeverseLauncher.sol` 经 delegatecall 调用。七个 facade 入口与 sibling selector 一一对应：`refund`→`refund`、`refundPreorder`→`refundPreorder`、`claimNormalYT`→`claimNormalYT`、`claimNormalFees`→`claimNormalFees`、`claimUnlockedPreorderMemecoin`→`claimUnlockedPreorderMemecoin`、`redeemAndDistributeFees`→`collectAndDistributeFees`、`changeStage`（经 `MemeverseLaunchImpl::changeStage` dispatcher 的 Locked 分支嵌套 delegatecall）→`unlockFromLocked`。runtime integration ABI（`IMemeverseSettlementImpl`）：
 
 ```solidity
+function refund(uint256 verseId) external returns (uint256 genesisFund);
+function refundPreorder(uint256 verseId) external returns (uint256 preorderFund);
+function claimNormalYT(uint256 verseId) external returns (uint256 amount);
+function claimNormalFees(uint256 verseId) external returns (uint256 uAssetAmount, uint256 ptAmount);
+function claimUnlockedPreorderMemecoin(uint256 verseId) external returns (uint256 amount);
 function collectAndDistributeFees(uint256 verseId, address rewardReceiver, address polSplitter) external payable returns (uint256 govFee, uint256 memecoinFee, uint256 polFee, uint256 executorReward, bool hadFees);
-function captureLockedAuxiliaryFees(uint256 verseId, address polSplitter, address hook) external;
+function unlockFromLocked(uint256 verseId, address polSplitter, address hook) external;
 ```
 
 - `collectAndDistributeFees` 标记 `payable`：跨链路径把 `msg.value` 作为 LayerZero native fee 消耗；`hadFees == false` 标识无 fee 早返回路径，facade 据此 gate `RedeemAndDistributeFees` 的 emit。
-- `captureLockedAuxiliaryFees` 是 §1.3 / §4 描述的 Locked→Unlocked 辅助池 fee 捕获入口。
+- `_captureLockedAuxiliaryFees` 是 §1.3 / §4 描述的 Locked→Unlocked 辅助池 fee 捕获逻辑，经 `unlockFromLocked` 入口在 stage 翻转前调用。
 
 `MemeverseFeePreviewReader` 是独立 view 合约：无 owner gating，持有 immutable `PROXY`（Launcher proxy 地址），runtime 只 staticcall proxy getter。runtime integration ABI（`IMemeverseFeePreviewReader`）：
 

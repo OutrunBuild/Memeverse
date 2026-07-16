@@ -134,11 +134,11 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
         address memeverseProxyDeployer;
         address memeverseSwapRouter;
         address polSplitter;
-        address bootstrapImpl;
+        address launchImpl;
         address memeverseUniswapHook;
-        address feeDistributorImpl;
+        address settlementImpl;
         address feePreviewReader;
-        address polMinterImpl;
+        address liquidityImpl;
     }
 
     /// @notice Bundle of launcher-configured numeric parameters returned by `getLauncherParameters`.
@@ -299,6 +299,17 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
     /// @param user Account credited for the preorder participation.
     function preorder(uint256 verseId, uint256 amountInUAsset, address user) external;
 
+    /// @notice Atomically contribute uAsset to genesis then preorder for the same `user` in one transaction.
+    /// @dev Runs genesis first to enlarge the preorder base, then preorder against the enlarged capacity,
+    ///      removing the two-tx race where a standalone preorder could be front-run and fill the capacity the
+    ///      genesis just opened. Both legs emit their own events and re-check the Genesis stage; a preorder cap
+    ///      revert rolls back the genesis leg too.
+    /// @param verseId Target verse id.
+    /// @param genesisAmount uAsset contributed to the genesis pool.
+    /// @param preorderAmount uAsset contributed to the preorder pool.
+    /// @param user Account credited for both the genesis and the preorder participation.
+    function genesisAndPreorder(uint256 verseId, uint256 genesisAmount, uint256 preorderAmount, address user) external;
+
     /// @notice Advances a verse to the next valid launcher stage.
     /// @dev Depending on timing and funding, this may settle Genesis, deploy liquidity, or move into Refund/Unlocked.
     /// @param verseId Target verse id.
@@ -426,17 +437,18 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
     /// @param yieldDispatcher The new yield dispatcher address.
     function setYieldDispatcher(address yieldDispatcher) external;
 
-    /// @notice Sets the MemeverseBootstrap sibling implementation that runs bootstrap liquidity deployment.
+    /// @notice Sets the MemeverseLaunchImpl sibling implementation that runs verse registration, genesis/preorder
+    ///         deposits, and adaptive stage transitions.
     /// @dev Implementations are expected to guard this with their admin or owner flow.
-    /// @param bootstrapImpl The MemeverseBootstrap sibling address.
-    function setBootstrapImpl(address bootstrapImpl) external;
+    /// @param launchImpl The MemeverseLaunchImpl sibling address.
+    function setLaunchImpl(address launchImpl) external;
 
-    /// @notice Sets the MemeverseFeeDistributor sibling implementation invoked via delegatecall for fee
+    /// @notice Sets the MemeverseSettlementImpl sibling implementation invoked via delegatecall for fee
     ///         collection and distribution.
     /// @dev Implementations are expected to guard this with their admin or owner flow. The facade
     ///      delegatecalls into this sibling, so a zero address would delegatecall into address(0).
-    /// @param feeDistributorImpl The MemeverseFeeDistributor sibling address.
-    function setFeeDistributorImpl(address feeDistributorImpl) external;
+    /// @param settlementImpl The MemeverseSettlementImpl sibling address.
+    function setSettlementImpl(address settlementImpl) external;
 
     /// @notice Sets the independent fee-preview reader contract used for off-chain fee previews.
     /// @dev Implementations are expected to guard this with their admin or owner flow. The reader is a
@@ -444,11 +456,11 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
     /// @param feePreviewReader The fee-preview reader contract address.
     function setFeePreviewReader(address feePreviewReader) external;
 
-    /// @notice Sets the MemeversePOLMinter sibling implementation invoked via delegatecall for POL minting.
+    /// @notice Sets the MemeverseLiquidityImpl sibling implementation invoked via delegatecall for POL minting.
     /// @dev Implementations are expected to guard this with their admin or owner flow. The facade
     ///      delegatecalls into this sibling, so a zero address would delegatecall into address(0).
-    /// @param polMinterImpl The MemeversePOLMinter sibling address.
-    function setPOLMinterImpl(address polMinterImpl) external;
+    /// @param liquidityImpl The MemeverseLiquidityImpl sibling address.
+    function setLiquidityImpl(address liquidityImpl) external;
 
     /// @notice Sets the fund metadata used for a verse uAsset token.
     /// @dev `fundBasedAmount` controls launcher-side bootstrap pricing and may be bounded by the implementation.
@@ -537,14 +549,14 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
     ///      `MemecoinYieldVault.initialize` revert `ZeroVirtualAssets()` and DoS governance-chain deploy.
     error VirtualAssetsTooLow();
 
-    /// @dev Reverted when the owner has not configured the bootstrap sibling the facade delegatecalls into.
-    error BootstrapImplNotSet();
+    /// @dev Reverted when the owner has not configured the launch sibling the facade delegatecalls into.
+    error LaunchImplNotSet();
 
-    /// @dev Reverted when the owner has not configured the fee-distributor sibling the facade delegatecalls into.
-    error FeeDistributorImplNotSet();
+    /// @dev Reverted when the owner has not configured the settlement sibling the facade delegatecalls into.
+    error SettlementImplNotSet();
 
-    /// @dev Reverted when the owner has not configured the POL-minter sibling the facade delegatecalls into.
-    error POLMinterImplNotSet();
+    /// @dev Reverted when the owner has not configured the liquidity sibling the facade delegatecalls into.
+    error LiquidityImplNotSet();
 
     event Genesis(uint256 indexed verseId, address indexed depositer, uint256 amount);
 
@@ -584,17 +596,17 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
 
     event SetYieldDispatcher(address yieldDispatcher);
 
-    /// @dev Emitted when the owner repoints the facade to a new bootstrap sibling implementation.
-    event SetBootstrapImpl(address indexed bootstrapImpl);
+    /// @dev Emitted when the owner repoints the facade to a new launch sibling implementation.
+    event SetLaunchImpl(address indexed launchImpl);
 
-    /// @dev Emitted when the owner repoints the facade to a new fee-distributor sibling implementation.
-    event SetFeeDistributorImpl(address indexed feeDistributorImpl);
+    /// @dev Emitted when the owner repoints the facade to a new settlement sibling implementation.
+    event SetSettlementImpl(address indexed settlementImpl);
 
     /// @dev Emitted when the owner repoints the facade to a new fee-preview reader contract.
     event SetFeePreviewReader(address indexed feePreviewReader);
 
-    /// @dev Emitted when the owner repoints the facade to a new POL-minter sibling implementation.
-    event SetPOLMinterImpl(address indexed polMinterImpl);
+    /// @dev Emitted when the owner repoints the facade to a new liquidity sibling implementation.
+    event SetLiquidityImpl(address indexed liquidityImpl);
 
     event SetFundMetaData(address indexed uAsset, uint256 minTotalFund, uint256 fundBasedAmount);
 

@@ -32,6 +32,7 @@
 `preorderCap = (totalNormalFunds + totalLeveragedDebt) * 70% * preorderCapRatio / RATIO`
 - `totalLeveragedDebt` 由当前 market 利率和 `totalLeveragedInterest` 推导；无杠杆参与时视为 0。
 - `Refund` 状态下，preorder 用户按 `userPreorderFunds` 一次性退回该 verse 的 `uAsset`。
+- 原子合并入口 `genesisAndPreorder(verseId, genesisAmount, preorderAmount, user)`（`MemeverseLaunchImpl.sol::genesisAndPreorder`）在一笔交易内先完成 genesis 入账（`totalNormalFunds` 增加）、再完成 preorder 入账（`totalPreorderFunds` 增加）。preorder 容量在 preorder 步实时基于已更新的 `totalNormalFunds` + `totalLeveragedDebt` 计算（公式同上），故 genesis 步入金即时抬升本笔可用的 preorder 容量；`genesisAmount` 与 `preorderAmount` 均须 > 0，`user` 为两步共同受益人，`msg.sender` 为 payer。容量、退款与结算口径均与两次独立调用完全一致，不引入新记账口径。
 
 ### 2.4 公开预览接口
 
@@ -146,7 +147,7 @@
 - `mainPoolGovFee = mainPoolUAssetFee - executorReward`，减法必须保持 checked arithmetic 语义。
 - 执行者奖励直接发给 `rewardReceiver`。
 - `quoteDistributionLzFee` 与 `redeemAndDistributeFees` 必须共享同一套执行者奖励分账算术语义；quote 口径不得因中间乘法溢出而偏离 redeem 实际执行结果。
-- 上述 quote 与 redeem 共享的分账算术通过内部库 `src/verse/libraries/MemeverseLauncherLib.sol::splitExecutorReward` 落地：`MemeverseFeeDistributor._splitExecutorReward` 与 `MemeverseFeePreviewReader._splitExecutorReward` 仅作为薄 wrapper 调用同一实现，二者之间仅在如何读取 `executorRewardRate` 上不同。[代码已证]
+- 上述 quote 与 redeem 共享的分账算术通过内部库 `src/verse/libraries/MemeverseLauncherLib.sol::splitExecutorReward` 落地：`MemeverseSettlementImpl._splitExecutorReward` 与 `MemeverseFeePreviewReader._splitExecutorReward` 仅作为薄 wrapper 调用同一实现，二者之间仅在如何读取 `executorRewardRate` 上不同。[代码已证]
 - 辅助 governor 路径的 `uAsset` fee 与 `PT` 转换后的 `uAsset` 会在主池分账之后并入 governor treasury 路径，不额外再拆执行者奖励。
 
 ### 5.4 治理链本地/异链分发

@@ -80,13 +80,13 @@ canonical Launcher address 是 `IOutrunDeployer` CREATE3 部署的 ERC1967 proxy
 | `MemeverseUniswapHook` | `defaultLaunchFeeConfig` 初始值 | `start=5000,min=100,decay=900s` | proxy `initialize(initialOwner, treasury_, lpTokenImplementation_, swapFacet_, dynamicFeeFacet_, settlementFacet_)` 初始化；同时建立默认启动费率配置、LP template 与 3 facet 指针绑定；owner 可通过 `setDefaultLaunchFeeConfig(...)` 后续修改 | `[代码已证]` |
 | `MemeverseSwapRouter` | `hook`,`permit2` | 构造注入（immutable） | 外部依赖地址，部署后不可改 | `[代码已证]` |
 | `DeployMemeverseHookProxy` | `DEPLOYMENT_NONCE` | 首次 `0`，每次新部署递增 | 嵌入 CREATE3 salt，决定 `lpTokenImplementation`、`SwapFacet`/`DynamicFeeFacet`/`SettlementFacet` 三 facet、hook implementation/proxy 等 deployment artifacts；同 nonce 同配置幂等，同 nonce 不同配置 revert；`deployHookProxy` 原子回滚或广播前仿真失败且未消耗 salt 时可用同 nonce 重试，仅部分广播已消耗 CREATE3 salt 时递增 nonce | `[代码已证]` |
-| `MemeverseLauncher` | `UNLOCK_PROTECTION_WINDOW` | `24 hours` 固定常量 | owner 无配置入口；用于 `Locked -> Unlocked` 后受保护公开 swap 的固定恢复窗口 | `[代码已证]` |
+| `MemeverseSettlementImpl` | `UNLOCK_PROTECTION_WINDOW` | `24 hours` 固定常量 | 不再暴露 owner 配置面；用于 `Locked -> Unlocked` 后受保护公开 swap 的固定恢复窗口 | `[代码已证]` |
 | `MemeverseLauncher` / `POLend` | `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` | `type(uint128).max` | 普通创世与杠杆创世共享的聚合部署资金上限；preorder 不计入该口径 | `[代码已证]` |
 | `GovernanceCycleIncentivizerUpgradeable` | `CYCLE_DURATION` | `90 days` | 治理周期长度 | `[代码已证]` |
 | `MemecoinYieldVault` | `REDEEM_DELAY` | `1 days` | 赎回延迟 | `[代码已证]` |
 | `MemecoinYieldVault` | `MAX_REDEEM_REQUESTS` | `5` | 每地址最大排队赎回数 | `[代码已证]` |
 | `MemeverseLauncher` / `MemecoinYieldVault` | 虚拟缓冲 V 推导 | `V = minTotalFund × fundBasedAmount × 7 / 1000`（即 `0.7%`，等价最小主池 memecoin 的 1%，主池占创世资金 70%） | 由 Launcher 在治理链 deploy vault 时按 `FundMetaData(uAsset)` 的 `minTotalFund × fundBasedAmount` 一次性算出并传入 `vault.initialize(...)`；配置期必须校验派生值 `V = minTotalFund × fundBasedAmount × 7 / 1000 > 0`（等价 `minTotalFund × fundBasedAmount >= 143`），否则 deploy vault 时 `YieldVault.initialize` 会 `ZeroVirtualAssets` revert；vault 写入 storage 后永久固定、不可改；不是 owner 可配项，也不新增 `FundMetaData` 字段；用于 share/asset 转换的虚拟缓冲，口径见 [docs/spec/governance/governance-yield-details.md](../governance/governance-yield-details.md) §4；源码锚点 `MemeverseLauncher.sol:625-626`（算 V）、`MemecoinYieldVault.sol:51`（revert），边界单测 `MemeverseLauncherConfig.t.sol:538` | `[代码已证]` |
-| `MemeverseLauncher` | 虚拟缓冲系数 | `7 / 1000`（`0.7%`）常量 | 算 V 的固定系数，Launcher 端常量，非 owner 配置面；其语义为「主池占创世资金 70%」（主池预算 `MemeverseBootstrap.sol:67` `mulDiv(totalGenesisFunds, 7, 10)`）对应的等效最小主池 1% 口径；常量定义 `MemeverseLauncher.sol:57`(`FACTOR=7`)/`:59`(`DIVISOR=1000`) | `[代码已证]` |
+| `MemeverseLauncher` | 虚拟缓冲系数 | `7 / 1000`（`0.7%`）常量 | 算 V 的固定系数，Launcher 端常量，非 owner 配置面；其语义为「主池占创世资金 70%」（主池预算 `MemeverseLiquidityImpl.sol:72` `mulDiv(totalGenesisFunds, 7, 10)`）对应的等效最小主池 1% 口径；常量定义 `MemeverseLauncher.sol:44`(`YIELD_VAULT_VIRTUAL_ASSET_FACTOR=7`)/`:46`(`YIELD_VAULT_VIRTUAL_ASSET_DIVISOR=1000`) | `[代码已证]` |
 
 ## 4. 当前实现提醒
 

@@ -7,6 +7,7 @@ import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/Option
 import {IOFT, SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
 import {TokenHelper} from "../common/token/TokenHelper.sol";
+import {DelegatecallOnly} from "../common/access/DelegatecallOnly.sol";
 import {IMemeverseOFTEnum} from "../common/types/IMemeverseOFTEnum.sol";
 import {IPol} from "../token/interfaces/IPol.sol";
 import {IPOLend} from "../polend/interfaces/IPOLend.sol";
@@ -18,29 +19,206 @@ import {IYieldDispatcher} from "./interfaces/IYieldDispatcher.sol";
 import {IMemeverseLauncher} from "./interfaces/IMemeverseLauncher.sol";
 import {MemeverseLauncherStorage} from "./interfaces/IMemeverseLauncherStorage.sol";
 import {MemeverseLauncherLib} from "./libraries/MemeverseLauncherLib.sol";
-import {IMemeverseFeeDistributor} from "./interfaces/IMemeverseFeeDistributor.sol";
 
-/// @title MemeverseFeeDistributor
-/// @notice Delegatecall-only sibling holding the fee collection and distribution chain relocated from
-///         MemeverseLauncher. Binds the SAME ERC-7201 slot so under delegatecall it operates on
-///         the proxy's MemeverseLauncherStorage. No Initializable, no own storage, empty constructor.
-contract MemeverseFeeDistributor layout at erc7201("outrun.storage.MemeverseLauncher")
+/// @title MemeverseSettlementImpl
+/// @notice Delegatecall-only sibling that owns the settlement-side flows for MemeverseLauncher: genesis /
+///         preorder refunds, normal YT / fee claims, unlocked preorder-memecoin claims, the fee collection
+///         and distribution chain, and the Locked -> Unlocked stage transition.
+/// @dev Binds the SAME ERC-7201 namespace as the launcher facade
+///      (`erc7201("outrun.storage.MemeverseLauncher")`), so under delegatecall every storage read/write lands
+///      on the launcher proxy's MemeverseLauncherStorage. The sibling has no initializer, no owner, no own
+///      mutable state, and intentionally no `msg.sender == launcher` guard: under delegatecall `msg.sender`
+///      is the facade's original caller (user, executor, POLend, or stage advancer) and `address(this)` is
+///      the launcher proxy. A direct (non-delegatecall) call reverts via the inherited `onlyDelegatecall`
+///      guard (see `DelegatecallOnly`) before any storage access, so the sibling is explicitly guarded.
+///
+///      Nested types (Memeverse, Stage, PreorderState, GenesisData, PreorderData, NormalFeeState,
+///      UserNormalFeeClaim, RedeemedFeeState, PendingAuxiliaryGovFeeState, ...) and the errors live in
+///      interface IMemeverseLauncher. Unlike the facade (which inherits IMemeverseLauncher and uses bare
+///      names), this sibling only inherits TokenHelper, so every reference below is qualified as
+///      `IMemeverseLauncher.X`.
+contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLauncher")
     is
     TokenHelper,
-    IMemeverseFeeDistributor
+    DelegatecallOnly
 {
     using OptionsBuilder for bytes;
 
+    uint256 internal constant UNLOCK_PROTECTION_WINDOW = 24 hours;
+
+    /// @dev Same ERC-7201 namespace as the launcher facade; under delegatecall this reads/writes the proxy's
+    ///      MemeverseLauncherStorage. Do NOT add an initializer, owner, or any setter.
     MemeverseLauncherStorage private memeverseLauncherStorage;
 
-    constructor() {}
+    // =========================================================================================================
+    // Refunds + normal claims
+    // =========================================================================================================
 
-    // === relocated fee distribution chain (from MemeverseLauncher) ===
-    //
-    // Nested types (Memeverse, RedeemedFeeState, Stage, TokenType, NormalFeeState,
-    // PendingAuxiliaryGovFeeState, etc.) are declared inside interface IMemeverseLauncher. Unlike the
-    // facade (which inherits IMemeverseLauncher and can use bare names), this sibling only inherits
-    // TokenHelper, so every reference below is qualified as IMemeverseLauncher.X.
+    /**
+     * @notice Refund the caller's uAsset genesis contribution after a verse resolved to `Stage.Refund`.
+     * @dev Invoked via delegatecall by the facade's `refund`. The facade keeps the outer `versIdValidate`
+     *      guard; this sibling owns the stage check, refund flag, transfer, and emit. Under delegatecall
+     *      `msg.sender` is the original caller (refund recipient).
+     * @param verseId Memeverse id.
+     * @return genesisFund The refunded genesis contribution amount.
+     */
+    function refund(uint256 verseId) external onlyDelegatecall returns (uint256 genesisFund) {
+        IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
+        require(verse.currentStage == IMemeverseLauncher.Stage.Refund, IMemeverseLauncher.NotRefundStage());
+
+        address msgSender = msg.sender;
+        IMemeverseLauncher.GenesisData storage genesisData =
+            memeverseLauncherStorage.userGenesisData[verseId][msgSender];
+        genesisFund = genesisData.genesisFund;
+        require(genesisFund > 0 && !genesisData.isRefunded, IMemeverseLauncher.InvalidClaim());
+
+        genesisData.isRefunded = true;
+        _transferOut(verse.uAsset, msgSender, genesisFund);
+
+        emit IMemeverseLauncher.Refund(verseId, msgSender, genesisFund);
+    }
+
+    /**
+     * @notice Refund the caller's uAsset preorder contribution after a verse resolved to `Stage.Refund`.
+     * @dev Invoked via delegatecall by the facade's `refundPreorder`. Under delegatecall `msg.sender` is
+     *      the original caller (refund recipient).
+     * @param verseId Memeverse id.
+     * @return preorderFund The refunded preorder contribution amount.
+     */
+    function refundPreorder(uint256 verseId) external onlyDelegatecall returns (uint256 preorderFund) {
+        IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
+        require(verse.currentStage == IMemeverseLauncher.Stage.Refund, IMemeverseLauncher.NotRefundStage());
+
+        address msgSender = msg.sender;
+        IMemeverseLauncher.PreorderData storage preorderData =
+            memeverseLauncherStorage.userPreorderData[verseId][msgSender];
+        preorderFund = preorderData.funds;
+        require(preorderFund > 0 && !preorderData.isRefunded, IMemeverseLauncher.InvalidClaim());
+
+        preorderData.isRefunded = true;
+        _transferOut(verse.uAsset, msgSender, preorderFund);
+
+        emit IMemeverseLauncher.RefundPreorder(verseId, msgSender, preorderFund);
+    }
+
+    /**
+     * @notice Claim the caller's normal YT (Yield Token) share after Genesis resolves to `Locked`.
+     * @dev Invoked via delegatecall by the facade's `claimNormalYT`. The facade keeps the outer
+     *      `versIdValidate` + `whenNotPaused` guards; this sibling owns the stage check, one-shot flag,
+     *      transfer, and emit. Under delegatecall `msg.sender` is the original caller (YT recipient).
+     * @param verseId Memeverse id.
+     * @return amount The claimed YT amount.
+     */
+    function claimNormalYT(uint256 verseId) external onlyDelegatecall returns (uint256 amount) {
+        IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
+        require(verse.currentStage >= IMemeverseLauncher.Stage.Locked, IMemeverseLauncher.NotReachedLockedStage());
+
+        address msgSender = msg.sender;
+        require(!memeverseLauncherStorage.normalYTClaimed[verseId][msgSender], IMemeverseLauncher.InvalidClaim());
+
+        uint256 userGenesisFund = memeverseLauncherStorage.userGenesisData[verseId][msgSender].genesisFund;
+        uint256 normalFunds = memeverseLauncherStorage.totalNormalFunds[verseId];
+        require(userGenesisFund != 0 && normalFunds != 0, IMemeverseLauncher.InvalidClaim());
+
+        amount = FullMath.mulDiv(memeverseLauncherStorage.totalNormalClaimableYT[verseId], userGenesisFund, normalFunds);
+
+        memeverseLauncherStorage.normalYTClaimed[verseId][msgSender] = true;
+        if (amount != 0) {
+            address _polSplitter = memeverseLauncherStorage.polSplitter;
+            address yt = IPOLSplitter(_polSplitter).getYT(verseId);
+            _transferOut(yt, msgSender, amount);
+        }
+
+        emit IMemeverseLauncher.ClaimNormalYT(verseId, msgSender, amount);
+    }
+
+    /**
+     * @notice Claim the caller's accumulated uAsset and PT normal-fee entitlements.
+     * @dev Invoked via delegatecall by the facade's `claimNormalFees`. The facade keeps the outer
+     *      `versIdValidate` + `whenNotPaused` guards; this sibling owns the CEI commit, PT settlement /
+     *      transfer, uAsset transfer, and emit. Under delegatecall `msg.sender` is the original caller
+     *      (fee recipient). The trust boundary is the configured POLSplitter.
+     * @param verseId Memeverse id.
+     * @return uAssetAmount The claimed uAsset fee amount.
+     * @return ptAmount The claimed PT fee amount (zero when redeemed to uAsset in place).
+     */
+    function claimNormalFees(uint256 verseId)
+        external
+        onlyDelegatecall
+        returns (uint256 uAssetAmount, uint256 ptAmount)
+    {
+        IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
+        require(verse.currentStage >= IMemeverseLauncher.Stage.Locked, IMemeverseLauncher.NotReachedLockedStage());
+
+        address _polSplitter = memeverseLauncherStorage.polSplitter;
+        (address pt, bool settled) = IPOLSplitter(_polSplitter).getPTSettlementState(verseId);
+        uint256 normalFunds = memeverseLauncherStorage.totalNormalFunds[verseId];
+        uint256 userFund = memeverseLauncherStorage.userGenesisData[verseId][msg.sender].genesisFund;
+        require(userFund != 0 && normalFunds != 0, IMemeverseLauncher.InvalidClaim());
+        IMemeverseLauncher.UserNormalFeeClaim storage userClaim =
+            memeverseLauncherStorage.userNormalFeeClaims[verseId][msg.sender];
+        IMemeverseLauncher.NormalFeeState storage feeState = memeverseLauncherStorage.normalFeeStates[verseId];
+
+        uint256 entitledUAsset = FullMath.mulDiv(feeState.accUAssetFee, userFund, normalFunds);
+        uint256 entitledPT = FullMath.mulDiv(feeState.accPTFee, userFund, normalFunds);
+        uAssetAmount = entitledUAsset - userClaim.claimedUAssetFee;
+        uint256 pendingPTAmount = entitledPT - userClaim.claimedPTFee;
+        uint256 claimableUAssetAmount = uAssetAmount;
+
+        // Commit the launcher-held fee state before any external PT settlement call so a callback cannot
+        // reenter and pull the same fee twice.
+        if (claimableUAssetAmount != 0) {
+            userClaim.claimedUAssetFee = entitledUAsset;
+        }
+
+        if (pendingPTAmount != 0) {
+            // Report the pending PT entitlement unless this claim either transfers it or redeems it into uAsset.
+            ptAmount = pendingPTAmount;
+            if (settled) {
+                uint256 ptBacking = IPOLSplitter(_polSplitter).previewPTToUAsset(verseId, pendingPTAmount);
+                if (ptBacking != 0) {
+                    userClaim.claimedPTFee = entitledPT;
+                    uAssetAmount += IPOLSplitter(_polSplitter).redeemPT(verseId, pendingPTAmount, msg.sender);
+                    ptAmount = 0;
+                } else {
+                    // Dust rounding makes the PT redeemable for zero uAsset.
+                    // Reset ptAmount so the event reflects no actual transfer.
+                    // claimedPTFee is intentionally left untouched so the entitlement
+                    // stays pending and self-heals as future fee accrual grows accPTFee.
+                    ptAmount = 0;
+                }
+            } else {
+                userClaim.claimedPTFee = entitledPT;
+                _transferOut(pt, msg.sender, pendingPTAmount);
+            }
+        }
+        if (claimableUAssetAmount != 0) {
+            _transferOut(verse.uAsset, msg.sender, claimableUAssetAmount);
+        }
+        emit IMemeverseLauncher.ClaimNormalFees(verseId, msg.sender, uAssetAmount, ptAmount);
+    }
+
+    /**
+     * @notice Claim the caller's currently vested unlocked preorder memecoin.
+     * @dev Invoked via delegatecall by the facade's `claimUnlockedPreorderMemecoin`. Uses the shared
+     *      `MemeverseLauncherLib.claimablePreorderMemecoinForAccount` helper. Under delegatecall `msg.sender`
+     *      is the original caller (memecoin recipient).
+     * @param verseId Memeverse id.
+     * @return amount The claimed preorder memecoin amount.
+     */
+    function claimUnlockedPreorderMemecoin(uint256 verseId) external onlyDelegatecall returns (uint256 amount) {
+        amount = MemeverseLauncherLib.claimablePreorderMemecoinForAccount(memeverseLauncherStorage, verseId, msg.sender);
+        require(amount != 0, IMemeverseLauncher.NoPOLAvailable());
+
+        address msgSender = msg.sender;
+        memeverseLauncherStorage.userPreorderData[verseId][msgSender].claimedMemecoin += amount;
+        _transferOut(memeverseLauncherStorage.memeverses[verseId].memecoin, msgSender, amount);
+        emit IMemeverseLauncher.ClaimPreorderMemecoin(verseId, msgSender, amount);
+    }
+
+    // =========================================================================================================
+    // Fee collection and distribution chain
+    // =========================================================================================================
 
     /**
      * @notice Collect redeemed fees, burn POL, split the executor reward, and distribute the rest.
@@ -51,10 +229,10 @@ contract MemeverseFeeDistributor layout at erc7201("outrun.storage.MemeverseLaun
      *      and the `TokenHelper` reentrancy lock's acquire/release lifecycle stays whole (design §7).
      *      `msg.value` is the caller-supplied LayerZero native fee and is preserved across the
      *      delegatecall, hence `payable`.
-     *      Delegatecall-only by construction, not by a runtime guard: the sibling's own storage is
-     *      permanently uninitialized, so a direct (non-delegatecall) call reads an empty verse and
-     *      reverts on the resulting external call to address(0). A msg.sender guard would be wrong
-     *      here — under delegatecall msg.sender is the facade's caller (arbitrary), not the facade.
+     *      Delegatecall-only is enforced by the inherited `onlyDelegatecall` guard (see `DelegatecallOnly`),
+     *      which reverts on direct call before any storage access. A `msg.sender == launcher` guard would
+     *      still be wrong here, because under delegatecall `msg.sender` is the facade's caller (arbitrary),
+     *      not the facade.
      * @param verseId Memeverse id.
      * @param rewardReceiver Receiver of the executor reward.
      * @param polSplitter The launcher's configured POLSplitter address (forwarded by the facade).
@@ -62,11 +240,12 @@ contract MemeverseFeeDistributor layout at erc7201("outrun.storage.MemeverseLaun
      * @return memecoinFee The distributed memecoin fee amount.
      * @return polFee The distributed POL fee amount.
      * @return executorReward The distributed executor reward amount.
+     * @return hadFees True iff any redeemed fees were collected (the facade emits only when true).
      */
     function collectAndDistributeFees(uint256 verseId, address rewardReceiver, address polSplitter)
         external
         payable
-        override
+        onlyDelegatecall
         returns (uint256 govFee, uint256 memecoinFee, uint256 polFee, uint256 executorReward, bool hadFees)
     {
         IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
@@ -85,20 +264,6 @@ contract MemeverseFeeDistributor layout at erc7201("outrun.storage.MemeverseLaun
         polFee = fees.polFee;
         govFee = _distributeRedeemedFees(verseId, verse, govFee, fees, polSplitter);
         hadFees = true;
-    }
-
-    /**
-     * @notice Capture and accrue auxiliary-pool fees when a verse transitions Locked -> Unlocked.
-     * @dev Invoked via delegatecall by the facade's `changeStage` Locked->Unlocked branch. Burns the
-     *      captured POL fee and accumulates the governance share into `pendingAuxiliaryGovFeeStates`.
-     *      Delegatecall-only by construction (see `collectAndDistributeFees` dev note).
-     * @param verseId Memeverse id.
-     * @param polSplitter The launcher's configured POLSplitter address (forwarded by the facade).
-     * @param hook The launcher's configured MemeverseUniswapHook address (forwarded by the facade).
-     */
-    function captureLockedAuxiliaryFees(uint256 verseId, address polSplitter, address hook) external override {
-        IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
-        _captureLockedAuxiliaryFees(verseId, verse, polSplitter, hook);
     }
 
     function _collectRedeemedFees(uint256 verseId, IMemeverseLauncher.Memeverse storage verse, address _polSplitter)
@@ -243,7 +408,7 @@ contract MemeverseFeeDistributor layout at erc7201("outrun.storage.MemeverseLaun
         bytes memory yieldDispatcherOptions = OptionsBuilder.newOptions()
             .addExecutorLzReceiveOption(memeverseLauncherStorage.oftReceiveGasLimit, 0)
             .addExecutorLzComposeOption(0, memeverseLauncherStorage.yieldDispatcherGasLimit, 0);
-        // Cache yieldDispatcher once (R2-02): both OFT send-param builds consume the same address.
+        // Cache yieldDispatcher once because both OFT send-param builds consume the same address.
         address _yieldDispatcher = memeverseLauncherStorage.yieldDispatcher;
 
         SendParam memory sendUAssetParam;
@@ -369,14 +534,15 @@ contract MemeverseFeeDistributor layout at erc7201("outrun.storage.MemeverseLaun
         uint256 totalPTFee,
         bool preserveNormalShare
     ) internal view returns (uint256 govUAssetFee, uint256 govPTFee) {
+        // GR-001: short-circuit before the SLOAD + external getTotalLeveragedDebt fetch on the
+        // Unlocked-stage path (preserveNormalShare == false), where redeemAndDistributeFees is
+        // repeatedly callable. Mirrors the lib helper's own first-line guard; restoring pre-refactor gas.
         if (!preserveNormalShare) return (totalUAssetFee, totalPTFee);
         uint256 normalFunds = memeverseLauncherStorage.totalNormalFunds[verseId];
         uint256 totalLeveragedDebt = IPOLend(memeverseLauncherStorage.polend).getTotalLeveragedDebt(verseId);
-        uint256 totalFunds = MemeverseLauncherLib.checkedTotalGenesisFunds(normalFunds, totalLeveragedDebt);
-        if (totalFunds == 0) return (totalUAssetFee, totalPTFee);
-
-        govUAssetFee = FullMath.mulDiv(totalUAssetFee, totalLeveragedDebt, totalFunds);
-        govPTFee = FullMath.mulDiv(totalPTFee, totalLeveragedDebt, totalFunds);
+        return MemeverseLauncherLib.splitAuxiliaryGovFees(
+            normalFunds, totalLeveragedDebt, totalUAssetFee, totalPTFee, preserveNormalShare
+        );
     }
 
     function _claimPairFees(address tokenA, address tokenB, address _hook)
@@ -396,5 +562,69 @@ contract MemeverseFeeDistributor layout at erc7201("outrun.storage.MemeverseLaun
         returns (uint256 tokenAFee, uint256 tokenBFee)
     {
         return MemeverseLauncherLib.mapPairFees(tokenA, tokenB, fee0, fee1);
+    }
+
+    // =========================================================================================================
+    // Locked -> Unlocked stage transition
+    // The launch sibling owns the `ChangeStage` emit; this entry owns the state transition and the three
+    // external settlement callbacks.
+    // =========================================================================================================
+
+    /**
+     * @notice Capture locked auxiliary fees, advance the verse to `Stage.Unlocked`, settle POLSplitter /
+     *         POLend, and arm post-unlock public-swap protection.
+     * @dev Invoked via delegatecall by the launch sibling's `changeStage` Locked->Unlocked branch. The launch
+     *      sibling (not the facade) owns the `currentTime > verse.unlockTime` eligibility check and the
+     *      `ChangeStage` emit; this entry owns the `Stage.Unlocked` state write and the settlement callbacks,
+     *      and performs no eligibility check or emit. Under delegatecall `msg.sender` is the facade's caller
+     *      (arbitrary stage advancer) and `address(this)` is the launcher proxy.
+     *      Ordering invariant: `verse.currentStage = Stage.Unlocked` is written BEFORE calling
+     *      `IPOLend.executeGlobalSettlement`, because POLend re-enters the launcher during global
+     *      settlement and must observe the Unlocked stage.
+     * @param verseId Memeverse id.
+     * @param polSplitter The launcher's configured POLSplitter address (forwarded by the facade).
+     * @param hook The launcher's configured MemeverseUniswapHook address (forwarded by the facade).
+     */
+    function unlockFromLocked(uint256 verseId, address polSplitter, address hook) external onlyDelegatecall {
+        address _polend = memeverseLauncherStorage.polend;
+        IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
+
+        _captureLockedAuxiliaryFees(verseId, verse, polSplitter, hook);
+        // Write Stage.Unlocked BEFORE the callbacks: POLend re-enters the launcher during executeGlobalSettlement
+        // and must observe the Unlocked stage.
+        verse.currentStage = IMemeverseLauncher.Stage.Unlocked;
+        IPOLSplitter(polSplitter).settle(verseId);
+        if (IPOLend(_polend).getTotalLeveragedDebt(verseId) != 0) {
+            IPOLend(_polend).executeGlobalSettlement(verseId);
+        }
+        _activatePostUnlockPublicSwapProtection(verseId, verse, polSplitter, hook);
+    }
+
+    function _activatePostUnlockPublicSwapProtection(
+        uint256 verseId,
+        IMemeverseLauncher.Memeverse storage verse,
+        address polSplitterAddress,
+        address hook
+    ) internal {
+        uint40 resumeTime = uint40(block.timestamp + UNLOCK_PROTECTION_WINDOW);
+        IMemeverseUniswapHook _hook = IMemeverseUniswapHook(hook);
+        address uAsset = verse.uAsset;
+        address pol = verse.pol;
+        address pt = IPOLSplitter(polSplitterAddress).getPT(verseId);
+
+        _setPublicSwapResumeTimeIfPairExists(_hook, verse.memecoin, uAsset, resumeTime);
+        _setPublicSwapResumeTimeIfPairExists(_hook, pol, uAsset, resumeTime);
+        _setPublicSwapResumeTimeIfPairExists(_hook, pt, uAsset, resumeTime);
+        _setPublicSwapResumeTimeIfPairExists(_hook, pt, pol, resumeTime);
+    }
+
+    function _setPublicSwapResumeTimeIfPairExists(
+        IMemeverseUniswapHook hook,
+        address tokenA,
+        address tokenB,
+        uint40 resumeTime
+    ) internal {
+        if (tokenA == address(0) || tokenB == address(0) || tokenA == tokenB) return;
+        hook.setPublicSwapResumeTime(tokenA, tokenB, resumeTime);
     }
 }

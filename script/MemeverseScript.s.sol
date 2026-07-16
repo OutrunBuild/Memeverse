@@ -21,10 +21,10 @@ import {MemeverseRegistrarAtLocal} from "../src/verse/registration/MemeverseRegi
 import {MemeverseRegistrationCenter} from "../src/verse/registration/MemeverseRegistrationCenter.sol";
 import {MemeverseRegistrarOmnichain} from "../src/verse/registration/MemeverseRegistrarOmnichain.sol";
 import {MemeverseLauncher, IMemeverseLauncher} from "../src/verse/MemeverseLauncher.sol";
-import {MemeverseBootstrap} from "../src/verse/MemeverseBootstrap.sol";
-import {MemeverseFeeDistributor} from "../src/verse/MemeverseFeeDistributor.sol";
+import {MemeverseLaunchImpl} from "../src/verse/MemeverseLaunchImpl.sol";
+import {MemeverseSettlementImpl} from "../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../src/verse/MemeverseFeePreviewReader.sol";
-import {MemeversePOLMinter} from "../src/verse/MemeversePOLMinter.sol";
+import {MemeverseLiquidityImpl} from "../src/verse/MemeverseLiquidityImpl.sol";
 import {POLend} from "../src/polend/POLend.sol";
 import {POLSplitter} from "../src/polend/POLSplitter.sol";
 import {GenesisCreditFactory} from "../src/credit/GenesisCreditFactory.sol";
@@ -494,23 +494,24 @@ contract MemeverseScript is BaseScript {
         _beginMemeverseLauncherOwnerExecution(initialOwner);
         if (deployCaller == initialOwner) {
             _setMemeverseLauncherFundMetaData(launcher);
-            // setBootstrapImpl is onlyOwner, so the bootstrap sibling can only be wired when the
-            // broadcaster IS the owner. The launcher delegatecalls it from `_deployLiquidity`; when
-            // deployer != owner the owner deploys and wires it afterwards (see WARNING below).
-            MemeverseBootstrap bootstrapImpl = new MemeverseBootstrap();
-            launcher.setBootstrapImpl(address(bootstrapImpl));
-            // Wire the fee-distributor delegatecall sibling and the independent fee-preview reader
-            // alongside the bootstrap sibling. Reader is injected the proxy address so its view calls
+            // setLaunchImpl is onlyOwner, so the launch sibling can only be wired when the
+            // broadcaster IS the owner. The launcher delegatecalls it from `registerMemeverse` /
+            // `genesis` / `preorder` / `changeStage`; when deployer != owner the owner deploys and
+            // wires it afterwards (see WARNING below).
+            MemeverseLaunchImpl launchImpl = new MemeverseLaunchImpl();
+            launcher.setLaunchImpl(address(launchImpl));
+            // Wire the settlement/liquidity delegatecall siblings and the independent fee-preview reader
+            // alongside the launch sibling. Reader is injected the proxy address so its view calls
             // read facade state through the proxy getters.
-            MemeverseFeeDistributor feeDistributorImpl = new MemeverseFeeDistributor();
-            launcher.setFeeDistributorImpl(address(feeDistributorImpl));
+            MemeverseSettlementImpl settlementImpl = new MemeverseSettlementImpl();
+            launcher.setSettlementImpl(address(settlementImpl));
             MemeverseFeePreviewReader feePreviewReader = new MemeverseFeePreviewReader(address(launcher));
             launcher.setFeePreviewReader(address(feePreviewReader));
-            MemeversePOLMinter polMinterImpl = new MemeversePOLMinter();
-            launcher.setPOLMinterImpl(address(polMinterImpl));
+            MemeverseLiquidityImpl liquidityImpl = new MemeverseLiquidityImpl();
+            launcher.setLiquidityImpl(address(liquidityImpl));
         } else {
             console.log(
-                "WARNING: deployCaller(%s) != initialOwner(%s) -- fund metadata, bootstrapImpl, feeDistributorImpl, feePreviewReader and polMinterImpl must be set by initialOwner",
+                "WARNING: deployCaller(%s) != initialOwner(%s) -- fund metadata, launchImpl, settlementImpl, feePreviewReader and liquidityImpl must be set by initialOwner",
                 deployCaller,
                 initialOwner
             );
@@ -847,20 +848,16 @@ contract MemeverseScript is BaseScript {
         _requireContractCode(POLSPLITTER, "POLSPLITTER_CODE_NOT_READY");
 
         require(_readAddress(MEMEVERSE_LAUNCHER, "owner()") == owner, "LAUNCHER_OWNER_NOT_READY");
+        // Production exposes launcher wiring through the aggregate getter, not legacy public fields.
+        IMemeverseLauncher.LauncherContracts memory launcherContracts =
+            IMemeverseLauncher(MEMEVERSE_LAUNCHER).getLauncherContracts();
+        require(launcherContracts.memeverseRegistrar == MEMEVERSE_REGISTRAR, "LAUNCHER_REGISTRAR_NOT_READY");
         require(
-            _readAddress(MEMEVERSE_LAUNCHER, "memeverseRegistrar()") == MEMEVERSE_REGISTRAR,
-            "LAUNCHER_REGISTRAR_NOT_READY"
+            launcherContracts.memeverseProxyDeployer == MEMEVERSE_PROXY_DEPLOYER, "LAUNCHER_PROXY_DEPLOYER_NOT_READY"
         );
-        require(
-            _readAddress(MEMEVERSE_LAUNCHER, "memeverseProxyDeployer()") == MEMEVERSE_PROXY_DEPLOYER,
-            "LAUNCHER_PROXY_DEPLOYER_NOT_READY"
-        );
-        require(
-            _readAddress(MEMEVERSE_LAUNCHER, "yieldDispatcher()") == MEMEVERSE_YIELD_DISPATCHER,
-            "LAUNCHER_YIELD_DISPATCHER_NOT_READY"
-        );
+        require(launcherContracts.yieldDispatcher == MEMEVERSE_YIELD_DISPATCHER, "LAUNCHER_YIELD_DISPATCHER_NOT_READY");
         require(_readAddress(MEMEVERSE_LAUNCHER, "polend()") == POLEND, "LAUNCHER_POLEND_NOT_READY");
-        require(_readAddress(MEMEVERSE_LAUNCHER, "polSplitter()") == POLSPLITTER, "LAUNCHER_POLSPLITTER_NOT_READY");
+        require(launcherContracts.polSplitter == POLSPLITTER, "LAUNCHER_POLSPLITTER_NOT_READY");
         require(
             _readAddress(MEMEVERSE_REGISTRAR, "MEMEVERSE_LAUNCHER()") == MEMEVERSE_LAUNCHER,
             "REGISTRAR_LAUNCHER_NOT_READY"
@@ -892,17 +889,12 @@ contract MemeverseScript is BaseScript {
         _requireFundMetaDataReady(UUSD, "UUSD_FUND_METADATA_NOT_READY");
         _requireSwapReady(swapRouter, hook);
 
-        // bootstrapImpl / feeDistributorImpl / feePreviewReader are all delegatecall/view siblings the
-        // facade uses on user paths (bootstrap deploy, redeem, changeStage Locked->Unlocked, fee preview).
-        // readiness checks all three for code, symmetric with bootstrapImpl — a missing sibling would
-        // otherwise only surface as a runtime FeeDistributorImplNotSet (or a broken preview) after the
-        // system is already open to users.
-        (address bootstrapImpl, address feeDistributorImpl, address feePreviewReader, address polMinterImpl) =
-            _readLauncherImplSiblings(MEMEVERSE_LAUNCHER);
-        _requireContractCode(bootstrapImpl, "BOOTSTRAP_IMPL_NOT_READY");
-        _requireContractCode(feeDistributorImpl, "FEE_DISTRIBUTOR_IMPL_NOT_READY");
-        _requireContractCode(feePreviewReader, "FEE_PREVIEW_READER_NOT_READY");
-        _requireContractCode(polMinterImpl, "POL_MINTER_IMPL_NOT_READY");
+        // These siblings are delegatecall/view targets on user paths; opening before they have code
+        // would defer setup mistakes into user-facing runtime failures.
+        _requireContractCode(launcherContracts.launchImpl, "LAUNCH_IMPL_NOT_READY");
+        _requireContractCode(launcherContracts.settlementImpl, "SETTLEMENT_IMPL_NOT_READY");
+        _requireContractCode(launcherContracts.feePreviewReader, "FEE_PREVIEW_READER_NOT_READY");
+        _requireContractCode(launcherContracts.liquidityImpl, "LIQUIDITY_IMPL_NOT_READY");
     }
 
     function _requireSwapReady(address swapRouter, address hook) internal view {
@@ -987,23 +979,6 @@ contract MemeverseScript is BaseScript {
 
     function _readPolSplitterPolend() internal view returns (address value) {
         return _readAddress(POLSPLITTER, "polend()");
-    }
-
-    function _readLauncherImplSiblings(address launcher)
-        internal
-        view
-        returns (address bootstrapImpl, address feeDistributorImpl, address feePreviewReader, address polMinterImpl)
-    {
-        (bool success, bytes memory data) = launcher.staticcall(abi.encodeWithSignature("getLauncherContracts()"));
-        require(success && data.length >= 384, "LAUNCHER_CONTRACTS_NOT_READY");
-        // Typed decode (same pattern as _requireSwapReady's getLauncherContracts() call) avoids
-        // positional index magic numbers — a field rename/reorder surfaces at compile time instead
-        // of silently misindexing. 384 = 12 fields × 32 bytes (all-static LauncherContracts struct).
-        IMemeverseLauncher.LauncherContracts memory contracts = abi.decode(data, (IMemeverseLauncher.LauncherContracts));
-        bootstrapImpl = contracts.bootstrapImpl;
-        feeDistributorImpl = contracts.feeDistributorImpl;
-        feePreviewReader = contracts.feePreviewReader;
-        polMinterImpl = contracts.polMinterImpl;
     }
 
     function _readSettlementDustState(address uAsset) internal view returns (uint128 reserve, uint128 maxReserve) {

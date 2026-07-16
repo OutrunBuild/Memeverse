@@ -6,19 +6,19 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
-import {MemeversePOLMinter} from "../../src/verse/MemeversePOLMinter.sol";
+import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {OutrunOwnableUpgradeable} from "../../src/common/access/OutrunOwnableUpgradeable.sol";
 
 import {MockPOLendForLifecycle, MockPOLSplitterForLifecycle} from "../mocks/verse/LauncherLifecycleMocks.sol";
 
-/// @notice Targeted guard tests for the `polMinterImpl` zero-address check.
-/// @dev The launcher facade delegatecalls the `MemeversePOLMinter` sibling for POL minting (`mintPOLToken`);
-///      if the sibling is unset the facade reverts with `POLMinterImplNotSet` before the delegatecall. Mirrors
-///      the `MemeverseLauncherFeeDistributorImpl` guard-test structure. The guard fires before any external
-///      call, so the fixture seeds a Locked verse directly via storage (no bootstrap liquidity deployment).
-contract MemeverseLauncherPOLMinterImplTest is Test, MemeverseLauncherTestHelper {
+/// @notice Targeted guard tests for the `liquidityImpl` zero-address check covering `mintPOLToken` and `setLiquidityImpl`.
+/// @dev The launcher facade delegatecalls the `MemeverseLiquidityImpl` sibling for POL minting (`mintPOLToken`);
+///      if the sibling is unset the facade reverts with `LiquidityImplNotSet` before the delegatecall. Mirrors
+///      the `MemeverseLauncherSettlement` guard-test structure. The guard fires before any external call, so the
+///      fixture seeds a Locked verse directly via storage (no bootstrap liquidity deployment).
+contract MemeverseLauncherMintPOLTokenTest is Test, MemeverseLauncherTestHelper {
     IMemeverseLauncher internal launcher;
     address internal launcherProxy;
     MockERC20 internal uAsset;
@@ -27,7 +27,7 @@ contract MemeverseLauncherPOLMinterImplTest is Test, MemeverseLauncherTestHelper
     MockPOLendForLifecycle internal polend;
     MockPOLSplitterForLifecycle internal splitter;
 
-    /// @notice Deploys the launcher proxy and supporting mocks, but intentionally leaves `polMinterImpl` unset.
+    /// @notice Deploys the launcher proxy and supporting mocks, but intentionally leaves `liquidityImpl` unset.
     function setUp() external {
         uAsset = new MockERC20("UASSET", "UASSET", 18);
         memecoin = new MockERC20("MEME", "MEME", 18);
@@ -59,11 +59,11 @@ contract MemeverseLauncherPOLMinterImplTest is Test, MemeverseLauncherTestHelper
             )
         );
         launcher = IMemeverseLauncher(launcherProxy);
-        // Deliberately omitted: launcher.setPOLMinterImpl(...). Each test asserts the guard explicitly.
+        // Deliberately omitted: launcher.setLiquidityImpl(...). Each test asserts the guard explicitly.
     }
 
     /// @notice Seeds a verse directly to `Locked` so `mintPOLToken` passes its stage precheck and reaches the
-    ///         `polMinterImpl` zero-address guard.
+    ///         `liquidityImpl` zero-address guard.
     function _seedLockedVerse(uint256 verseId) internal {
         setMemeverseForTest(
             launcherProxy,
@@ -81,13 +81,13 @@ contract MemeverseLauncherPOLMinterImplTest is Test, MemeverseLauncherTestHelper
         );
     }
 
-    /// @notice Verifies `mintPOLToken` reverts when `polMinterImpl` is unset.
+    /// @notice Verifies `mintPOLToken` reverts when `liquidityImpl` is unset.
     /// @dev The facade validates input non-zero / stage >= Locked, then hits the guard before the delegatecall.
-    function test_revertsWhenPOLMinterImplNotSet_mintPOLToken() external {
+    function test_revertsWhenLiquidityImplNotSet_mintPOLToken() external {
         uint256 verseId = 1;
         _seedLockedVerse(verseId);
 
-        vm.expectRevert(IMemeverseLauncher.POLMinterImplNotSet.selector);
+        vm.expectRevert(IMemeverseLauncher.LiquidityImplNotSet.selector);
         launcher.mintPOLToken(verseId, 1 ether, 1 ether, 0, 0, 0, block.timestamp);
     }
 
@@ -97,7 +97,7 @@ contract MemeverseLauncherPOLMinterImplTest is Test, MemeverseLauncherTestHelper
     ///      empty returndata decode. Locks the "mintPOLToken is facade-delegatecall-only" invariant for both the
     ///      auto-liquidity (`amountOutDesired == 0`) and exact-liquidity (`amountOutDesired != 0`) branches.
     function test_directCallToPOLMinterReverts_autoLiquidity() external {
-        MemeversePOLMinter sibling = new MemeversePOLMinter();
+        MemeverseLiquidityImpl sibling = new MemeverseLiquidityImpl();
         address attacker = makeAddr("attacker");
 
         vm.prank(attacker);
@@ -108,7 +108,7 @@ contract MemeverseLauncherPOLMinterImplTest is Test, MemeverseLauncherTestHelper
     }
 
     function test_directCallToPOLMinterReverts_exactLiquidity() external {
-        MemeversePOLMinter sibling = new MemeversePOLMinter();
+        MemeverseLiquidityImpl sibling = new MemeverseLiquidityImpl();
         address attacker = makeAddr("attacker");
 
         vm.prank(attacker);
@@ -118,28 +118,28 @@ contract MemeverseLauncherPOLMinterImplTest is Test, MemeverseLauncherTestHelper
         );
     }
 
-    /// @notice `setPOLMinterImpl` rejects a zero address and unauthorized callers.
-    function test_setPOLMinterImplGuards() external {
+    /// @notice `setLiquidityImpl` rejects a zero address and unauthorized callers.
+    function test_setLiquidityImplGuards() external {
         // Zero address rejected (owner caller).
         vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
-        launcher.setPOLMinterImpl(address(0));
+        launcher.setLiquidityImpl(address(0));
 
         // Non-owner rejected.
         address attacker = makeAddr("attacker");
         vm.prank(attacker);
         vm.expectRevert(abi.encodeWithSelector(OutrunOwnableUpgradeable.OwnableUnauthorizedAccount.selector, attacker));
-        launcher.setPOLMinterImpl(address(1));
+        launcher.setLiquidityImpl(address(1));
     }
 
-    /// @notice Once `polMinterImpl` is bound, `mintPOLToken` proceeds past the guard (full mint path is covered
+    /// @notice Once `liquidityImpl` is bound, `mintPOLToken` proceeds past the guard (full mint path is covered
     ///         by `MemeverseLauncherLifecycleTest` / `MemeverseLauncherSwapIntegrationTest` with real router stack).
     function test_mintPOLTokenProceedsAfterPOLMinterBound() external {
         uint256 verseId = 1;
         _seedLockedVerse(verseId);
-        launcher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
 
         // With the guard passed, the call now reaches the sibling's router interaction. The router is unset in
-        // this minimal fixture, so the sibling reverts on the address(0) router call rather than POLMinterImplNotSet.
+        // this minimal fixture, so the sibling reverts on the address(0) router call rather than LiquidityImplNotSet.
         vm.expectRevert();
         launcher.mintPOLToken(verseId, 1 ether, 1 ether, 0, 0, 0, block.timestamp);
     }

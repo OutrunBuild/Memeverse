@@ -13,10 +13,10 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
-import {MemeverseBootstrap} from "../../src/verse/MemeverseBootstrap.sol";
-import {MemeverseFeeDistributor} from "../../src/verse/MemeverseFeeDistributor.sol";
+import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
+import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
-import {MemeversePOLMinter} from "../../src/verse/MemeversePOLMinter.sol";
+import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
@@ -286,10 +286,10 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
         assertEq(hook.launcher(), address(launcher), "hook launcher");
         assertEq(hook.poolInitializer(), address(router), "hook initializer");
 
-        launcher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        launcher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        launcher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         launcher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(launcher))));
-        launcher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         launcher.setMemeverseUniswapHook(address(router.hook()));
         launcher.setMemeverseSwapRouter(address(router));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
@@ -514,10 +514,10 @@ contract MemeverseLauncherRefundEndToEndInvariantTest is
         hook.setLauncher(address(launcher));
         hook.setPoolInitializer(address(router));
 
-        launcher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        launcher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        launcher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         launcher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(launcher))));
-        launcher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         launcher.setMemeverseUniswapHook(address(router.hook()));
         launcher.setMemeverseSwapRouter(address(router));
         assertEq(address(router.hook()), address(hook), "router hook");

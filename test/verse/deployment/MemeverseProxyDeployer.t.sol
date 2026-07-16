@@ -140,8 +140,8 @@ contract MockReadinessLauncher is LauncherReadinessMockBase {
         return (minTotalFunds[uAsset], fundBasedAmounts[uAsset]);
     }
 
-    function setBootstrapImpl(address impl) external {
-        bootstrapImpl = impl;
+    function setLaunchImpl(address impl) external {
+        launchImpl = impl;
     }
 }
 
@@ -190,6 +190,7 @@ contract MockReadinessPOLend {
     constructor(address launcher_, address splitter_) {
         launcher = launcher_;
         splitter = splitter_;
+        creditFactory = address(this);
     }
 
     function setDependencies(address launcher_, address splitter_) external {
@@ -757,7 +758,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
 
     /// @notice Regression: in production-faithful mode (the owner-execution hook is the base no-op,
     ///         so NO vm.startPrank(initialOwner) wraps the deploy), a deployer != owner deployment
-    ///         must NOT revert. Before the script fix, setBootstrapImpl (onlyOwner) was called
+    ///         must NOT revert. Before the script fix, setLaunchImpl (onlyOwner) was called
     ///         unconditionally with msg.sender = deployer, reverting OwnableUnauthorizedAccount and
     ///         aborting the whole deploy. `scriptHarness` cannot catch this because it overrides the
     ///         hook to prank the owner; `productionHarness` does not, so it reproduces production.
@@ -930,31 +931,27 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         scriptHarness.requireDeploymentReadyHarness(readySwapRouter, readySwapHook);
     }
 
-    function testRequireDeploymentReadyRevertsWhenFeeDistributorImplNotSet() external {
-        // readiness 必须校验 feeDistributorImpl 有代码：接好全部依赖后 unset distributor，
-        // readiness 应在末尾回退 FEE_DISTRIBUTOR_IMPL_NOT_READY（finding R4/SR-006 覆盖）。
+    function testRequireDeploymentReadyRevertsWhenSettlementImplNotSet() external {
+        // Readiness must reject opening when the settlement delegatecall sibling has no code.
         MockReadinessLauncher readyLauncher =
             _configureReadyDependencies(address(0), address(0), address(0), address(0));
-        readyLauncher.setFeeDistributorImpl(address(0));
+        readyLauncher.setSettlementImpl(address(0));
 
-        vm.expectRevert("FEE_DISTRIBUTOR_IMPL_NOT_READY");
+        vm.expectRevert("SETTLEMENT_IMPL_NOT_READY");
         scriptHarness.requireDeploymentReadyHarness(readySwapRouter, readySwapHook);
     }
 
-    // readiness 校验 bootstrapImpl 有代码：接好全部依赖后 unset bootstrap，readiness
-    // 顺序 bootstrap->distributor->reader，第一条即回退 BOOTSTRAP_IMPL_NOT_READY。
-    // 与 distributor 对称，防止未来重构误删/改序时 CI 静默放行（finding R2-A）。
-    function testRequireDeploymentReadyRevertsWhenBootstrapImplNotSet() external {
+    // Readiness checks launchImpl before the other sibling contracts.
+    function testRequireDeploymentReadyRevertsWhenLaunchImplNotSet() external {
         MockReadinessLauncher readyLauncher =
             _configureReadyDependencies(address(0), address(0), address(0), address(0));
-        readyLauncher.setBootstrapImpl(address(0));
+        readyLauncher.setLaunchImpl(address(0));
 
-        vm.expectRevert("BOOTSTRAP_IMPL_NOT_READY");
+        vm.expectRevert("LAUNCH_IMPL_NOT_READY");
         scriptHarness.requireDeploymentReadyHarness(readySwapRouter, readySwapHook);
     }
 
-    // readiness 校验 feePreviewReader 有代码：前两条 sibling 仍 etched 有代码，
-    // 命中末尾 FEE_PREVIEW_READER_NOT_READY。与 distributor 对称（finding R2-A）。
+    // Readiness checks the independent fee preview reader after launch and settlement siblings.
     function testRequireDeploymentReadyRevertsWhenFeePreviewReaderNotSet() external {
         MockReadinessLauncher readyLauncher =
             _configureReadyDependencies(address(0), address(0), address(0), address(0));
@@ -1066,21 +1063,20 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         launcher.setMemeverseSwapRouter(readySwapRouter);
         launcher.setMemeverseUniswapHook(readySwapHook);
 
-        // readiness 校验四个 delegatecall/view sibling 有代码（BOOTSTRAP/FEE_DISTRIBUTOR/FEE_PREVIEW/
-        // POL_MINTER via _readLauncherImplSiblings）；etch 有代码的地址并接线，让 readiness 末尾检查通过。
-        address bootstrapImplAddr = address(uint160(0x5001));
-        address feeDistributorImplAddr = address(uint160(0x5002));
+        // Readiness requires code at every launch/settlement/view/liquidity sibling before opening.
+        address launchImplAddr = address(uint160(0x5001));
+        address settlementImplAddr = address(uint160(0x5002));
         address feePreviewReaderAddr = address(uint160(0x5003));
-        address polMinterImplAddr = address(uint160(0x5004));
+        address liquidityImplAddr = address(uint160(0x5004));
         bytes memory siblingCode = type(MockReadinessHook).creationCode;
-        vm.etch(bootstrapImplAddr, siblingCode);
-        vm.etch(feeDistributorImplAddr, siblingCode);
+        vm.etch(launchImplAddr, siblingCode);
+        vm.etch(settlementImplAddr, siblingCode);
         vm.etch(feePreviewReaderAddr, siblingCode);
-        vm.etch(polMinterImplAddr, siblingCode);
-        launcher.setBootstrapImpl(bootstrapImplAddr);
-        launcher.setFeeDistributorImpl(feeDistributorImplAddr);
+        vm.etch(liquidityImplAddr, siblingCode);
+        launcher.setLaunchImpl(launchImplAddr);
+        launcher.setSettlementImpl(settlementImplAddr);
         launcher.setFeePreviewReader(feePreviewReaderAddr);
-        launcher.setPOLMinterImpl(polMinterImplAddr);
+        launcher.setLiquidityImpl(liquidityImplAddr);
 
         scriptHarness.configureReadinessHarness(
             launcherAddress,

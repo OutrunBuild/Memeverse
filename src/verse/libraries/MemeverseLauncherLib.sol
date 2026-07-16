@@ -8,14 +8,15 @@ import {IMemeverseOFTEnum} from "../../common/types/IMemeverseOFTEnum.sol";
 import {IMemeverseSwapRouter} from "../../swap/interfaces/IMemeverseSwapRouter.sol";
 import {IMemeverseUniswapHook} from "../../swap/interfaces/IMemeverseUniswapHook.sol";
 import {IMemeverseLauncher} from "../interfaces/IMemeverseLauncher.sol";
+import {MemeverseLauncherStorage} from "../interfaces/IMemeverseLauncherStorage.sol";
 
 /// @title MemeverseLauncherLib
-/// @notice Internal helpers shared between the MemeverseLauncher facade and its MemeverseBootstrap /
-///         MemeverseFeeDistributor / MemeverseFeePreviewReader siblings: settlement-wiring validation,
-///         genesis-funds arithmetic, and the pure fee-mapping / executor-reward split used by both the
-///         distributor and the preview reader.
+/// @notice Internal helpers shared between the MemeverseLauncher facade and its MemeverseLaunchImpl /
+///         MemeverseSettlementImpl / MemeverseLiquidityImpl / MemeverseFeePreviewReader siblings: settlement-wiring
+///         validation, genesis-funds arithmetic, and the pure fee-mapping / executor-reward split used by both the
+///         settlement sibling and the preview reader.
 /// @dev Functions are `internal`, so they compile inline into each caller. Under both call paths
-///      (facade setters and the sibling's `deployLiquidity`) the caller runs in the proxy's
+///      (facade setters and the sibling's `deployBootstrapLiquidity`) the caller runs in the proxy's
 ///      delegatecall context, so `address(this)` resolves to the proxy and the wiring check stays
 ///      consistent. Keep this library to helpers genuinely used by BOTH contracts — do not let it
 ///      grow into a catch-all dumping ground.
@@ -60,7 +61,7 @@ library MemeverseLauncherLib {
 
     /// @notice Order two collected pair-fee amounts so the returned tuple matches `(tokenA, tokenB)`
     ///         regardless of pool token0/token1 ordering.
-    /// @dev Shared by `MemeverseFeeDistributor._mapPairFees` and `MemeverseFeePreviewReader._mapPairFees`
+    /// @dev Shared by `MemeverseSettlementImpl._mapPairFees` and `MemeverseFeePreviewReader._mapPairFees`
     ///      so the two callers cannot drift.
     /// @param tokenA First token in the caller-facing pair.
     /// @param tokenB Second token in the caller-facing pair.
@@ -79,8 +80,38 @@ library MemeverseLauncherLib {
         return (fee1, fee0);
     }
 
+    /// @notice Splits auxiliary-pool fees into the governance (leveraged) share vs the normal share.
+    /// @dev Shared by `MemeverseSettlementImpl._splitAuxiliaryGovFees` (runtime settlement) and
+    ///      `MemeverseFeePreviewReader._splitAuxiliaryGovFees` (off-chain preview) so the two cannot drift on
+    ///      the split formula. Callers fetch `normalFunds` and `totalLeveragedDebt` themselves (storage vs proxy
+    ///      getter) and pass them in; this function is pure (no storage/external reads).
+    ///      When `preserveNormalShare` is false the full amount is governance; otherwise the governance share is
+    ///      the leveraged-pro-rata slice `amount * totalLeveragedDebt / totalFunds` (totalFunds from
+    ///      `checkedTotalGenesisFunds`, short-circuiting to the full amount when totalFunds == 0).
+    /// @param normalFunds Non-leveraged genesis funds for the verse (used to derive totalFunds).
+    /// @param totalLeveragedDebt Leveraged genesis debt for the verse (used to derive totalFunds and the gov share).
+    /// @param totalUAssetFee Total uAsset fee collected from auxiliary pools to split.
+    /// @param totalPTFee Total PT fee collected from auxiliary pools to split.
+    /// @param preserveNormalShare When false, route the full amount to governance (genesis, no normal share yet).
+    /// @return govUAssetFee Governance (leveraged) uAsset fee share.
+    /// @return govPTFee Governance (leveraged) PT fee share.
+    function splitAuxiliaryGovFees(
+        uint256 normalFunds,
+        uint256 totalLeveragedDebt,
+        uint256 totalUAssetFee,
+        uint256 totalPTFee,
+        bool preserveNormalShare
+    ) internal pure returns (uint256 govUAssetFee, uint256 govPTFee) {
+        if (!preserveNormalShare) return (totalUAssetFee, totalPTFee);
+        uint256 totalFunds = checkedTotalGenesisFunds(normalFunds, totalLeveragedDebt);
+        if (totalFunds == 0) return (totalUAssetFee, totalPTFee);
+
+        govUAssetFee = FullMath.mulDiv(totalUAssetFee, totalLeveragedDebt, totalFunds);
+        govPTFee = FullMath.mulDiv(totalPTFee, totalLeveragedDebt, totalFunds);
+    }
+
     /// @notice Split a main-pool uAsset fee into the executor reward and governor share using ratio basis `RATIO`.
-    /// @dev Shared by `MemeverseFeeDistributor._splitExecutorReward` and
+    /// @dev Shared by `MemeverseSettlementImpl._splitExecutorReward` and
     ///      `MemeverseFeePreviewReader._splitExecutorReward`; the wrappers only differ in how they read
     ///      `executorRewardRate` (storage vs. proxy getter). Uses `FullMath.mulDiv` so the multiplication
     ///      cannot overflow before the divide.
@@ -98,7 +129,7 @@ library MemeverseLauncherLib {
     }
 
     /// @notice Build the LayerZero OFT `SendParam` for a fee-distribution send and quote its messaging fee.
-    /// @dev Shared by `MemeverseFeeDistributor._buildSendParamAndMessagingFee` and
+    /// @dev Shared by `MemeverseSettlementImpl._buildSendParamAndMessagingFee` and
     ///      `MemeverseFeePreviewReader._buildSendParamAndMessagingFee` so the two callers cannot drift on the
     ///      SendParam structure (dstEid / `to` = yieldDispatcher / composeMsg / extraOptions). Both callers
     ///      already pass every input as a parameter, so the body is identical and inlines without storage reads.
@@ -130,5 +161,70 @@ library MemeverseLauncherLib {
             oftCmd: abi.encode()
         });
         messagingFee = IOFT(token).quoteSend(sendParam, false);
+    }
+
+    /// @notice Compute the per-verse preorder capacity ceiling from the current genesis base funds.
+    /// @dev Shared by the facade view `previewPreorderCapacity` and the launch sibling's `preorder` so the
+    ///      two callers cannot drift on the 70% cap math (`totalBaseFunds * 7 * preorderCapRatio / 10 / RATIO`).
+    ///      Reading `preorderCapRatio` from the passed storage pointer `s` works identically in the facade
+    ///      (its own `memeverseLauncherStorage`) and the sibling (the proxy's via delegatecall). The literal
+    ///      `10` is the cap denominator and `RATIO` is the basis-points denominator; both are kept inline to
+    ///      mirror the original facade `_preorderMaxCapacity` byte-for-byte.
+    /// @param s The MemeverseLauncherStorage pointer (facade's or proxy's under delegatecall).
+    /// @param totalBaseFunds Combined normal genesis funds + leveraged debt (from `checkedTotalGenesisFunds`).
+    /// @return capacity Maximum total preorder funds accepted for the verse.
+    function preorderMaxCapacity(MemeverseLauncherStorage storage s, uint256 totalBaseFunds)
+        internal
+        view
+        returns (uint256)
+    {
+        return FullMath.mulDiv(totalBaseFunds, 7 * s.preorderCapRatio, 10 * RATIO);
+    }
+
+    /// @notice Compute the currently claimable (vested, unclaimed) preorder memecoin for an account.
+    /// @dev Shared by the facade view `claimablePreorderMemecoin(verseId)` and the settlement sibling's
+    ///      `claimUnlockedPreorderMemecoin(verseId)` so the two callers cannot drift on the vesting math.
+    ///      Reads verse-id validity, stage (`>= Stage.Locked`), preorder state, and user preorder data
+    ///      directly from the passed storage pointer `s` so it works identically in the facade (which reads
+    ///      its own `memeverseLauncherStorage`) and the sibling (which reads the proxy's
+    ///      `memeverseLauncherStorage` via delegatecall). The verse-id check is inlined (no facade-only
+    ///      `_versIdValidate` dependency) and the math mirrors the original facade helper byte-for-byte.
+    /// @param s The MemeverseLauncherStorage pointer (facade's or proxy's under delegatecall).
+    /// @param verseId Memeverse id.
+    /// @param account The preorder participant whose vested memecoin is being measured.
+    /// @return amount The currently claimable preorder memecoin amount (zero if none vested or already claimed).
+    function claimablePreorderMemecoinForAccount(MemeverseLauncherStorage storage s, uint256 verseId, address account)
+        internal
+        view
+        returns (uint256 amount)
+    {
+        require(s.memeverses[verseId].memecoin != address(0), IMemeverseLauncher.InvalidVerseId());
+        require(
+            s.memeverses[verseId].currentStage >= IMemeverseLauncher.Stage.Locked,
+            IMemeverseLauncher.NotReachedLockedStage()
+        );
+
+        IMemeverseLauncher.PreorderState storage preorderState = s.preorderStates[verseId];
+        uint40 settlementTimestamp = preorderState.settlementTimestamp;
+        if (settlementTimestamp == 0) return 0;
+
+        IMemeverseLauncher.PreorderData storage preorderData = s.userPreorderData[verseId][account];
+        uint256 userFunds = preorderData.funds;
+        uint256 totalFunds = preorderState.totalFunds;
+        if (userFunds == 0 || totalFunds == 0) return 0;
+
+        // Full-precision floor division preserves preorder accounting for large settled amounts.
+        uint256 purchasedMemecoin = FullMath.mulDiv(preorderState.settledMemecoin, userFunds, totalFunds);
+        if (purchasedMemecoin <= preorderData.claimedMemecoin) return 0;
+
+        uint256 vestingDuration = s.preorderVestingDuration;
+        uint256 elapsed = block.timestamp > settlementTimestamp ? block.timestamp - settlementTimestamp : 0;
+        if (elapsed >= vestingDuration) {
+            return purchasedMemecoin - preorderData.claimedMemecoin;
+        }
+
+        uint256 vested = FullMath.mulDiv(purchasedMemecoin, elapsed, vestingDuration);
+        if (vested <= preorderData.claimedMemecoin) return 0;
+        return vested - preorderData.claimedMemecoin;
     }
 }

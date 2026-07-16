@@ -197,7 +197,41 @@
           "id": "launcher-core",
           "paths": [
             "src/verse/MemeverseLauncher.sol",
-            "src/verse/interfaces/IMemeverseLauncher.sol"
+            "src/verse/interfaces/IMemeverseLauncher.sol",
+            "src/verse/MemeverseLaunchImpl.sol",
+            "src/verse/interfaces/IMemeverseLaunchImpl.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/verse/MemeverseLauncherBootstrapLiquidity.t.sol",
+            "test/verse/MemeverseLauncherMintPOLToken.t.sol"
+          ],
+          "evidence_tests": [
+            "test/verse/MemeverseLauncherBootstrapLiquidity.t.sol",
+            "test/verse/MemeverseLauncherMintPOLToken.t.sol",
+            "test/verse/MemeverseLauncherLifecycle.t.sol"
+          ],
+          "id": "launcher-liquidity-impl",
+          "paths": [
+            "src/verse/MemeverseLiquidityImpl.sol",
+            "src/verse/interfaces/IMemeverseLiquidityImpl.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/verse/MemeverseLauncherPOLendSettlementIntegration.t.sol",
+            "test/verse/MemeverseLauncherPOLendSettlementInvariant.t.sol"
+          ],
+          "evidence_tests": [
+            "test/verse/MemeverseLauncherPOLendSettlementIntegration.t.sol",
+            "test/verse/MemeverseLauncherPOLendSettlementInvariant.t.sol",
+            "test/verse/MemeverseLauncherLifecycle.t.sol"
+          ],
+          "id": "launcher-settlement-impl",
+          "paths": [
+            "src/verse/MemeverseSettlementImpl.sol",
+            "src/verse/interfaces/IMemeverseSettlementImpl.sol"
           ]
         },
         {

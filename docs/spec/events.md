@@ -30,10 +30,12 @@
 | `RedeemMemecoinLiquidity(...)` | `MemeverseLauncher` | unlock 后主池退出成功 | 主池退出路径索引 |
 | `RedeemAuxiliaryLiquidity(verseId,user,polUAssetLpAmount,ptUAssetLpAmount,ptPolLpAmount)` | `MemeverseLauncher` | Unlocked 后辅助池 LP 退出成功 | 辅助池退出路径索引；携带三类 LP 精确金额 |
 | `BootstrapUnusedAssetsHandled(uint256 indexed verseId,address indexed uAsset,address indexed memecoin,uint256 unusedUAsset,uint256 creditedSettlementDustReserve,uint256 treasuryExcess,uint256 burnedMemecoin)` | `MemeverseLauncher` | Locked 流动性部署后处理未进入池的 bootstrap 资产 | 将 Launcher unused bootstrap 来源与 POLend 全局 reserve funding / memecoin burn 结果关联；`[代码已证]` |
-| `RedeemAndDistributeFees(...)` | `MemeverseLauncher` | 费用赎回分发成功 | 执行者奖励与收益分账。字段语义：`polFee` 是被永久 burn 的 POL 数量（POL fee 在 `src/verse/MemeverseFeeDistributor.sol::collectAndDistributeFees` 内 burn，不分发给任何接收方）；`govFee` / `memecoinFee` 经 yieldDispatcher 分发（同链 `distributeSameChain`）或跨链 `IOFT.send`；`executorReward` 发给 `rewardReceiver` |
+| `RedeemAndDistributeFees(...)` | `MemeverseLauncher` | 费用赎回分发成功 | 执行者奖励与收益分账。字段语义：`polFee` 是被永久 burn 的 POL 数量（POL fee 在 `src/verse/MemeverseSettlementImpl.sol::collectAndDistributeFees` 内 burn，不分发给任何接收方）；`govFee` / `memecoinFee` 经 yieldDispatcher 分发（同链 `distributeSameChain`）或跨链 `IOFT.send`；`executorReward` 发给 `rewardReceiver` |
 | `SetExternalInfo(...)` | `MemeverseLauncher` | 外部元数据更新 | 前端展示元数据刷新 |
 
 除标注为目标事件规格的条目外，以上均为 `[代码已证]`。
+
+**`genesisAndPreorder(...)` 合并入口事件**：该原子入口依次 emit `Genesis(verseId, user, genesisAmount)` 与 `Preorder(verseId, caller, user, preorderAmount)` 各一次，字段结构分别与单次 `genesis` / `preorder` 调用完全一致（`Preorder.caller` 仍为 `msg.sender`/payer），不新增事件。语义与容量校验见 [docs/spec/polend/genesis.md §2](polend/genesis.md)。
 
 ### 2.2 POLend / POLSplitter 目标事件面
 
@@ -108,10 +110,10 @@
 
 重点配置事件（均 `[代码已证]`）：
 
-- Launcher：`SetMemeverseSwapRouter`、`SetFundMetaData`、`SetExecutorRewardRate`、`SetPreorderConfig`、`SetGasLimits`、`SetBootstrapImpl`、`SetFeeDistributorImpl`、`SetPOLMinterImpl`、`SetFeePreviewReader` 等
-  - `SetBootstrapImpl(address indexed bootstrapImpl)`：bootstrap sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setBootstrapImpl(...)` 替换时均以新接线地址 `(bootstrapImpl)` 单值触发。事件不携带旧值，旧值需通过历史日志或 `getLauncherContracts()` 快照对比获取。`[代码已证]`
-  - `SetFeeDistributorImpl(address indexed feeDistributorImpl)`：fee-distributor sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setFeeDistributorImpl(...)` 替换时触发，单值不携带旧值。`[代码已证]`
-  - `SetPOLMinterImpl(address indexed polMinterImpl)`：pol-minter sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setPOLMinterImpl(...)` 替换时触发，单值不携带旧值。`[代码已证]`
+- Launcher：`SetMemeverseSwapRouter`、`SetFundMetaData`、`SetExecutorRewardRate`、`SetPreorderConfig`、`SetGasLimits`、`SetLaunchImpl`、`SetSettlementImpl`、`SetLiquidityImpl`、`SetFeePreviewReader` 等
+  - `SetLaunchImpl(address indexed launchImpl)`：launch sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setLaunchImpl(...)` 替换时均以新接线地址 `(launchImpl)` 单值触发。事件不携带旧值，旧值需通过历史日志或 `getLauncherContracts()` 快照对比获取。`[代码已证]`
+  - `SetSettlementImpl(address indexed settlementImpl)`：settlement sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setSettlementImpl(...)` 替换时触发，单值不携带旧值。`[代码已证]`
+  - `SetLiquidityImpl(address indexed liquidityImpl)`：liquidity sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setLiquidityImpl(...)` 替换时触发，单值不携带旧值。`[代码已证]`
   - `SetFeePreviewReader(address indexed feePreviewReader)`：fee-preview reader 地址替换事件，owner-level；脚本单角色模式部署期与 owner `setFeePreviewReader(...)` 替换时触发，单值不携带旧值。`[代码已证]`
 - RegistrationCenter：`SetSupportedUAsset`、`SetDurationDaysRange`、`SetRegisterGasLimit`
 - Hook（Router）：`TreasuryUpdated`、`ProtocolFeeCurrencySupportUpdated`、`LauncherUpdated`、`PoolInitializerUpdated`、`PoolInitializationAuthorized`、`DefaultLaunchFeeConfigUpdated`、`LPTokenImplementationUpdated`、`ReferrerRebateBpsUpdated`、`FacetUpdated`

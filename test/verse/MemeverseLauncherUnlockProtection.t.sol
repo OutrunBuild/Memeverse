@@ -15,10 +15,10 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
-import {MemeverseBootstrap} from "../../src/verse/MemeverseBootstrap.sol";
-import {MemeverseFeeDistributor} from "../../src/verse/MemeverseFeeDistributor.sol";
+import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
+import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
-import {MemeversePOLMinter} from "../../src/verse/MemeversePOLMinter.sol";
+import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRouter.sol";
@@ -115,10 +115,10 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
 
         launcher.setMemeverseUniswapHook(address(router.hook()));
         launcher.setMemeverseSwapRouter(address(router));
-        launcher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        launcher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        launcher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         launcher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(launcher))));
-        launcher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
         launcher.setLzEndpointRegistry(address(registry));
@@ -181,10 +181,10 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         uAsset.approve(address(guardedRouter), type(uint256).max);
         localLauncher.setMemeverseUniswapHook(address(guardedHook));
         localLauncher.setMemeverseSwapRouter(address(guardedRouter));
-        localLauncher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        localLauncher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        localLauncher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        localLauncher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         localLauncher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(localLauncher))));
-        localLauncher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        localLauncher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
 
         localLauncher.changeStage(verseId);
 
@@ -427,10 +427,10 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         targetRouter = new MockSwapRouter(address(targetLauncher));
         targetLauncher.setMemeverseUniswapHook(address(targetRouter.hook()));
         targetLauncher.setMemeverseSwapRouter(address(targetRouter));
-        targetLauncher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        targetLauncher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        targetLauncher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        targetLauncher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         targetLauncher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(targetLauncher))));
-        targetLauncher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        targetLauncher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         targetLauncher.setYieldDispatcher(address(dispatcher));
         targetLauncher.setMemeverseProxyDeployer(address(proxyDeployer));
         targetLauncher.setLzEndpointRegistry(address(registry));
@@ -444,10 +444,10 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         targetRouter = new MockSwapRouter(address(targetLauncher));
         targetLauncher.setMemeverseUniswapHook(address(targetRouter.hook()));
         targetLauncher.setMemeverseSwapRouter(address(targetRouter));
-        targetLauncher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        targetLauncher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        targetLauncher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        targetLauncher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         targetLauncher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(targetLauncher))));
-        targetLauncher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        targetLauncher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         targetLauncher.setYieldDispatcher(address(dispatcher));
         targetLauncher.setMemeverseProxyDeployer(address(proxyDeployer));
         targetLauncher.setLzEndpointRegistry(address(registry));

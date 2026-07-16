@@ -21,10 +21,10 @@ import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.
 import {RealisticSwapManagerHarness} from "../swap/helpers/RealisticSwapManagerHarness.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
-import {MemeverseBootstrap} from "../../src/verse/MemeverseBootstrap.sol";
-import {MemeverseFeeDistributor} from "../../src/verse/MemeverseFeeDistributor.sol";
+import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
+import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
-import {MemeversePOLMinter} from "../../src/verse/MemeversePOLMinter.sol";
+import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MockOFTDispatcher} from "../mocks/verse/LauncherLifecycleMocks.sol";
 import {
@@ -134,10 +134,10 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
 
         launcher.setMemeverseUniswapHook(address(hook));
         launcher.setMemeverseSwapRouter(address(router));
-        launcher.setBootstrapImpl(address(new MemeverseBootstrap()));
-        launcher.setFeeDistributorImpl(address(new MemeverseFeeDistributor()));
+        launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
+        launcher.setSettlementImpl(address(new MemeverseSettlementImpl()));
         launcher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(launcher))));
-        launcher.setPOLMinterImpl(address(new MemeversePOLMinter()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         assertEq(address(router.hook()), address(hook), "router hook");
         assertEq(hook.launcher(), address(launcher), "hook launcher");
         assertEq(hook.poolInitializer(), address(router), "hook initializer");

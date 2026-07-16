@@ -127,9 +127,9 @@
 | `MemecoinDaoGovernorUpgradeable` | `MemeverseProxyDeployer.deployGovernorAndIncentivizer`; proxy salt = `keccak256(abi.encode(uniqueId))` | `MemeverseScript._deployMemecoinGovernorImplementation` | `MemecoinDaoGovernorImplementation + nonce` | `onlyGovernance` | 需走 OZ Governor 提案流程；`_authorizeUpgrade` 由 Governor 合约内部 `_governanceCall` 放行 |
 | `GovernanceCycleIncentivizerUpgradeable` | `MemeverseProxyDeployer.deployGovernorAndIncentivizer`; proxy salt = `keccak256(abi.encode(uniqueId))` | `MemeverseScript._deployImplementation` | `GovernanceCycleIncentivizerImplementation + nonce` | `onlyGovernance` | 实际校验 `msg.sender == _governor`（即 Governor proxy 地址） |
 | **Facade delegatecall 目标（非 proxy，可替换实现）** | | | | | |
-| `MemeverseBootstrap` | N/A（非 proxy，Launcher `delegatecall` 目标） | `MemeverseScript` 单角色模式 `new MemeverseBootstrap()` | N/A | `setBootstrapImpl`（`onlyOwner`） | 与 Launcher 共享 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；替换方式为部署新 sibling + owner `setBootstrapImpl`（非 UUPS `upgradeToAndCall`）；sibling 读 proxy storage，被 EOA 直调时读自身空 storage 回退 |
-| `MemeverseFeeDistributor` | N/A（非 proxy，Launcher `delegatecall` 目标） | `MemeverseScript` 单角色模式 `new MemeverseFeeDistributor()` | N/A | `setFeeDistributorImpl`（`onlyOwner`） | 与 Launcher/Bootstrap 共享 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；替换方式为部署新 sibling + owner `setFeeDistributorImpl`；delegatecall-only by construction（自身 storage 永久未初始化，被 EOA 直调时读空 verse → 对 address(0) 外调回退） |
-| `MemeversePOLMinter` | N/A（非 proxy，Launcher `delegatecall` 目标） | `MemeverseScript` 单角色模式 `new MemeversePOLMinter()` | N/A | `setPOLMinterImpl`（`onlyOwner`） | 与 Launcher/Bootstrap/FeeDistributor 共享 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；替换方式为部署新 sibling + owner `setPOLMinterImpl`；delegatecall-only by construction（空 constructor、无 `Initializable`、自身 storage 永久未初始化，被 EOA 直调时读空 verse → 对 address(0) 外调回退） |
+| `MemeverseLaunchImpl` | N/A（非 proxy，Launcher `delegatecall` 目标） | `MemeverseScript` 单角色模式 `new MemeverseLaunchImpl()` | N/A | `setLaunchImpl`（`onlyOwner`） | 与 Launcher 共享 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；替换方式为部署新 sibling + owner `setLaunchImpl`（非 UUPS `upgradeToAndCall`）；sibling 读 proxy storage；继承 `DelegatecallOnly`，EOA 直调被 `onlyDelegatecall` 守卫显式 revert `DelegatecallOnlyCall` |
+| `MemeverseSettlementImpl` | N/A（非 proxy，Launcher `delegatecall` 目标） | `MemeverseScript` 单角色模式 `new MemeverseSettlementImpl()` | N/A | `setSettlementImpl`（`onlyOwner`） | 与 Launcher 共享 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；替换方式为部署新 sibling + owner `setSettlementImpl`；delegatecall-only by construction（继承 `DelegatecallOnly`，EOA 直调被 `onlyDelegatecall` 守卫显式 revert `DelegatecallOnlyCall`） |
+| `MemeverseLiquidityImpl` | N/A（非 proxy，Launcher `delegatecall` 目标） | `MemeverseScript` 单角色模式 `new MemeverseLiquidityImpl()` | N/A | `setLiquidityImpl`（`onlyOwner`） | 与 Launcher 共享 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；替换方式为部署新 sibling + owner `setLiquidityImpl`；delegatecall-only by construction（空 constructor、无 `Initializable`、自身 storage 永久未初始化；继承 `DelegatecallOnly`，EOA 直调被 `onlyDelegatecall` 守卫显式 revert `DelegatecallOnlyCall`） |
 | **Diamond facet（非 proxy，可替换实现，经 hook Router entry `delegatecall`）** | | | | | |
 | `SwapFacet` | N/A（非 proxy，hook Router entry `delegatecall` 目标） | `DeployMemeverseHookProxy` 部署 `new SwapFacet(poolManager)` | N/A | `setFacet(SWAP_FACET_ROLE, addr)`（`onlyOwner`，经 hook） | 与 hook Router 共享 ERC-7201 namespace `outrun.storage.MemeverseUniswapHook` 与 `IMemeverseHookStorage` struct；替换方式为部署新 facet + owner `setFacet(SWAP_FACET_ROLE, addr)`；constructor 须传与 hook 同一个 `poolManager`（DELEGATECALL 下 facet 读自己 bytecode 的 immutable）；logic 函数开头检查 `address(this) != __self` 防直接 CALL（`__self` 为 facet 自身地址 immutable） |
 | `DynamicFeeFacet` | N/A（非 proxy，hook Router / SwapFacet / SettlementFacet `delegatecall` 目标） | `DeployMemeverseHookProxy` 部署 `new DynamicFeeFacet(poolManager)` | N/A | `setFacet(DYNAMIC_FEE_FACET_ROLE, addr)`（`onlyOwner`，经 hook） | 与 hook Router 共享 ERC-7201 namespace `outrun.storage.MemeverseUniswapHook` 与 `IMemeverseHookStorage` struct；替换方式为部署新 facet + owner `setFacet(DYNAMIC_FEE_FACET_ROLE, addr)`；constructor 须传与 hook 同一个 `poolManager`（fee logic 本身不调 PoolManager，但 `initialize`/`setFacet` 经 `_requireFacetPoolManager` 校验其 immutable 一致性） |
@@ -152,11 +152,11 @@
 | `SettlementFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHook` 相同） |
 | `MemecoinDaoGovernorUpgradeable` | `erc7201:outrun.storage.MemecoinDaoGovernor` | `outrun.storage.MemecoinDaoGovernor` |
 | `GovernanceCycleIncentivizerUpgradeable` | `erc7201:outrun.storage.GovernanceCycleIncentivizer` | `outrun.storage.GovernanceCycleIncentivizer` |
-| `MemeverseBootstrap` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
-| `MemeverseFeeDistributor` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
-| `MemeversePOLMinter` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
+| `MemeverseLaunchImpl` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
+| `MemeverseSettlementImpl` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
+| `MemeverseLiquidityImpl` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
 
-`MemeverseBootstrap`、`MemeverseFeeDistributor` 与 `MemeversePOLMinter` **均为** `MemeverseLauncher` facade 的 delegatecall sibling，共享同一 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；升级 facade 或任一 sibling 的 storage layout 时，**所有**共享该 namespace 的合约必须用相同 struct 同步重编，否则 facade 经 delegatecall 调 sibling 时读写错位。三行 namespace 均经 `layout at erc7201("outrun.storage.MemeverseLauncher")` 绑定，`@custom:storage-location` 注解实际挂在 `src/verse/interfaces/IMemeverseLauncherStorage.sol::MemeverseLauncherStorage`。
+`MemeverseLaunchImpl`、`MemeverseSettlementImpl` 与 `MemeverseLiquidityImpl` **均为** `MemeverseLauncher` facade 的 delegatecall sibling，共享同一 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；升级 facade 或任一 sibling 的 storage layout 时，**所有**共享该 namespace 的合约必须用相同 struct 同步重编，否则 facade 经 delegatecall 调 sibling 时读写错位。三行 namespace 均经 `layout at erc7201("outrun.storage.MemeverseLauncher")` 绑定，`@custom:storage-location` 注解实际挂在 `src/verse/interfaces/IMemeverseLauncherStorage.sol::MemeverseLauncherStorage`。
 
 `SwapFacet`、`DynamicFeeFacet` 与 `SettlementFacet` **均为** `MemeverseUniswapHook` diamond Router 的 delegatecall facet，共享同一 namespace `outrun.storage.MemeverseUniswapHook` 与 `IMemeverseHookStorage` struct；升级 Router 或任一 facet 的 storage layout 时，**所有**共享该 namespace 的合约必须用相同 struct 同步重编，否则 Router 经 delegatecall 调 facet 时读写错位。三行 namespace 均经 `layout at erc7201("outrun.storage.MemeverseUniswapHook")` 绑定，`@custom:storage-location` 注解实际挂在 `src/swap/interfaces/IMemeverseHookStorage.sol::IMemeverseHookStorage`。
 
@@ -379,25 +379,31 @@ fi
 cast call $LAUNCHER_PROXY "owner()(address)" --rpc-url $RPC
 # 应等于预期 owner 地址
 
+# polend 是唯一保留的 direct getter（不在 LauncherContracts 内）
 cast call $LAUNCHER_PROXY "polend()(address)" --rpc-url $RPC
 # 应等于 POLend proxy 地址
 
-cast call $LAUNCHER_PROXY "polSplitter()(address)" --rpc-url $RPC
-# 应等于 POLSplitter proxy 地址
-
-cast call $LAUNCHER_PROXY "memeverseUniswapHook()(address)" --rpc-url $RPC
-# 应等于 Hook proxy 地址
-
-cast call $LAUNCHER_PROXY "memeverseRegistrar()(address)" --rpc-url $RPC
-# 应等于 Registrar 地址
-
-# bootstrapImpl：getLauncherContracts() 返回的 LauncherContracts 第 8 字段
-cast call $LAUNCHER_PROXY "getLauncherContracts()" --rpc-url $RPC
-# 返回的 LauncherContracts 中 bootstrapImpl 字段应为非零地址且有代码（即当前接线的 MemeverseBootstrap sibling）
-# 可用 cast codehash $BOOTSTRAP_IMPL --rpc-url $RPC 二次确认非空
+# 其余接线地址经一次 getLauncherContracts() typed decode 读出（12 个 address，按 struct 声明顺序）
+# 字段顺序：localLzEndpoint, lzEndpointRegistry, yieldDispatcher, memeverseRegistrar,
+#          memeverseProxyDeployer, memeverseSwapRouter, polSplitter, launchImpl,
+#          memeverseUniswapHook, settlementImpl, feePreviewReader, liquidityImpl
+cast call $LAUNCHER_PROXY \
+  "getLauncherContracts()(address,address,address,address,address,address,address,address,address,address,address,address)" \
+  --rpc-url $RPC
+# 逐字段校验（返回值按上面顺序的第 N 个）：
+#   [4] memeverseRegistrar   == 预期 Registrar 地址
+#   [7] polSplitter           == POLSplitter proxy 地址
+#   [8] launchImpl            == 当前接线的 MemeverseLaunchImpl，非零且有代码
+#   [9] memeverseUniswapHook  == Hook proxy 地址
+#  [10] settlementImpl        == MemeverseSettlementImpl，非零且有代码
+#  [11] feePreviewReader      == MemeverseFeePreviewReader，非零且有代码
+#  [12] liquidityImpl         == MemeverseLiquidityImpl，非零且有代码
+# impl 类字段可用 cast codehash $IMPL --rpc-url $RPC 二次确认非空
 ```
 
-fee sibling 进 readiness check：`feeDistributorImpl`（`LauncherContracts` 第 10 字段）、`polMinterImpl`（第 12 字段）与 `feePreviewReader`（第 11 字段）由脚本 `_readLauncherImplSiblings` 取值后 `_requireContractCode` 校验非零且有代码，与 `bootstrapImpl` 对称（均为用户路径上使用的 delegatecall/view sibling：`::redeemAndDistributeFees` / `changeStage` Locked→Unlocked 会 delegatecall `feeDistributorImpl`，`::mintPOLToken` 会 delegatecall `polMinterImpl`，`feePreviewReader` 供链下预览）；未接线时 readiness 失败（`FEE_DISTRIBUTOR_IMPL_NOT_READY` / `POL_MINTER_IMPL_NOT_READY` / `FEE_PREVIEW_READER_NOT_READY`）、阻断 registration 打开，运行时 `FeeDistributorImplNotSet` / `POLMinterImplNotSet` 守卫仅作兜底。`[代码已证]`
+fee sibling 进 readiness check：`settlementImpl`、`liquidityImpl` 与 `feePreviewReader` 由脚本 `_requireDeploymentReady` 经一次 `getLauncherContracts()` typed decode 后取值（同一次 decode 也读出 `launchImpl`），再 `_requireContractCode` 校验非零且有代码，与 `launchImpl` 对称（均为用户路径上使用的 delegatecall/view sibling：`changeStage` Locked→Unlocked 会 delegatecall `settlementImpl`，Genesis→Locked 成功路径会 delegatecall `liquidityImpl`，`feePreviewReader` 供链下预览）；未接线时 readiness 失败（`SETTLEMENT_IMPL_NOT_READY` / `LIQUIDITY_IMPL_NOT_READY` / `FEE_PREVIEW_READER_NOT_READY`）、阻断 registration 打开，运行时 `SettlementImplNotSet` / `LiquidityImplNotSet` 守卫仅作兜底。`[代码已证]`
+
+> readiness 不再使用不存在的 launcher direct config getter（`memeverseRegistrar()` / `memeverseProxyDeployer()` / `yieldDispatcher()` / `polSplitter()`）：这些不是 launcher 真实 ABI。脚本通过一次 typed decode `getLauncherContracts()` 读出全部依赖字段；`polend()` 保留 direct getter（真实 ABI，不在 `LauncherContracts`）。
 
 `creditFactory` 进 readiness check：POLend 的 `creditFactory` 指针由脚本 `_readAddress(POLEND, "creditFactory()")` 取值后 `_requireContractCode` 校验有代码，与 bootstrap/fee sibling 同类（用户路径接线指针——`leveragedGenesisWithCredit` 经 `IGenesisCreditFactory(creditFactory).creditOf(uAsset)` 解析 GenesisCredit）；未接线或被占位 owner 兜底（`_buildPOLendCreationCode` 在未设 `CREDIT_FACTORY_PROXY` 时写入的 EOA，无代码）时 readiness 失败、阻断 registration 打开。`cast call $POLEND_PROXY "creditFactory()(address)" --rpc-url $RPC` 应返回非零且有代码的 factory 地址。`[代码已证]`
 

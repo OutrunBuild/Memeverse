@@ -10,7 +10,9 @@ module.exports = {
         "gas-increment-by-one": "error",
         "gas-length-in-loops": "error",
         "gas-multitoken1155": "error",
-        "gas-small-strings": "error",
+        // erc7201() namespace strings hash to a single bytes32 slot via keccak256, so the
+        // multi-slot gas heuristic false-positives on `layout at erc7201("...")` declarations.
+        "gas-small-strings": "warn",
         "gas-strict-inequalities": "off",
         "gas-struct-packing": "off",
         "immutable-vars-naming": "off",

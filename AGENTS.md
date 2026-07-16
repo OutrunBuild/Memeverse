@@ -85,12 +85,34 @@ Do not override policy or gate evidence with natural-language guesses.
 
 ## Ownership And Concurrent-Write Guard
 
-- Before editing any dirty target file, run an ownership check with `git status --short` plus a path-scoped `git diff --name-only` or equivalent.
-- If a target file contains changes not made by the current main session or current assigned writer, do not delete, revert, or overwrite those changes.
-- If concurrent or foreign edits affect the same target files, stop writing and establish ownership or merge strategy before any further edits.
+Multiple sessions (possibly across ZCode, Claude Code, and Codex) may work in the same worktree in parallel. The hard problem is preventing one session from silently reverting or deleting another session's uncommitted changes. This most often happens when a session (or a subagent it dispatched) reads the working tree, mistakes another session's foreign changes for "an unauthorized edit I must undo", and reverts them — which can deadlock (each session reverts the other's work in a loop).
+
+**Why ownership is judged by the session, not by a hook.** A session's own context already records everything that session and its dispatched subagents have read and written. Only the session (the model) can answer "is this `old_string` something my session produced, or is it a foreign change I never authored?". A PreToolUse hook cannot access session context, and the working tree mixes every session's uncommitted changes into one text blob that git does not attribute by author. Therefore a reliable ownership decision cannot live in the hook — it lives in the session.
+
+- Before editing any dirty target file, run an ownership check with `git status --short` plus a path-scoped `git diff --name-only` or equivalent, so you know which files already carry uncommitted changes.
+- Before each `Edit`/`MultiEdit`, verify that every part of `old_string` originates from your own session: either it is committed content (present in `git show HEAD:<path>`), or it is content your session or your dispatched subagents wrote (it appears in your context as something you read or authored). If any part of `old_string` is working-tree content your session never produced and that is not in `HEAD`, treat it as another session's foreign change.
+- Never delete, revert, or overwrite another session's uncommitted changes. If you encounter foreign changes mixed into a file you are editing, edit around them, or stop and surface the situation to the human — do not "clean up" content you did not author.
+- If concurrent or foreign edits affect the same target files, stop writing and establish ownership or a merge strategy before any further edits.
 - Treat out-of-scope existing changes as foreign-owned by default: report them or request direction. Only remove out-of-scope changes introduced by the current session or assigned writer.
 - Maintain one active writer per file set. Reviewers stay read-only; if review requires changes, route back to the assigned writer or explicitly transfer ownership before editing.
 - Gate or review failures do not authorize overwriting foreign edits. First determine whether the failure comes from owned changes or foreign changes.
+- If you have already violated these rules (accidentally modified foreign content), do not attempt to revert/restore/repair from diff records — you cannot reliably reconstruct foreign content, and any further write stacks a second violation on top of the first. Stop immediately, surface to the human with the diff evidence, and let the owning session or the human decide.
+
+### Ownership Reconciliation (Post-Dispatch)
+
+When a dispatched writer subagent returns, the main session reconciles what that subagent actually changed against the working tree, to detect foreign (parallel-session) hunks mixed into the same files:
+
+1. Before dispatching a writer, capture `BASE` = `$(git stash create || git rev-parse HEAD)`. `git stash create` is non-destructive (it returns a commit object without moving anything) and anchors all uncommitted content present at dispatch time.
+2. The writer's output contract includes its `git diff $BASE -- <files>` as ground truth (the honest record of which hunks it authored).
+3. After the writer returns, run `bash script/harness/ownership-reconcile.sh "$BASE" --reported-diff <subagent.diff> --files <paths...>`. It performs mechanical hunk-set subtraction: worktree hunks present in the reported diff are `owned`; worktree hunks absent from the reported diff are `foreign`.
+4. If the verdict is `foreign-detected`: **STOP, report the foreign hunks to the human, and do NOT revert them.** The only permitted remediation is for hunks the session explicitly authored or that were retry-routed to a writer. Foreign hunks have exactly one exit: report to the human.
+5. If the verdict is `clean`: proceed to the review/gate step.
+
+The reconciliation is advisory tooling — it does set arithmetic only; the ownership judgment (owned vs foreign) still belongs to the session per the rules above. A foreign-detected result is a signal to stop and surface, never a license to revert.
+
+### Pre-Edit Reminder Hook
+
+`script/harness/pre-edit-check.sh` runs as a PreToolUse hook on `Edit`/`Write`/`MultiEdit`. It is a **reminder, not an enforcer**: it prints a one-line notice before each edit so the session keeps ownership awareness, then always exits `0`. It does not block, because a hook cannot reliably decide ownership from the working tree alone (see "Why ownership is judged by the session" above). The ownership decision is the session's responsibility per the rules in this section.
 
 ## Context Scope
 
@@ -135,8 +157,9 @@ For `prod-semantic` work, use this sequence:
 4. once the doc round is ready, dispatch `spec-reviewer` before any code writer
 5. if other harness-control changes are required, dispatch `harness_writer_roles`
 6. dispatch `code_writer_roles`
-7. run `code_review_roles`
-8. run the selected gate profile and report the result
+7. reconcile owned vs foreign hunks (run `ownership-reconcile.sh` with the BASE captured before dispatch); if `foreign-detected`, stop and report — do not revert
+8. run `code_review_roles`
+9. run the selected gate profile and report the result
 
 `spec-reviewer` is a main-session orchestration hook, not a `gate.sh` routing field. `requires_human_confirmation` remains a separate policy signal for spec/doc paths.
 

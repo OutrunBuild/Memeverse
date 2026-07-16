@@ -823,6 +823,69 @@ if errors:
 PY
 }
 
+validate_test_mapping_references() {
+    local policy_file="$1"
+    local repo_root="$2"
+    local pointer
+    local test_path
+    local reason
+    local reference_json
+    local invalid=0
+
+    while IFS=$'\t' read -r pointer test_path; do
+        [ -n "$pointer" ] || continue
+        reason=""
+
+        if [[ "$test_path" != test/*.t.sol ||
+              "$test_path" == *"*"* ||
+              "$test_path" == *"?"* ||
+              "$test_path" == *"["* ||
+              "$test_path" == *"]"* ||
+              "$test_path" == *"//"* ||
+              "$test_path" == *"/./"* ||
+              "$test_path" == *"/../"* ]]; then
+            reason="must be a concrete repository test path ending in .t.sol"
+        elif [ ! -f "$repo_root/$test_path" ]; then
+            reason="file does not exist"
+        fi
+
+        [ -n "$reason" ] || continue
+        reference_json="$(jq -cn --arg pointer "$pointer" --arg path "$test_path" --arg reason "$reason" \
+            '{pointer: $pointer, path: $path, reason: $reason}')"
+        printf '[gate] ERROR: invalid test_mapping reference %s\n' "$reference_json" >&2
+        invalid=1
+    done < <(jq -r '
+        def pointer_token: tostring | gsub("~"; "~0") | gsub("/"; "~1");
+        .test_mapping
+        | to_entries[]
+        | .key as $mapping_key
+        | .value as $mapping
+        | (
+            ($mapping.tests // []
+             | to_entries[]
+             | {pointer: ("/test_mapping/" + ($mapping_key | pointer_token) + "/tests/" + (.key | tostring)), path: .value}),
+            ($mapping.rules // []
+             | to_entries[]
+             | .key as $rule_index
+             | .value as $rule
+             | ($rule.change_tests // [])
+             | to_entries[]
+             | {pointer: ("/test_mapping/" + ($mapping_key | pointer_token) + "/rules/" + ($rule_index | tostring) + "/change_tests/" + (.key | tostring)), path: .value}),
+            ($mapping.rules // []
+             | to_entries[]
+             | .key as $rule_index
+             | .value as $rule
+             | ($rule.evidence_tests // [])
+             | to_entries[]
+             | {pointer: ("/test_mapping/" + ($mapping_key | pointer_token) + "/rules/" + ($rule_index | tostring) + "/evidence_tests/" + (.key | tostring)), path: .value})
+          )
+        | [.pointer, .path]
+        | @tsv
+    ' "$policy_file")
+
+    [ "$invalid" -eq 0 ]
+}
+
 diff_covers_changed_files() {
     local diff_file="$1"
     shift
@@ -979,6 +1042,9 @@ policy_schema_file="$harness_schema_root/schemas/policy.schema.json"
 
 if ! validate_json_file_against_schema "$policy_file" "$policy_schema_file"; then
     die "policy schema validation failed"
+fi
+if ! validate_test_mapping_references "$policy_file" "$repo_root"; then
+    die "test_mapping reference validation failed"
 fi
 
 mapfile -t solidity_prod_patterns < <(jq -r '.surfaces.solidity_prod[]' "$policy_file")

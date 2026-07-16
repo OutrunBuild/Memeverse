@@ -46,8 +46,6 @@ jobs:
       - name: Run gate:ci
         env:
           HARNESS_EVENT_NAME: ${{ github.event_name }}
-          HARNESS_EVENT_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HARNESS_EVENT_HEAD_SHA: ${{ github.sha }}
           RUN_RECORD_PATH: ${{ runner.temp }}/memeversev2-gate-ci.json
         run: bash script/harness/ci-gate-entrypoint.sh
 

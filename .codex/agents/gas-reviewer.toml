@@ -1,7 +1,7 @@
 name = "gas-reviewer"
 description = "Review Solidity changes for gas efficiency, storage access patterns, and optimization opportunities."
-model = "gpt-5.4"
-model_reasoning_effort = "high"
+model = "grok-4.5"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 developer_instructions = """
 ## Role

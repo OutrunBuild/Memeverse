@@ -47,7 +47,9 @@
   },
   "orchestration_rules": {
     "doc_round": {
-      "trigger_change_class": ["prod-semantic"],
+      "trigger_change_class": [
+        "prod-semantic"
+      ],
       "writer_role": "process-implementer"
     },
     "scope_escalation": {
@@ -135,20 +137,27 @@
           "id": "swap-router-core",
           "paths": [
             "src/swap/MemeverseSwapRouter.sol",
-            "src/swap/interfaces/IMemeverseSwapRouter.sol"
+            "src/swap/interfaces/IMemeverseSwapRouter.sol",
+            "src/swap/libraries/CurrencySettler.sol"
           ]
         },
         {
           "change_tests": [
-            "test/swap/MemeverseUniswapHookLiquidity.t.sol"
+            "test/swap/ForwardByteEq.t.sol",
+            "test/swap/MemeverseDiamondFacets.t.sol",
+            "test/swap/MemeverseUniswapHookLiquidity.t.sol",
+            "test/swap/UniswapLP.t.sol"
           ],
           "evidence_tests": [
+            "test/swap/ForwardByteEq.t.sol",
+            "test/swap/MemeverseDiamondFacets.t.sol",
             "test/swap/MemeverseUniswapHookLiquidity.t.sol",
-            "test/swap/MemeverseSwapRouter.t.sol"
+            "test/swap/MemeverseSwapRouter.t.sol",
+            "test/swap/UniswapLP.t.sol"
           ],
           "id": "swap-hook-liquidity",
           "paths": [
-            "src/swap/libraries/MemeverseHookLib.sol",
+            "src/swap/libraries/MemeversePoolKeyLib.sol",
             "src/swap/MemeverseUniswapHook.sol",
             "src/swap/libraries/LiquidityQuote.sol",
             "src/swap/tokens/UniswapLP.sol",
@@ -487,17 +496,201 @@
         },
         {
           "change_tests": [
-            "test/swap/MemeverseDynamicFeeEngine.t.sol",
-            "test/swap/MemeverseDynamicFeeEngineRevertPropagation.t.sol"
+            "test/swap/DynamicFeeFacet.t.sol",
+            "test/swap/libraries/DynamicFeeMath.t.sol",
+            "test/swap/MemeverseDiamondFacets.t.sol",
+            "test/swap/MemeverseSwapRouter.t.sol",
+            "test/swap/MemeverseUniswapHookIntegration.t.sol",
+            "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
+            "test/swap/MemeverseDynamicFeeFacetRevertPropagation.t.sol",
+            "test/swap/DynamicFeeFacetMinRouterRevertTest.t.sol",
+            "test/swap/MemeverseQuoteReadOnlyInvariant.t.sol"
           ],
           "evidence_tests": [
-            "test/swap/MemeverseDynamicFeeEngine.t.sol",
-            "test/swap/MemeverseDynamicFeeEngineRevertPropagation.t.sol"
+            "test/swap/DynamicFeeFacet.t.sol",
+            "test/swap/libraries/DynamicFeeMath.t.sol",
+            "test/swap/MemeverseDiamondFacets.t.sol",
+            "test/swap/MemeverseSwapRouter.t.sol",
+            "test/swap/MemeverseDynamicFeeSimulation.t.sol",
+            "test/swap/MemeverseUniswapHookIntegration.t.sol",
+            "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
+            "test/swap/MemeverseDynamicFeeFacetRevertPropagation.t.sol",
+            "test/swap/DynamicFeeFacetMinRouterRevertTest.t.sol",
+            "test/swap/MemeverseQuoteReadOnlyInvariant.t.sol"
           ],
-          "id": "swap-dynamic-fee-engine",
+          "id": "swap-dynamic-fee-facet",
           "paths": [
-            "src/swap/MemeverseDynamicFeeEngine.sol",
-            "src/swap/interfaces/IMemeverseDynamicFeeEngine.sol"
+            "src/swap/DynamicFeeFacet.sol",
+            "src/swap/interfaces/IDynamicFeeFacet.sol",
+            "src/swap/libraries/DynamicFeeMath.sol",
+            "src/swap/libraries/FeeMath.sol",
+            "src/swap/libraries/SafeCast.sol",
+            "src/swap/FacetGuard.sol",
+            "src/swap/MemeverseSwapFeeBase.sol",
+            "src/swap/libraries/SwapFeeMath.sol",
+            "src/swap/libraries/SwapGuardMath.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/MemeverseDiamondFacets.t.sol",
+            "test/swap/MemeverseSwapRouter.t.sol",
+            "test/swap/MemeverseUniswapHookLiquidity.t.sol",
+            "test/swap/MemeverseReferralRebate.t.sol",
+            "test/swap/libraries/SwapGuardMath.t.sol",
+            "test/swap/MemeverseUniswapHookIntegration.t.sol",
+            "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
+            "test/swap/MemeverseReferralRebateRealV4.t.sol",
+            "test/swap/ForwardByteEq.t.sol",
+            "test/swap/BeforeSwapReentrancyGuard.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/MemeverseDiamondFacets.t.sol",
+            "test/swap/MemeverseSwapRouter.t.sol",
+            "test/swap/MemeverseUniswapHookLiquidity.t.sol",
+            "test/swap/MemeverseReferralRebate.t.sol",
+            "test/swap/libraries/SwapGuardMath.t.sol",
+            "test/swap/MemeverseUniswapHookIntegration.t.sol",
+            "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
+            "test/swap/MemeverseReferralRebateRealV4.t.sol",
+            "test/swap/ForwardByteEq.t.sol",
+            "test/swap/BeforeSwapReentrancyGuard.t.sol"
+          ],
+          "id": "swap-facet",
+          "paths": [
+            "src/swap/SwapFacet.sol",
+            "src/swap/interfaces/ISwapFacet.sol",
+            "src/swap/MemeverseSwapFeeBase.sol",
+            "src/swap/libraries/SwapFeeMath.sol",
+            "src/swap/libraries/SwapGuardMath.sol",
+            "src/swap/libraries/FeeMath.sol",
+            "src/swap/libraries/SafeCast.sol",
+            "src/swap/FacetGuard.sol",
+            "src/swap/libraries/MemeverseTransientState.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/MemeverseAddressBatchStateOf.t.sol",
+            "test/swap/MemeverseDiamondFacets.t.sol",
+            "test/swap/DynamicFeeFacet.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/MemeverseAddressBatchStateOf.t.sol",
+            "test/swap/MemeverseDiamondFacets.t.sol",
+            "test/swap/DynamicFeeFacet.t.sol"
+          ],
+          "id": "swap-hook-storage",
+          "paths": [
+            "src/swap/interfaces/IMemeverseHookStorage.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/MemeverseUniswapHookIntegration.t.sol",
+            "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
+            "test/swap/MemeverseSwapRouter.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/MemeverseUniswapHookIntegration.t.sol",
+            "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
+            "test/swap/MemeverseSwapRouter.t.sol"
+          ],
+          "id": "swap-hook-lens",
+          "paths": [
+            "src/swap/MemeverseUniswapHookLens.sol",
+            "src/swap/interfaces/IMemeverseUniswapHookLens.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/MemeverseDiamondFacets.t.sol",
+            "test/swap/SettlementReentrancy.t.sol",
+            "test/swap/SettlementSamePoolReentrancy.t.sol",
+            "test/swap/SettlementTransferFromSamePoolReentrancy.t.sol",
+            "test/swap/SettlementSequentialExecution.t.sol",
+            "test/swap/MemeverseSwapRouterSettlementInvariant.t.sol",
+            "test/swap/MemeverseSwapRouter.t.sol",
+            "test/swap/MemeverseUniswapHookIntegration.t.sol",
+            "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
+            "test/swap/SettlementReentrancyRealV4.t.sol",
+            "test/swap/ForwardByteEq.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/MemeverseDiamondFacets.t.sol",
+            "test/swap/SettlementReentrancy.t.sol",
+            "test/swap/SettlementSamePoolReentrancy.t.sol",
+            "test/swap/SettlementTransferFromSamePoolReentrancy.t.sol",
+            "test/swap/SettlementSequentialExecution.t.sol",
+            "test/swap/MemeverseSwapRouterSettlementInvariant.t.sol",
+            "test/swap/MemeverseSwapRouter.t.sol",
+            "test/swap/MemeverseUniswapHookIntegration.t.sol",
+            "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
+            "test/swap/SettlementReentrancyRealV4.t.sol",
+            "test/swap/ForwardByteEq.t.sol"
+          ],
+          "id": "swap-settlement-facet",
+          "paths": [
+            "src/swap/SettlementFacet.sol",
+            "src/swap/interfaces/ISettlementFacet.sol",
+            "src/swap/MemeverseSwapFeeBase.sol",
+            "src/swap/libraries/SwapFeeMath.sol",
+            "src/swap/libraries/SwapGuardMath.sol",
+            "src/swap/libraries/CurrencySettler.sol",
+            "src/swap/libraries/DynamicFeeMath.sol",
+            "src/swap/libraries/FeeMath.sol",
+            "src/swap/libraries/SafeCast.sol",
+            "src/swap/FacetGuard.sol",
+            "src/swap/libraries/MemeverseTransientState.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/SettlementReentrancy.t.sol",
+            "test/swap/SettlementReentrancyRealV4.t.sol",
+            "test/swap/SettlementSequentialExecution.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/SettlementReentrancy.t.sol",
+            "test/swap/SettlementReentrancyRealV4.t.sol",
+            "test/swap/SettlementSequentialExecution.t.sol"
+          ],
+          "id": "swap-hook-settlement-routing",
+          "paths": [
+            "src/swap/MemeverseUniswapHook.sol",
+            "src/swap/interfaces/IMemeverseUniswapHook.sol",
+            "src/swap/libraries/CurrencySettler.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/MemeverseReferralRebate.t.sol",
+            "test/swap/MemeverseReferralRebateRealV4.t.sol",
+            "test/swap/MemeverseAddressBatchStateOf.t.sol",
+            "test/swap/MemeverseQuoteReadOnlyInvariant.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/MemeverseReferralRebate.t.sol",
+            "test/swap/MemeverseReferralRebateRealV4.t.sol",
+            "test/swap/MemeverseAddressBatchStateOf.t.sol",
+            "test/swap/MemeverseQuoteReadOnlyInvariant.t.sol"
+          ],
+          "id": "swap-hook-direct-surface",
+          "paths": [
+            "src/swap/MemeverseUniswapHook.sol",
+            "src/swap/interfaces/IMemeverseUniswapHook.sol"
+          ]
+        },
+        {
+          "change_tests": [
+            "test/swap/libraries/SwapGuardMath.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/libraries/SwapGuardMath.t.sol"
+          ],
+          "id": "swap-swap-guard-math",
+          "paths": [
+            "src/swap/libraries/SwapGuardMath.sol"
           ]
         },
         {

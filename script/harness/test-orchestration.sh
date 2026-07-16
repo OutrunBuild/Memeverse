@@ -110,6 +110,23 @@ run_classify_capture() {
     printf '%s\n%s\n%s\n' "$status" "$stdout" "$stderr"
 }
 
+materialize_test_mapping_tests() {
+    local policy_file="$1"
+    local repo="$2"
+    local test_path
+
+    while IFS= read -r test_path; do
+        mkdir -p "$repo/$(dirname "$test_path")"
+        : >"$repo/$test_path"
+    done < <(jq -r '
+        [
+          .test_mapping[]?.tests[]?,
+          .test_mapping[]?.rules[]?.change_tests[]?,
+          .test_mapping[]?.rules[]?.evidence_tests[]?
+        ] | unique[]
+    ' "$policy_file")
+}
+
 run_default_classify_in_scratch_repo() {
     local name="$1"
     local dirty_file="$2"
@@ -119,6 +136,7 @@ run_default_classify_in_scratch_repo() {
     mkdir -p "$repo/script/harness" "$repo/.harness"
     cp script/harness/gate.sh "$repo/script/harness/gate.sh"
     cp -R .harness/policy.json .harness/schemas "$repo/.harness/"
+    materialize_test_mapping_tests "$repo/.harness/policy.json" "$repo"
     (
         cd "$repo"
         git init -q
@@ -133,6 +151,165 @@ run_default_classify_in_scratch_repo() {
 
     jq -e . "$record" >/dev/null
     printf '%s\n' "$record"
+}
+
+# Shared setup for test_mapping rejection tests: copy gate + policy + test files
+# into a fresh scratch repo, inject one bad reference, run classify, return stderr.
+# Args: <case-name> <policy-mutation-jq-filter> <injected-test-path>
+# Side effects: writes $tmp_dir/<case-name>.stderr; echoes the case-name on success.
+run_test_mapping_rejection_case() {
+    local case_name="$1"
+    local mutation_filter="$2"
+    local injected_test="$3"
+    local repo="$tmp_dir/$case_name.repo"
+    local stderr="$tmp_dir/$case_name.stderr"
+    local policy="$repo/.harness/policy.json"
+    local status
+
+    mkdir -p "$repo/script/harness" "$repo/.harness"
+    cp script/harness/gate.sh "$repo/script/harness/gate.sh"
+    cp -R .harness/policy.json .harness/schemas "$repo/.harness/"
+    materialize_test_mapping_tests "$policy" "$repo"
+    jq --arg test "$injected_test" "$mutation_filter" "$policy" >"$policy.tmp"
+    mv "$policy.tmp" "$policy"
+
+    (
+        cd "$repo"
+        git init -q
+        git config user.email test@example.invalid
+        git config user.name "Harness Test"
+        git add .
+        git commit -q -m baseline
+        printf 'dirty\n' >README.md
+    )
+
+    set +e
+    (
+        cd "$repo"
+        bash script/harness/gate.sh --classify-only
+    ) >/dev/null 2>"$stderr"
+    status=$?
+    set -e
+
+    [ "$status" -ne 0 ] || {
+        echo "$case_name: invalid test_mapping reference was accepted" >&2
+        return 1
+    }
+    grep -Fq "\"path\":\"$injected_test\"" "$stderr" || {
+        echo "$case_name: injected test path missing from gate error output" >&2
+        return 1
+    }
+    printf '%s\n' "$case_name"
+}
+
+# Table-driven coverage of validate_test_mapping_references (gate.sh).
+# The validator checks three reference sources (mapping.tests, rules[].change_tests,
+# rules[].evidence_tests) and two rejection branches (format, existence). Each row
+# pins one (source x branch) cell so deleting the matching validator branch turns
+# this test red.
+#
+# Row 4 is a STRONG sentinel: its path contains "/../" but still resolves (via
+# bash [ -f ]) to an existing repo file. If the format branch is removed, the
+# existence check passes and gate silently accepts the non-canonical path -- a
+# real acceptance escape, not just a changed reason string. A weak sentinel
+# (e.g. a glob "test/swap/*.t.sol") would only drop from format to "missing" and
+# still be rejected, so it cannot detect format-branch removal.
+assert_invalid_test_mapping_references_are_rejected() {
+    local missing_test="test/swap/MissingMappingTest.t.sol"
+    local rule_pointer='/test_mapping/memeverse/rules/'
+    local tests_pointer='/test_mapping/memeverse/tests/'
+    local fmt_reason='must be a concrete repository test path ending in .t.sol'
+    local missing_reason='file does not exist'
+    local case_stderr
+    local pointer
+
+    # Row 1: source = change_tests, branch = existence.
+    pointer="$rule_pointer$(jq -r '
+        .test_mapping.memeverse.rules | to_entries[]
+        | select(.value.id == "swap-dynamic-fee-facet") | .key
+    ' .harness/policy.json)/change_tests/0"
+    case_stderr="$tmp_dir/change-tests-missing.stderr"
+    run_test_mapping_rejection_case change-tests-missing \
+        '(.test_mapping.memeverse.rules[]
+          | select(.id == "swap-dynamic-fee-facet")
+          | .change_tests[0]) = $test' \
+        "$missing_test" >/dev/null
+    grep -Fq "\"pointer\":\"$pointer\"" "$case_stderr"
+    grep -Fq "\"reason\":\"$missing_reason\"" "$case_stderr"
+
+    # Row 2: source = evidence_tests, branch = existence.
+    pointer="$rule_pointer$(jq -r '
+        .test_mapping.memeverse.rules | to_entries[]
+        | select(.value.id == "swap-dynamic-fee-facet") | .key
+    ' .harness/policy.json)/evidence_tests/0"
+    case_stderr="$tmp_dir/evidence-tests-missing.stderr"
+    run_test_mapping_rejection_case evidence-tests-missing \
+        '(.test_mapping.memeverse.rules[]
+          | select(.id == "swap-dynamic-fee-facet")
+          | .evidence_tests[0]) = $test' \
+        "$missing_test" >/dev/null
+    grep -Fq "\"pointer\":\"$pointer\"" "$case_stderr"
+    grep -Fq "\"reason\":\"$missing_reason\"" "$case_stderr"
+
+    # Row 3: source = mapping.tests, branch = existence.
+    # Production policy has no top-level tests array, so this also exercises the
+    # validator's $mapping.tests traversal branch that real data never reaches.
+    pointer="${tests_pointer}0"
+    case_stderr="$tmp_dir/tests-missing.stderr"
+    run_test_mapping_rejection_case tests-missing \
+        '.test_mapping.memeverse.tests = [$test]' \
+        "$missing_test" >/dev/null
+    grep -Fq "\"pointer\":\"$pointer\"" "$case_stderr"
+    grep -Fq "\"reason\":\"$missing_reason\"" "$case_stderr"
+
+    # Row 4: source = change_tests, branch = format (strong sentinel).
+    pointer="$rule_pointer$(jq -r '
+        .test_mapping.memeverse.rules | to_entries[]
+        | select(.value.id == "swap-dynamic-fee-facet") | .key
+    ' .harness/policy.json)/change_tests/0"
+    case_stderr="$tmp_dir/change-tests-format.stderr"
+    run_test_mapping_rejection_case change-tests-format \
+        '(.test_mapping.memeverse.rules[]
+          | select(.id == "swap-dynamic-fee-facet")
+          | .change_tests[0]) = $test' \
+        'test/swap/../swap/FeeMath.t.sol' >/dev/null
+    grep -Fq "\"pointer\":\"$pointer\"" "$case_stderr"
+    grep -Fq "\"reason\":\"$fmt_reason\"" "$case_stderr"
+}
+
+# CI-002 regression: shared fee/facet source files consumed by multiple facets
+# must be registered in each consuming rule's paths, so a standalone change to
+# any shared file selects the consumer suites (settlement reentrancy / dynamic
+# fee revert propagation) in the fast gate, not just swap-facet. gate.sh matches
+# rules by path then unions the rule's tests; it does not expand Solidity
+# imports or inheritance, so a shared file only in swap-facet.paths silently
+# drops the consumer suites from targeted_tests.
+assert_shared_facet_paths_map_to_consumers() {
+    # SettlementFacet inherits MemeverseSwapFeeBase (which is FacetGuard) and
+    # imports SwapFeeMath / SwapGuardMath; its external fns are gated by the
+    # FacetGuard onlyViaRouter modifier. All four shared files must map here so
+    # a standalone change to any selects the settlement reentrancy / same-pool /
+    # sequential suites.
+    local settlement_paths
+    settlement_paths="$(jq -r '.test_mapping.memeverse.rules[]
+        | select(.id == "swap-settlement-facet") | .paths[]' .harness/policy.json)"
+    grep -Fqx "src/swap/MemeverseSwapFeeBase.sol" <<<"$settlement_paths"
+    grep -Fqx "src/swap/libraries/SwapFeeMath.sol" <<<"$settlement_paths"
+    grep -Fqx "src/swap/libraries/SwapGuardMath.sol" <<<"$settlement_paths"
+    grep -Fqx "src/swap/FacetGuard.sol" <<<"$settlement_paths"
+
+    # DynamicFeeFacet inherits FacetGuard (its dispatch guard); the
+    # facet-to-facet delegatecall seam (_delegatecallDynamicFeeFacet) that the
+    # revert-propagation suites exercise lives in MemeverseSwapFeeBase; and the
+    # public-swap revert path executes SwapFeeMath / SwapGuardMath before the
+    # delegatecall, so mapping them here is the symmetric defensive coverage.
+    local dynamic_fee_paths
+    dynamic_fee_paths="$(jq -r '.test_mapping.memeverse.rules[]
+        | select(.id == "swap-dynamic-fee-facet") | .paths[]' .harness/policy.json)"
+    grep -Fqx "src/swap/FacetGuard.sol" <<<"$dynamic_fee_paths"
+    grep -Fqx "src/swap/MemeverseSwapFeeBase.sol" <<<"$dynamic_fee_paths"
+    grep -Fqx "src/swap/libraries/SwapFeeMath.sol" <<<"$dynamic_fee_paths"
+    grep -Fqx "src/swap/libraries/SwapGuardMath.sol" <<<"$dynamic_fee_paths"
 }
 
 write_changed_files() {
@@ -187,8 +364,6 @@ EOF
 run_ci_entrypoint_capture() {
     local name="$1"
     local event_name="$2"
-    local base_sha="$3"
-    local head_sha="$4"
     local fake_bin="$tmp_dir/$name.bin"
     local capture_dir="$tmp_dir/$name.capture"
     local runner_temp="$tmp_dir/$name.runner"
@@ -226,8 +401,6 @@ EOF
 
     HARNESS_CAPTURE_DIR="$capture_dir" \
     HARNESS_EVENT_NAME="$event_name" \
-    HARNESS_EVENT_BASE_SHA="$base_sha" \
-    HARNESS_EVENT_HEAD_SHA="$head_sha" \
     RUNNER_TEMP="$runner_temp" \
     PATH="$fake_bin:$PATH" \
     bash script/harness/ci-gate-entrypoint.sh
@@ -247,8 +420,6 @@ run_gate_step = next(step for step in steps if step.get("name") == "Run gate:ci"
 env = run_gate_step["env"]
 
 assert env["HARNESS_EVENT_NAME"] == "${{ github.event_name }}"
-assert env["HARNESS_EVENT_BASE_SHA"] == "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
-assert env["HARNESS_EVENT_HEAD_SHA"] == "${{ github.sha }}"
 assert env["RUN_RECORD_PATH"] == "${{ runner.temp }}/memeversev2-gate-ci.json"
 assert run_gate_step["run"] == "bash script/harness/ci-gate-entrypoint.sh"
 PY
@@ -260,13 +431,224 @@ run_pre_edit_check() {
 }
 
 assert_pre_edit_check_guidance() {
+    # The reminder hook prints a one-line ownership-awareness notice naming
+    # the edited file and pointing at AGENTS.md "Ownership And Concurrent-Write Guard".
     local output="$1"
 
-    grep -Fq "classify-only --planned-files with the exact planned-file set" <<<"$output"
-    grep -Fq "Follow emitted orchestration_profile and phase fields" <<<"$output"
-    grep -Fq "Main session may edit direct/direct-review" <<<"$output"
-    grep -Fq "delegated/full-review/full-subagent must use configured writers/reviewers" <<<"$output"
+    grep -Fq "[harness] Editing" <<<"$output"
+    grep -Fq "Ownership And Concurrent-Write Guard" <<<"$output"
 }
+
+# Run pre-edit-check with a JSON request payload; assert exit 0 and that
+# stdout is strict-JSON carrying additionalContext with the ownership reminder.
+# The hook only reads tool_input.file_path and interpolates it into one reminder
+# string, so Edit/Write/MultiEdit share identical execution and assertion logic;
+# each call still locks its own PreToolUse input schema against future regressions.
+# $1 = label for failure messages, $2 = request JSON.
+assert_pre_edit_reminder() {
+    local label="$1"
+    local request="$2"
+    local out
+    local status
+
+    set +e
+    out="$(printf '%s' "$request" | bash script/harness/pre-edit-check.sh 2>/dev/null)"
+    status=$?
+    set -e
+    [ "$status" -eq 0 ] || { echo "$label: expected exit 0, got $status" >&2; return 1; }
+    printf '%s' "$out" | jq -er '.additionalContext' >/dev/null 2>&1 \
+        || { echo "$label: stdout is not JSON with additionalContext: $out" >&2; return 1; }
+    printf '%s' "$out" | jq -r '.additionalContext' \
+        | grep -Fq "Ownership And Concurrent-Write Guard" \
+        || { echo "$label: reminder missing ownership section reference" >&2; return 1; }
+}
+
+assert_pre_edit_check_ownership_guard() {
+    # The pre-edit-check hook is a REMINDER, not an enforcer: it must always
+    # exit 0 and never block an edit. It emits a strict-JSON object on stdout
+    # (so ZCode/Claude Code accept it and inject the reminder via
+    # additionalContext) — never bare text, which would break the PreToolUse
+    # JSON stdout contract (hook.run.failed) and silently drop the reminder.
+    local scratch_repo="$tmp_dir/pre-edit-check.repo"
+    local target="$scratch_repo/target.txt"
+    local out
+    local status
+
+    mkdir -p "$scratch_repo/.harness"
+    printf '{}\n' >"$scratch_repo/.harness/policy.json"
+    printf 'alpha line\nbeta line\n' >"$target"
+
+    assert_pre_edit_reminder "Edit request" \
+        "$(jq -nc --arg file "$target" --arg old 'alpha line' \
+            '{tool_name:"Edit",tool_input:{file_path:$file,old_string:$old}}')"
+    assert_pre_edit_reminder "Write request" \
+        "$(jq -nc --arg file "$target" \
+            '{tool_name:"Write",tool_input:{file_path:$file,content:"x"}}')"
+    assert_pre_edit_reminder "MultiEdit request" \
+        "$(jq -nc --arg file "$target" --arg old 'alpha line' \
+            '{tool_name:"MultiEdit",tool_input:{file_path:$file,edits:[{old_string:$old,new_string:"x"}]}}')"
+
+    # Covers the camelCase nested toolInput.file_path fallback branch.
+    assert_pre_edit_reminder "Edit camelCase request" \
+        "$(jq -nc --arg file "$target" --arg old 'alpha line' \
+            '{tool_name:"Edit",toolInput:{file_path:$file,old_string:$old}}')"
+
+    # Covers the top-level file_path fallback branch.
+    assert_pre_edit_reminder "top-level file_path request" \
+        "$(jq -nc --arg file "$target" '{file_path:$file}')"
+
+    # Request with no file_path -> hook exit 0 and stdout must be empty.
+    set +e
+    out="$(printf '{"tool_name":"Edit","tool_input":{}}' \
+        | bash script/harness/pre-edit-check.sh 2>/dev/null)"
+    status=$?
+    set -e
+    [ "$status" -eq 0 ] || { echo "no-file_path request: expected exit 0, got $status" >&2; return 1; }
+    [ -z "$out" ] || { echo "no-file_path request: expected empty stdout, got: $out" >&2; return 1; }
+}
+
+if [ "${ORCHESTRATION_TEST_FOCUS-}" = "pre-edit-check" ]; then
+    assert_pre_edit_check_ownership_guard
+    echo "pre-edit-check regression tests passed"
+    exit 0
+fi
+
+# Ownership reconcile: a dispatched writer's self-reported `git diff $BASE`
+# (ground truth) is reconciled against the live working tree by
+# ownership-reconcile.sh. It does mechanical hunk-set subtraction — worktree
+# hunks present in the reported diff are owned, absent ones are foreign — and
+# is advisory only (always exit 0 for reconciliation outcomes; exit 2 is for
+# usage errors). Three cases are pinned: clean, foreign-detected, and usage
+# error, so deleting any classification branch turns this red.
+assert_ownership_reconcile() {
+    local script="$repo_root/script/harness/ownership-reconcile.sh"
+    local scratch="$tmp_dir/ownership-reconcile.repo"
+    local target="$scratch/src/Foo.sol"
+    local reported="$tmp_dir/ownership-reconcile.reported.diff"
+    local base
+    local out
+    local status
+
+    rm -rf "$scratch"
+    mkdir -p "$scratch/src"
+    (
+        cd "$scratch"
+        git init -q
+        git config user.email test@example.invalid
+        git config user.name "Harness Test"
+        mkdir -p src
+        # The fixture is tall on purpose: the reconciler keys hunks by identity
+        # (path, new_start, new_count) with NO content comparison. To produce a
+        # foreign hunk the owned and foreign edits must fall into SEPARATE git
+        # hunks, so the foreign one gets a distinct line range. git merges two
+        # edits into one hunk when <= 2*context (default context 3 -> <= 6)
+        # unchanged lines separate them; here the edits sit on lines 2 and 13,
+        # 10 unchanged lines apart, so they never merge.
+        {
+            echo 'contract Foo {'
+            for i in a b c d e f g h i j; do
+                printf '    uint256 %s;\n' "$i"
+            done
+            echo '}'
+        } >src/Foo.sol
+        git add .
+        git commit -q -m baseline
+
+        # Capture BASE before any writer edit. `git stash create` returns empty
+        # in a clean scratch repo (nothing to stash), so fall back to HEAD — the
+        # same fallback the session contract documents.
+        base="$(git stash create || true)"
+        [ -n "$base" ] || base="$(git rev-parse HEAD)"
+
+        # --- Case 1: clean (reported diff == worktree diff) ---------------
+        # One writer edit (line 2, field `a`); the reported diff honestly
+        # records exactly that edit, so the lone hunk is owned and nothing is
+        # foreign.
+        printf '    uint256 a; // owned edit\n' >src/_new
+        awk 'NR==2{while((getline l <"src/_new")>0)print l;next}1' src/Foo.sol >src/_tmp && mv src/_tmp src/Foo.sol && rm -f src/_new
+        git diff "$base" -- src/Foo.sol >"$reported"
+
+        out="$(bash "$script" "$base" --reported-diff "$reported" --files src/Foo.sol)"
+        jq -e '
+          .verdict == "clean" and
+          (.foreign_hunks | length) == 0 and
+          (.owned_hunks | length) >= 1
+        ' <<<"$out" >/dev/null
+
+        # --- Case 2: foreign-detected (worktree has an extra hunk) -------
+        # Reset to BASE, make the owned edit (line 2) and report it, then add a
+        # SECOND edit on line 11 (field `j`) that the writer never reported —
+        # simulating a parallel session silently dropping a hunk into the same
+        # file. The two edits are 9 lines apart, so git emits two separate
+        # hunks; the reported diff carries only the first, so the second is
+        # classified foreign.
+        git checkout -q -- src/Foo.sol
+        printf '    uint256 a; // owned edit\n' >src/_new
+        awk 'NR==2{while((getline l <"src/_new")>0)print l;next}1' src/Foo.sol >src/_tmp && mv src/_tmp src/Foo.sol && rm -f src/_new
+        git diff "$base" -- src/Foo.sol >"$reported"
+        printf '    uint256 j; // foreign edit\n' >src/_new
+        awk 'NR==11{while((getline l <"src/_new")>0)print l;next}1' src/Foo.sol >src/_tmp && mv src/_tmp src/Foo.sol && rm -f src/_new
+
+        out="$(bash "$script" "$base" --reported-diff "$reported" --files src/Foo.sol)"
+        jq -e '
+          .verdict == "foreign-detected" and
+          (.foreign_hunks | length) == 1 and
+          (.foreign_hunks[0].path == "src/Foo.sol")
+        ' <<<"$out" >/dev/null
+
+        # --- Case 3: usage error -> exit 2 -------------------------------
+        # Missing BASE and missing --reported-diff each yield exit 2 with a
+        # usage message on stderr; the tool never blocks on a real reconcile.
+        set +e
+        bash "$script" --reported-diff "$reported" --files src/Foo.sol >/dev/null 2>/dev/null
+        status=$?
+        set -e
+        [ "$status" -eq 2 ] || { echo "missing BASE: expected exit 2, got $status" >&2; return 1; }
+
+        set +e
+        bash "$script" "$base" --files src/Foo.sol >/dev/null 2>/dev/null
+        status=$?
+        set -e
+        [ "$status" -eq 2 ] || { echo "missing --reported-diff: expected exit 2, got $status" >&2; return 1; }
+
+        # --- Case 4: git diff failure -> exit 2 (fail-loud, never false clean) -
+        # Shadow git so `diff` fails (exit 128) but other subcommands
+        # (rev-parse) delegate to the real git. With the bug (process
+        # substitution swallowing the inner pipeline's status) this would emit
+        # verdict:"clean" + exit 0 and let the session skip reconciliation — the
+        # tool's worst failure mode. The fix must exit 2 instead. $tmp_dir is the
+        # shared scratch directory created at the top of this file; the wrapper
+        # lives in a dedicated bin subdir so prepending that dir to PATH shadows
+        # `git` by name.
+        local fake_bin="$tmp_dir/ownership-reconcile.fake-bin"
+        local real_git
+        real_git="$(command -v git)"
+        mkdir -p "$fake_bin"
+        cat >"$fake_bin/git" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = "diff" ]; then
+  echo "fatal: simulated git diff failure" >&2
+  exit 128
+fi
+exec "$real_git" "\$@"
+EOF
+        chmod +x "$fake_bin/git"
+        # Reset to a clean-ish tree for BASE validity, then run with git shadowed.
+        git checkout -q -- src/Foo.sol 2>/dev/null || true
+        set +e
+        out="$(PATH="$fake_bin:$PATH" bash "$script" "$base" \
+            --reported-diff "$reported" --files src/Foo.sol 2>/dev/null)"
+        status=$?
+        set -e
+        [ "$status" -eq 2 ] || { echo "git diff failure: expected exit 2, got $status" >&2; return 1; }
+    )
+}
+
+if [ "${ORCHESTRATION_TEST_FOCUS-}" = "ownership-reconcile" ]; then
+    assert_ownership_reconcile
+    echo "ownership-reconcile regression tests passed"
+    exit 0
+fi
 
 run_gate_full_capture() {
     local name="$1"
@@ -625,12 +1007,14 @@ jq -e '
 ' "$default_record" >/dev/null
 assert_no_removed_fields "$default_record"
 
+assert_invalid_test_mapping_references_are_rejected
+assert_shared_facet_paths_map_to_consumers
+
+assert_pre_edit_check_ownership_guard
+assert_ownership_reconcile
 assert_ci_workflow_expressions
 
-current_head="$(git rev-parse HEAD)"
-empty_tree="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-
-zero_base_capture="$(run_ci_entrypoint_capture zero-base workflow_dispatch "" "$current_head")"
+zero_base_capture="$(run_ci_entrypoint_capture zero-base workflow_dispatch)"
 grep -qx -- "run" "$zero_base_capture/argv"
 grep -qx -- "gate:ci" "$zero_base_capture/argv"
 grep -qx -- "--" "$zero_base_capture/argv"
@@ -642,15 +1026,16 @@ fi
 [ ! -s "$zero_base_capture/diff_path" ]
 [ ! -f "$zero_base_capture/changed_files" ]
 
-diff_capture="$(run_ci_entrypoint_capture diff-based push "$empty_tree" "$current_head")"
+diff_capture="$(run_ci_entrypoint_capture diff-based push)"
 grep -qx -- "run" "$diff_capture/argv"
 grep -qx -- "gate:ci" "$diff_capture/argv"
 grep -qx -- "--" "$diff_capture/argv"
-grep -qx -- "--changed-files" "$diff_capture/argv"
-[ -s "$diff_capture/changed_files_args" ]
-[ -s "$diff_capture/diff_path" ]
-[ -s "$diff_capture/diff_file" ]
-diff -u <(git diff --name-only "$empty_tree" "$current_head") "$diff_capture/changed_files_args"
+grep -qx -- "--all" "$diff_capture/argv"
+if grep -qx -- "--changed-files" "$diff_capture/argv"; then
+    echo "CI entrypoint must not pass --changed-files (it always runs --all)" >&2
+    exit 1
+fi
+[ ! -s "$diff_capture/diff_path" ]
 
 pre_edit_output="$(run_pre_edit_check "$repo_root/script/harness/test-orchestration.sh")"
 assert_pre_edit_check_guidance "$pre_edit_output"

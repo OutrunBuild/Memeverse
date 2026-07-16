@@ -43,7 +43,7 @@ Named imports only — `import {ERC20} from "@openzeppelin/contracts/token/ERC20
 
 ## NatSpec
 Fully annotate every public/external member (the whole ABI) with `///` or `/** ... */`, placed directly above the declaration. Use `@param`, `@return`, `@dev`, `@notice`, `@title`, `@author`; document reverts/errors and any non-obvious invariant. Annotate the contract declaration itself (`@title`/`@notice`).
-Comments and NatSpec MUST be written in English. Keep `docs/` spec anchors (file paths, section numbers like `core.md §6.3`) verbatim, but any descriptive prose in a comment is English.
+Comments and NatSpec MUST be written in English. Source-code comments (NatSpec and inline) MUST NOT reference external docs/ paths — docs reference code, not the reverse. Keep invariants and design rationale self-contained inline.
 
 ## Error handling
 Prefer custom errors: `error InsufficientBalance();` + `revert InsufficientBalance();`, over `require(cond, "string")` (cheaper gas; the project already uses them heavily). Error names are PascalCase.

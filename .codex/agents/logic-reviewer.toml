@@ -1,6 +1,6 @@
 name = "logic-reviewer"
 description = "Review Solidity changes for semantic correctness, boundary conditions, state transitions, and spec conformance."
-model = "gpt-5.5"
+model = "grok-4.5"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 developer_instructions = """

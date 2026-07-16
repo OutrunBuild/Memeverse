@@ -115,7 +115,7 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
         launcher = MemeverseLauncher(launcherProxy);
 
         // 4. Real Hook + Router.
-        (address hookProxy,) = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY);
+        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY);
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),

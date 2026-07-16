@@ -532,6 +532,21 @@ contract MemeverseLauncherConfigTest is Test {
         assertEq(fundBasedAmount, 1);
     }
 
+    /// @notice Derived virtual buffer V = minTotalFund * fundBasedAmount * 7 / 1000 must be > 0.
+    /// @dev Boundary: 142*7=994 -> 0 (rejected); 143*7=1001 -> 1 (accepted). Guards against a config
+    ///      that makes MemecoinYieldVault.initialize revert ZeroVirtualAssets() and DoS governance deploy.
+    function testSetFundMetaData_RevertsWhenVirtualAssetsRoundsToZero() external {
+        // Just below boundary: 142 * 1 * 7 = 994, floor /1000 = 0 -> revert.
+        vm.expectRevert(IMemeverseLauncher.VirtualAssetsTooLow.selector);
+        launcher.setFundMetaData(address(0xBEEF), 142, 1);
+
+        // Just above boundary: 143 * 1 * 7 = 1001, floor /1000 = 1 > 0 -> stored.
+        launcher.setFundMetaData(address(0xBEEF), 143, 1);
+        (uint256 minTotalFund, uint256 fundBasedAmount) = launcher.fundMetaDatas(address(0xBEEF));
+        assertEq(minTotalFund, 143);
+        assertEq(fundBasedAmount, 1);
+    }
+
     /// @notice Test set executor reward rate stores value and rejects overflow.
     /// @dev Asserts the fee rate setter guards against overflow values.
     function testSetExecutorRewardRateStoresValueAndRejectsOverflow() external {

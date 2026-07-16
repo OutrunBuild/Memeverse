@@ -248,13 +248,6 @@ contract MockReadinessRouter {
 contract MockReadinessHook {
     address public launcher;
     address public poolInitializer;
-    address public dynamicFeeEngine;
-    address public poolManager;
-}
-
-contract MockReadinessEngine {
-    address public authorizedHook;
-    address public owner;
     address public poolManager;
 }
 
@@ -1037,8 +1030,10 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         polend.setCreditFactory(creditFactoryAddr);
         polend.setReserve(UETH, 1);
         polend.setReserve(UUSD, 1);
-        launcher.setFundMetaData(UETH, 1, 1);
-        launcher.setFundMetaData(UUSD, 1, 1);
+        // Minimum config that passes the derived virtual-buffer guard (143 * 1 * 7 / 1000 = 1 > 0);
+        // values below 143 would round V to zero and keep readiness closed.
+        launcher.setFundMetaData(UETH, 143, 1);
+        launcher.setFundMetaData(UUSD, 143, 1);
 
         address poolManager = address(uint160(0x4631));
         MockReadinessRouter router = new MockReadinessRouter(
@@ -1050,12 +1045,21 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         vm.mockCall(readySwapHook, abi.encodeWithSignature("launcher()"), abi.encode(launcherAddress));
         vm.mockCall(readySwapHook, abi.encodeWithSignature("poolInitializer()"), abi.encode(address(router)));
 
-        MockReadinessEngine engine = new MockReadinessEngine();
-        vm.mockCall(readySwapHook, abi.encodeWithSignature("dynamicFeeEngine()"), abi.encode(address(engine)));
+        // Diamond facets must exist and share the hook's PoolManager (readiness mirrors _requireFacetPoolManager).
+        address swapFacet = address(uint160(0xFAB1));
+        address dynamicFeeFacet = address(uint160(0xFAB2));
+        address settlementFacet = address(uint160(0xFAB3));
+        vm.mockCall(readySwapHook, abi.encodeWithSignature("swapFacet()"), abi.encode(swapFacet));
+        vm.mockCall(readySwapHook, abi.encodeWithSignature("dynamicFeeFacet()"), abi.encode(dynamicFeeFacet));
+        vm.mockCall(readySwapHook, abi.encodeWithSignature("settlementFacet()"), abi.encode(settlementFacet));
         vm.mockCall(readySwapHook, abi.encodeWithSignature("poolManager()"), abi.encode(poolManager));
-        vm.mockCall(address(engine), abi.encodeWithSignature("authorizedHook()"), abi.encode(readySwapHook));
-        vm.mockCall(address(engine), abi.encodeWithSignature("owner()"), abi.encode(readySwapHook));
-        vm.mockCall(address(engine), abi.encodeWithSignature("poolManager()"), abi.encode(poolManager));
+        bytes memory facetCode = type(MockReadinessHook).creationCode;
+        vm.etch(swapFacet, facetCode);
+        vm.etch(dynamicFeeFacet, facetCode);
+        vm.etch(settlementFacet, facetCode);
+        vm.mockCall(swapFacet, abi.encodeWithSignature("poolManager()"), abi.encode(poolManager));
+        vm.mockCall(dynamicFeeFacet, abi.encodeWithSignature("poolManager()"), abi.encode(poolManager));
+        vm.mockCall(settlementFacet, abi.encodeWithSignature("poolManager()"), abi.encode(poolManager));
 
         router.setHook(readySwapHook);
         readySwapRouter = address(router);

@@ -196,6 +196,10 @@ contract MemeverseScriptTest is Test {
     address internal constant UETH = address(0x1001);
     address internal constant UUSD = address(0x1002);
     address internal constant MOCK_POOL_MANAGER = address(0x4631);
+    // Facet addresses wired onto readyHook by _mockFacetsOnHook; named so individual tests can override one facet.
+    address internal constant READY_SWAP_FACET = address(uint160(0xFAB1));
+    address internal constant READY_DYNAMIC_FEE_FACET = address(uint160(0xFAB2));
+    address internal constant READY_SETTLEMENT_FACET = address(uint160(0xFAB3));
 
     MemeverseScriptHarness internal script;
     MemeverseUniswapHookLens internal lens;
@@ -225,8 +229,10 @@ contract MemeverseScriptTest is Test {
         launcher.setLauncherDependencies(address(registrar), address(proxyDeployer), address(yieldDispatcher));
         launcher.setPolend(address(polend));
         launcher.setPolSplitter(address(splitter));
-        launcher.setFundMetaData(UETH, 1, 1);
-        launcher.setFundMetaData(UUSD, 1, 1);
+        // Minimum config that passes the derived virtual-buffer guard (143 * 1 * 7 / 1000 = 1 > 0);
+        // values below 143 would round V to zero and keep registration closed.
+        launcher.setFundMetaData(UETH, 143, 1);
+        launcher.setFundMetaData(UUSD, 143, 1);
         script.setDeploymentAddresses(
             address(script),
             UETH,
@@ -257,6 +263,21 @@ contract MemeverseScriptTest is Test {
         script.requireDeploymentReady(address(0), address(0));
     }
 
+    // readiness must reject fund metadata whose derived virtual buffer V would round to zero,
+    // since a zero V would make MemecoinYieldVault.initialize revert and DoS governance-chain deploy.
+    // 142 * 1 * 7 = 994 -> floor(/1000) = 0, while setUp leaves UUSD at 143 (1 > 0). Only UETH fails,
+    // and it is checked before UUSD, so the revert surfaces the UETH message.
+    function testReadinessRevertsWhenVirtualAssetsWouldRoundToZero() external {
+        // Reserve checks run before fund-metadata checks, so wire both reserves to pass
+        // and then only break the derived virtual buffer for UETH.
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+        launcher.setFundMetaData(UETH, 142, 1);
+
+        vm.expectRevert("UETH_FUND_METADATA_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
     function testSwapReadinessRejectsHookFlagsAndAcceptsExpectedFlags() external {
         address badHook = address(uint160(0x28cd));
         address goodHook = address(uint160(0x28cc));
@@ -271,7 +292,7 @@ contract MemeverseScriptTest is Test {
         vm.mockCall(badHook, abi.encodeWithSignature("poolInitializer()"), abi.encode(address(badRouter)));
         vm.mockCall(goodHook, abi.encodeWithSignature("launcher()"), abi.encode(address(launcher)));
         vm.mockCall(goodHook, abi.encodeWithSignature("poolInitializer()"), abi.encode(address(goodRouter)));
-        _mockEngineOnHook(goodHook);
+        _mockFacetsOnHook(goodHook);
 
         launcher.setMemeverseSwapRouter(address(badRouter));
         launcher.setMemeverseUniswapHook(badHook);
@@ -285,42 +306,49 @@ contract MemeverseScriptTest is Test {
         script.requireSwapReady(address(goodRouter), goodHook);
     }
 
-    function testSwapReadinessRevertsWhenEngineCodeMissing() external {
+    function testSwapReadinessRevertsWhenSwapFacetCodeMissing() external {
         (address readyRouter, address readyHook) = _configureReadySwap();
-        // Overwrite dynamicFeeEngine() to return an address with no code.
-        vm.mockCall(readyHook, abi.encodeWithSignature("dynamicFeeEngine()"), abi.encode(address(0xDEAD)));
+        // Override swapFacet() to return an address with no code.
+        vm.mockCall(readyHook, abi.encodeWithSignature("swapFacet()"), abi.encode(address(0xDEAD)));
 
-        vm.expectRevert("ENGINE_CODE_NOT_READY");
+        vm.expectRevert("SWAP_FACET_CODE_NOT_READY");
         script.requireSwapReady(readyRouter, readyHook);
     }
 
-    function testSwapReadinessRevertsWhenEngineAuthorizedHookMismatch() external {
+    function testSwapReadinessRevertsWhenDynamicFeeFacetCodeMissing() external {
         (address readyRouter, address readyHook) = _configureReadySwap();
-        address engineAddr = address(0xAEEE);
-        // Override authorizedHook to a different address.
-        vm.mockCall(engineAddr, abi.encodeWithSignature("authorizedHook()"), abi.encode(address(0xBAD)));
+        vm.mockCall(readyHook, abi.encodeWithSignature("dynamicFeeFacet()"), abi.encode(address(0xDEAD)));
 
-        vm.expectRevert("ENGINE_AUTHORIZED_HOOK_NOT_READY");
+        vm.expectRevert("DYNAMIC_FEE_FACET_CODE_NOT_READY");
         script.requireSwapReady(readyRouter, readyHook);
     }
 
-    function testSwapReadinessRevertsWhenEngineOwnerMismatch() external {
+    function testSwapReadinessRevertsWhenSettlementFacetCodeMissing() external {
         (address readyRouter, address readyHook) = _configureReadySwap();
-        address engineAddr = address(0xAEEE);
-        // Override owner to a different address.
-        vm.mockCall(engineAddr, abi.encodeWithSignature("owner()"), abi.encode(address(0xBAD)));
+        vm.mockCall(readyHook, abi.encodeWithSignature("settlementFacet()"), abi.encode(address(0xDEAD)));
 
-        vm.expectRevert("ENGINE_OWNER_NOT_READY");
+        vm.expectRevert("SETTLEMENT_FACET_CODE_NOT_READY");
         script.requireSwapReady(readyRouter, readyHook);
     }
 
-    function testSwapReadinessRevertsWhenEnginePoolManagerMismatch() external {
+    // readiness must reject when a facet's poolManager differs from the hook's
+    // (mirrors hook.initialize _requireFacetPoolManager).
+    function testSwapReadinessRevertsWhenSwapFacetPoolManagerMismatch() external {
         (address readyRouter, address readyHook) = _configureReadySwap();
-        address engineAddr = address(0xAEEE);
-        // Override poolManager to a different address.
-        vm.mockCall(engineAddr, abi.encodeWithSignature("poolManager()"), abi.encode(address(0xBAD)));
+        vm.mockCall(READY_SWAP_FACET, abi.encodeWithSignature("poolManager()"), abi.encode(address(0xBAD)));
 
-        vm.expectRevert("ENGINE_POOL_MANAGER_NOT_READY");
+        vm.expectRevert("SWAP_FACET_POOL_MANAGER_NOT_READY");
+        script.requireSwapReady(readyRouter, readyHook);
+    }
+
+    // readiness must reject when the router's poolManager differs from the hook's: the router unlocks/
+    // initializes on its own PoolManager, whose callback into the hook is gated by onlyPoolManager against
+    // the hook's PoolManager, so a mismatch DoSes every swap and pool initialization.
+    function testSwapReadinessRevertsWhenRouterPoolManagerMismatch() external {
+        (address readyRouter, address readyHook) = _configureReadySwap();
+        vm.mockCall(readyHook, abi.encodeWithSignature("poolManager()"), abi.encode(address(0xBAD)));
+
+        vm.expectRevert("ROUTER_POOL_MANAGER_NOT_READY");
         script.requireSwapReady(readyRouter, readyHook);
     }
 
@@ -392,7 +420,7 @@ contract MemeverseScriptTest is Test {
         vm.etch(readyHook, address(hookImpl).code);
         vm.mockCall(readyHook, abi.encodeWithSignature("launcher()"), abi.encode(address(launcher)));
         vm.mockCall(readyHook, abi.encodeWithSignature("poolInitializer()"), abi.encode(address(router)));
-        _mockEngineOnHook(readyHook);
+        _mockFacetsOnHook(readyHook);
         launcher.setMemeverseSwapRouter(address(router));
         launcher.setMemeverseUniswapHook(readyHook);
 
@@ -414,14 +442,20 @@ contract MemeverseScriptTest is Test {
         return (address(router), readyHook);
     }
 
-    function _mockEngineOnHook(address readyHook) internal returns (address engineAddr) {
-        engineAddr = address(0xAEEE);
+    function _mockFacetsOnHook(address readyHook) internal {
         // vm.etch does not copy storage, so mock each getter individually.
-        vm.mockCall(readyHook, abi.encodeWithSignature("dynamicFeeEngine()"), abi.encode(engineAddr));
-        vm.mockCall(readyHook, abi.encodeWithSignature("poolManager()"), abi.encode(address(0xBBBB)));
-        vm.mockCall(engineAddr, abi.encodeWithSignature("authorizedHook()"), abi.encode(readyHook));
-        vm.mockCall(engineAddr, abi.encodeWithSignature("owner()"), abi.encode(readyHook));
-        vm.mockCall(engineAddr, abi.encodeWithSignature("poolManager()"), abi.encode(address(0xBBBB)));
+        vm.mockCall(readyHook, abi.encodeWithSignature("swapFacet()"), abi.encode(READY_SWAP_FACET));
+        vm.mockCall(readyHook, abi.encodeWithSignature("dynamicFeeFacet()"), abi.encode(READY_DYNAMIC_FEE_FACET));
+        vm.mockCall(readyHook, abi.encodeWithSignature("settlementFacet()"), abi.encode(READY_SETTLEMENT_FACET));
+        vm.mockCall(readyHook, abi.encodeWithSignature("poolManager()"), abi.encode(MOCK_POOL_MANAGER));
+        // Each facet must have code and report the hook's PoolManager (mirrors _requireFacetPoolManager).
+        bytes memory facetCode = address(this).code;
+        vm.etch(READY_SWAP_FACET, facetCode);
+        vm.etch(READY_DYNAMIC_FEE_FACET, facetCode);
+        vm.etch(READY_SETTLEMENT_FACET, facetCode);
+        vm.mockCall(READY_SWAP_FACET, abi.encodeWithSignature("poolManager()"), abi.encode(MOCK_POOL_MANAGER));
+        vm.mockCall(READY_DYNAMIC_FEE_FACET, abi.encodeWithSignature("poolManager()"), abi.encode(MOCK_POOL_MANAGER));
+        vm.mockCall(READY_SETTLEMENT_FACET, abi.encodeWithSignature("poolManager()"), abi.encode(MOCK_POOL_MANAGER));
     }
 
     function _setReadinessEnv(address owner_, address launcher_, address polend_, address splitter_) internal {

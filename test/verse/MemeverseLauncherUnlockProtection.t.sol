@@ -68,7 +68,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
     {
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        (address hookProxy,) = deployHookAtFlagAddress(manager_, owner_, treasury_);
+        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
         deployed = MemeverseUniswapHook(hookProxy);
     }
 

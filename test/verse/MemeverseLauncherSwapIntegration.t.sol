@@ -119,8 +119,8 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
         launcher = IMemeverseLauncher(launcherProxy);
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        // hookOwner = address(this), treasury = TREASURY, engine bound to the hook proxy.
-        (address hookProxy,) = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY);
+        // hookOwner = address(this), treasury = TREASURY.
+        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY);
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),

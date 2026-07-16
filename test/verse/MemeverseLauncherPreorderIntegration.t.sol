@@ -80,8 +80,8 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
         launcher = MemeverseLauncher(address(new ERC1967Proxy(address(launcherImplementation), launcherInitData)));
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        // hookOwner = address(this), treasury = address(this), engine bound to the hook proxy.
-        (address hookProxy,) = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), address(this));
+        // hookOwner = address(this), treasury = address(this).
+        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), address(this));
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),

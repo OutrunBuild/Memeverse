@@ -295,7 +295,7 @@ contract MemeverseLauncherPreorderSuccessInvariantTest is StdInvariant, Memevers
         launcher = IMemeverseLauncher(launcherProxy);
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass + hand-rolled engine deployment).
-        (address hookProxy,) = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), address(this));
+        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), address(this));
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),

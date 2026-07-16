@@ -1573,7 +1573,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
     /// @dev Pure-credit participant: real==0, credit==50e18, total=100e18 (BOB holds 50e18 real).
     ///      Credit user must receive residual uAsset+memecoin pro-rata to their credit interest share
-    ///      (spec docs/spec/polend/leveraged-lending.md §6.5; denominator totalLeveragedInterest already includes credit).
+    ///      (denominator totalLeveragedInterest already includes credit).
     function test_ClaimResidual_PureCreditUser_CanClaim() external {
         seedLeveragedPositionForTest(address(polend), VERSE_ID, BOB, 50 ether);
         seedCreditPositionForTest(address(polend), VERSE_ID, ALICE, 50 ether);

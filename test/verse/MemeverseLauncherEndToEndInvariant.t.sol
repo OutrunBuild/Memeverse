@@ -272,7 +272,7 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
         launcher = IMemeverseLauncher(launcherProxy);
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass + hand-rolled engine deployment).
-        (address hookProxy,) = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury);
+        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury);
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
@@ -503,7 +503,7 @@ contract MemeverseLauncherRefundEndToEndInvariantTest is
         launcher = IMemeverseLauncher(launcherProxy);
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass + hand-rolled engine deployment).
-        (address hookProxy,) = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury);
+        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury);
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),

@@ -12,6 +12,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 import {LiquidityAmounts} from "../../../src/swap/libraries/LiquidityAmounts.sol";
+import {ISettlementFacet} from "../../../src/swap/interfaces/ISettlementFacet.sol";
 
 /// @dev Mock-harness boundary:
 /// - This file's local hook-liquidity manager mock only covers plumbing, local revert surface,
@@ -42,6 +43,8 @@ contract MockPoolManagerForHookLiquidity {
     bool internal unlocked;
     address internal hookAddress;
     address internal lastTakeRecipient;
+    /// @dev One-shot: next unlock return inflates SettlementResult.protocolFeeOutputAmount by 1 wei.
+    bool internal inflateSettlementProtocolFeeByOne;
 
     mapping(bytes32 => bytes32) internal extStorage;
     mapping(PoolId => Slot0State) internal slot0State;
@@ -62,12 +65,23 @@ contract MockPoolManagerForHookLiquidity {
 
     /// @notice Opens a temporary unlock window and forwards the callback payload.
     /// @dev Mimics the pool-manager unlock pattern expected by router and hook tests.
+    ///      When armed, mutates only `SettlementResult.protocolFeeOutputAmount` after the real
+    ///      unlockCallback so production `PreorderSettlementFeeMismatch` can be exercised without
+    ///      replacing SettlementFacet.
     /// @param data Encoded callback payload.
     /// @return result Callback return data.
     function unlock(bytes calldata data) external returns (bytes memory result) {
         unlocked = true;
         result = IUnlockCallback(msg.sender).unlockCallback(data);
         unlocked = false;
+
+        if (inflateSettlementProtocolFeeByOne) {
+            inflateSettlementProtocolFeeByOne = false;
+            ISettlementFacet.SettlementResult memory settlementResult =
+                abi.decode(result, (ISettlementFacet.SettlementResult));
+            settlementResult.protocolFeeOutputAmount += 1;
+            result = abi.encode(settlementResult);
+        }
     }
 
     function swapAsUnlocked(PoolKey memory key, SwapParams memory params, bytes calldata hookData)
@@ -129,7 +143,11 @@ contract MockPoolManagerForHookLiquidity {
     {
         if (!unlocked) revert ManagerLocked();
 
-        (, BeforeSwapDelta beforeSwapDelta,) = key.hooks.beforeSwap(msg.sender, key, params, hookData);
+        bool callSwapHooks = msg.sender != address(key.hooks);
+        BeforeSwapDelta beforeSwapDelta = BeforeSwapDeltaLibrary.ZERO_DELTA;
+        if (callSwapHooks) {
+            (, beforeSwapDelta,) = key.hooks.beforeSwap(msg.sender, key, params, hookData);
+        }
         int256 amountToSwap = params.amountSpecified + beforeSwapDelta.getSpecifiedDelta();
 
         if (amountToSwap < 0) {
@@ -155,7 +173,7 @@ contract MockPoolManagerForHookLiquidity {
             }
         }
 
-        key.hooks.afterSwap(msg.sender, key, params, delta, hookData);
+        if (callSwapHooks) key.hooks.afterSwap(msg.sender, key, params, delta, hookData);
     }
 
     /// @notice Pays tokens or native currency out of the mock manager.
@@ -217,6 +235,12 @@ contract MockPoolManagerForHookLiquidity {
 
     function setNextExactInputPoolInputAmount(PoolId poolId, uint256 inputAmount) external {
         nextExactInputPoolInputAmount[poolId] = inputAmount;
+    }
+
+    /// @notice Next `unlock` return will inflate SettlementResult.protocolFeeOutputAmount by 1 wei.
+    /// @dev One-shot. Used to exercise production `PreorderSettlementFeeMismatch` without replacing SettlementFacet.
+    function setInflateSettlementProtocolFeeByOne() external {
+        inflateSettlementProtocolFeeByOne = true;
     }
 
     /// @notice Returns last take recipient address.

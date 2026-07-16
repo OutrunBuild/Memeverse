@@ -6,27 +6,29 @@ import {Test} from "forge-std/Test.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
-import {MemeverseDynamicFeeEngine} from "../../../src/swap/MemeverseDynamicFeeEngine.sol";
 import {MemeverseUniswapHook} from "../../../src/swap/MemeverseUniswapHook.sol";
 import {HookStorageHelper} from "./HookStorageHelper.sol";
 import {MockPoolManagerForHookLiquidity} from "./HookLiquidityMocks.sol";
 
-/// @notice Proves flag-address deployment still uses real hook and engine proxies.
+/// @notice Proves the facet and Router fixture deploys a real hook proxy at a flag address.
+/// @dev Smoke-tests the proxy flags, Router configuration, and three delegatecall facet bindings established
+///      by `deployHookAtFlagAddress`.
 contract HookStorageHelperSanityTest is Test, HookStorageHelper {
-    function test_deployHookAtFlagAddress_proxyCarriesFlags() external {
+    function test_deployHookAtFlagAddress_proxyCarriesFlagsAndFacets() external {
         IPoolManager manager = IPoolManager(address(new MockPoolManagerForHookLiquidity()));
         address treasury = address(0xBEEF);
 
-        (address hookProxy, address engineProxy) = deployHookAtFlagAddress(manager, address(this), treasury);
+        address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
 
         assertEq(uint160(hookProxy) & HOOK_FLAG_MASK, HOOK_REQUIRED_FLAGS, "proxy missing flags");
 
         assertEq(MemeverseUniswapHook(hookProxy).treasury(), treasury, "treasury");
-        assertEq(address(MemeverseUniswapHook(hookProxy).dynamicFeeEngine()), engineProxy, "engine bound");
         assertEq(MemeverseUniswapHook(hookProxy).owner(), address(this), "owner");
 
-        assertEq(MemeverseDynamicFeeEngine(engineProxy).owner(), hookProxy, "engine owner");
-        assertEq(MemeverseDynamicFeeEngine(engineProxy).authorizedHook(), hookProxy, "engine authorizedHook");
+        // Facet pointers are bound during Router initialization.
+        assertGt(MemeverseUniswapHook(hookProxy).swapFacet().code.length, 0, "swap facet bound");
+        assertGt(MemeverseUniswapHook(hookProxy).dynamicFeeFacet().code.length, 0, "dynamic fee facet bound");
+        assertGt(MemeverseUniswapHook(hookProxy).settlementFacet().code.length, 0, "settlement facet bound");
 
         Hooks.Permissions memory perms = MemeverseUniswapHook(hookProxy).getHookPermissions();
         assertTrue(perms.beforeInitialize, "beforeInitialize");

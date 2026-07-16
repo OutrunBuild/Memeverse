@@ -53,14 +53,6 @@ contract MockPoolManagerForRouterTest {
     mapping(PoolId => uint256) internal nextExactInputPoolInputAmount;
     mapping(PoolId => uint256) internal nextExactOutputAmount;
 
-    struct RouterCallbackPreview {
-        address payer;
-        address recipient;
-        PoolKey key;
-        SwapParams params;
-        bytes hookData;
-    }
-
     /// @notice Initializes mock pool state for a hook-managed pair.
     /// @dev Seeds slot0 and liquidity before calling the hook initialize callback.
     /// @param key Pool key to initialize.
@@ -80,14 +72,9 @@ contract MockPoolManagerForRouterTest {
     /// @param data Encoded callback payload.
     /// @return result Raw callback return data.
     function unlock(bytes calldata data) external returns (bytes memory result) {
-        bytes32 headWord;
-        assembly {
-            headWord := calldataload(data.offset)
-        }
-        if (headWord == bytes32(uint256(0x20))) {
-            RouterCallbackPreview memory preview = abi.decode(data, (RouterCallbackPreview));
-            lastUnlockCallbackPayer = preview.payer;
-        }
+        // 生产 CallbackData 已无 payer 字段；router 始终用自身余额 settle，
+        // 因此记录 unlock 发起方作为 lastUnlockPayer 的语义代理。
+        lastUnlockCallbackPayer = msg.sender;
         unlocked = true;
         result = IUnlockCallback(msg.sender).unlockCallback(data);
         unlocked = false;
@@ -155,14 +142,15 @@ contract MockPoolManagerForRouterTest {
         if (!unlocked) revert ManagerLocked();
 
         PoolId poolId = key.toId();
-        // Intentionally matches vendored v4 `Hooks.sol` self-call skip semantics when `msg.sender == address(self)`.
-        bool skipHookCallbacks = msg.sender == address(key.hooks);
+        // Real v4 skips both swap callbacks when the hook itself calls PoolManager.swap. Other callers retain
+        // the normal callback path.
+        bool callSwapHooks = msg.sender != address(key.hooks);
         BeforeSwapDelta beforeSwapDelta = BeforeSwapDeltaLibrary.ZERO_DELTA;
         int256 amountToSwap = params.amountSpecified;
-        if (!skipHookCallbacks) {
+        if (callSwapHooks) {
             (, beforeSwapDelta,) = key.hooks.beforeSwap(msg.sender, key, params, hookData);
-            amountToSwap += beforeSwapDelta.getSpecifiedDelta();
         }
+        amountToSwap += beforeSwapDelta.getSpecifiedDelta();
 
         if (enforceV4PriceLimitValidation) {
             Slot0State memory state = slot0State[poolId];
@@ -256,11 +244,10 @@ contract MockPoolManagerForRouterTest {
             delete nextSwapSqrtPriceX96[poolId];
         }
 
-        if (skipHookCallbacks) {
-            return poolDelta;
+        int128 afterSwapUnspecifiedDelta;
+        if (callSwapHooks) {
+            (, afterSwapUnspecifiedDelta) = key.hooks.afterSwap(msg.sender, key, params, poolDelta, hookData);
         }
-
-        (, int128 afterSwapUnspecifiedDelta) = key.hooks.afterSwap(msg.sender, key, params, poolDelta, hookData);
 
         int128 hookDeltaSpecified = beforeSwapDelta.getSpecifiedDelta();
         int128 hookDeltaUnspecified = beforeSwapDelta.getUnspecifiedDelta() + afterSwapUnspecifiedDelta;

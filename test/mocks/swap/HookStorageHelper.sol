@@ -3,28 +3,30 @@ pragma solidity ^0.8.35;
 
 import {StorageSlotPrimitives} from "../StorageSlotPrimitives.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
-import {MemeverseDynamicFeeEngine} from "../../../src/swap/MemeverseDynamicFeeEngine.sol";
-import {MemeversePreorderSettlementExecutor} from "../../../src/swap/MemeversePreorderSettlementExecutor.sol";
-import {
-    IMemeversePreorderSettlementExecutor
-} from "../../../src/swap/interfaces/IMemeversePreorderSettlementExecutor.sol";
 import {MemeverseUniswapHook} from "../../../src/swap/MemeverseUniswapHook.sol";
+import {SwapFacet} from "../../../src/swap/SwapFacet.sol";
+import {DynamicFeeFacet} from "../../../src/swap/DynamicFeeFacet.sol";
+import {SettlementFacet} from "../../../src/swap/SettlementFacet.sol";
 import {UniswapLP} from "../../../src/swap/tokens/UniswapLP.sol";
 
+import {RealV4PoolManagerBytecode} from "../../swap/helpers/RealV4PoolManagerBytecode.sol";
+
 /// @notice Standalone white-box helper for MemeverseUniswapHook proxy storage and flag-address deployment.
-/// @dev Does NOT inherit MemeverseUniswapHook; only inherits Test. Two responsibilities:
-///      1. `deployHookAtFlagAddress`: deploys a REAL MemeverseUniswapHook behind a CREATE2-mined transparent proxy
-///         whose address carries the v4 hook permission flags (low 14 bits == 0x28CC). This lets tests drop
-///         the `Testable*` hook subclasses that previously disabled address validation.
-///      2. `seedActiveLiquiditySharesForTest`: seeds `cachedLpTotalSupply[poolId]` and mints the matching LP
-///         tokens via vm.store + vm.prank, replicating the test-only `seedActiveLiquidityShares` previously
-///         exposed on Testable hooks. LP.mint is `onlyOwner` (the hook), so the mint must be pranked as the
-///         proxy while the cached-supply write is done directly via vm.store.
+/// @dev Does NOT inherit MemeverseUniswapHook; only inherits Test. Three responsibilities:
+///      1. `deployRealPoolManager`: deploys the REAL v4-core PoolManager from its pinned creation bytecode
+///         (v4-core's fixed `pragma 0.8.26` blocks importing the contract under this repo's 0.8.35 toolchain).
+///      2. `deployHookAtFlagAddress`: deploys a REAL diamond Router (MemeverseUniswapHook) behind a CREATE2-mined
+///         UUPS proxy whose address carries the v4 hook permission flags (low 14 bits == 0x28CC), together
+///         with its three delegatecall facets (SwapFacet/DynamicFeeFacet/SettlementFacet) and the LP token impl.
+///         Tests therefore exercise the production address validation and facet bindings.
+///         Returns the deployed hook proxy address only (diamond facets are bound on the Router at initialize).
+///      3. `seedActiveLiquiditySharesForTest`: seeds `cachedLpTotalSupply[poolId]` and mints the matching LP
+///         tokens via vm.store + vm.prank. LP.mint is `onlyOwner` (the hook), so the mint must be pranked as
+///         the proxy while the cached-supply write is done directly via vm.store.
 ///      Inherit with `is Test, HookStorageHelper`.
 abstract contract HookStorageHelper is StorageSlotPrimitives {
     using PoolIdLibrary for PoolId;
@@ -48,7 +50,6 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
     uint256 internal constant OFF_POOL_INFO = 3; // mapping(PoolId => PoolInfo)
     uint256 internal constant OFF_CACHED_LP_TOTAL_SUPPLY = 4; // mapping(PoolId => uint256)
     uint256 internal constant OFF_POOL_INITIALIZER = 9;
-    uint256 internal constant OFF_DYNAMIC_FEE_ENGINE = 11;
 
     // ── Slot computation helpers ──
 
@@ -59,61 +60,80 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
     }
 
     /// @notice Reads the production hook's `cachedLpTotalSupply[poolId]` directly from storage.
-    /// @dev Replaces the test-only `exposedCachedLpTotalSupply` previously exposed on Testable hook subclasses.
-    ///      Used by fee-accounting tests to assert the cached LP supply stays in sync with the LP token contract.
+    /// @dev Fee-accounting tests use this to assert the cached LP supply stays in sync with the LP token contract.
     function getCachedLpTotalSupplyForTest(address proxy, PoolId poolId) internal view returns (uint256) {
         return uint256(_loadSlot(proxy, _poolIdMappingSlot(OFF_CACHED_LP_TOTAL_SUPPLY, poolId)));
     }
 
+    // ── Real v4 PoolManager deployment ──
+
+    /// @notice Deploys the real v4-core PoolManager from creation bytecode, owner = caller.
+    /// @dev The 17KB PoolManager creation code lives in RealV4PoolManagerBytecode (a library) so test contracts
+    ///      stay under the 24KB deploy limit. v4-core pins `pragma 0.8.26` while this repo uses 0.8.35, so the
+    ///      contract cannot be imported and `new PoolManager(...)` is unavailable — the creation-code constant is
+    ///      the only viable deploy path. The `create` runs in the test contract's context, so the nonce sequence
+    ///      (which deployHookAtFlagAddress relies on for address prediction) is unchanged versus inlining.
+    function deployRealPoolManager() internal returns (IPoolManager) {
+        bytes memory deployData =
+            abi.encodePacked(RealV4PoolManagerBytecode.getCreationCode(), abi.encode(address(this)));
+        address deployed;
+        assembly {
+            deployed := create(0, add(deployData, 0x20), mload(deployData))
+        }
+        require(deployed != address(0), "PoolManager deploy failed");
+        return IPoolManager(deployed);
+    }
+
     // ── Flag-address deployment ──
 
-    /// @notice Deploys a REAL MemeverseUniswapHook behind a CREATE2-mined transparent proxy whose low 14 bits
-    ///         equal 0x28CC, so the production `_validateProxyHookAddress()` passes at `initialize`.
-    /// @dev Verbatim copy of the validated HookAddressFlagPoC deployment sequence. Chicken-egg resolution:
-    ///      predicted hook proxy address is mined against (deployer, salt, proxyInitCode) where proxyInitCode
-    ///      embeds the engine PROXY address (a CREATE we precompute) and the hook impl address (also
-    ///      precomputed). The engine proxy is then deployed with owner = authorizedHook = predictedProxy.
-    /// @param manager Uniswap v4 pool manager.
+    /// @notice Deploys a REAL diamond Router (MemeverseUniswapHook) plus its three facets behind a CREATE2-mined
+    ///         UUPS proxy whose low 14 bits equal 0x28CC, so production `_validateProxyHookAddress()` passes
+    ///         at `initialize`.
+    /// @dev Deployment sequence. CREATE order (nonce increments from `nonceBefore`):
+    ///        N:   LP token impl
+    ///        N+1: SwapFacet(manager)
+    ///        N+2: DynamicFeeFacet(manager)
+    ///        N+3: SettlementFacet(manager)
+    ///        N+4: MemeverseUniswapHook impl (manager)
+    ///      then CREATE2-mined UUPS hook proxy initialized with the Router signature
+    ///      `(owner, treasury, lpTokenImpl, swapFacet, dynamicFeeFacet, settlementFacet)`. The proxy initCode
+    ///      embeds the hook impl address plus all four pointer addresses (LP impl + 3 facets), every one of which
+    ///      is a CREATE address precomputed up front, so the CREATE2 salt can be mined before any facet deploys.
+    ///      `initialize` re-validates each facet shares this hook's PoolManager via `_requireFacetPoolManager`.
+    ///      The hook owner is encoded inside `initializeData`; no ProxyAdmin is involved (UUPS authorization
+    ///      lives on the implementation via `_authorizeUpgrade`).
+    /// @param manager Uniswap v4 pool manager shared by the hook and every facet (immutable-bound).
     /// @param hookOwner Initial hook owner (typically the test contract).
     /// @param treasury Treasury set at initialize.
     /// @return hookProxy Address of the deployed hook proxy (carries flag bits).
-    /// @return engineProxy The engine proxy bound to the hook (owner = authorizedHook = hookProxy).
     function deployHookAtFlagAddress(IPoolManager manager, address hookOwner, address treasury)
         internal
-        returns (address hookProxy, address engineProxy)
+        returns (address hookProxy)
     {
-        // (a) Predict every CREATE address up front. CREATE order (nonce increments):
-        //     N: LP impl, N+1: preorder executor (HOOK-bound to mined proxy), N+2: engine impl,
-        //     N+3: engine proxy, N+4: hook impl, then CREATE2 hook proxy.
-        // The executor is immutable-bound to the hook PROXY (the msg.sender of execute). Its constructor
-        // needs the proxy address, but the proxy is mined from initCode that only references the executor
-        // ADDRESS (not instance). So predict the executor address first, mine the proxy, then deploy the
-        // executor bound to the mined proxy — breaking the chicken-egg without shifting CREATE nonces.
-        uint256 nonceBeforeEngineImpl = vm.getNonce(address(this));
+        // (a) Predict every CREATE address up front so the CREATE2 proxy initCode can be assembled before deploy.
+        uint256 nonceBefore = vm.getNonce(address(this));
         UniswapLP lpTokenImplementation = new UniswapLP();
-        address predictedExecutor = vm.computeCreateAddress(address(this), nonceBeforeEngineImpl + 1);
-        address predictedEngineProxy = vm.computeCreateAddress(address(this), nonceBeforeEngineImpl + 3);
+        address predictedSwapFacet = vm.computeCreateAddress(address(this), nonceBefore + 1);
+        address predictedDynamicFeeFacet = vm.computeCreateAddress(address(this), nonceBefore + 2);
+        address predictedSettlementFacet = vm.computeCreateAddress(address(this), nonceBefore + 3);
+        address predictedHookImpl = vm.computeCreateAddress(address(this), nonceBefore + 4);
 
-        // (b) Predict hook impl address.
-        address predictedHookImpl = vm.computeCreateAddress(address(this), nonceBeforeEngineImpl + 4);
-
-        // (c) Assemble hook proxy initCode. The engine reference must be the engine PROXY (not impl),
-        //     since hook.initialize reads engine.owner/authorizedHook behind the proxy.
+        // (b) Assemble hook proxy initCode with the Router initialize signature.
         bytes memory hookInitData = abi.encodeCall(
             MemeverseUniswapHook.initialize,
             (
                 hookOwner,
                 treasury,
-                MemeverseDynamicFeeEngine(predictedEngineProxy),
                 address(lpTokenImplementation),
-                IMemeversePreorderSettlementExecutor(predictedExecutor)
+                predictedSwapFacet,
+                predictedDynamicFeeFacet,
+                predictedSettlementFacet
             )
         );
-        bytes memory proxyInitCode = abi.encodePacked(
-            type(TransparentUpgradeableProxy).creationCode, abi.encode(predictedHookImpl, hookOwner, hookInitData)
-        );
+        bytes memory proxyInitCode =
+            abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(predictedHookImpl, hookInitData));
 
-        // (d) Mine CREATE2 salt so the hook proxy lands at an address whose low 14 bits == 0x28CC.
+        // (c) Mine CREATE2 salt so the hook proxy lands at an address whose low 14 bits == 0x28CC.
         bytes32 salt;
         address predictedProxy;
         bytes32 initCodeHash = keccak256(proxyInitCode);
@@ -127,41 +147,32 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
         }
         require(uint160(predictedProxy) & HOOK_FLAG_MASK == HOOK_REQUIRED_FLAGS, "no mined salt");
 
-        // (e) Deploy the preorder executor bound to the mined hook proxy. CREATE address == predictedExecutor.
-        MemeversePreorderSettlementExecutor preorderSettlementExecutor =
-            new MemeversePreorderSettlementExecutor(predictedProxy);
-        require(address(preorderSettlementExecutor) == predictedExecutor, "executor drifted");
+        // (d) Deploy the three facets. Each is constructed with the shared PoolManager so the hook's
+        //     `_requireFacetPoolManager` check passes at initialize.
+        SwapFacet swapFacet = new SwapFacet(manager);
+        require(address(swapFacet) == predictedSwapFacet, "swap facet drifted");
+        DynamicFeeFacet dynamicFeeFacet = new DynamicFeeFacet(manager);
+        require(address(dynamicFeeFacet) == predictedDynamicFeeFacet, "dynamic fee facet drifted");
+        SettlementFacet settlementFacet = new SettlementFacet(manager);
+        require(address(settlementFacet) == predictedSettlementFacet, "settlement facet drifted");
 
-        // (f) Deploy engine impl, then engine proxy with owner = authorizedHook = predictedProxy.
-        MemeverseDynamicFeeEngine engineImpl = new MemeverseDynamicFeeEngine(manager);
-        MemeverseDynamicFeeEngine engine = MemeverseDynamicFeeEngine(
-            address(
-                new ERC1967Proxy(
-                    address(engineImpl),
-                    abi.encodeCall(MemeverseDynamicFeeEngine.initialize, (predictedProxy, predictedProxy))
-                )
-            )
-        );
-
-        // (g) Deploy hook implementation (the REAL production contract).
+        // (e) Deploy the hook implementation (the REAL production Router contract).
         MemeverseUniswapHook hookImpl = new MemeverseUniswapHook(manager);
-
-        // (h) CREATE2-deploy hook proxy at the mined predictedProxy address; initialize runs here.
-        TransparentUpgradeableProxy proxy =
-            new TransparentUpgradeableProxy{salt: salt}(address(hookImpl), hookOwner, hookInitData);
-
-        require(address(proxy) == predictedProxy, "CREATE2 proxy drifted");
-        require(address(engine) == predictedEngineProxy, "engine proxy drifted");
         require(address(hookImpl) == predictedHookImpl, "hook impl drifted");
 
-        return (address(proxy), address(engine));
+        // (f) CREATE2-deploy the hook proxy at the mined predictedProxy address; initialize runs here.
+        //     ERC1967Proxy (UUPS) takes only (impl, initData); the hook owner is encoded inside initData.
+        ERC1967Proxy proxy = new ERC1967Proxy{salt: salt}(address(hookImpl), hookInitData);
+
+        require(address(proxy) == predictedProxy, "CREATE2 proxy drifted");
+
+        return address(proxy);
     }
 
     // ── Seed methods ──
 
     /// @notice Seeds active LP shares for a pool without going through the liquidity callback.
-    /// @dev Replicates the test-only `seedActiveLiquidityShares` previously on Testable hooks:
-    ///      `cachedLpTotalSupply[poolId] += activeShares` and `UniswapLP.mint(owner, activeShares)`.
+    /// @dev Updates `cachedLpTotalSupply[poolId]` and calls `UniswapLP.mint(owner, activeShares)`.
     ///      LP.mint is restricted to the hook (`onlyOwner`), so the mint is performed via `vm.prank(proxy)`.
     ///      The cached supply write is performed directly via vm.store on the cachedLpTotalSupply slot.
     ///      Requires the pool to already be initialized (liquidityToken != address(0)).

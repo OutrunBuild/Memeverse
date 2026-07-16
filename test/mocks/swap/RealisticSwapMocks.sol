@@ -132,13 +132,15 @@ contract RealisticSwapManagerHarness {
         Slot0State memory state = slot0State[poolId];
         _validatePriceLimit(state.sqrtPriceX96, params);
 
-        bool skipHookCallbacks = msg.sender == address(key.hooks);
+        // Real v4 skips both swap callbacks when the hook itself calls PoolManager.swap. Other callers,
+        // including callback-token reentry, still execute the configured hook callbacks.
+        bool callSwapHooks = msg.sender != address(key.hooks);
         BeforeSwapDelta beforeSwapDelta = BeforeSwapDeltaLibrary.ZERO_DELTA;
         int256 amountToSwap = params.amountSpecified;
-        if (!skipHookCallbacks) {
+        if (callSwapHooks) {
             (, beforeSwapDelta,) = key.hooks.beforeSwap(msg.sender, key, params, hookData);
-            amountToSwap += beforeSwapDelta.getSpecifiedDelta();
         }
+        amountToSwap += beforeSwapDelta.getSpecifiedDelta();
 
         BalanceDelta poolDelta = BalanceDeltaLibrary.ZERO_DELTA;
         if (amountToSwap != 0) {
@@ -151,12 +153,10 @@ contract RealisticSwapManagerHarness {
 
         _applyNextSwapPriceOverride(poolId);
 
-        if (skipHookCallbacks) {
-            _accountPoolBalanceDelta(key, poolDelta, msg.sender);
-            return poolDelta;
+        int128 afterSwapUnspecifiedDelta;
+        if (callSwapHooks) {
+            (, afterSwapUnspecifiedDelta) = key.hooks.afterSwap(msg.sender, key, params, poolDelta, hookData);
         }
-
-        (, int128 afterSwapUnspecifiedDelta) = key.hooks.afterSwap(msg.sender, key, params, poolDelta, hookData);
 
         int128 hookDeltaSpecified = beforeSwapDelta.getSpecifiedDelta();
         int128 hookDeltaUnspecified = beforeSwapDelta.getUnspecifiedDelta() + afterSwapUnspecifiedDelta;

@@ -52,14 +52,6 @@ contract MockPoolManagerForPermit2RouterTest {
     mapping(PoolId => uint128) internal liquidityState;
     mapping(PoolId => uint256) internal nextExactInputPoolInputAmount;
 
-    struct RouterCallbackPreview {
-        address payer;
-        address recipient;
-        PoolKey key;
-        SwapParams params;
-        bytes hookData;
-    }
-
     /// @notice Seeds mock pool state and calls the hook initialize callback.
     /// @dev Mimics the minimal pool-manager behavior the router expects during bootstrap.
     /// @param key The pool key being initialized.
@@ -79,14 +71,9 @@ contract MockPoolManagerForPermit2RouterTest {
     /// @param data The callback payload forwarded to `unlockCallback`.
     /// @return result The callback return data.
     function unlock(bytes calldata data) external returns (bytes memory result) {
-        bytes32 headWord;
-        assembly {
-            headWord := calldataload(data.offset)
-        }
-        if (headWord == bytes32(uint256(0x20))) {
-            RouterCallbackPreview memory preview = abi.decode(data, (RouterCallbackPreview));
-            lastUnlockCallbackPayer = preview.payer;
-        }
+        // 生产 CallbackData 已无 payer 字段；router 始终用自身余额 settle，
+        // 因此记录 unlock 发起方作为 lastUnlockPayer 的语义代理。
+        lastUnlockCallbackPayer = msg.sender;
         unlocked = true;
         result = IUnlockCallback(msg.sender).unlockCallback(data);
         unlocked = false;
@@ -150,7 +137,11 @@ contract MockPoolManagerForPermit2RouterTest {
         if (!unlocked) revert ManagerLocked();
 
         PoolId poolId = key.toId();
-        (, BeforeSwapDelta beforeSwapDelta,) = key.hooks.beforeSwap(msg.sender, key, params, hookData);
+        bool callSwapHooks = msg.sender != address(key.hooks);
+        BeforeSwapDelta beforeSwapDelta = BeforeSwapDeltaLibrary.ZERO_DELTA;
+        if (callSwapHooks) {
+            (, beforeSwapDelta,) = key.hooks.beforeSwap(msg.sender, key, params, hookData);
+        }
         int256 amountToSwap = params.amountSpecified + beforeSwapDelta.getSpecifiedDelta();
 
         if (enforceV4PriceLimitValidation) {
@@ -198,7 +189,10 @@ contract MockPoolManagerForPermit2RouterTest {
             }
         }
 
-        (, int128 afterSwapUnspecifiedDelta) = key.hooks.afterSwap(msg.sender, key, params, poolDelta, hookData);
+        int128 afterSwapUnspecifiedDelta;
+        if (callSwapHooks) {
+            (, afterSwapUnspecifiedDelta) = key.hooks.afterSwap(msg.sender, key, params, poolDelta, hookData);
+        }
 
         int128 hookDeltaSpecified = beforeSwapDelta.getSpecifiedDelta();
         int128 hookDeltaUnspecified = beforeSwapDelta.getUnspecifiedDelta() + afterSwapUnspecifiedDelta;

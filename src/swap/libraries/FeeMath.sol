@@ -12,6 +12,11 @@ library FeeMath {
     uint256 internal constant BPS_BASE = 10_000;
     uint256 internal constant PROTOCOL_FEE_SHARE_BPS = 3_500;
 
+    /// @notice Q128 fixed-point scaling used by per-share LP fee growth (1 << 128). Single source of
+    ///         truth shared by `MemeverseUniswapHookLens.claimableFees` and
+    ///         `MemeverseSwapFeeBase._accrueLpFee` so the per-share accumulator cannot drift.
+    uint256 internal constant FEE_GROWTH_Q128 = uint256(1) << 128;
+
     // Constants used by the dynamic-fee pure math primitives below. They live here as the single source of truth so
     // both the engine and any importer (tests) reference the same value.
     uint256 internal constant EWVWAP_PRECISION = 1e18;

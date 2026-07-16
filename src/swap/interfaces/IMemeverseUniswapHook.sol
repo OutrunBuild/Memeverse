@@ -6,35 +6,21 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IMemeverseDynamicFeeEngine} from "./IMemeverseDynamicFeeEngine.sol";
-import {IMemeversePreorderSettlementExecutor} from "./IMemeversePreorderSettlementExecutor.sol";
+import {IDynamicFeeFacet} from "./IDynamicFeeFacet.sol";
 
 /**
  * @title IMemeverseUniswapHook
  * @notice Interface for the Memeverse Uniswap v4 Hook.
  * @dev Defines shared types, events, and external entrypoints used by the hook implementation.
+ *      The storage structs `PoolInfo` / `UserFeeState` / `PoolInitializationAuth` and the
+ *      hook ERC-7201 storage struct live in `IMemeverseHookStorage`; the hook implementation
+ *      imports both, and the structs are referenced unqualified via interface inheritance.
  */
 interface IMemeverseUniswapHook {
-    /// @notice Pool information tracked by the hook.
-    struct PoolInfo {
-        /// @notice Custom ERC20 LP token address for this pool.
-        address liquidityToken;
-        /// @notice Accumulated LP fees for currency0 (per share, scaled by Q128 in the implementation).
-        uint256 fee0PerShare;
-        /// @notice Accumulated LP fees for currency1 (per share, scaled by Q128 in the implementation).
-        uint256 fee1PerShare;
-    }
-
-    /// @notice Per-user fee accounting state for a pool.
-    struct UserFeeState {
-        /// @notice Snapshot offset of `fee0PerShare` at the last user update, in Q128 per-share units.
-        uint256 fee0Offset;
-        /// @notice Snapshot offset of `fee1PerShare` at the last user update, in Q128 per-share units.
-        uint256 fee1Offset;
-        /// @notice Earned but unclaimed currency0 fees.
-        uint256 pendingFee0;
-        /// @notice Earned but unclaimed currency1 fees.
-        uint256 pendingFee1;
+    /// @notice Identifies the typed payload carried through `PoolManager.unlock`.
+    enum UnlockCallbackKind {
+        ModifyLiquidity,
+        Settlement
     }
 
     // ==========================
@@ -79,20 +65,9 @@ interface IMemeverseUniswapHook {
     /// @return owner_ Address authorized for hook-owned configuration.
     function owner() external view returns (address owner_);
 
-    /// @notice Exposes the dynamic fee engine bound to this hook implementation.
-    /// @dev The engine address is owner-upgradeable via `upgradeDynamicFeeEngine`. After replacement,
-    ///      the new engine starts from zero dynamic-fee state (EWVWAP, volatility, short-impact all reset).
-    ///      Hook proxy implementation upgrades do not affect the engine pointer — it lives in hook proxy storage.
-    /// @return Engine used for dynamic fee quotes and realized swap state.
-    function dynamicFeeEngine() external view returns (IMemeverseDynamicFeeEngine);
-
     /// @notice Exposes the LP token implementation cloned for newly initialized pools.
     /// @return Implementation contract used as the source for pool LP clones.
     function lpTokenImplementation() external view returns (address);
-
-    /// @notice Exposes the stateless helper used for preorder settlement calculations.
-    /// @return Executor contract currently used by the hook.
-    function preorderSettlementExecutor() external view returns (IMemeversePreorderSettlementExecutor);
 
     /// @notice Exposes the launcher consulted for post-unlock public-swap protection.
     /// @dev Returns the explicit launcher binding used by hook implementations for launch-state checks.
@@ -125,15 +100,20 @@ interface IMemeverseUniswapHook {
         view
         returns (uint24 startFeeBps, uint24 minFeeBps, uint32 decayDurationSeconds);
 
-    /// @notice Quotes only the dynamic-fee engine portion of a public swap.
-    /// @dev Lens callers use this bridge so the hook remains the authorized engine caller.
+    /// @notice Quotes only the dynamic-fee portion of a public swap.
+    /// @dev Lens callers use `STATICCALL` on this bridge so the hook remains the authorized facet caller
+    ///      while EIP-214 read-only enforcement propagates through the storage-sharing `delegatecall`.
+    ///      UPGRADE INVARIANT: keep the signature `quoteSwapFeeWithContext(...)`; it remains non-view while
+    ///      the implementation needs `delegatecall` because solc 0.8.35 rejects `view` + `delegatecall`
+    ///      (Error 8961). A direct ordinary CALL is read-only only while the delegated facet implementation
+    ///      is read-only; `eth_call` alone does not establish EVM static-call enforcement.
     /// @param poolId Pool being quoted.
     /// @param params Swap parameters used for the quote.
-    /// @param trader Trader address used by the fee engine context.
+    /// @param trader Trader address used by the dynamic-fee context.
     /// @param preSqrtPriceX96 Pool price before the quoted swap.
     /// @param liquidity Current pool liquidity.
     /// @param protocolFeeOnInput Whether the protocol fee is charged from the input currency.
-    /// @return quote Prepared fee data returned by the dynamic fee engine.
+    /// @return quote Prepared fee data returned by the DynamicFeeFacet.
     function quoteSwapFeeWithContext(
         PoolId poolId,
         SwapParams calldata params,
@@ -141,11 +121,79 @@ interface IMemeverseUniswapHook {
         uint160 preSqrtPriceX96,
         uint128 liquidity,
         bool protocolFeeOnInput
-    ) external view returns (IMemeverseDynamicFeeEngine.PreparedSwapFee memory quote);
+    ) external returns (IDynamicFeeFacet.PreparedSwapFee memory quote);
+
+    /// @notice Reads the per-pool dynamic fee state held in this hook's storage namespace.
+    /// @dev UPGRADE INVARIANT: hook proxy implementation upgrades MUST preserve this selector. The hook reads
+    ///      its own ERC7201 storage directly without a facet `delegatecall`, matching
+    ///      `addressBatchStateOf` and `pendingRebateOf`.
+    /// @param poolId Pool being queried.
+    /// @return state Current dynamic fee state.
+    function dynamicFeeStateOf(PoolId poolId) external view returns (IDynamicFeeFacet.DynamicFeeState memory state);
+
+    /// @notice Claims the caller's accrued referral rebate in `currency` and sends it to `recipient`.
+    /// @dev Rebate assets and pending balances are held by this hook Router until the caller claims them.
+    /// @param currency Rebate currency to claim.
+    /// @param recipient Recipient of the claimed rebate.
+    /// @return amount Claimed rebate amount sent to `recipient`.
+    function claimRebate(Currency currency, address recipient) external returns (uint256 amount);
+
+    /// @notice Updates the referral rebate rate applied to protocol fees on referral swaps.
+    /// @dev Implementations are expected to restrict this to an admin or owner role.
+    ///      Rebate is capped at `FeeMath.PROTOCOL_FEE_SHARE_BPS` (3500); larger values revert.
+    /// @param bps New rebate rate in basis points.
+    function setReferrerRebateBps(uint256 bps) external;
+
+    /// @notice Updates the treasury address.
+    /// @dev Implementations are expected to restrict this to an admin or owner role.
+    ///      Zero address is rejected because protocol fees require a concrete recipient.
+    /// @param treasury_ The new treasury address.
+    function setTreasury(address treasury_) external;
+
+    /// @notice Replaces a diamond facet pointer.
+    /// @dev Implementations are expected to restrict this to an admin or owner role.
+    ///      The new facet must share this hook's PoolManager.
+    /// @param role One of `SWAP_FACET_ROLE` / `DYNAMIC_FEE_FACET_ROLE` / `SETTLEMENT_FACET_ROLE`.
+    /// @param facet New facet address.
+    function setFacet(bytes32 role, address facet) external;
+
+    /// @notice Reads the per-trader, per-pool address batch state held in this hook's storage namespace.
+    /// @dev The hook reads its own shared ERC7201 storage directly without a facet delegatecall, matching
+    ///      `pendingRebateOf` and `dynamicFeeStateOf`.
+    /// @param trader Trader address whose batch state is read.
+    /// @param poolId Pool being queried.
+    /// @return state Current address batch state.
+    function addressBatchStateOf(address trader, PoolId poolId)
+        external
+        view
+        returns (IDynamicFeeFacet.AddressBatchState memory state);
+
+    /// @notice Returns the accrued (unclaimed) rebate for a referrer in a currency.
+    /// @param referrer Referrer address.
+    /// @param currency Rebate currency.
+    /// @return Accrued rebate amount held by the hook on behalf of `referrer`.
+    function pendingRebateOf(address referrer, Currency currency) external view returns (uint256);
+
+    /// @notice Returns the current referral rebate rate in basis points.
+    /// @dev Reads the current rate directly from hook Router storage.
+    /// @return Rebate share of the total fee in bps.
+    function referrerRebateBps() external view returns (uint256);
 
     /// @notice Exposes the router authorized to initialize hook-managed pools.
     /// @return Router address allowed to authorize and trigger pool initialization.
     function poolInitializer() external view returns (address);
+
+    /// @notice Returns the SwapFacet address bound to this hook.
+    /// @return Swap facet pointer.
+    function swapFacet() external view returns (address);
+
+    /// @notice Returns the DynamicFeeFacet address bound to this hook.
+    /// @return Dynamic fee facet pointer.
+    function dynamicFeeFacet() external view returns (address);
+
+    /// @notice Returns the SettlementFacet address bound to this hook.
+    /// @return Settlement facet pointer.
+    function settlementFacet() external view returns (address);
 
     /// @notice Updates the launcher consulted for public-swap protection.
     /// @dev Implementations are expected to restrict this to an admin or owner role.
@@ -174,7 +222,7 @@ interface IMemeverseUniswapHook {
     /// @notice Updates the default launch-fee decay configuration.
     /// @dev Implementations are expected to restrict this to an admin or owner role.
     /// @param config New default launch-fee schedule.
-    function setDefaultLaunchFeeConfig(IMemeverseDynamicFeeEngine.LaunchFeeConfig calldata config) external;
+    function setDefaultLaunchFeeConfig(IDynamicFeeFacet.LaunchFeeConfig calldata config) external;
 
     /// @notice Updates whether a currency is eligible to receive protocol fees.
     /// @dev Implementations are expected to restrict this to an admin or owner role. If both pool sides are supported,
@@ -195,6 +243,13 @@ interface IMemeverseUniswapHook {
         external
         view
         returns (address liquidityToken, uint256 fee0PerShare, uint256 fee1PerShare);
+
+    /// @notice Returns the LP token contract for a hook-managed pool.
+    /// @dev Cheaper than poolInfo when only the LP token address is needed: reads one storage slot
+    ///      instead of three and returns no fee-per-share accumulators.
+    /// @param poolId The pool id to query.
+    /// @return liquidityToken The LP token contract for the pool.
+    function liquidityTokenOf(PoolId poolId) external view returns (address liquidityToken);
 
     /// @notice Returns the cached LP supply used by swap fee accounting.
     /// @param poolId Pool being queried.
@@ -303,6 +358,20 @@ interface IMemeverseUniswapHook {
     /// @notice Emitted when the public swap resume time is updated for a pool.
     event PublicSwapResumeTimeUpdated(PoolId indexed poolId, uint40 oldResumeTime, uint40 newResumeTime);
 
+    /// @notice Emitted when the referral rebate rate is updated.
+    event ReferrerRebateBpsUpdated(uint256 oldBps, uint256 newBps);
+
+    /// @notice Emitted when a referral rebate accrues to a referrer during a swap.
+    event ReferralRebateAccrued(address indexed referrer, Currency indexed currency, uint256 amount);
+
+    /// @notice Emitted when a referrer claims accrued rebate.
+    event ReferralRebateClaimed(
+        address indexed referrer, address indexed recipient, Currency indexed currency, uint256 amount
+    );
+
+    /// @notice Emitted when a facet pointer is replaced.
+    event FacetUpdated(bytes32 indexed role, address oldFacet, address newFacet);
+
     /// @notice Emitted when a pool is initialized
     event PoolInitialized(
         PoolId indexed poolId, address indexed liquidityToken, Currency indexed currency0, Currency currency1
@@ -310,7 +379,8 @@ interface IMemeverseUniswapHook {
 
     /// @notice Emitted when protocol fees are collected.
     /// @dev `amount` is the portion received by `treasury`. When a swap carries a referrer, the rebate
-    ///      carved out of the protocol fee is emitted separately as `ReferralRebateAccrued` on the engine,
+    ///      carved out of the protocol fee is emitted separately as `ReferralRebateAccrued` on the hook
+    ///      (via `SwapFacet._collectProtocolFee`),
     ///      so `ProtocolFeeCollected.amount + rebate == totalProtocolFee`. Indexers summing protocol
     ///      revenue must read both events on referral swaps.
     event ProtocolFeeCollected(
@@ -377,16 +447,28 @@ interface IMemeverseUniswapHook {
     /// @notice Reverts when an exact-output swap underdelivers the expected pool-side output.
     error ExactOutputPartialFill();
 
+    /// @notice Reverts when a preorder settlement's self-computed protocol fee disagrees with the settlement result.
+    error PreorderSettlementFeeMismatch();
+
+    /// @notice Reverts when an unlock callback payload uses an unsupported discriminator.
+    error InvalidUnlockCallbackKind(uint256 rawKind);
+
     /// @notice Reverts when a zero address is supplied where a non-zero address is required.
     error ZeroAddress();
 
     /// @notice Reverts when a hook-managed pool or protocol config uses native currency.
     error NativeCurrencyUnsupported();
 
-    /// @notice Reverts when a launch fee configuration value is zero or invalid.
+    /// @notice Reverts when a launch fee configuration value is zero, or when a preorder
+    ///         settlement swap specifies a non-negative amount or nets zero input after fees.
     error ZeroValue();
 
-    /// @notice Reverts when a given currency is not supported by configuration.
+    /// @notice Reverts when a launch fee config field exceeds BPS_BASE or when minFee > startFee.
+    error InvalidLaunchFeeConfig();
+
+    /// @notice Reverts when neither swap leg is a supported protocol-fee currency.
+    /// @dev Must stay same-name no-arg as `SwapFeeMath.CurrencyNotSupported` — selectors are equal
+    ///      only while signatures match; tests assert via this interface's selector.
     error CurrencyNotSupported();
 
     /// @notice Reverts when the caller is not authorized.
@@ -407,45 +489,44 @@ interface IMemeverseUniswapHook {
     /// @notice Reverts when a public swap is attempted during the post-unlock protection window.
     error PublicSwapDisabled();
 
+    /// @notice Reverts when a same-poolId swap reenters a swap lifecycle still in progress — either a public
+    ///         swap's `beforeSwapLogic` while its `beforeSwap → _swap → afterSwap` window is open, or a
+    ///         settlement's `executeSettlementLogic` while its Phase 1 transferFrom → Phase 3 `_updateAfterSwap`
+    ///         window is open (covers transferFrom pre-unlock + swap + settle/take).
+    /// @dev Blocks callback-token (ERC-777/1363) same-pool reentry that would advance `dynamicFeeState` while
+    ///      the outer swap settles with a stale quote/snapshot. Per-pool (per poolId), so cross-pool nested
+    ///      swaps are unaffected. Public swaps acquire the lock in `beforeSwapLogic` and release it in
+    ///      `afterSwapLogic`; settlement swaps are hook self-calls that skip v4 swap callbacks, so
+    ///      `SettlementFacet.executeSettlementLogic` acquires/releases the lock itself across its full body
+    ///      (Phase 1 transferFrom → Phase 3 `_updateAfterSwap`) — it is NOT exempt, it owns its own lock lifecycle.
+    error SwapLifecycleReentrant();
+
     /// @notice Reverts when an ERC20 transfer returns false.
     error ERC20TransferFailed();
-
-    /// @notice Reverts when the hook and engine are constructed with different PoolManager addresses.
-    error DynamicFeeEnginePoolManagerMismatch(address hookPoolManager, address enginePoolManager);
-
-    /// @notice Reverts when the new dynamic fee engine has not authorized this hook as a caller.
-    error EngineNotAuthorizedCaller(address engine);
-
-    /// @notice Reverts when the dynamic fee engine owner is not the hook proxy itself.
-    error DynamicFeeEngineOwnerMismatch(address engine, address expectedOwner, address actualOwner);
 
     /// @notice Reverts when the LP token implementation address has no deployed code.
     error LPTokenImplementationCodeNotReady(address implementation);
 
-    /// @notice Reverts when the preorder settlement executor address has no deployed code.
-    error PreorderSettlementExecutorCodeNotReady(address executor);
+    /// @notice Reverts when a configured rebate rate exceeds the protocol fee share.
+    error RebateExceedsProtocolShare();
 
-    /// @notice Reverts when the executor is immutable-bound to a hook other than this hook proxy.
-    error PreorderSettlementExecutorHookMismatch(address executor, address expectedHook, address actualHook);
+    /// @notice Reverts when a facet address has no deployed code.
+    error FacetCodeNotReady(address facet);
+    /// @notice Reverts when a facet is bound to a different PoolManager than this hook.
+    error FacetPoolManagerMismatch(address facet, address hookPoolManager, address facetPoolManager);
 
-    /// @notice Reverts when the executor-reported output-side protocol fee does not match the hook-derived amount.
-    error PreorderSettlementFeeMismatch();
+    /// @notice Reverts when a UUPS upgrade target's immutable PoolManager differs from this hook's.
+    /// @dev Operational guardrail, not a security boundary — see `_authorizeUpgrade` dev comment.
+    error UpgradePoolManagerMismatch(address expected, address actual);
+    /// @notice Reverts when a UUPS upgrade target address has no deployed code.
+    /// @dev Mirrors the `code.length` pre-check used by `_requireFacetPoolManager` so a no-code
+    ///      target fails with a named, locatable error instead of an opaque ABI-decode revert.
+    error UpgradeTargetCodeNotReady(address target);
+    /// @notice Reverts when `setFacet` receives a role discriminator other than the three known roles.
+    error UnknownFacetRole(bytes32 role);
 
-    /// @notice Migrates the hook to a new dynamic fee engine proxy.
-    /// @dev `newEngine` must be an initialized engine proxy owned by this hook proxy and authorized for this hook.
-    ///      Do not pass an implementation address here; use `upgradeDynamicFeeEngineImplementation` to upgrade the
-    ///      currently bound engine proxy implementation.
-    /// @param newEngine Initialized engine proxy owned by this hook proxy and authorized for this hook.
-    function upgradeDynamicFeeEngine(IMemeverseDynamicFeeEngine newEngine) external;
-
-    /// @notice Upgrades the implementation used by the currently bound dynamic fee engine proxy.
-    /// @param newImplementation New engine implementation address.
-    /// @param data Optional initialization or migration calldata forwarded to the engine upgrade.
-    function upgradeDynamicFeeEngineImplementation(address newImplementation, bytes calldata data) external;
-
-    /// @notice Replaces the stateless preorder settlement executor.
-    /// @param executor New executor implementation with deployed code.
-    function setPreorderSettlementExecutor(IMemeversePreorderSettlementExecutor executor) external;
+    /// @dev Reverts when a call targets a selector with no matching external function on this hook.
+    error UnsupportedSelector(bytes4 selector);
 
     /// @notice Updates the clone template used to deploy LP tokens for new pools.
     /// @dev Implementations are expected to restrict this to an admin or owner role.
@@ -453,12 +534,6 @@ interface IMemeverseUniswapHook {
     /// @param implementation_ The new LP token clone implementation.
     function setLpTokenImplementation(address implementation_) external;
 
-    /// @notice Emitted when the dynamic fee engine pointer is updated.
-    event DynamicFeeEngineUpdated(address oldEngine, address newEngine);
-
     /// @notice Emitted when the LP token implementation pointer is initialized or updated.
     event LPTokenImplementationUpdated(address oldImplementation, address newImplementation);
-
-    /// @notice Emitted when the preorder settlement executor pointer is initialized or updated.
-    event PreorderSettlementExecutorUpdated(address oldExecutor, address newExecutor);
 }

@@ -84,6 +84,7 @@ interface IMemeverseSwapRouter {
 
     /// @notice Request the hook's current swap quote so integrations can preview fees, side, and expected flows.
     /// @dev This router-first facade keeps quote logic centralized while reusing the hook's internal math.
+    ///      The configured Lens uses `STATICCALL` so EIP-214 read-only enforcement reaches the delegated facet.
     /// @param key Pool key being quoted.
     /// @param params Swap parameters that define direction, amount, and slippage posture.
     /// @param trader Address whose per-address batch state determines the adverse fee component.

@@ -15,6 +15,8 @@ interface IMemeverseUniswapHookLens {
     function poolManager() external view returns (IPoolManager manager);
 
     /// @notice Quotes a swap using hook state and PoolManager state without mutating either.
+    /// @dev Calls the non-view hook bridge with `STATICCALL`; EIP-214 propagates the static context through
+    ///      the hook's `delegatecall`, so any attempted state write by the delegated facet reverts.
     /// @param hook Hook whose state namespace should be queried.
     /// @param key Pool key being quoted.
     /// @param params Swap parameters that define direction and amount.
@@ -37,7 +39,10 @@ interface IMemeverseUniswapHookLens {
         returns (uint256 fee0Amount, uint256 fee1Amount);
 
     /// @notice Reads the current dynamic fee state for a pool in the hook namespace.
-    /// @param hook Hook namespace whose engine state is queried.
+    /// @dev `view` because the read path (`hook.dynamicFeeStateOf`) is itself a `view` direct read of the
+    ///      hook's own ERC7201 storage. The 4-byte selector is unchanged (mutability is not part of the
+    ///      signature); only the ABI mutability flips to `view`.
+    /// @param hook Hook namespace whose dynamic-fee state is queried.
     /// @param poolId Pool being queried.
     /// @return weightedVolume0 Exponentially weighted token0 volume.
     /// @return weightedPriceVolume0 Exponentially weighted price-volume at 1e18 spot precision.

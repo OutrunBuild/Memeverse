@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {FeeMath} from "./libraries/FeeMath.sol";
+import {SwapFeeMath} from "./libraries/SwapFeeMath.sol";
+import {SwapGuardMath} from "./libraries/SwapGuardMath.sol";
 import {UniswapLP} from "./tokens/UniswapLP.sol";
-import {IMemeverseDynamicFeeEngine} from "./interfaces/IMemeverseDynamicFeeEngine.sol";
+import {IDynamicFeeFacet} from "./interfaces/IDynamicFeeFacet.sol";
 import {IMemeverseUniswapHook} from "./interfaces/IMemeverseUniswapHook.sol";
 import {IMemeverseUniswapHookLens} from "./interfaces/IMemeverseUniswapHookLens.sol";
 
@@ -18,11 +22,7 @@ import {IMemeverseUniswapHookLens} from "./interfaces/IMemeverseUniswapHookLens.
 /// @notice Stateless read-only calculator for Memeverse hook quote and fee preview APIs.
 /// @dev This contract assumes the queried hook and this lens are bound to the same PoolManager.
 contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
-    using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
-
-    uint256 internal constant FEE_GROWTH_Q128 = uint256(1) << 128;
 
     IPoolManager public immutable poolManager;
 
@@ -38,19 +38,28 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
         view
         returns (IMemeverseUniswapHook.SwapQuote memory quote)
     {
-        _revertIfNativeCurrencyUnsupported(key.currency0, key.currency1);
+        SwapGuardMath.revertIfNativeCurrencyUnsupported(key.currency0, key.currency1);
         if (address(key.hooks) != address(hook)) revert IMemeverseUniswapHook.HookAddressMismatch();
         PoolId poolId = key.toId();
-        _revertIfNoActiveLiquidityShares(hook, poolId, params.amountSpecified);
-        _revertIfPublicSwapBlocked(hook, poolId);
+        // Gate logic lives in SwapGuardMath so the quote path cannot drift from the execution path.
+        SwapGuardMath.revertIfPublicSwapBlocked(hook.publicSwapResumeTime(poolId));
+        // Read liquidity once and reuse it for both the orphan-liquidity gate and the fee quote,
+        // mirroring the execution path (SwapFacet reads getLiquidity once, threads it through).
+        uint128 liquidity = poolManager.getLiquidity(poolId);
+        _revertIfNoActiveLiquidityShares(hook, poolId, params.amountSpecified, liquidity);
 
         (uint160 preSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        uint128 liquidity = poolManager.getLiquidity(poolId);
         bool protocolFeeOnInput = _protocolFeeOnInput(hook, key, params.zeroForOne);
 
-        // Fee quoting is bridged through the hook so the engine still sees its authorized caller.
-        IMemeverseDynamicFeeEngine.PreparedSwapFee memory feeQuote =
-            hook.quoteSwapFeeWithContext(poolId, params, trader, preSqrtPriceX96, liquidity, protocolFeeOnInput);
+        // STATICCALL keeps the public quote read-only and its EIP-214 flag propagates through the hook's delegatecall.
+        bytes memory feeQuoteData = Address.functionStaticCall(
+            address(hook),
+            abi.encodeCall(
+                IMemeverseUniswapHook.quoteSwapFeeWithContext,
+                (poolId, params, trader, preSqrtPriceX96, liquidity, protocolFeeOnInput)
+            )
+        );
+        IDynamicFeeFacet.PreparedSwapFee memory feeQuote = abi.decode(feeQuoteData, (IDynamicFeeFacet.PreparedSwapFee));
         (uint256 lpFeeBps, uint256 protocolFeeBps) = FeeMath.splitFeeBps(feeQuote.feeBps);
 
         quote.feeBps = feeQuote.feeBps;
@@ -70,44 +79,24 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
             }
         } else {
             uint256 requestedOutputAmount = uint256(params.amountSpecified);
-            quote.estimatedUserOutputAmount = requestedOutputAmount;
+            // Bounded: a drained pool (liquidity == 0) yields estimatedGrossOutputAmount == 0, so the user
+            // receives nothing despite requesting a positive output. Gate on the gross estimate so the
+            // quote does not advertise a free positive-sum swap that cannot be filled.
+            quote.estimatedUserOutputAmount = feeQuote.estimatedGrossOutputAmount > 0 ? requestedOutputAmount : 0;
             quote.estimatedLpFeeAmount = FeeMath.feeOnAmount(feeQuote.estimatedInputAmount, lpFeeBps);
             if (protocolFeeOnInput) {
                 quote.estimatedProtocolFeeAmount = FeeMath.feeOnAmount(feeQuote.estimatedInputAmount, protocolFeeBps);
                 quote.estimatedUserInputAmount =
                     feeQuote.estimatedInputAmount + quote.estimatedLpFeeAmount + quote.estimatedProtocolFeeAmount;
             } else {
-                quote.estimatedProtocolFeeAmount = feeQuote.estimatedGrossOutputAmount - requestedOutputAmount;
+                // Bounded: drained pools (liquidity == 0) yield estimatedGrossOutputAmount == 0, so
+                // subtracting requestedOutputAmount would underflow. Clamp to 0 to keep the quote a
+                // pure preview that returns zero instead of panicking on drained pools.
+                quote.estimatedProtocolFeeAmount = feeQuote.estimatedGrossOutputAmount > requestedOutputAmount
+                    ? feeQuote.estimatedGrossOutputAmount - requestedOutputAmount
+                    : 0;
                 quote.estimatedUserInputAmount = feeQuote.estimatedInputAmount + quote.estimatedLpFeeAmount;
             }
-        }
-    }
-
-    /// @inheritdoc IMemeverseUniswapHookLens
-    function claimableFees(IMemeverseUniswapHook hook, PoolKey calldata key, address owner)
-        external
-        view
-        returns (uint256 fee0Amount, uint256 fee1Amount)
-    {
-        _revertIfNativeCurrencyUnsupported(key.currency0, key.currency1);
-        PoolId poolId = key.toId();
-        (address liquidityToken, uint256 fee0PerShare, uint256 fee1PerShare) = hook.poolInfo(poolId);
-        if (liquidityToken == address(0) || owner == address(0)) return (0, 0);
-
-        (uint256 fee0Offset, uint256 fee1Offset, uint256 pendingFee0, uint256 pendingFee1) =
-            hook.userFeeState(poolId, owner);
-        fee0Amount = pendingFee0;
-        fee1Amount = pendingFee1;
-
-        uint256 balance = UniswapLP(liquidityToken).balanceOf(owner);
-        if (balance == 0) return (fee0Amount, fee1Amount);
-
-        // Fee growth is Q128-scaled by the hook; round down to avoid over-previewing claimable fees.
-        if (fee0PerShare > fee0Offset) {
-            fee0Amount += FullMath.mulDiv(balance, fee0PerShare - fee0Offset, FEE_GROWTH_Q128);
-        }
-        if (fee1PerShare > fee1Offset) {
-            fee1Amount += FullMath.mulDiv(balance, fee1PerShare - fee1Offset, FEE_GROWTH_Q128);
         }
     }
 
@@ -127,8 +116,8 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
             uint40 shortLastTs
         )
     {
-        IMemeverseDynamicFeeEngine.DynamicFeeState memory state =
-            hook.dynamicFeeEngine().getDynamicFeeState(address(hook), poolId);
+        // `dynamicFeeStateOf` reads the hook-owned per-pool state directly from the hook's ERC7201 storage.
+        IDynamicFeeFacet.DynamicFeeState memory state = hook.dynamicFeeStateOf(poolId);
         return (
             state.weightedVolume0,
             state.weightedPriceVolume0,
@@ -142,40 +131,60 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
         );
     }
 
-    /// @dev Mirrors `MemeverseUniswapHook._resolveSwapFeeContext` protocol-fee side — keep in sync if hook validation changes.
+    /// @inheritdoc IMemeverseUniswapHookLens
+    function claimableFees(IMemeverseUniswapHook hook, PoolKey calldata key, address owner)
+        external
+        view
+        returns (uint256 fee0Amount, uint256 fee1Amount)
+    {
+        SwapGuardMath.revertIfNativeCurrencyUnsupported(key.currency0, key.currency1);
+        PoolId poolId = key.toId();
+        (address liquidityToken, uint256 fee0PerShare, uint256 fee1PerShare) = hook.poolInfo(poolId);
+        if (liquidityToken == address(0) || owner == address(0)) return (0, 0);
+
+        (uint256 fee0Offset, uint256 fee1Offset, uint256 pendingFee0, uint256 pendingFee1) =
+            hook.userFeeState(poolId, owner);
+        fee0Amount = pendingFee0;
+        fee1Amount = pendingFee1;
+
+        uint256 balance = UniswapLP(liquidityToken).balanceOf(owner);
+        if (balance == 0) return (fee0Amount, fee1Amount);
+
+        // Fee growth is Q128-scaled by the hook; round down to avoid over-previewing claimable fees.
+        if (fee0PerShare > fee0Offset) {
+            fee0Amount += FullMath.mulDiv(balance, fee0PerShare - fee0Offset, FeeMath.FEE_GROWTH_Q128);
+        }
+        if (fee1PerShare > fee1Offset) {
+            fee1Amount += FullMath.mulDiv(balance, fee1PerShare - fee1Offset, FeeMath.FEE_GROWTH_Q128);
+        }
+    }
+
+    /// @dev Shares protocol-fee leg resolution with `MemeverseSwapFeeBase._resolveSwapFeeContext`
+    ///      via `SwapFeeMath.protocolFeeOnInputOrRevert`.
     function _protocolFeeOnInput(IMemeverseUniswapHook hook, PoolKey calldata key, bool zeroForOne)
         internal
         view
         returns (bool)
     {
-        Currency currencyIn = zeroForOne ? key.currency0 : key.currency1;
-        Currency currencyOut = zeroForOne ? key.currency1 : key.currency0;
-        if (hook.supportedProtocolFeeCurrencies(Currency.unwrap(currencyIn))) return true;
-        if (hook.supportedProtocolFeeCurrencies(Currency.unwrap(currencyOut))) return false;
-        revert IMemeverseUniswapHook.CurrencyNotSupported();
+        (Currency currencyIn, Currency currencyOut) = SwapFeeMath.swapCurrencies(key, zeroForOne);
+        // `||` short-circuits: skip the second hook view call when input is the fee leg.
+        return hook.supportedProtocolFeeCurrencies(Currency.unwrap(currencyIn))
+            || SwapFeeMath.protocolFeeOnInputOrRevert(hook.supportedProtocolFeeCurrencies(Currency.unwrap(currencyOut)));
     }
 
-    /// @dev Mirrors `MemeverseUniswapHook._revertIfPublicSwapBlocked` — keep in sync if hook validation changes.
-    function _revertIfPublicSwapBlocked(IMemeverseUniswapHook hook, PoolId poolId) internal view {
-        uint40 resumeTime = hook.publicSwapResumeTime(poolId);
-        if (resumeTime != 0 && block.timestamp < resumeTime) revert IMemeverseUniswapHook.PublicSwapDisabled();
-    }
-
-    /// @dev Mirrors `MemeverseUniswapHook._revertIfNoActiveLiquidityShares` — keep in sync if hook validation changes.
-    function _revertIfNoActiveLiquidityShares(IMemeverseUniswapHook hook, PoolId poolId, int256 amountSpecified)
-        internal
-        view
-    {
+    /// @dev Gate logic lives in SwapGuardMath. `liquidity` is read once by the caller (quoteSwap) and
+    ///      reused for both this orphan-liquidity gate and the fee quote. The cached/liquidity branches
+    ///      mirror the execution path (SwapFacet._activeLpSupplyForSwap); the `amountSpecified == 0`
+    ///      early-return below is quote-path-only — a zero-amount quote is a legitimate no-op, unlike the
+    ///      execution path where v4 guarantees amountSpecified is non-zero.
+    function _revertIfNoActiveLiquidityShares(
+        IMemeverseUniswapHook hook,
+        PoolId poolId,
+        int256 amountSpecified,
+        uint128 liquidity
+    ) internal view {
         if (amountSpecified == 0) return;
         if (hook.cachedLpTotalSupply(poolId) != 0) return;
-        if (poolManager.getLiquidity(poolId) == 0) return;
-        revert IMemeverseUniswapHook.NoActiveLiquidityShares();
-    }
-
-    /// @dev Mirrors `MemeverseUniswapHook._revertIfNativeCurrencyUnsupported` — keep in sync if hook validation changes.
-    function _revertIfNativeCurrencyUnsupported(Currency currency0, Currency currency1) internal pure {
-        if (currency0.isAddressZero() || currency1.isAddressZero()) {
-            revert IMemeverseUniswapHook.NativeCurrencyUnsupported();
-        }
+        SwapGuardMath.revertIfNoActiveLiquidityShares(liquidity);
     }
 }

@@ -6,12 +6,12 @@
 
 ### 1. 辅助池 fee
 
-`memecoin/uAsset` 主池 fee 沿用 Memeverse 原规则：
+`memecoin/uAsset` 主池 fee 按以下规则分流：
 
 - `uAsset` fee 走 Memeverse DAO governor 路径
 - `memecoin` fee 给 `yieldVault`
 
-新增规则只覆盖三个辅助池：
+以下规则覆盖三个辅助池：
 
 - `POL/uAsset`
 - `PT/uAsset`
@@ -92,7 +92,6 @@ pendingPTFee
 
 `Unlocked` 后：
 
-- 新产生的辅助池 fee 不再拆普通侧 / 杠杆侧
 - 新产生的辅助池非 `POL` fee 全部归 Memeverse DAO governor
 - `POL fee` 继续 burn
 - 普通用户仍可补领 `Locked` 阶段已累计但未领取的普通侧 fee
@@ -169,7 +168,7 @@ claimablePT = entitledPT - claimedPTFee
 - `Launcher` 用 `claimablePT` 调 `Splitter.redeemPT`
 - `uAssetAmount = claimableUAsset + redeemedPTUAsset`
 - `ptAmount = 0`
-- 不处理用户此前已领取到自己地址上的 `PT`
+- 不处理用户已领取到自己地址上的 `PT`
 
 若 `settled=true` 且 `previewPTToUAsset(verseId, claimablePT) == 0`：
 
@@ -393,9 +392,7 @@ event PreRedeemPTFee(uint256 indexed verseId, address indexed uAsset, uint256 pt
 
 #### 5.3 settle 后：直接 redeemPT
 
-Splitter 已 settled 后，杠杆侧 PT fee 不再调用 `preRedeemPTFee`。
-
-settle 后 PT fee 直接走：
+Splitter 已 settled 后，杠杆侧 PT fee 直接走：
 
 ```text
 Splitter.redeemPT(verseId, ptAmount, receiver)
@@ -492,7 +489,7 @@ uAsset.repay(address(POLend), verseDebt)
 
 `recoveredUAsset + consumedSettlementDustReserve >= verseDebt` 是必须成立的产品不变量。`consumedSettlementDustReserve` 只能覆盖正确执行固定 PT backing ratio 转换后的辅助 LP unwind、POL 赎回、PT 兑付和 full-range LP 数学中的整数舍入 dust；不得覆盖真实资不抵债、PT backing ratio / 模型错误、错误 LP 份额或 fee 账务缺口。
 
-如果 `deficit > settlementDustStates[market.uAsset].reserve`，说明该 `uAsset` 全局 reserve 余额不足，该缺口不再被当前 reserve 规则接受为可补偿 dust，`executeGlobalSettlement` 必须 revert。实现前必须提供可审查的安全 / 证明证据：数学证明或 invariant tests，覆盖辅助 LP unwind、POL 赎回、PT 兑付、fee、整数舍入、极端价格状态，并证明任意允许 dust 补偿都被 `maxReserve` 全局容量约束。
+如果 `deficit > settlementDustStates[market.uAsset].reserve`，该缺口超出可补偿 dust 边界，`executeGlobalSettlement` 必须 revert。该 revert 边界由 `POLend.executeGlobalSettlement`（`POLend.sol` 的 `if (deficit > reserveBeforeSettlement) revert SettlementDustInsufficient(...)`）实现，并由 `MemeverseLauncherPOLendSettlementInvariant` 不变量套件证明：覆盖辅助 LP unwind、POL 赎回、PT 兑付、fee、整数舍入、极端价格状态，并断言任意允许 dust 补偿都被 `maxReserve` 全局容量约束（`assertLe(consumedSettlementDust, maxReserve)`）。
 
 不设计：
 

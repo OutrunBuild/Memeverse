@@ -7,6 +7,7 @@
 
 - `src/swap/MemeverseSwapRouter.sol`
 - `src/swap/MemeverseUniswapHook.sol`
+- `src/swap/SwapFacet.sol` / `src/swap/DynamicFeeFacet.sol` / `src/swap/SettlementFacet.sol`（diamond facet，经 Router entry `delegatecall` 分发，共享 hook storage；详见 §1.1 / §3）
 
 ---
 
@@ -35,38 +36,36 @@ flowchart TD
 
 ### 1.1 返佣资金流（Referral Rebate）
 
-普通 swap 携带 referrer 时，protocol fee 在 `_collectProtocolFee` 内切出 rebate，rebate custody 在 engine，与 LP fee 在 hook 隔离。
+普通 swap 携带 referrer 且收取 protocol fee 时，SwapFacet 的返佣处理按收费入口分流：满足合并领取条件的 `beforeSwap` 路径直接执行 `_computeRebate` 与 `_settleProtocolFee`，并将 LP fee 与 rebate 合并为一次 `PoolManager.take` 至 hook proxy；其余仍收取 protocol fee 的 `beforeSwap` 分支，以及 `afterSwap` 的 protocol-fee 路径，经 `_collectProtocolFee` 处理，rebate 非零时单独 `take`。rebate custody 在 hook proxy（`address(this)` 在 delegatecall 下为 hook proxy），`pendingRebate` 账本在 Router storage。
 
 ```mermaid
 sequenceDiagram
     participant S as Swapper
     participant PM as PoolManager
-    participant H as Hook
-    participant E as Engine
+    participant H as Hook (Router)
     participant R as Referrer
 
     S->>PM: swap(..., hookData=encodePacked(referrer))
     PM->>H: beforeSwap / afterSwap
-    H->>H: _collectProtocolFee：split protocolFee
-    Note over H: toTreasury = protocolFee - rebate<br/>LP fee 留在 hook
+    H->>H: entry shell delegatecall SwapFacet，_computeRebate 算 rebate，_settleProtocolFee 记账+emit 先于 treasury take
+    Note over H: toTreasury = protocolFee - rebate<br/>LP fee 留在 hook<br/>beforeSwap 主路径(lpFee>0 && protocolFee>0 && effSupply!=0)：LP fee take 与 rebate take 合并为一次 take(currencyIn, address(this), lpFee+rebate)，同币种同收款人合并，省一次 PoolManager take + 一次 ERC20 transfer；afterSwap / beforeSwap 边界仍各独立 take（rebate 由 _collectProtocolFee 内 take）
+    H->>H: 内联 pendingRebate[referrer][currency] += rebate + emit ReferralRebateAccrued（effect：写 hook storage，无 facet→facet delegatecall，无 PoolManager 调用）
     H->>PM: take toTreasury 到 treasury
-    H->>PM: take LP fee 到 hook custody
-    H->>PM: take rebate 到 engine 地址（delta 记 hook，被 specifiedDelta credit 抵消）
-    H->>E: accrueRebate(referrer, currency, rebate)
-    E->>E: pendingRebate[referrer][currency] += rebate（纯记账，无 PoolManager 调用）
+    H->>PM: take LP fee 到 hook custody（beforeSwap 主路径并入下方 rebate take 合并）
+    H->>PM: take rebate 到 hook proxy（beforeSwap 主路径与 LP fee 合并为一次 take；afterSwap / 边界由 _collectProtocolFee 独立 take；interaction：address(this)，delta 记 hook 被 specifiedDelta credit 抵消；与记账同在 unlock callback 原子执行，take 失败整笔回滚）
     PM-->>S: BalanceDelta
 
-    R->>E: claimRebate(currency, recipient)
-    Note over E: CEI: pendingRebate 先清零
-    E->>R: transfer rebate 到 recipient
+    R->>H: claimRebate(currency, recipient)
+    Note over H: Router 直接实现, CEI: pendingRebate 先清零
+    H->>R: transfer rebate 到 recipient
 ```
 
 说明：
 
-- **rebate custody 在 engine，不在 hook**：`MemeverseUniswapHook` 受 24KB bytecode 限制（V11 / `MemeverseUniswapHook` bytecode budget），rebate 累计记账与 token custody 都落在独立 `MemeverseDynamicFeeEngine` 上，避免 hook 持有额外语义状态。
-- **rebate currency = 该 swap protocol fee 的 currency**：由 `protocolFeeOnInput`（输入侧优先，否则输出侧）决定；rebate 与 protocol fee / LP fee 同侧同币种（in-kind）。无 referrer 时不切 rebate，protocol 收全额 35%。
-- **claimRebate 在 engine 独立可调，不经 hook**：`MemeverseDynamicFeeEngine::claimRebate(currency, recipient)` 直接对 engine 调用；engine `onlyOwner` 是 hook proxy，但 claim 路径无 modifier，任意 referrer 可调用。engine 持有的 token 余额偿付能力见 [docs/spec/invariants.md](../invariants.md) INV-20。
-- **preorder settlement 路径不携带 referrer，不参与返佣**：`executePreorderSettlement` 走 `Launcher -> Hook -> Executor` 显式通道（见 §3），`hookData = ZERO_BYTES`，4 个 `_collectProtocolFee` 调用点不存在，protocol 收全额固定 fee 不切 rebate。
+- **rebate custody 在 hook proxy**：`MemeverseUniswapHook` 的 callback/fee logic 由 SwapFacet / DynamicFeeFacet 经 Router entry `delegatecall` 执行并共享 Router storage。rebate `take` recipient = `address(this)`（hook proxy），`pendingRebate` 在 Router storage，`claimRebate`/`pendingRebateOf` 入口在 hook。
+- **rebate currency = 该 swap protocol fee 的 currency**：由 `protocolFeeOnInput`（输入侧优先，否则输出侧）决定；rebate 与 protocol fee 同币种（in-kind）。LP fee 始终位于输入侧（currencyIn），与 protocolFeeOnInput 无关。无 referrer 时不切 rebate，protocol 收全额 35%。
+- **claimRebate 在 hook 可调**：`MemeverseUniswapHook::claimRebate(currency, recipient)`（Router 直接实现）；hook 持有的 token 余额偿付能力见 [docs/spec/invariants.md](../invariants.md) INV-20。
+- **preorder settlement 路径不携带 referrer，不参与返佣**：`executePreorderSettlement` 走 `Launcher -> Hook -> SettlementFacet`（Router entry `delegatecall`，见 §3），`hookData = bytes("")`，普通 swap 的返佣路径（beforeSwap 主路径 `_computeRebate` + 合并 take，及 beforeSwap 边界 / afterSwap 的 `_collectProtocolFee`）均不触发，protocol 收全额固定 fee 不切 rebate。
 
 ---
 
@@ -90,34 +89,43 @@ flowchart TD
 
 ## 3. Preorder Settlement 显式通道
 
+> typed unlock payload、raw discriminator 路由、typed returndata 与 v4 self-call callback skip 均已实现。`[代码已证]`
+
 ```mermaid
 sequenceDiagram
     participant L as Launcher
-    participant H as Hook
-    participant E as Executor
+    participant H as Hook (Router)
+    participant SF as SettlementFacet
     participant PM as PoolManager
 
     L->>H: executePreorderSettlement(params)
-    H->>H: 校验 msg.sender == launcher
-    H->>H: 计算固定 1% fee, 收取 input 费用
-    H->>E: execute(params)
-    E->>PM: unlock(...)
-    PM->>E: unlockCallback(...)
-    E->>PM: swap(..., hookData=ZERO_BYTES)
-    PM-->>E: 返回 BalanceDelta
-    E->>E: settle + take（含 output-side protocol fee）
-    E-->>H: 返回 ExecuteResult
-    H->>H: 更新动态费引擎状态
+    H->>H: 校验 msg.sender == launcher (Router 层 modifier)
+    H->>SF: entry shell delegatecall executeSettlementLogic(params)
+    SF->>SF: Phase 1 计算固定 1% fee, 收取 input 费用
+    SF->>PM: unlock(abi.encode(Settlement, SettlementCallbackData))
+    PM->>H: unlockCallback(data) (Router entry)
+    H->>H: 读取 raw kind，仅接受 ModifyLiquidity / Settlement
+    H->>SF: selector||rawData[32:] delegatecall settlementUnlockCallback
+    SF->>PM: swap(..., hookData=bytes(""))
+    Note over SF,PM: caller 是 hook，真实 v4 跳过 beforeSwap 与 afterSwap
+    PM-->>SF: 返回 BalanceDelta
+    SF->>SF: settle + take（含 output-side protocol fee）
+    SF-->>H: 返回 typed SettlementResult ABI returndata
+    H-->>PM: 原样返回 facet returndata
+    PM-->>SF: 返回 unlock returndata
+    SF->>SF: 一次解码 SettlementResult + Phase 3 _updateAfterSwap + output fee 对账
+    SF-->>H: 返回 adjustedDelta
     H-->>L: 返回 adjustedDelta
 ```
 
 说明：
 
 - 这条路径不是普通用户路径。
-- 启动结算不再经过 Router，也不再依赖特殊 `hookData` marker。
-- Hook 将 unlock/swap 逻辑委托给 Executor 合约（constructor 时 immutable 绑定 hook proxy）执行；Executor 持有 unlock 回调上下文，负责 swap、settle、take 与 output-side protocol fee 扣减。
+- 启动结算直接进入 Hook Router，由 typed discriminator 路由到 SettlementFacet；不经过 `MemeverseSwapRouter` 普通 swap 通道。
+- Settlement logic 经 Router entry `delegatecall` SettlementFacet 执行。unlock payload 直接使用 `abi.encode(UnlockCallbackKind.Settlement, SettlementCallbackData)`；Router 只对当前支持的 raw discriminator 分支，未知值回退 `InvalidUnlockCallbackKind(rawKind)`。因 `SettlementCallbackData` 当前全静态，kind 校验后用 `bytes.concat(settlementUnlockCallback.selector, rawData[32:])` 前缀转发到 facet（跳过 memory decode + 二次 encode）。typed facet returndata 由 Router 原样返回，外层 settlement logic 只解码一次。若 `SettlementCallbackData` 未来引入动态字段，须回到 `abi.encodeCall`。
+- settlement swap 是 hook self-call，真实 v4 同时跳过 `beforeSwap` / `afterSwap`；不需要 settlement transient routing flag。回调型 token 发起的**跨池**外部重入 swap 不是 hook self-call，仍执行普通 callbacks 并走 public fee 正常收费；**同池**生命周期重入（公开 swap 路径下由 outer `beforeSwapLogic` 持有该池 per-pool transient lock，回调内再次进入同池 `beforeSwapLogic` 触发 `SwapLifecycleReentrant`）被阻断，防止 callback token 在 outer 报价固定后推进动态费 state 造成费率失真；settlement self-call 因 v4 跳过 `beforeSwap`/`afterSwap` 不进这两个函数的 acquire/release 路径，故 settlement 路径下改由 `SettlementFacet.executeSettlementLogic` 在 Phase 1 `transferFrom` 前 acquire、Phase 3 `_updateAfterSwap` 后的函数末尾 release 同一 per-pool lock，覆盖 callback token 在 transferFrom 窗口（Phase 1/2，pre-unlock）与 settle/take transfer 期间对同池发起的 reentrant swap（见 [docs/spec/invariants.md](../invariants.md) INV-04A）。
 - 该路径使用固定总费（数值定义见 [docs/spec/verse/accounting.md §7.4](../verse/accounting.md)）；caller 约束见 [docs/spec/invariants.md](../invariants.md) INV-04。不复用普通动态费结果。
-- **资金与 approve 路径**：Launcher 只需对 Hook 做一次 infinite approve。Hook 作为 `transferFrom` 的 spender，分别拉取 input 费用到自身/treasury 和 netInput 到 Executor；Executor 用自身余额直接 `transfer` 给 PoolManager，不需要任何 approve。详见 [docs/spec/swap/swap-integration.md §5.1](swap-integration.md)。
+- **资金与 approve 路径**：Launcher 只需对 Hook 做一次 infinite approve。Hook 作为 `transferFrom` 的 spender，拉取 protocol fee 到 treasury，并把 netInput 与 LP fee 合并一次 `transferFrom` 拉到 hook proxy custody（同源同收款人，省一次 ERC20 transferFrom）；SettlementFacet 用 hook proxy 余额直接 `transfer` 给 PoolManager，不需要任何 approve。详见 [docs/spec/swap/swap-integration.md §5.1](swap-integration.md)。
 
 ---
 
@@ -204,12 +212,12 @@ flowchart TD
     C2 --> D
 
     E[preorder settlement] --> F[Launcher 调 Hook.executePreorderSettlement]
-    F --> G[Hook 校验 launcher 绑定 + 收取 input 费用]
-    G --> H[Executor 执行 unlock/swap/take]
+    F --> G[Hook 校验 launcher 绑定]
+    G --> H[SettlementFacet delegatecall 执行：收取 input 费用 + unlock/swap/take]
     H --> I[固定 1% 结算]
 ```
 
 一句话概括：
 
 - 普通 swap：execute-or-revert，启动期靠费率衰减保护
-- 特殊启动结算：显式 `Launcher -> Hook -> Executor`，固定费率（数值见 [docs/spec/verse/accounting.md §7.4](../verse/accounting.md)）
+- 特殊启动结算：显式 `Launcher -> Hook -> SettlementFacet`（Router entry `delegatecall`），固定费率（数值见 [docs/spec/verse/accounting.md §7.4](../verse/accounting.md)）

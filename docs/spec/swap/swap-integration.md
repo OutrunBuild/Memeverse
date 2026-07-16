@@ -75,13 +75,13 @@ fee claim 需要单独区分两类能力：
 ### 2.2 Protocol fee
 
 - Protocol fee 币种选择规则（V4：输入侧优先、支持列表、`CurrencyNotSupported` 回退）见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
-- `treasury` 必须只是收款方，不应在收款回调里继续发起交易。
-- 返佣（referral rebate）切流：普通 swap 若 `hookData` 前 20 字节 packed 携带非零 referrer，protocol fee 收取点（`MemeverseUniswapHook::_collectProtocolFee`）先计算 `rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`，再 split：
+- owner 只应批准标准 fee currency；`treasury` 必须是被动收款方，不在收款期间发起协议操作。
+- 返佣（referral rebate）切流：普通 swap 若 `hookData` 前 20 字节 packed 携带非零 referrer，protocol fee 收取路径（主体 SwapFacet 的 `_collectProtocolFee`，经 Router entry `delegatecall` 到 SwapFacet 执行；rebate 公式提取为 `_computeRebate`，记账 + treasury take + emit 提取为 `_settleProtocolFee`；beforeSwap 主路径不经 `_collectProtocolFee`，改走 `_computeRebate` + `_settleProtocolFee` + 合并 take）先计算 `rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`，再 split：
   - `toTreasury = protocolFee - rebate` 经 `_takeToTreasury` 到 treasury；
-  - `rebate` 由 hook `poolManager.take(feeCurrency, address(engine), rebate)` 拉到 engine 地址（v4 `PoolManager.take` delta 记调用者 hook，被 beforeSwap specifiedDelta credit 抵消，token 进 engine custody），再调 `MemeverseDynamicFeeEngine::accrueRebate` 纯记账累加 `pendingRebate[referrer][currency]`（无 PoolManager 调用）。
-- rebate custody 在 engine（与 LP fee 在 hook 隔离）；rebate currency 与该 swap 的 protocol fee currency 一致，in-kind，不进入 treasury、不经过下游 uAsset / POLend 转换。
-- rebate 为 pull 模式：swap 时只记账 + take，referrer 须主动调 `MemeverseDynamicFeeEngine::claimRebate(currency, recipient)` 领取（engine 独立可调，不经 hook）。
-- `ProtocolFeeCollected.amount`（on hook）现是 treasury 实收（`toTreasury`），带 referrer 时 `< protocolFee`，差额在 engine 上的 `ReferralRebateAccrued` 事件；索引器统计 protocol 总收入须同时读 hook 的 `ProtocolFeeCollected` 与 engine 的 `ReferralRebateAccrued`。
+  - `_settleProtocolFee` 先内联累加 Router storage 的 `pendingRebate[referrer][currency]` 并 emit `ReferralRebateAccrued`（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 转出 `toTreasury`（interaction），最后 emit `ProtocolFeeCollected`；这段记账本身是纯 storage effect，无 facet→facet delegatecall 或 PoolManager 调用。ledger effect 先于 treasury take 与调用方的 rebate take，helper 现为严格 CEI（effect → interaction → event）：treasury take 不触发 v4 hook callback，ERC20 currency 仍会执行外部 `transfer` token 代码。beforeSwap 主路径将 rebate 与 LP fee 合并 take，afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立 take rebate。任一步骤失败都会回滚整笔 swap。
+- rebate custody 在 hook proxy（与 LP fee 同地址，但 `pendingRebate` 账本与 LP per-share accounting 分离）；rebate currency 与该 swap 的 protocol fee currency 一致，in-kind，不进入 treasury、不经过下游 uAsset / POLend 转换。
+- rebate 为 pull 模式：swap 时只记账 + take，referrer 须主动调 `MemeverseUniswapHook::claimRebate(currency, recipient)` 领取（入口在 hook，Router 直接实现；从 hook custody 将 caller/referrer 名下的 rebate 转给 `recipient`——任意非零 payout destination，不必等于 referrer；仅 self-claim，不支持第三方代领 / 签名 claim）。
+- `ProtocolFeeCollected.amount`（on hook）始终是 treasury 实收（`toTreasury = protocolFee - rebate`）。仅当 `rebate > 0` 时 `toTreasury < protocolFee`，差额见 hook 上 emit 的 `ReferralRebateAccrued`；`rebate` 在 `referrerRebateBps == 0` 或小额 `mulDiv` 向下取整为 0 时可为 0，此时 `toTreasury == protocolFee` 且不 emit rebate 事件。索引器统计 protocol 总收入须按 `ProtocolFeeCollected.amount +（若存在）ReferralRebateAccrued.amount` 求和，不要仅凭「是否带 referrer」推断国库金额。
 - 无 referrer（`hookData` 空或前 20 字节为零）时不切 rebate，treasury 收全额 protocol fee。
 - preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，不参与返佣；其 `ProtocolFeeCollected.amount` 仍是完整 protocol fee。
 
@@ -90,7 +90,7 @@ fee claim 需要单独区分两类能力：
 正确理解是：
 
 - `LP fee`：输入侧
-- `Protocol fee`：由支持列表决定，输入侧优先；有 referrer 时再切 rebate 到 engine custody
+- `Protocol fee`：由支持列表决定，输入侧优先；有 referrer 时再切 rebate 到 hook proxy custody
 
 ### 2.4 启动期收费语义
 
@@ -129,7 +129,7 @@ function swap(
 - `amountInMaximum`：
   - exact-input 时可传 `0`
   - exact-output 时必须传
-- `hookData`：透传给 hook 的额外数据；普通集成路径通常可传空，当前公开 Router 不再为 preorder settlement 保留专用 marker。若要携带 referrer 以触发返佣，caller 必须用 `abi.encodePacked(referrer)` 把 referrer 地址 packed 放入前 20 字节（`abi.encode` 会左 padding 导致 `MemeverseUniswapHook::_decodeReferrer` 误读，禁止使用）；长度 < 20 字节或前 20 字节为全零视为无 referrer，protocol fee 不切 rebate
+- `hookData`：公开 Router 只把前 20 字节解释为 referrer 数据；普通集成路径可传空。若要触发返佣，caller 必须用 `abi.encodePacked(referrer)` 把 referrer 地址 packed 放入前 20 字节（`abi.encode` 会左 padding 导致 `SwapFacet::_decodeReferrer` 误读，禁止使用）；长度 < 20 字节或前 20 字节为全零视为无 referrer，protocol fee 不切 rebate。preorder settlement 使用 `Launcher -> Hook.executePreorderSettlement(...) -> SettlementFacet` 的 typed Router 路径，不通过公开 swap `hookData`
 
 返回值含义：
 
@@ -147,6 +147,8 @@ function quoteSwap(PoolKey calldata key, SwapParams calldata params, address tra
     view
     returns (SwapQuote memory quote);
 ```
+
+`quoteSwap` 是公开的只读入口，前端、SDK、链上 Router 与聚合器可按普通 `view` 函数直接调用，无需手动构造 `staticcall`。Lens 会在内部以 `STATICCALL` 进入 non-view Hook bridge，再由 Hook 路由到报价 facet；函数 selector 与返回结构不变。
 
 当前推荐把 Router 视为普通用户路由的统一公开入口；公开入口包含可执行用户路由与只读 helper：
 
@@ -238,7 +240,7 @@ Permit2 入口是并行路径，不替代现有 approve 路径。集成时应注
 ## 5. Preorder Settlement 集成注意事项
 
 - 这是启动结算专用通道，不是普通用户交易接口。
-- 当前路径是 `MemeverseLauncher` 直接调用 `MemeverseUniswapHook.executePreorderSettlement(...)`。
+- `MemeverseLauncher` 直接调用 `MemeverseUniswapHook.executePreorderSettlement(...)`，Hook Router delegatecall `SettlementFacet` 并使用 typed settlement unlock callback。
 - Hook 侧 caller 约束（`msg.sender == launcher`）见 [docs/spec/invariants.md](../invariants.md) INV-04（权限视角见 [docs/spec/access-control.md §5](../access-control.md)）。
 - 该路径使用固定总费率（数值定义见 [docs/spec/verse/accounting.md §7.4](../verse/accounting.md)）。
 - `MemeverseLauncher` 接入 Router 时的 set-time 三重校验与 `Genesis -> Locked` launch-time preflight 见 [docs/spec/invariants.md](../invariants.md) INV-04（权限视角见 [docs/spec/access-control.md](../access-control.md) §5）。
@@ -247,11 +249,11 @@ Permit2 入口是并行路径，不替代现有 approve 路径。集成时应注
 
 Preorder settlement 的资金流分三步：
 
-1. **Hook 从 Launcher 拉取 input 费用**：LP fee → hook 自身（记账后分给 LP），protocol fee → treasury。Hook 通过 `transferFrom(launcher, ...)` 拉取。
-2. **Hook 从 Launcher 拉取 netInput 给 Executor**：`transferFrom(launcher, executor, netInputAmount)`。Executor 是 hook constructor 时 immutable 绑定的无状态合约，只有 hook 能调用。
-3. **Executor 用自身余额 settle 给 PoolManager**：`CurrencySettler.settle` 中 `payer == address(this)` 走 `transfer` 分支，不需要 approve。
+1. **Hook 从 Launcher 收取 input 费用**：LP fee 经 `_accrueLpFee` 记入 per-share 累计（纯记账，token 拉款合并到第 2 步），protocol fee 经 `transferFrom` 直接转给 treasury。
+2. **Hook 从 Launcher 拉取 netInput 与 LP fee 到 hook proxy custody**：一次 `transferFrom(launcher, address(this), netInputAmount + lpFeeInputAmount)`（同源同收款人合并，省一次 ERC20 transferFrom）。Settlement logic 经 Router entry `delegatecall` SettlementFacet 执行（SettlementFacet 持有 unlock 回调上下文，负责 swap、settle、take 与 output-side protocol fee 扣减）。
+3. **Hook proxy 余额 settle 给 PoolManager**：`CurrencySettler.settle` 中 `payer == address(this)`（delegatecall 下即 hook proxy）走 `transfer` 分支，不需要 approve。
 
-Launcher 只需对 **Hook 地址**做一次 infinite approve（`_safeApproveInf(uAsset, hookAddress)`）。所有 `transferFrom` 的 spender 都是 hook，to 可以是 hook 自身、treasury 或 executor，不需要额外 approve executor 或 PoolManager。
+Launcher 只需对 **Hook 地址**做一次 infinite approve（`_safeApproveInf(uAsset, hookAddress)`）。所有 `transferFrom` 的 spender 都是 hook，to 可以是 hook 自身或 treasury，不需要额外 approve PoolManager。
 
 普通集成方不应自行构造这条路径。
 
@@ -259,12 +261,13 @@ Launcher 只需对 **Hook 地址**做一次 infinite approve（`_safeApproveInf(
 
 ## 6. Hook Core 的定位
 
-Hook 仍保留：
+Hook 仍保留（LP 与池操作低层入口）：
 
-- `quoteSwap(...)`
 - `addLiquidityCore(...)`
 - `removeLiquidityCore(...)`
 - `claimFeesCore(...)`
+
+报价（quote）不在 Hook Core：普通集成方走 `MemeverseSwapRouter.quoteSwap`，链上自定义 Router / 聚合器走 `MemeverseUniswapHookLens.quoteSwap`（两个公开入口均为 `view`；Lens 内部以 `STATICCALL` 进入 Hook 的 `quoteSwapFeeWithContext`，Hook 再 `DELEGATECALL` 到 `DynamicFeeFacet.quote`，详见 [docs/ARCHITECTURE.md](../../ARCHITECTURE.md) 费率报价表）。Hook 没有名为 `quoteSwap` 的 selector。
 
 这些低层接口主要面向：
 
@@ -284,7 +287,7 @@ Hook 仍保留：
 把当前 Memeverse Swap 理解成：
 
 - `Router`：统一公开入口、预算与退款管理层
-- `Hook`：动态费、启动期费率、LP 记账、协议收费引擎，以及显式 preorder settlement 执行面
-- `preorder settlement`：`Launcher -> Hook` 的受限专用结算通道
+- `Hook`（diamond Router）：admin/view/liquidity 入口直接实现，callback / 动态费计算 / 协议收费分账 / LP 记账 / preorder settlement 经 Router entry `delegatecall` 分发到 SwapFacet / DynamicFeeFacet / SettlementFacet（三 facet 共享 Router storage，对外 ABI 统一在 hook 地址）
+- `preorder settlement`：`Launcher -> Hook` 的受限专用结算通道（SettlementFacet 执行 unlock/swap/settle/take）
 
-其中普通交易、启动期费率、LP 记账和结算专用通道都在同一套 Router + Hook 语义下协同完成。
+其中普通交易、启动期费率、LP 记账和结算专用通道都在同一套 Router + Hook（diamond）语义下协同完成。

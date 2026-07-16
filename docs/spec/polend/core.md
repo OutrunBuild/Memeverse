@@ -196,31 +196,31 @@ enum MarketState {
 用户级杠杆利息按来源分两栏存储：
 
 ```solidity
-mapping(uint256 verseId => mapping(address user => uint256)) leveragedInterestPaid;    // 真付 uAsset 利息（正常 leveragedGenesis 路径，字段名复用旧名承载 real 部分）
+mapping(uint256 verseId => mapping(address user => uint256)) leveragedInterestPaid;    // leveragedGenesis 路径真付的 uAsset 利息
 mapping(uint256 verseId => mapping(address user => uint256)) creditInterestPaid;  // GenesisCredit 抵扣利息（leveragedGenesisWithCredit 路径）
 ```
 
 real 与 credit 两栏独立累加，不互相扣减；同一用户对同一 verse 可同时累积两栏。
 
-market 级新增：
+market 级累计字段：
 
 ```solidity
 uint256 totalCreditInterest;  // 该 verse 累计的 credit 利息（creditInterestPaid 在 market 维度的合计）
 ```
 
-`market.totalLeveragedInterest` 保留为 real + credit 合计存储；real 部分用差值推导：
+`market.totalLeveragedInterest` 存储 real + credit 合计；real 部分用差值推导：
 
 ```text
 realInterest = market.totalLeveragedInterest - market.totalCreditInterest
 ```
 
-`totalCreditInterest` / `totalLeveragedInterest` 都是只增累计量，refund 路径不扣减（与原 `leveragedInterestPaid` / `totalLeveragedInterest` 的 refund 语义一致，用 `refundClaimed` 防重复）。这不会引发 burn 错误：`markRefundable` 与 `finalizeLeveragedGenesis` 都 `require market.state == Genesis` 并分别迁移到 `Refund` / `Locked` 终态（状态机互斥），同一 verse 的 refund 与 finalize 不会都发生，故 `totalCreditInterest` 在 finalize 时刻仍精确等于该 verse 未退走的 GenesisCredit 托管量。
+`totalCreditInterest` / `totalLeveragedInterest` 都是只增累计量，refund 路径不扣减，并用 `refundClaimed` 防重复。`markRefundable` 与 `finalizeLeveragedGenesis` 都 `require market.state == Genesis` 并分别迁移到 `Refund` / `Locked` 终态（状态机互斥），同一 verse 的 refund 与 finalize 不会都发生，故 `totalCreditInterest` 在 finalize 时刻仍精确等于该 verse 未退走的 GenesisCredit 托管量。
 
-兼容性：存储字段保留旧名 `leveragedInterestPaid` 承载 real 部分（与 `creditInterestPaid` 分栏）；对外 view `leveragedInterestPaid(verseId, user)` 返回 real+credit 合计，与 `getUserLeveragedDebt` 合计口径一致；存储层拆栏，view 层仍合计。real 部分用 `totalLeveragedInterest - totalCreditInterest` 差值推导仅在 finalize treasury 清扫时用。
+`leveragedInterestPaid` 存储 real 部分，与 `creditInterestPaid` 分栏；对外 view `leveragedInterestPaid(verseId, user)` 返回 real+credit 合计，与 `getUserLeveragedDebt` 合计口径一致。real 部分用 `totalLeveragedInterest - totalCreditInterest` 差值推导仅在 finalize treasury 清扫时用。
 
 per-verse `totalCreditInterest` 必须独立记账的原因：POLend 对某 uAsset 的 GenesisCredit 托管余额是该 uAsset 所有 verse 的 credit 利息合计（混池），finalize verse X 时 burn 的量必须精确等于 verse X 的 `totalCreditInterest`，不能动 verse Y 的份额。
 
-不保存 `borrowedAmount`，不需要 `LeveragedPosition` 结构体。用户可多次参与杠杆创世，两栏各自持续累加。
+用户杠杆位置由两栏累计利息推导；用户可多次参与杠杆创世，两栏各自持续累加。
 
 ### 6.4 残值状态
 
@@ -463,7 +463,7 @@ GenesisCreditFactory 侧（owner-only 部署）：
 
 `SettlementDustReserveExceeded(uint256 amount, uint256 capacity)`：`fundSettlementDustReserve(address,uint256)` 的非 `Launcher` 调用者在 transfer 前请求金额超过剩余 capacity。
 
-`SettlementDustInsufficient(uint256 deficit, uint256 availableReserve)`：`executeGlobalSettlement` 中 `recoveredUAsset < verseDebt`，且实际缺口超过当前 `uAsset` 全局 reserve 余额。该错误表示缺口不再被当前 reserve 规则接受为可补偿 dust。
+`SettlementDustInsufficient(uint256 deficit, uint256 availableReserve)`：`executeGlobalSettlement` 中 `recoveredUAsset < verseDebt`，且实际缺口超过当前 `uAsset` 全局 reserve 余额。该缺口超出可补偿 dust 边界，结算必须 revert。
 
 统一使用 `InvalidClaim` 覆盖无份额或重复领取：
 

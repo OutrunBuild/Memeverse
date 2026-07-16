@@ -9,7 +9,7 @@
 
 ### 2.1 普通 Genesis
 
-- 普通创世不再使用旧 `75/25`、`GenesisFund`、`totalMemecoinFunds/totalPolFunds` 拆账模型。
+- 普通创世使用 `totalNormalFunds` 与 `userGenesisFund` 聚合账本。
 - `genesis(verseId, amount, user)` 只接受该 verse 的 `uAsset`，累加：
   - `totalNormalFunds += amount`
   - `userGenesisFund += amount`
@@ -36,13 +36,13 @@
 ### 2.4 公开预览接口
 
 - `previewPreorderCapacity(uint256 verseId) returns (uint256 remaining)` 是 view/preview 口径，不产生状态迁移。
-- ABI 前置条件：未注册/无效 `verseId` revert `InvalidVerseId`；`previewPreorderCapacity` 不再使用 `ZeroInput` 作为错误语义。
+- ABI 前置条件：未注册或无效 `verseId` revert `InvalidVerseId`。
 - 计算口径：
   - `base = totalNormalFunds + totalLeveragedDebt`
   - `cap = base * 70% * preorderCapRatio / RATIO`
   - `remaining = max(cap - preorderState.totalFunds, 0)`
 - `totalLeveragedDebt` 来自 `POLend`。
-- `previewGenesisMakerFees(uint256 verseId) returns (uint256 uAssetFee,uint256 memecoinFee)` 预览可分发 genesis maker fee。该函数与 `quoteDistributionLzFee`（见 §5.4）现由独立 view 合约 `MemeverseFeePreviewReader` 暴露，调用地址取 `getLauncherContracts().feePreviewReader`（见 [operations.md §3.3](../../operations.md)）；`previewPreorderCapacity` 仍在 Launcher 上。
+- `previewGenesisMakerFees(uint256 verseId) returns (uint256 uAssetFee,uint256 memecoinFee)` 预览可分发 genesis maker fee。该函数与 `quoteDistributionLzFee`（见 §5.4）由独立 view 合约 `MemeverseFeePreviewReader` 暴露，调用地址取 `getLauncherContracts().feePreviewReader`（见 [operations.md §3.3](../../operations.md)）；`previewPreorderCapacity` 由 Launcher 暴露。
 - ABI 前置条件：校验 `verseId` 有效，且 verse stage 必须 `>= Locked`；无效 verse 或阶段不满足时按当前实现错误 revert。
 - 该预览聚合主池 `memecoin/uAsset` claimable fees 与辅助池 gov-fee pools：`uAsset` 侧走 DAO/governor 路径，`memecoin` 侧走 yield vault 路径。
 
@@ -108,13 +108,13 @@
 - 该路径还负责分发 bootstrap residual 的 normal share：`normalResidualPOL` 与 `normalResidualPT` 按同一 `userGenesisFund / totalNormalFunds` 比例分给普通用户。
 - 若存在杠杆债务，`Locked -> Unlocked` 的同一笔交易内先执行 POLend 全局结算并切走杠杆份额 LP；普通用户只能领取结算后剩余的普通份额。
 - 杠杆残值由 `POLend` 记录并按 `userInterestPaid / totalLeveragedInterest` 领取；残值不属于 `POLSplitter` 的 PT/YT 兑付池。
-- 旧 `claimable POL` / `redeemPolLiquidity` 两池语义不再作为当前规则。
+- 当前退出路径由 `redeemMemecoinLiquidity`、`redeemAuxiliaryLiquidity` 与 `POLend.claimResidual` 分别承载主池、普通辅助池和杠杆残值权益。
 
 ## 5. Fee 记账与分发
 
 ### 5.1 主池 fee
 
-- `memecoin/uAsset` 主池 fee 沿用 Memeverse 原规则：
+- `memecoin/uAsset` 主池 fee 按以下规则分流：
   - `uAsset` fee 走 Memeverse DAO governor 路径。
   - `memecoin` fee 给 `yieldVault`。
 
@@ -135,7 +135,7 @@
 - `Unlocked` 后新产生的辅助池非 `POL` fee 全部归 Memeverse DAO governor，普通用户仍可补领历史 `Locked` 阶段普通侧 fee。
 - 普通侧 PT fee 领取分两条路径：
   - `settled=false`：直接把按份额应得的 `PT` 转给用户，并把该部分 `claimedPTFee` 标记为已领。
-  - `settled=true`：不再转 `PT`，而是先看 `previewPTToUAsset(verseId, ptAmount)`；只有 backing 非零时才调用 `redeemPT` 把对应 `uAsset` 发给用户并标记该部分 `claimedPTFee`。若 backing 为零，则该笔 PT entitlement 保持未领取状态，允许后续重试；同次 `uAsset` fee 领取不受影响。
+  - `settled=true`：先看 `previewPTToUAsset(verseId, ptAmount)`；只有 backing 非零时才调用 `redeemPT` 把对应 `uAsset` 发给用户并标记该部分 `claimedPTFee`。若 backing 为零，则该笔 PT entitlement 保持未领取状态，允许后续重试；同次 `uAsset` fee 领取不受影响。
 - governor 路径的 PT fee 也有同样的 zero-backing 保留语义：`pending auxiliary gov PT fee` 或本次 preview 出来的 gov PT fee 在 `previewPTToUAsset(...) == 0` 时不得视为已处理，而是留在 pending 状态等待后续可兑付时再转换。
 - PT fee 的预兑付、settle 后 redeem、pending auxiliary gov fee 规则以 [docs/spec/polend/settlement-and-fees.md](../polend/settlement-and-fees.md) 为准。
 
@@ -210,27 +210,28 @@ accounting.md 只保留对 Launcher 侧记账入口的引用：launcher 把 fee/
 ### 7.3 Launch Fee 的分配对象
 
 - Launch fee 本身不产生独立分配；它是 effective fee 的一部分，参与与常规 swap fee 相同的拆分：
-  - **LP 分配**：`lpFeeBps = effectiveFeeBps - protocolFeeBps`（即 `effectiveFeeBps * 6500 / 10000`，对应 `FeeMath.PROTOCOL_FEE_SHARE_BPS = 3500` 的 LP/protocol = 65/35 拆分）
-  - **Protocol 分配**：`protocolFeeBps = effectiveFeeBps * 3500 / 10000`
+  - **LP 分配**：`lpFeeBps = effectiveFeeBps - protocolFeeBps`（用减法实现，吸收 protocol 向下舍入的取整 dust，保证 `lpFeeBps + protocolFeeBps == effectiveFeeBps`；对应 LP/protocol 名义 65/35）
+  - **Protocol 分配**：`protocolFeeBps = floor(effectiveFeeBps * 3500 / 10000)`（`FeeMath.protocolFeeBps`，内部 `FullMath.mulDiv` 向下取整）
 - LP fee 按 per-share 累加到 `fee0PerShare / fee1PerShare`，LP 持有人通过 `claimFeesCore` 领取。
 - Protocol fee 发送到 `treasury` 地址。
 
 ### 7.4 Preorder Settlement 的固定费率
 
-- Preorder settlement swap 使用独立路径 `executePreorderSettlement`，不经过 `beforeSwap/afterSwap` 回调。
+- Preorder settlement swap 经独立入口 `executePreorderSettlement` 发起；SettlementFacet 使用显式 typed unlock payload，由 hook proxy 自己调用 PoolManager。真实 v4 对 hook self-call 同时跳过 `beforeSwap` / `afterSwap`，因此固定费率与全部 settlement fee 记账由 settlement 入口和 typed callback 自处理（见 [INV-04A](../invariants.md)）。typed payload/self-call 接线已实现。`[代码已证]`
 - 固定费率 `PREORDER_SETTLEMENT_FEE_BPS = 100`（1%），不使用动态费也不使用衰减曲线。
 - 分配同样遵循 65/35 拆分（与普通 swap 一致，LP/protocol = `FeeMath.PROTOCOL_FEE_SHARE_BPS` 对应比例）：
   - `lpFeeBps = 65`（0.65%）
   - `protocolFeeBps = 35`（0.35%）
 - 输入侧费用在 settlement 入口直接收取：
-  - LP fee 部分：从 `payer` pull ERC20 到 hook，按 per-share 计入 LP 分配；若 `cachedLpTotalSupply == 0`（有效 LP 供应量为零，无 LP 可接收分配）则整笔回退 `NoActiveLiquidityShares`，LP fee 与 protocol fee 均不收取、整笔 settlement 失败（fail-closed，避免费用滞留 hook）。settlement 入口 `_revertIfNoActiveLiquidityShares` 另在「缓存为 0 但 pool liquidity > 0」的不一致状态提前 revert 同一错误。详见 `uniswap-v4.md` §5。
+  - LP fee 部分：从 `payer` pull ERC20 到 hook，按 per-share 计入 LP 分配；若 `effectiveSupply == 0`（有效 LP 供应量为零，无 LP 可接收分配）则整笔回退、LP fee 与 protocol fee 均不收取、整笔 settlement 失败（fail-closed，避免费用滞留 hook）。fail-closed 经两个守卫落地：`lpFeeInputAmount > 0` 时入口 revert `NoActiveLiquidityShares`；gross 极小使 LP fee 下取整为 0 的角例，由零流动性 swap 返回的 delta=0 触发函数末尾 `ExactInputPartialFill` revert——两者均整笔回退、无费用收取代入。settlement 入口调用的 `_activeLpSupplyForSettlement` 另在「缓存为 0 但 pool liquidity > 0」的不一致状态提前 revert 同一错误。详见 `uniswap-v4.md` §5。
   - Protocol fee 部分：从 `payer` pull ERC20 直接到 `treasury`。
-- 输出侧 protocol fee（当 `!protocolFeeOnInput` 时）在 settlement callback 中从 pool output 扣取后发送到 `treasury`。
+- 输出侧 protocol fee（当 `!protocolFeeOnInput` 时）在 settlement callback 中从 pool output 扣取后发送到 `treasury`；当 `feeOnAmount` 向下取整令 `protocolFeeOutputAmount == 0`（小额 output 下可发生）时跳过该次 `take`，与 `SwapFacet._takeToTreasury` 的零额守卫一致，避免对零额 transfer 返回 false 的 ERC20（非 FoT/rebasing 类，与 uniswap-v4.md §3 排除的余额漂移 token 不同）误 revert。
 
 ### 7.5 配置管理
 
 - `setDefaultLaunchFeeConfig`：owner 可更新全局默认配置。
   - 校验：`startFeeBps / minFeeBps / decayDurationSeconds` 均不能为零。
   - 校验：`startFeeBps <= 10000`，`minFeeBps <= 10000`，`minFeeBps <= startFeeBps`。
-- 更新后对新池立即生效（已创建的池使用创建时的 `poolLaunchTimestamp`，不受配置变更影响）。
+- 全局配置对所有池实时生效：每次 swap 读取当前 `defaultLaunchFeeConfig`，已创建的池不持有配置快照。`startFeeBps` 仅影响仍处于衰减窗口内的池；`minFeeBps` 影响所有池（含已度过窗口的池，其 floor 费率随之变化）。
+- 每个池独立保存且冻结的唯一值是创建时（`beforeInitialize`）写入的 `poolLaunchTimestamp`，它只决定该池在衰减曲线上的位置（elapsed），不锁定曲线参数。
 - 变更通过 `DefaultLaunchFeeConfigUpdated` 事件链上可审计。

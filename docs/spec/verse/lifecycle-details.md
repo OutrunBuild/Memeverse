@@ -60,7 +60,7 @@ MemeverseV2 的主路径可以概括为：
 
 ### 4.2 资金模型
 
-普通 Genesis 入金不再逐笔拆成 memecoin 侧与 POL 侧资金，而是按 POLend 模型累计：
+普通 Genesis 入金按 POLend 聚合账本累计：
 
 - `totalNormalFunds`
 - `userGenesisFund`
@@ -78,7 +78,7 @@ POL raw、PT raw、YT raw 与主池 LP raw 保持 1:1 raw-unit identity；PT 兑
 
 ### 4.3 preorder 语义
 
-`preorder` 是 V2 新增能力：
+`preorder` 使用独立资金账本：
 
 - 只在 `Genesis` 期开放
 - 单独以 `uAsset` 记账
@@ -129,13 +129,12 @@ POL raw、PT raw、YT raw 与主池 LP raw 保持 1:1 raw-unit identity；PT 兑
 协议可以：
 
 - 从 `memecoin/uAsset` 主池与三个辅助池捕获 fee
-- 主池 `memecoin/uAsset` fee 沿用 Memeverse 分流：`memecoin` fee 进入 yield 路径，`uAsset` fee 拆成 `executorReward + govFee` 后进入执行者奖励与 governor treasury 路径
+- 主池 `memecoin/uAsset` fee 按 Memeverse 规则分流：`memecoin` fee 进入 yield 路径，`uAsset` fee 拆成 `executorReward + govFee` 后进入执行者奖励与 governor treasury 路径
 - 辅助池 `POL/uAsset`、`PT/uAsset`、`PT/POL` fee 按 POLend 四池规则拆分：POL fee burn，普通侧 fee 进入普通领取账本，杠杆侧 `uAsset` fee 分发到 governor treasury 路径，杠杆侧 `PT` fee 在 settle 前走 `preRedeemPTFee`，settle 后走 `redeemPT`
 - 普通用户领取历史辅助池 normal fee 时，`claimNormalFees` 使用 full-precision `mulDiv` 计算 entitlement，避免 `accUAssetFee` 或 `accPTFee` 较大时因中间乘法溢出导致可表示账本无法领取。
 - 普通 PT fee 在 `settled=false` 时直接按份额转出 `PT`；在 `settled=true` 时改为按 `previewPTToUAsset` 确认 backing 后走 `redeemPT -> uAsset`。若该 backing 为零，则本次不标记为已领，留待后续重试。
 
-`Locked` 后 `mintPOLToken` 不再做运行时 `InvalidPOLBacking` 式 strict equality 检查。
-新规则是：启动时记录好的固定 PT backing ratio 仍然是 PT/YT 经济真源；`mintPOLToken` 继续走 exact-liquidity minting，若报价后的实际执行无法 mint 出请求的 LP/POL 数量，则 mint 失败并整体回退。协议不接受通过额外 backing 改写该经济关系。
+`Locked` 后 `mintPOLToken` 使用 exact-liquidity minting，启动时记录的固定 PT backing ratio 是 PT/YT 经济真源；若报价后的实际执行无法 mint 出请求的 LP/POL 数量，则 mint 失败并整体回退。额外 backing 不得改写该经济关系。
 
 ### 6.3 启动期保护
 
@@ -195,15 +194,14 @@ V2 当前已实现的启动保护是：
 - 绕过公开入口的等价 swap 路径
 - 任何会改变后续赎回价值基准的公开市场行为
 
-### 7.4 当前实现状态
-
-当前实现已经落地该窗口语义，但方式不是新增阶段：
+### 7.4 公开 swap 保护状态
 
 - verse 需先到达 `unlockTime`，然后在实际 `changeStage()` 调用里进入 `Unlocked`
 - launcher 在 settlement 调用完成后，按 `block.timestamp + UNLOCK_PROTECTION_WINDOW` 为受保护池写入 `publicSwapResumeTime`（窗口数值与配置面见 [docs/spec/verse/config-matrix.md §3](config-matrix.md)；结算顺序与保护窗口的不变量见 [docs/spec/invariants.md](../invariants.md) INV-07A 与 INV-12）
 - hook 在 `beforeSwap` 中读取该 pool-level 时间；未到期时继续拒绝受保护 pair 的公开 swap
+- `UNLOCK_PROTECTION_WINDOW` 是固定产品常量，owner 无配置入口
 
-因此当前实现采用的是“阶段直接进入 `Unlocked`，但公开 swap 恢复时间锚定实际迁移调用”的实现方式。
+公开 swap 恢复时间锚定实际 `Locked -> Unlocked` 迁移调用，赎回开放与公开 swap 恢复分别由 stage 和 pool-level 时间控制。
 
 ## 8. 真正完全解锁的市场状态
 
@@ -245,18 +243,16 @@ V2 当前已实现的启动保护是：
 - `Locked` 期主池与辅助池 fee 会按 POLend 四池规则拆成 burn、执行者奖励、governor treasury 收入、普通 fee 与 yield 收入。
 - 实际 `Locked -> Unlocked` 迁移完成后，协议应优先保障 POL 与 Genesis LP 的退出，而不是立即恢复公开市场竞争。
 
-## 11. 当前实现与目标规则差异
+## 11. 当前生命周期规则
 
-当前已经实现：
+生命周期包含：
 
 - 注册 -> `Genesis` -> `Locked/Refund` 的主流程
 - preorder
 - launch 保护
 - `Locked` / `Unlocked` 的赎回路径
 
-当前需要注意的不是“缺少保护窗口”，而是：
-
-- 保护窗口没有独立生命周期阶段或专用事件，需要由 stage、解锁迁移交易时间与 swap 行为联合解释
+- 保护窗口由 stage、解锁迁移交易时间与 swap 行为联合表达；运维与索引器按这三个信号解释保护状态
 
 ## 12. 相关真源与证据
 

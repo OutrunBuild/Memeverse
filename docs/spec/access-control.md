@@ -18,7 +18,7 @@
 
 - `owner`
   - 主要是 OpenZeppelin `Ownable` 或 Outrun `OutrunOwnableInit` 的 `onlyOwner`。
-  - 证据：`src/verse/MemeverseLauncher.sol::setMemeverseSwapRouter`, `src/swap/MemeverseUniswapHook.sol::setPublicSwapResumeTime`, `src/interoperation/MemeverseOmnichainInteroperation.sol::setGasLimits`
+  - 证据：`src/verse/MemeverseLauncher.sol::setMemeverseSwapRouter`, `src/swap/MemeverseUniswapHook.sol::setTreasury`, `src/interoperation/MemeverseOmnichainInteroperation.sol::setGasLimits`
 - `registrar`
   - launcher 侧为 `memeverseRegistrar` 地址；注册中心与 local/omnichain registrar 构成上游链路。
   - 证据：`src/verse/MemeverseLauncher.sol::registerMemeverse`, `src/verse/registration/MemeverseRegistrarAtLocal.sol::localRegistration`
@@ -45,7 +45,7 @@
 | `MemeverseRegistrarAtLocal` | `localRegistration` 仅 center；`setRegistrationCenter` 仅 owner | `src/verse/registration/MemeverseRegistrarAtLocal.sol::localRegistration`, `::setRegistrationCenter` |
 | `MemeverseRegistrarOmnichain` | `setRegistrationGasLimit` 仅 owner | `src/verse/registration/MemeverseRegistrarOmnichain.sol::setRegistrationGasLimit` |
 | `MemeverseSwapRouter` | `quote/swap/addLiquidity/removeLiquidity` 等用户路由入口为 permissionless；`previewClaimableFees(...)` 仅为只读预览 helper；pool bootstrap `createPoolAndAddLiquidity(...)` 仅当前 launcher 可调用；不承载 launch-settlement 特权授权；launcher 配置时需校验其 `hook` 绑定 | `src/swap/MemeverseSwapRouter.sol::quoteSwap`, `::swap`, `::addLiquidity`, `::removeLiquidity`, `::previewClaimableFees`, `::createPoolAndAddLiquidity`, `onlyLauncher` (modifier) |
-| `MemeverseUniswapHook` | 核心 `addLiquidityCore/removeLiquidityCore/claimFeesCore` 对外开放；其中 `claimFeesCore` 虽可外部调用，但仅支持 self-claim：fee owner 由 `msg.sender` 推导，`recipient` 仅为 payout destination，不存在 owner 参数，也不支持 nonce / deadline / signature / 第三方 relayed claim；配置项 `onlyOwner`；`executePreorderSettlement(...)` 与 pair-based `setPublicSwapResumeTime(address,address,uint40)` 仅当前 launcher；`beforeSwap` 读取 pool-level resume time 执行公开 swap 保护 | `src/swap/MemeverseUniswapHook.sol::addLiquidityCore`, `::removeLiquidityCore`, `::claimFeesCore`, `::_claimFees`, `onlyOwner` (modifier), `onlyLauncher` (modifier), `::executePreorderSettlement`, `::setPublicSwapResumeTime`, `::_revertIfPublicSwapBlocked` |
+| `MemeverseUniswapHook` | 核心 `addLiquidityCore/removeLiquidityCore/claimFeesCore/claimRebate` 对外开放；其中 `claimFeesCore` 与 `claimRebate` 虽可外部调用，但仅支持 self-claim：owner 由 `msg.sender` 推导（LP fee owner 对应 `claimFeesCore`，referrer 对应 `claimRebate`），`recipient` 仅为 payout destination，不存在 owner 参数，也不支持 nonce / deadline / signature / 第三方 relayed claim；owner 配置与逻辑替换：`setTreasury` / `setLauncher` / `setPoolInitializer` / `setLpTokenImplementation` / `setProtocolFeeCurrency` / `setReferrerRebateBps` / `setDefaultLaunchFeeConfig` / `setFacet` 为 `onlyOwner`；`executePreorderSettlement(...)` 与 pair-based `setPublicSwapResumeTime(address,address,uint40)` 仅当前 launcher；三 facet（`SwapFacet` / `DynamicFeeFacet` / `SettlementFacet`）logic 入口不是产品对外 API；Hook 的支持路径经 `DELEGATECALL` 调度，直接 `CALL` 回退 `DirectFacetCallForbidden`（`onlyViaRouter`）。`onlyViaRouter` 只区分 direct `CALL` 与 `delegatecall`，不认证 delegatecall 宿主一定是本 Hook；`beforeSwap` 读取 pool-level resume time 执行公开 swap 保护 | `src/swap/MemeverseUniswapHook.sol::addLiquidityCore`, `::removeLiquidityCore`, `::claimFeesCore`, `::claimRebate`, `::_claimFees`, `::setTreasury`, `::setFacet`, `onlyOwner` (modifier), `onlyLauncher` (modifier), `::executePreorderSettlement`, `::setPublicSwapResumeTime`, `src/swap/FacetGuard.sol::onlyViaRouter`, `src/swap/SwapFacet.sol::beforeSwapLogic`, `src/swap/SwapFacet.sol::_revertIfPublicSwapBlocked` |
 | `Memecoin` | `mint` 仅 launcher；`burn` 自主 | `src/token/Memecoin.sol::mint`, `::burn` |
 | `MemePol` | `setPoolId` 与 `mint` 仅 launcher；`burn` 为持币人或 allowance 授权方 | `src/token/MemePol.sol::setPoolId`, `::mint`, `::burn`, `onlyMemeverseLauncher` (modifier) |
 | `MemecoinYieldVault` | `accumulateYields` / `deposit` / `requestRedeem` / `executeRedeem` 为 permissionless 业务入口（非 owner 门禁） | `src/yield/MemecoinYieldVault.sol::accumulateYields`, `::deposit`, `::requestRedeem`, `::executeRedeem` |
@@ -78,6 +78,7 @@
 - Swap 的“Router 公开入口 + Hook 核心引擎 + 显式 `Launcher -> Hook` preorder settlement 路径”与 [docs/spec/protocol.md](protocol.md)、[docs/spec/verse/state-machines.md](verse/state-machines.md) 一致。
 - Router / Hook / Launcher 绑定的三重校验与 write-once 语义见 [docs/spec/invariants.md](invariants.md) INV-04（启动结算显式路径与三重校验不变量）；hook owner 后续 retarget `launcher` 仍属于同一 trust boundary 内的接受配置权。
 - 注册中心和 registrar 的边界与 [docs/spec/verse/state-machines.md](verse/state-machines.md) 一致。
+- diamond 后 Hook owner 的 facet 逻辑替换（`setFacet`）与 facet 防直调（`onlyViaRouter`）见本节矩阵；升级机制细节见 [docs/spec/upgradeability.md](upgradeability.md)。
 
 ## 6. 确定性边界
 

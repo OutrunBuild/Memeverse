@@ -74,18 +74,24 @@
 
 | 事件 | 触发模块 | 触发时机 | 用途 |
 | --- | --- | --- | --- |
-| `PoolInitialized` | `MemeverseUniswapHook` | 池初始化 | poolId 与 LP token 建档 |
-| `LiquidityAdded` / `LiquidityRemoved` | `MemeverseUniswapHook` | Core 加减池 | LP 头寸变动 |
-| `LPFeeCollected` / `ProtocolFeeCollected` | `MemeverseUniswapHook` | fee 归集时 | 手续费归属跟踪 |
-| `FeesClaimed` | `MemeverseUniswapHook` | LP 提取收益时 | 已领取 fee 对账 |
-| `PublicSwapResumeTimeUpdated` | `MemeverseUniswapHook` | pool-level 公开 swap 恢复时间更新 | unlock 后公开 swap 保护窗口可观测性 |
-| `ReferralRebateAccrued(address indexed referrer,address currency,uint256 amount)` | `MemeverseDynamicFeeEngine` | 普通 swap 携带非零 referrer 且 `amount > 0` 时，hook 先在 `_collectProtocolFee` 内 `poolManager.take` 把 rebate 拉到 engine 地址，`accrueRebate` 纯记账（`pendingRebate[referrer][currency] += amount`）后 emit（`referrer == address(0)` 或 `amount == 0` 时 no-op：hook 不 take、`accrueRebate` 不记账 / 不 emit） | 返佣累计；索引器统计 protocol 总收入须同时读 hook 的 `ProtocolFeeCollected`（treasury 实收 `toTreasury`）与 engine 的 `ReferralRebateAccrued`，二者之和等于该 swap 的完整 protocolFee。**indexed**：`referrer` indexed，可按 referrer 直接 filter；`currency` 未 indexed，按 currency（per-token 统计）对账须扫全表聚合 distinct currency |
-| `ReferralRebateClaimed(address indexed referrer,address indexed recipient,address currency,uint256 amount)` | `MemeverseDynamicFeeEngine` | referrer 调 `claimRebate` 领取 accrued rebate 并 transfer 成功后 | 返佣领取流水；`pendingRebate` 清零先于 external transfer（CEI）。**indexed**：`referrer` 与 `recipient` 均可按地址直接 filter；`currency` 未 indexed，per-token 对账须扫全表聚合 |
-| `ReferrerRebateBpsUpdated(oldBps,newBps)` | `MemeverseDynamicFeeEngine` | `setReferrerRebateBps` 成功后（owner 经 hook wrapper 转发） | 全局返佣率变更审计；engine `initialize` 时以 `(0, 1000)` 触发一次 |
+| `PoolInitialized(PoolId indexed poolId, address indexed liquidityToken, Currency indexed currency0, Currency currency1)` | `MemeverseUniswapHook` | 池初始化 | poolId 与 LP token 建档 |
+| `LiquidityAdded(PoolId indexed poolId, address indexed provider, address indexed to, uint128 liquidity, uint256 amount0, uint256 amount1)` | `MemeverseUniswapHook` | Core 加减池 | LP 头寸变动 |
+| `LiquidityRemoved(PoolId indexed poolId, address indexed provider, uint128 liquidity, uint256 amount0, uint256 amount1)` | `MemeverseUniswapHook` | Core 加减池 | LP 头寸变动 |
+| `LPFeeCollected(PoolId indexed poolId, Currency indexed currency, uint256 amount, uint256 feePerShare, uint256 blockNumber)` | `MemeverseUniswapHook` | fee 归集时 | LP 每份额费用累计跟踪。可按 pool/currency 直接 filter |
+| `ProtocolFeeCollected(PoolId indexed poolId, Currency indexed currency, address indexed treasury, uint256 amount, uint256 blockNumber)` | `MemeverseUniswapHook` | fee 归集时 | 协议费归集跟踪。可按 treasury 直接 filter 做 per-treasury 对账 |
+| `FeesClaimed(PoolId indexed poolId, address indexed user, Currency indexed currency0, Currency currency1, uint256 fee0Amount, uint256 fee1Amount)` | `MemeverseUniswapHook` | LP 提取收益时 | 已领取 fee 对账 |
+| `PublicSwapResumeTimeUpdated(PoolId indexed poolId, uint40 oldResumeTime, uint40 newResumeTime)` | `MemeverseUniswapHook` | pool-level 公开 swap 恢复时间更新 | unlock 后公开 swap 保护窗口可观测性 |
+| `ReferralRebateAccrued(address indexed referrer, Currency indexed currency, uint256 amount)` | `MemeverseUniswapHook`(Router，经 `SwapFacet::_settleProtocolFee` 内联 emit；`_collectProtocolFee` 与 beforeSwap 主路径均调它) | 普通 swap 携带非零 referrer 且 `amount > 0` 时 | 返佣累计。可按 referrer/currency 直接 filter |
+| `ReferralRebateClaimed(address indexed referrer, address indexed recipient, Currency indexed currency, uint256 amount)` | `MemeverseUniswapHook`(Router 直接实现) | referrer 调 `MemeverseUniswapHook::claimRebate` 领取 accrued rebate 并 transfer 成功后 | 返佣领取流水。可按 referrer/recipient/currency 直接 filter |
+| `ReferrerRebateBpsUpdated(uint256 oldBps, uint256 newBps)` | `MemeverseUniswapHook`(Router 直接实现) | `setReferrerRebateBps` 成功后（hook `onlyOwner` 直接写 storage） | 全局返佣率变更审计；hook `initialize` 时以 `(0, 1000)` 触发一次 |
 
 以上均为 `[代码已证]`。
 
-**返佣对 `ProtocolFeeCollected.amount` 语义的影响**：带 referrer 的普通 swap 中，`ProtocolFeeCollected.amount`（on hook）是 treasury 实收 `toTreasury = protocolFee - rebate`，严格小于该 swap 的完整 protocolFee；差额在 engine 上的 `ReferralRebateAccrued.amount`。无 referrer 或 preorder settlement 路径下 `ProtocolFeeCollected.amount` 仍是完整 protocol fee。索引器 / 财务对账若按 swap 维度统计 protocol 总收入，必须把同一 swap 的 `ProtocolFeeCollected` 与 `ReferralRebateAccrued` 求和，否则会漏计 rebate 部分。
+**返佣对 `ProtocolFeeCollected.amount` 语义的影响**：`ProtocolFeeCollected.amount`（on hook）始终是 treasury 实收 `toTreasury = protocolFee - rebate`。普通 swap 携带非零 referrer **且** 计算出的 `rebate > 0` 时，`toTreasury < protocolFee`，差额在同笔 swap 的 `ReferralRebateAccrued.amount`。以下情况即使有 referrer，`rebate` 仍可为 0，此时 `ProtocolFeeCollected.amount` **等于**完整 protocol fee，且不 emit `ReferralRebateAccrued`：（1）`referrerRebateBps == 0`；（2）`FullMath.mulDiv(protocolFee, rebateBps, PROTOCOL_FEE_SHARE_BPS)` 向下取整为 0。无 referrer 或 preorder settlement 路径下无返佣，`ProtocolFeeCollected.amount` 为完整 protocol fee。索引器 / 财务对账按 swap 维度统计 protocol 总收入时：`ProtocolFeeCollected.amount +（若本笔 emit 了 `ReferralRebateAccrued` 则其 amount，否则 0）= protocolFee`；不要仅凭「存在 referrer」假定国库金额严格变小。
+
+**`ReferralRebateAccrued` 的 CEI 与触发边界**：`_settleProtocolFee` 先写 `pendingRebate[referrer][currency] += amount` 并 emit 本事件（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 转出 treasury 份额（interaction），最后 emit `ProtocolFeeCollected`；记账本身是纯 storage effect，先于 treasury take 与调用方执行的 rebate take。该 helper 现为严格 CEI（effect → interaction → event）：`ReferralRebateAccrued` 先于 `ProtocolFeeCollected` emit；treasury take 不触发 v4 hook callback，但 ERC20 currency 会执行外部 `transfer` token 代码。beforeSwap 主路径将 rebate 与 LP fee 合并 take，afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立 take rebate。所有步骤在同一 swap 事务中执行，任一 take 或 token transfer 失败都会回滚账本和事件；安全边界要求 owner 只批准标准 fee currency、treasury 保持被动收款（`referrer == address(0)` 或 `amount == 0` 时不记账、不 emit rebate 事件）。
+
+**`ReferralRebateClaimed` 的 CEI**：`pendingRebate` 清零先于 external transfer（CEI）。
 
 ### 2.5 Yield / Governance / Cross-chain
 
@@ -108,12 +114,11 @@
   - `SetPOLMinterImpl(address indexed polMinterImpl)`：pol-minter sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setPOLMinterImpl(...)` 替换时触发，单值不携带旧值。`[代码已证]`
   - `SetFeePreviewReader(address indexed feePreviewReader)`：fee-preview reader 地址替换事件，owner-level；脚本单角色模式部署期与 owner `setFeePreviewReader(...)` 替换时触发，单值不携带旧值。`[代码已证]`
 - RegistrationCenter：`SetSupportedUAsset`、`SetDurationDaysRange`、`SetRegisterGasLimit`
-- Hook：`TreasuryUpdated`、`ProtocolFeeCurrencySupportUpdated`、`LauncherUpdated`、`PoolInitializerUpdated`、`PoolInitializationAuthorized`、`DefaultLaunchFeeConfigUpdated`、`DynamicFeeEngineUpdated`、`LPTokenImplementationUpdated`、`PreorderSettlementExecutorUpdated`
-  - `DynamicFeeEngineUpdated`：在 `upgradeDynamicFeeEngine` 中 emit，标记 engine pointer 替换（非 implementation 升级）。
+- Hook（Router）：`TreasuryUpdated`、`ProtocolFeeCurrencySupportUpdated`、`LauncherUpdated`、`PoolInitializerUpdated`、`PoolInitializationAuthorized`、`DefaultLaunchFeeConfigUpdated`、`LPTokenImplementationUpdated`、`ReferrerRebateBpsUpdated`、`FacetUpdated`
   - `PoolInitializationAuthorized`：一次性授权消费事件，记录单次池初始化授权。
   - `LPTokenImplementationUpdated`：LP token clone 模板替换事件；`initialize` 时以 `(address(0), impl)` 触发，`setLpTokenImplementation` 时以 `(old, new)` 触发。
-  - `PreorderSettlementExecutorUpdated`：preorder settlement executor 替换事件，owner-level 安全 retarget；`initialize` 时以 `(address(0), executor)` 触发，`setPreorderSettlementExecutor` 时以 `(old, new)` 触发。
-- Engine（`MemeverseDynamicFeeEngine`）：`ReferrerRebateBpsUpdated`（owner 经 hook wrapper `setReferrerRebateBps` 转发到 engine setter；engine `initialize` 时以 `(0, 1000)` 触发一次）。
+  - `ReferrerRebateBpsUpdated`：`MemeverseUniswapHook::setReferrerRebateBps` 直接写 storage + emit；hook `initialize` 时以 `(0, 1000)` 触发一次。
+  - `FacetUpdated`：`initialize` 时为初始 3 facet 绑定各 emit 一次 `FacetUpdated(role, address(0), facet)`（部署时建立基线，索引器可重建初始绑定）；此后 `setFacet(bytes32 role, address facet)` 成功后 emit，记录 swap / dynamicFee / settlement 三类 facet 地址替换（owner-level）。
 - Interoperation：`SetGasLimits`
 - ProxyDeployer：`SetQuorumNumerator`
 
@@ -123,10 +128,8 @@
 
 ## 4. 已知事件缺口与解释
 
-- `preorder(...)`、`claimUnlockedPreorderMemecoin(...)`、`redeemAuxiliaryLiquidity(...)` 已实现专用事件（`Preorder`、`ClaimPreorderMemecoin`、`RedeemAuxiliaryLiquidity`）。不再属于 Launcher 事件面缺口。
-- `refundPreorder(...)` 的目标事件规格为 `RefundPreorder(uint256 indexed verseId,address indexed receiver,uint256 refundAmount)`；实现 emit 后不再属于 Launcher 事件面缺口。
-- POLend / POLSplitter 目标事件面大多已实现；`burnPreRedeemedBacking` 保持可调用 settle 行为，但不要求专用 emitted event。
-- Router 自身没有业务事件（swap/add/remove/permit2 路径）；链上索引主要依赖 Hook 事件与 token transfer。`[已知缺口]`
+- `burnPreRedeemedBacking` 不要求专用事件。
+- `MemeverseSwapRouter` 不发业务事件；swap、流动性与资金变动的链上索引依赖 Hook 事件和 token `Transfer`。
 - `changeStage` 在 `Locked` 且未到 `unlockTime` 时也会发 `ChangeStage(..., Locked)`；索引器不能仅凭事件判断“是否真的迁移”。`[已知缺口]`
 - 当前实现没有“保护窗口开始/结束”的专用阶段或专用事件，也没有 dedicated event 单独标记 `publicSwapResumeTime` 的激活或到期；索引器需要结合 stage、实际 `Locked -> Unlocked` 迁移交易时间、固定保护窗口（`UNLOCK_PROTECTION_WINDOW`，数值见 [docs/spec/verse/config-matrix.md §3](verse/config-matrix.md)）与 swap 成败联合判断“unlock 后保护中”与“完全开放交易”的状态。`[已知缺口]`
 - `SetExternalInfo` 事件携带的是本次传入数组；合约内 `communitiesMap` 为按索引覆盖，旧尾部数据可能保留，事件本身无法单独重建完整当前快照。`[已知缺口]`

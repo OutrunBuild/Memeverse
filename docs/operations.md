@@ -88,7 +88,7 @@
 
 - Hook owner 可改：`treasury`、protocol fee 币种支持、`launcher`、launch fee 衰减参数。
 - Hook owner 可通过 `setLpTokenImplementation` 替换 LP token 克隆模板，但替换仅影响后续新建的 pool。已部署 pool 的 LP token 是 EIP-1167 minimal proxy（clone），实现地址在部署时固化，无法迁移或升级。如果旧 LP 实现被发现漏洞，已部署池的 LP token 永久运行旧代码，只能引导流动性迁移到新池。这是 clone 模式的固有局限性，非 bug。`[代码已证]`
-- 公开 swap 始终使用正常费率路径：`feeBps = max(current launch fee, dynamic fee, FEE_BASE_BPS)`；dynamic fee engine 故障通过升级/修复处理，不提供 bypass mode。`[代码已证]`
+- 公开 swap 始终使用正常费率路径：`feeBps = max(current launch fee, dynamic fee, FEE_BASE_BPS)`；dynamic fee 故障通过 `setFacet(DYNAMIC_FEE_FACET_ROLE, newAddr)` 升级/修复处理，不提供 bypass mode。`[代码已证]`
 - Launcher owner 配置 router / hook 时，会同时校验 `router.hook()==hook`、`hook.launcher()==launcher`、`hook.poolInitializer()==router`，配置不一致会直接拒绝；其中 `memeverseUniswapHook` 仅允许首次设置。`[代码已证]`
 - Hook owner 在配置完成后仍可 retarget `launcher`；这是接受的同一 trust boundary 内运维能力，不否定 set-time 三重校验的必要性。`[代码已证]`
 - `createPoolAndAddLiquidity(...)` 的 `onlyLauncher` 是有意设计；建池要求 `Launcher -> Router` 调用链，并要求 Hook 的 `poolInitializer` 授权 Router。部署或配置变更后必须复核：`launcher.memeverseSwapRouter()==router`、`launcher.memeverseUniswapHook()==hook`、`router.hook()==hook`、`hook.launcher()==launcher`、`hook.poolInitializer()==router`；`Genesis -> Locked` 建池前也会做 launch-time preflight 复核，避免配置漂移到运行建池时才失败。`[代码已证]`
@@ -111,7 +111,7 @@
 
 ### 3.9 Proxy 升级操作步骤
 
-本节覆盖 UUPS 可升级合约和 `TransparentUpgradeableProxy` Hook 的升级操作规程。升级的本质是让 proxy 指向新的 implementation 合约，proxy 地址不变、storage 数据不变、用户无感知。部署记录还必须把不可升级但一等返回的 `lpTokenImplementation` 与 `preorderSettlementExecutor` 作为独立 artifacts 记录。
+本节覆盖所有 UUPS 可升级合约（含 diamond Router Hook）的升级操作规程。升级的本质是让 proxy 指向新的 implementation 合约，proxy 地址不变、storage 数据不变、用户无感知。部署记录还必须把不可升级但一等返回的 `lpTokenImplementation` 与 3 个 facet（`SwapFacet` / `DynamicFeeFacet` / `SettlementFacet`）作为独立 artifacts 记录。
 
 #### 3.9.1 可升级与可替换实现合约汇总
 
@@ -121,8 +121,8 @@
 | `MemeverseLauncher` | `MemeverseScript._deployMemeverseLauncher`; proxy salt = `MemeverseLauncher + nonce` | `MemeverseScript._deployMemeverseLauncher` 内部署 | `MemeverseLauncherImplementation + nonce` | `onlyOwner` | 存储 `polend`/`polSplitter` proxy 地址，不可运行时替换 |
 | `POLend` | `MemeverseScript._deployPOLend`; proxy salt = `POLend + nonce` | `MemeverseScript._deployPOLend` 内部署 | `POLendImplementation + nonce` | `onlyOwner` | 存储 `launcher`/`splitter` 地址；`leveragedDebtFactor` 技术上限 `uint128.max * 1e18` |
 | `POLSplitter` | `MemeverseScript._deployPOLSplitter`; proxy salt = `POLSplitter + nonce` | `MemeverseScript._deployPOLSplitter` 内部署 | `POLSplitterImplementation + nonce` | `onlyOwner` | 存储 `launcher`/`polend` 地址；初始化时读 `launcher.polend()` |
-| **透明代理可升级** | | | | | |
-| `MemeverseUniswapHook` | `DeployMemeverseHookProxy.getPredictedProxy(..., nonce, hookOwner, hookTreasury, poolManager)`；内部 `_selectProxySalt` 使用 `keccak256(abi.encodePacked("MemeverseUniswapHookProxy", nonce, i))` 选择 nonce-scoped hook-flag proxy salt | `DeployMemeverseHookProxy` 通过 `new MemeverseUniswapHook(poolManager)` 部署 | `N/A` | Hook proxy admin slot 指向的 `ProxyAdmin.owner()` | `poolManager` 不在 proxy storage 中，是字节码级绑定；poolManager 匹配是 operator-side pre-check |
+| **UUPS 可升级（diamond Router）** | | | | | |
+| `MemeverseUniswapHook` | `DeployMemeverseHookProxy.getPredictedProxy(..., nonce, hookOwner, hookTreasury, poolManager)`；内部 `_selectProxySalt` 使用 `keccak256(abi.encodePacked("MemeverseUniswapHookProxy", nonce, i))` 选择 nonce-scoped hook-flag proxy salt | `DeployMemeverseHookProxy` 通过 `new MemeverseUniswapHook(poolManager)` 部署 | `MemeverseUniswapHookImplementation + nonce` | `onlyOwner`（Hook `owner()`，经 UUPS `_authorizeUpgrade`） | diamond Router：`poolManager` 不在 proxy storage 中，是字节码级绑定；callback/fee/settlement logic 外移到 SwapFacet / DynamicFeeFacet / SettlementFacet（共享 Router storage，经 Router entry `delegatecall`）；3 facet 地址存 Router storage，`setFacet(role, addr)` onlyOwner 独立升级每个 facet；3 facet 部署时必须传与 hook 同一个 `poolManager` |
 | **治理代理可升级** | | | | | |
 | `MemecoinDaoGovernorUpgradeable` | `MemeverseProxyDeployer.deployGovernorAndIncentivizer`; proxy salt = `keccak256(abi.encode(uniqueId))` | `MemeverseScript._deployMemecoinGovernorImplementation` | `MemecoinDaoGovernorImplementation + nonce` | `onlyGovernance` | 需走 OZ Governor 提案流程；`_authorizeUpgrade` 由 Governor 合约内部 `_governanceCall` 放行 |
 | `GovernanceCycleIncentivizerUpgradeable` | `MemeverseProxyDeployer.deployGovernorAndIncentivizer`; proxy salt = `keccak256(abi.encode(uniqueId))` | `MemeverseScript._deployImplementation` | `GovernanceCycleIncentivizerImplementation + nonce` | `onlyGovernance` | 实际校验 `msg.sender == _governor`（即 Governor proxy 地址） |
@@ -130,6 +130,10 @@
 | `MemeverseBootstrap` | N/A（非 proxy，Launcher `delegatecall` 目标） | `MemeverseScript` 单角色模式 `new MemeverseBootstrap()` | N/A | `setBootstrapImpl`（`onlyOwner`） | 与 Launcher 共享 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；替换方式为部署新 sibling + owner `setBootstrapImpl`（非 UUPS `upgradeToAndCall`）；sibling 读 proxy storage，被 EOA 直调时读自身空 storage 回退 |
 | `MemeverseFeeDistributor` | N/A（非 proxy，Launcher `delegatecall` 目标） | `MemeverseScript` 单角色模式 `new MemeverseFeeDistributor()` | N/A | `setFeeDistributorImpl`（`onlyOwner`） | 与 Launcher/Bootstrap 共享 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；替换方式为部署新 sibling + owner `setFeeDistributorImpl`；delegatecall-only by construction（自身 storage 永久未初始化，被 EOA 直调时读空 verse → 对 address(0) 外调回退） |
 | `MemeversePOLMinter` | N/A（非 proxy，Launcher `delegatecall` 目标） | `MemeverseScript` 单角色模式 `new MemeversePOLMinter()` | N/A | `setPOLMinterImpl`（`onlyOwner`） | 与 Launcher/Bootstrap/FeeDistributor 共享 ERC-7201 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；替换方式为部署新 sibling + owner `setPOLMinterImpl`；delegatecall-only by construction（空 constructor、无 `Initializable`、自身 storage 永久未初始化，被 EOA 直调时读空 verse → 对 address(0) 外调回退） |
+| **Diamond facet（非 proxy，可替换实现，经 hook Router entry `delegatecall`）** | | | | | |
+| `SwapFacet` | N/A（非 proxy，hook Router entry `delegatecall` 目标） | `DeployMemeverseHookProxy` 部署 `new SwapFacet(poolManager)` | N/A | `setFacet(SWAP_FACET_ROLE, addr)`（`onlyOwner`，经 hook） | 与 hook Router 共享 ERC-7201 namespace `outrun.storage.MemeverseUniswapHook` 与 `IMemeverseHookStorage` struct；替换方式为部署新 facet + owner `setFacet(SWAP_FACET_ROLE, addr)`；constructor 须传与 hook 同一个 `poolManager`（DELEGATECALL 下 facet 读自己 bytecode 的 immutable）；logic 函数开头检查 `address(this) != __self` 防直接 CALL（`__self` 为 facet 自身地址 immutable） |
+| `DynamicFeeFacet` | N/A（非 proxy，hook Router / SwapFacet / SettlementFacet `delegatecall` 目标） | `DeployMemeverseHookProxy` 部署 `new DynamicFeeFacet(poolManager)` | N/A | `setFacet(DYNAMIC_FEE_FACET_ROLE, addr)`（`onlyOwner`，经 hook） | 与 hook Router 共享 ERC-7201 namespace `outrun.storage.MemeverseUniswapHook` 与 `IMemeverseHookStorage` struct；替换方式为部署新 facet + owner `setFacet(DYNAMIC_FEE_FACET_ROLE, addr)`；constructor 须传与 hook 同一个 `poolManager`（fee logic 本身不调 PoolManager，但 `initialize`/`setFacet` 经 `_requireFacetPoolManager` 校验其 immutable 一致性） |
+| `SettlementFacet` | N/A（非 proxy，hook Router entry `delegatecall` 目标） | `DeployMemeverseHookProxy` 部署 `new SettlementFacet(poolManager)` | N/A | `setFacet(SETTLEMENT_FACET_ROLE, addr)`（`onlyOwner`，经 hook） | 与 hook Router 共享 ERC-7201 namespace `outrun.storage.MemeverseUniswapHook` 与 `IMemeverseHookStorage` struct；替换方式为部署新 facet + owner `setFacet(SETTLEMENT_FACET_ROLE, addr)`；constructor 须传与 hook 同一个 `poolManager`；Router 与 facet 必须使用同一 `ISettlementFacet` typed callback ABI，升级任一侧都要验证 `SettlementCallbackData` / `SettlementResult` 编解码一致；hook self-call 被 v4 同时跳过 `beforeSwap` / `afterSwap`，非 hook 发起的重入 swap 走普通公开费率路径（INV-04A）。`[代码已证]` |
 | **Staticcall view sibling（非 proxy，可替换实现）** | | | | | |
 | `MemeverseFeePreviewReader` | N/A（非 proxy，独立 view 合约；通过 immutable `PROXY` staticcall 读 Launcher 状态） | `MemeverseScript` 单角色模式 `new MemeverseFeePreviewReader(launcherProxy)` | N/A | `setFeePreviewReader`（`onlyOwner`） | 不绑名域、不被 delegatecall、不可写 proxy storage；替换方式为部署新 reader + owner `setFeePreviewReader`；构造时 immutable 绑定 Launcher proxy，部署后无法 retarget 到其他 proxy；§3.9.7 readiness 要求未接线时阻断 registration 打开 |
 
@@ -143,6 +147,9 @@
 | `POLend` | `erc7201:outrun.storage.POLend` | `outrun.storage.POLend` |
 | `POLSplitter` | `erc7201:outrun.storage.POLSplitter` | `outrun.storage.POLSplitter` |
 | `MemeverseUniswapHook` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook` |
+| `SwapFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHook` 相同） |
+| `DynamicFeeFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHook` 相同） |
+| `SettlementFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHook` 相同） |
 | `MemecoinDaoGovernorUpgradeable` | `erc7201:outrun.storage.MemecoinDaoGovernor` | `outrun.storage.MemecoinDaoGovernor` |
 | `GovernanceCycleIncentivizerUpgradeable` | `erc7201:outrun.storage.GovernanceCycleIncentivizer` | `outrun.storage.GovernanceCycleIncentivizer` |
 | `MemeverseBootstrap` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
@@ -150,6 +157,8 @@
 | `MemeversePOLMinter` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
 
 `MemeverseBootstrap`、`MemeverseFeeDistributor` 与 `MemeversePOLMinter` **均为** `MemeverseLauncher` facade 的 delegatecall sibling，共享同一 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；升级 facade 或任一 sibling 的 storage layout 时，**所有**共享该 namespace 的合约必须用相同 struct 同步重编，否则 facade 经 delegatecall 调 sibling 时读写错位。三行 namespace 均经 `layout at erc7201("outrun.storage.MemeverseLauncher")` 绑定，`@custom:storage-location` 注解实际挂在 `src/verse/interfaces/IMemeverseLauncherStorage.sol::MemeverseLauncherStorage`。
+
+`SwapFacet`、`DynamicFeeFacet` 与 `SettlementFacet` **均为** `MemeverseUniswapHook` diamond Router 的 delegatecall facet，共享同一 namespace `outrun.storage.MemeverseUniswapHook` 与 `IMemeverseHookStorage` struct；升级 Router 或任一 facet 的 storage layout 时，**所有**共享该 namespace 的合约必须用相同 struct 同步重编，否则 Router 经 delegatecall 调 facet 时读写错位。三行 namespace 均经 `layout at erc7201("outrun.storage.MemeverseUniswapHook")` 绑定，`@custom:storage-location` 注解实际挂在 `src/swap/interfaces/IMemeverseHookStorage.sol::IMemeverseHookStorage`。
 
 ERC7201 槽位计算公式：`keccak256(abi.encode(uint256(keccak256(“outrun.storage.XXX”)) - 1)) & ~bytes32(uint256(0xff))`。注意：`erc7201:` 仅是 annotation scheme 前缀，用于标识 struct 使用 ERC7201 存储，**不参与** slot hash 计算。可以用 `cast storage <proxy> <slot>` 直接读链上数据验证。
 
@@ -189,10 +198,10 @@ forge build
    - `MemeverseLauncher`：使用 `MemeverseLauncherImplementation + nonce` 部署新的 implementation；不要重跑会重新部署同一 proxy salt 的完整 proxy 部署步骤。
    - `MemecoinDaoGovernorUpgradeable`：使用 `MemeverseScript._deployMemecoinGovernorImplementation` 的 deployment source，salt label 为 `MemecoinDaoGovernorImplementation + nonce`。
    - `GovernanceCycleIncentivizerUpgradeable`：使用 `MemeverseScript._deployImplementation` 中的 incentivizer implementation 部署逻辑，salt label 为 `GovernanceCycleIncentivizerImplementation + nonce`。
-   - `MemeverseUniswapHook`：只复用 `DeployMemeverseHookProxy` 的 implementation 部署逻辑，不重跑 proxy 部署分支；必须传入与当前 proxy 一致的 `POOL_MANAGER`。
+   - `MemeverseUniswapHook`：只复用 `DeployMemeverseHookProxy` 的 implementation 部署逻辑，不重跑 proxy 部署分支；必须传入与当前 proxy 一致的 `POOL_MANAGER`。升级 Router implementation 不替换 facet 地址（facet 独立存于 Router storage，经 `setFacet` 升级）；若需单独升级某个 facet，部署新 facet（SwapFacet / DynamicFeeFacet / SettlementFacet 均须传同一 `POOL_MANAGER`）后调 `hook.setFacet(role, newAddr)`；链上 setFacet 经 _requireFacetPoolManager 对三者统一强制校验，不匹配 revert FacetPoolManagerMismatch。
    - `POLend`：使用 `MemeverseScript._deployPOLend` 中的 implementation 部署逻辑，salt label 为 `POLendImplementation + nonce`。
    - `POLSplitter`：使用 `MemeverseScript._deployPOLSplitter` 中的 implementation 部署逻辑，salt label 为 `POLSplitterImplementation + nonce`。
-3. 记录新 implementation 地址。后续 UUPS `upgradeToAndCall` 或 Hook `ProxyAdmin.upgradeAndCall(...)` 会把 proxy 指向这个地址。
+3. 记录新 implementation 地址。后续 UUPS `upgradeToAndCall` 会把 proxy 指向这个地址。
 
 **新 implementation 记录模板：**
 
@@ -235,7 +244,7 @@ UUPS 合约通过 `upgradeToAndCall(address newImplementation, bytes memory data
 ```bash
 # data 为空（最常见的升级场景，不需要额外初始化）
 cast send $PROXY "upgradeToAndCall(address,bytes)" \
-  $NEW_IMPL "" \
+  $NEW_IMPL 0x \
   --private-key $OWNER_KEY --rpc-url $RPC
 
 # 如果未来新 implementation 增加了 reinitialize，用 abi 编码 data：
@@ -247,28 +256,21 @@ cast send $PROXY "upgradeToAndCall(address,bytes)" \
 
 - `onlyOwner` UUPS 合约（Launcher, POLend, POLSplitter）：owner 地址（通常是多签）直接发起交易。
 - `onlyGovernance` 合约（Governor, Incentivizer）：当前 Governor 没有 Timelock extension，OZ base `queue` 没有实现；升级必须通过 `propose` -> vote -> `execute`，把 `upgradeToAndCall` 的 calldata 包装成治理提案执行。如果未来增加 Timelock extension，`queue` 才放在成功投票和 `execute` 之间。owner 或多签直接调用不能通过 `onlyGovernance` UUPS 升级授权。
-- `MemeverseUniswapHook` 透明代理：读取 Hook proxy ERC1967 admin slot 得到 `ProxyAdmin`，由 `ProxyAdmin.owner()` 调用 `ProxyAdmin.upgradeAndCall(ITransparentUpgradeableProxy(hookProxy), newImplementation, data)`。
+- `MemeverseUniswapHook`（UUPS）：由 Hook `owner()` 直接对 `$HOOK_PROXY` 调用 `upgradeToAndCall(address newImplementation, bytes data)`，授权经 implementation 的 `_authorizeUpgrade => onlyOwner`。
 
 ```bash
-# ERC1967 admin slot = bytes32(uint256(keccak256("eip1967.proxy.admin")) - 1)
-HOOK_ADMIN_SLOT=0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103
-
-cast storage $HOOK_PROXY $HOOK_ADMIN_SLOT --rpc-url $RPC
-# 返回值低 20 bytes 应解析为 ProxyAdmin 地址：$HOOK_PROXY_ADMIN
-
-cast call $HOOK_PROXY_ADMIN "owner()(address)" --rpc-url $RPC
-# 应等于预期 Hook admin owner
-
-cast send $HOOK_PROXY_ADMIN "upgradeAndCall(address,address,bytes)" \
-  $HOOK_PROXY $NEW_IMPL "$DATA" \
-  --private-key $PROXY_ADMIN_OWNER_KEY --rpc-url $RPC
+# Hook owner 直接对 hook proxy 调 upgradeToAndCall（UUPS，无 ProxyAdmin；data 为空 = 无 migration calldata）
+# 注意：$NEW_IMPL 需在步骤 2 重设为 Hook 的新实现地址（非上方通用 UUPS 块的 Launcher/POLend/POLSplitter 实现）
+cast send $HOOK_PROXY "upgradeToAndCall(address,bytes)" \
+  $NEW_IMPL 0x \
+  --private-key $HOOK_OWNER_KEY --rpc-url $RPC
 ```
 
 `[代码已证]`
 
-#### 3.9.5 MemeverseUniswapHook 透明代理升级检查
+#### 3.9.5 MemeverseUniswapHook（UUPS）升级检查
 
-Hook implementation 不提供 UUPS 升级入口。`poolManager` 一致性检查是 off-chain / operator-side pre-check，不是 Hook on-chain `_authorizeUpgrade`。
+Hook implementation 提供 UUPS 升级入口（`_authorizeUpgrade` `onlyOwner`）。`_authorizeUpgrade` 先对新 implementation 做无代码守卫：若 `newImplementation.code.length == 0`，revert `UpgradeTargetCodeNotReady(newImplementation)`（快速失败，给命名错误而非 ABI-decode 晦涩 revert）。随后内置 on-chain `poolManager` drift 检查：通过 `ImmutableState(newImplementation).poolManager()` 读取新 implementation 的 immutable PoolManager，与当前 `poolManager` 比较，不匹配 revert `UpgradePoolManagerMismatch`。这是运维护栏而非安全边界（恶意 owner 可伪造 getter 绕过）。off-chain pre-check 仍建议执行作为双保险。
 
 **Pre-check：**
 
@@ -280,7 +282,7 @@ cast call $NEW_IMPL "poolManager()(address)" --rpc-url $RPC
 # 必须等于当前 Hook proxy poolManager()
 ```
 
-`poolManager` 地址不在 proxy storage 中，它是字节码级绑定（在 implementation constructor 中设置的 immutable 或 constructor 参数）。升级后 proxy 通过 `delegatecall` 使用新 implementation 的代码，如果新 implementation 指向了错误的 PoolManager，所有 swap 和流动性操作会永久失效。
+`poolManager` 地址不在 proxy storage 中，它是字节码级绑定（在 implementation constructor 中设置的 immutable 或 constructor 参数）。`_authorizeUpgrade` 先对新 implementation 做无代码守卫（`newImplementation.code.length == 0` 时 revert `UpgradeTargetCodeNotReady`），再在链上断言新 implementation 的 `poolManager()` 与当前一致（不匹配 revert `UpgradePoolManagerMismatch`），防止误升级到绑了错误 PoolManager 的 implementation。若绕过该守卫（如恶意 owner 伪造 getter），hook 回调将指向错误目标，所有 swap 和流动性操作会永久失效。off-chain pre-check 仍建议执行作为双保险。
 
 **Post-check：**
 
@@ -288,25 +290,33 @@ cast call $NEW_IMPL "poolManager()(address)" --rpc-url $RPC
 cast call $HOOK_PROXY "poolManager()(address)" --rpc-url $RPC
 # 应仍等于预期 PoolManager
 
-cast call $HOOK_PROXY "dynamicFeeEngine()(address)" --rpc-url $RPC
-# 应等于 Engine proxy 地址
+# 3 facet 地址存 Router storage, 经 setFacet 升级后核验指针已更新
+cast call $HOOK_PROXY "swapFacet()(address)" --rpc-url $RPC
+# 应等于记录的 SwapFacet 地址（非零、有代码）
 
-cast call $ENGINE_PROXY "authorizedHook()(address)" --rpc-url $RPC
-# 应等于 Hook proxy 地址
+cast call $HOOK_PROXY "dynamicFeeFacet()(address)" --rpc-url $RPC
+# 应等于记录的 DynamicFeeFacet 地址（非零、有代码）
 
-cast call $ENGINE_PROXY "owner()(address)" --rpc-url $RPC
-# 应等于 Hook proxy 地址
+cast call $HOOK_PROXY "settlementFacet()(address)" --rpc-url $RPC
+# 应等于记录的 SettlementFacet 地址（非零、有代码）
+
+# facet 部署时 poolManager 一致性（initialize/setFacet 经 _requireFacetPoolManager 对 3 facet 强制）
+cast call $SWAP_FACET "poolManager()(address)" --rpc-url $RPC
+# 应等于 Hook proxy poolManager()
+cast call $SETTLEMENT_FACET "poolManager()(address)" --rpc-url $RPC
+# 应等于 Hook proxy poolManager()
+cast call $DYNAMIC_FEE_FACET "poolManager()(address)" --rpc-url $RPC
+# 应等于 Hook proxy poolManager()
 
 cast call $HOOK_PROXY "lpTokenImplementation()(address)" --rpc-url $RPC
 # 应等于记录的 LP token implementation
-
-cast call $HOOK_PROXY "preorderSettlementExecutor()(address)" --rpc-url $RPC
-# 应等于记录的 preorder settlement executor
 ```
+
+Hook 对 ABI 中不存在的 selector 统一回退 `UnsupportedSelector(selector)`；接线校验使用上文 `swapFacet()` / `dynamicFeeFacet()` / `settlementFacet()`。
 
 完成后执行 swap / liquidity smoke tests，覆盖至少一次 swap 路径和一次 add/remove liquidity 路径。
 
-Hook ownership transfer 必须同步 transfer ProxyAdmin ownership，保持 Hook `owner()` 与 `ProxyAdmin.owner()` 对齐；否则部署脚本 same-nonce / existing reuse validation 会拒绝 split-control 状态。
+Hook ownership transfer 即升级授权转移（UUPS 下只有一个 owner，无 ProxyAdmin 对齐需求）。
 
 #### 3.9.6 POLSplitter 升级顺序约束
 
@@ -342,9 +352,25 @@ cast call $NEW_IMPL "proxiableUUID()(bytes32)" --rpc-url $RPC
 # 返回值应等于 ERC1967 implementation slot:
 # 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc
 
-# 可选 guard：通过 proxy 调用 proxiableUUID 应因 UUPS notDelegated guard revert
-# 该 revert 不应导致 readiness 失败
-cast call $PROXY "proxiableUUID()(bytes32)" --rpc-url $RPC
+```
+
+**UUPS guard sanity check（可选，负向验证，不计入 readiness 通过条件）：**
+
+通过 `$PROXY` 调用 `proxiableUUID()` 应因 `notDelegated` guard 以 `UUPSUnauthorizedCallContext()` revert。这是可选诊断的预期成功信号，不是 readiness failure。
+
+自动化脚本必须断言回退错误精确为 `UUPSUnauthorizedCallContext()`；任何其他失败均为运维故障，不能视为通过。
+
+```bash
+expected_revert_selector=$(cast sig "UUPSUnauthorizedCallContext()")
+if result=$(cast call "$PROXY" "proxiableUUID()(bytes32)" --rpc-url "$RPC" 2>&1); then
+  echo "Unexpected success: proxy proxiableUUID() must revert" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$result" | grep -Fq "$expected_revert_selector"; then
+  echo "Unexpected revert: expected UUPSUnauthorizedCallContext()" >&2
+  printf '%s\n' "$result" >&2
+  exit 1
+fi
 ```
 
 **MemeverseLauncher：**
@@ -385,15 +411,13 @@ cast call $HOOK_PROXY "launcher()(address)" --rpc-url $RPC
 # 应等于 Launcher proxy 地址
 
 cast call $HOOK_PROXY "owner()(address)" --rpc-url $RPC
-# 应等于预期 owner 地址
+# 应等于 Hook owner 地址（UUPS 升级授权人）
 
-cast storage $HOOK_PROXY \
-  0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103 \
-  --rpc-url $RPC
-# 返回值低 20 bytes 应解析为 ProxyAdmin 地址
-
-cast call $HOOK_PROXY_ADMIN "owner()(address)" --rpc-url $RPC
-# 应等于 Hook owner 地址
+# 3 facet 接线 readiness: 地址非零、有代码（部署时须传与 hook 同一 poolManager）
+cast call $HOOK_PROXY "swapFacet()(address)" --rpc-url $RPC
+cast call $HOOK_PROXY "dynamicFeeFacet()(address)" --rpc-url $RPC
+cast call $HOOK_PROXY "settlementFacet()(address)" --rpc-url $RPC
+# 三者均应非零、有代码；未接线阻断建池/swap/settlement 路径
 ```
 
 **POLend：**
@@ -456,22 +480,22 @@ cast call $INCENTIVIZER_PROXY "governor()(address)" --rpc-url $RPC
 
 `[代码已证]`
 
-### 3.10 Hook + Engine 部署流程
+### 3.10 Hook + Facet 部署流程
 
 部署脚本 `script/DeployMemeverseHookProxy.s.sol` 通过 OutrunDeployer（CREATE3）按序部署核心 proxy 与 helper artifacts：
 
 1. LP token implementation（`UniswapLP`，无依赖 helper artifact）
-2. Preorder settlement executor（`MemeversePreorderSettlementExecutor`，无依赖 helper artifact）
-3. Engine 实现（`MemeverseDynamicFeeEngine`）
-4. Engine proxy（`ERC1967Proxy`，initialize 绑定 hook owner + authorized hook，均为预测的 hook proxy 地址）
-5. Hook 实现（`MemeverseUniswapHook`）
-6. Hook proxy（`TransparentUpgradeableProxy`，initialize 绑定 owner/treasury/engine/lpTokenImplementation/preorderSettlementExecutor）
+2. SwapFacet（`new SwapFacet(poolManager)`，须传与 hook 同一个 `POOL_MANAGER`）
+3. DynamicFeeFacet（`new DynamicFeeFacet(poolManager)`，须传与 hook 同一个 `POOL_MANAGER`）
+4. SettlementFacet（`new SettlementFacet(poolManager)`，须传与 hook 同一个 `POOL_MANAGER`）
+5. Hook 实现（`MemeverseUniswapHook`，diamond Router）
+6. Hook proxy（`ERC1967Proxy` + UUPS，initialize 绑定 owner/treasury/3 facet 地址/lpTokenImplementation）
 
-这些地址由 `(deployer, DEPLOYMENT_NONCE)` 唯一确定。同一 nonce 重跑是幂等的：已部署的同配置 proxy 与 helper artifact 会被复用，中间合约若已存在则 revert。
+固定 salt 的 helper artifacts（`hookImplementation`、`lpTokenImplementation`、3 facet）由 `(deployer, DEPLOYMENT_NONCE)` 唯一确定。`hookProxy` 在同一 nonce 下经 hook-flag mining 选型：干净链上通常等于首个 flag candidate；若更早的 flag 候选被无关代码占用（implementation 不匹配），`_selectProxySalt` 会跳过并选用后续候选。同一 nonce 重跑：完整同配置 hook 部署幂等复用；fresh 路径上固定 salt 中间 artifact 已占用则 revert（`ExistingIntermediateDeploymentNotReusable` / `ArtifactCreate3SaltConsumed`）。
 
 **所需环境变量**：
 
-> 下表最后 5 个 `EXPECTED_*_CODEHASH` 仅在 **same-nonce 复用部署**（目标 nonce 的 hook proxy 已存在）时必需，任一未设脚本 `revert`（`Expected*CodehashNotSet`）；fresh 部署可全部省略。其余变量任何部署模式都必需。
+> 下表 6 个 `EXPECTED_*_CODEHASH` 仅在 **same-nonce 复用部署**（目标 nonce 的 hook proxy 已存在）时必需，任一未设脚本 `revert`（`ExpectedCodehashNotSet(envVar)`，统一 error，`envVar` 字段指明缺失的具体变量名）；fresh 部署可全部省略。其中 `EXPECTED_HOOK_PROXY_CODEHASH` 对应经 hook-flag mining 选址的 proxy，其余 5 个对应经固定 seed + nonce 预测的 artifact（implementation / lpTokenImplementation / 3 facet）。其余非 codehash 变量任何部署模式都必需。
 
 | 变量 | 说明 |
 | --- | --- |
@@ -483,57 +507,61 @@ cast call $INCENTIVIZER_PROXY "governor()(address)" --rpc-url $RPC
 | `DEPLOYMENT_NONCE` | 部署版本号，首次用 `0`，每次新部署递增 |
 | `EXPECTED_HOOK_PROXY_CODEHASH` | 同 nonce 复用部署时校验 Hook proxy runtime 字节码 |
 | `EXPECTED_HOOK_IMPLEMENTATION_CODEHASH` | 同 nonce 复用部署时校验 hook 实现字节码 |
-| `EXPECTED_ENGINE_IMPLEMENTATION_CODEHASH` | 同 nonce 复用部署时校验 engine 实现字节码 |
+| `EXPECTED_SWAP_FACET_CODEHASH` | 同 nonce 复用部署时校验 SwapFacet 字节码 |
+| `EXPECTED_DYNAMIC_FEE_FACET_CODEHASH` | 同 nonce 复用部署时校验 DynamicFeeFacet 字节码 |
+| `EXPECTED_SETTLEMENT_FACET_CODEHASH` | 同 nonce 复用部署时校验 SettlementFacet 字节码 |
 | `EXPECTED_LP_TOKEN_IMPLEMENTATION_CODEHASH` | 同 nonce 复用部署时校验 `lpTokenImplementation` 字节码 |
-| `EXPECTED_PREORDER_SETTLEMENT_EXECUTOR_CODEHASH` | 同 nonce 复用部署时校验 `preorderSettlementExecutor` 字节码 |
 
 **`DEPLOYMENT_NONCE` 语义**：
 
-- 嵌入所有 CREATE3 salt，决定 proxy、implementation 与 helper artifacts 的最终地址
-- 同 nonce + 同配置 → 幂等复用
-- 同 nonce + 不同配置 → revert（中间合约不可复用）
+- 嵌入所有 CREATE3 salt：固定 salt artifacts 的地址由 `(deployer, nonce)` 决定；`hookProxy` 还取决于 `_selectProxySalt` 在 flag 候选上的 eligibility（干净链上通常为首个 flag candidate）
+- 同 nonce + 完整同配置 hook → 幂等复用（走 `_selectProxySalt` reuse 分支，不重部署中间件）
+- 同 nonce + fresh 路径：固定 salt 中间 artifact 已占用 → revert；本 hook 配置/codehash 冲突 → revert；仅 hook 最终地址被无关代码占用且中间 artifact 仍空 → mining 跳过该候选，不必然换 nonce
 - 不同 nonce → 全新地址集
-- same-nonce 复用验证必须覆盖 `lpTokenImplementation` 与 `preorderSettlementExecutor`。`DeploymentResult.lpTokenImplementation`、`DeploymentResult.preorderSettlementExecutor` 必须等于同 nonce 预测地址，且地址非零、有代码。
-- `lpTokenImplementation` 与 `preorderSettlementExecutor` 的运行期 codehash 都必须等于预期值（分别对应 `EXPECTED_LP_TOKEN_IMPLEMENTATION_CODEHASH` 与 `EXPECTED_PREORDER_SETTLEMENT_EXECUTOR_CODEHASH`）；二者 readiness 只要求 codehash、地址与代码存在性匹配，不包含 pool-manager getter 检查。
+- same-nonce 复用验证必须覆盖 `hookImplementation`、`lpTokenImplementation` 与 3 facet 地址：这五者经固定 seed + nonce 预测，必须等于同 nonce 预测地址、非零且有代码；`hookProxy` 经 `_selectProxySalt` eligibility 选址（flag + dirty skip / reuse / consumed-or-config-conflict revert；见上表 `EXPECTED_HOOK_PROXY_CODEHASH`），不适用固定预测地址路径，复用校验由 `_validateExistingImplementationCodehashes`（proxy / implementation / lpToken / 3 facet codehash）与 `_validateExistingDeployment`（implementation 地址 / owner / treasury / poolManager / facet 绑定）完成。部署选中地址预测用完整 `getPredictedProxy(..., nonce, hookOwner, hookTreasury, poolManager)`，勿用仅返回首个 flag candidate 的三参数 overload。
+- `lpTokenImplementation` 与 3 facet 的运行期 codehash 都必须等于预期值（`hookImplementation` 的 codehash 由 `EXPECTED_HOOK_IMPLEMENTATION_CODEHASH` 单独覆盖）；复用校验中四者均要求 codehash、地址与代码存在性匹配，3 facet 的 `poolManager` immutable 一致性分路径保证：复用路径由 codehash 隐式覆盖（poolManager 构造时以 immutable 烧进字节码，codehash 匹配即必然一致，故复用路径不另跑 `_requireFacetPoolManager`）；部署路径经 `_validateDeployedArtifactCode`→`_requireFacetPoolManager` 显式校验（mismatch revert `ExistingHookFacetPoolManagerMismatch`，覆盖 SwapFacet / DynamicFeeFacet / SettlementFacet）；运行期则由 hook 链上 `_requireFacetPoolManager` 在 `initialize`/`setFacet` 独立强制（mismatch revert `FacetPoolManagerMismatch`，错误名与前两者不同）。
 
 **原子性保证**：
 
-`run()` 和 `deployHookProxy()` 在单笔交易中执行全部 CREATE3 部署。任一步失败则整笔交易回滚，不会留下中间部署的僵尸合约，CREATE3 salt 也不会被消耗。
+两个部署入口的原子性不同，须区分对待：
 
-**⚠️ 禁止拆分部署步骤到多笔交易**。Engine proxy 在部署时立即以预测的 hook proxy 地址初始化（owner 和 authorizedHook 均为 hook proxy 地址）。这是因为 hook 的 `initialize()` 会验证 `engine.authorizedHook() == address(this)`，所以 engine 必须先于 hook 初始化。Hook proxy 地址在部署前已通过 CREATE3 salt 挖矿确定。
+- `deployHookProxy(...)`（无 broadcaster 修饰器）：编程/测试入口，6 次 CREATE3 deploy 在单笔交易内部、任一步失败整笔回滚、不耗 salt；它用于在非广播上下文验证 `_executeDeployment`，生产部署不走此入口（见下）。
+- `run()` / `run(uint256)`（`run(uint256)` 带 `startBroadcast`）：`forge script` + `vm.startBroadcast` 下，`_executeDeployment` 中的 6 次 `outrunDeployer.deploy()` 会被 Foundry 当作 6 笔独立交易按 nonce 依次广播（广播语义见 `script/AGENTS.md`），非原子。仿真阶段任一笔失败则零笔上链、不耗 salt；仿真通过后才依次广播，若后续某笔链上失败（mempool/gas/nonce 抢占，或仿真与上链之间的状态漂移），已上链的前序交易不会回滚，对应 CREATE3 salt 被消耗，须递增 `DEPLOYMENT_NONCE` 重部。
+- 两入口共享 `_executeDeployment`。部署必须严格遵循 `lpTokenImpl → swapFacet → dynamicFeeFacet → settlementFacet → hookImpl → hookProxy`；不得跳过或重排任何步骤。（同 nonce 完整复用分支例外：`reuseExistingProxy==true` 时 `_executeDeployment` 提前 return、仅做 view 校验、广播 0 笔交易，见 §3.10 `DEPLOYMENT_NONCE` 语义中的幂等复用。）
 
-若将 engine proxy 部署和 hook proxy 部署拆成两笔交易，且第二笔失败，engine proxy 将永久绑定到一个不存在的 owner，无法恢复。
+**部署顺序约束**。Hook proxy 在部署时立即以 3 facet 地址与配置初始化。hook 的 `initialize()` 会校验 facet 地址非零，并经 `_requireFacetPoolManager` 校验 facet 字节码就绪（`FacetCodeNotReady`）且 poolManager 与 hook 一致（`FacetPoolManagerMismatch`），因此必须先完成 LP token implementation、3 个 facet 与 Hook implementation 的顺序部署，最后部署 Hook proxy。Hook proxy 地址在部署前已通过 CREATE3 salt 挖矿确定。
 
 **失败恢复**：
 
-在单笔交易的原子部署中，失败不会消耗 salt。若通过非标准方式（如手动拆分步骤）导致中间部署残留，该 nonce 下的 CREATE3 salt 已消耗，恢复方式为递增 `DEPLOYMENT_NONCE` 重新执行。残留的中间合约地址不会被新 nonce 覆盖，不影响新部署。
+两入口失败对 salt 的消耗不同：`deployHookProxy()` 单笔调用失败不耗 salt；`run()` 下仅仿真阶段失败零笔上链不耗 salt，`--broadcast` 后部分链上失败会耗 salt。`run()` + `--broadcast` 多笔广播的部分链上失败是预期/标准行为（非异常），非"手动拆分"所致。操作建议：`--slow` 让 Foundry 逐笔等收据、防 nonce 抢占；`--resume` 从 broadcast log 续发已签名的未完成交易、不重新仿真/不重跑脚本（见 `script/AGENTS.md`）：若仅 timeout/gas 中断、salt 未耗，可成功续发剩余交易；若某笔 salt 已耗，续发该笔时 `_deployArtifact` 的 guard 逻辑根本不会运行（--resume 不执行脚本），真实失败发生在链上 `outrunDeployer.deploy` 内部 CREATE3（solmate `DEPLOYMENT_FAILED`），仍须递增 `DEPLOYMENT_NONCE` 重部。该 nonce 不可安全复用，恢复方式为递增 `DEPLOYMENT_NONCE` 重新执行；残留地址不会被新 nonce 覆盖，不影响新部署。若仅 hook 最终地址被无关代码占用、而固定 salt 中间 artifact 与 CREATE3 槽仍空，脚本会跳过该 dirty flag 候选并继续 mining，不必因此换 nonce。
 
-脚本为每个失败路径提供明确的错误类型（`Create3SaltConsumed`、`ExistingIntermediateDeploymentNotReusable`、`EngineImplementationCreate3SaltConsumed` 等），而非 solmate 默认的 `DEPLOYMENT_FAILED`。
+在正常脚本执行且 `_deployArtifact` guard 会运行的路径，脚本为失败路径提供明确的错误类型（`Create3SaltConsumed`、`ExistingIntermediateDeploymentNotReusable` 等）。`forge script --resume` 不重新执行脚本或 guard；续发交易在链上 CREATE3 失败时可能直接暴露 solmate `DEPLOYMENT_FAILED`。
 
 ### 3.11 返佣（Referral Rebate）运维
 
-普通 swap 携带 referrer 时，protocol fee 切 rebate 到 engine custody；rebate 配置与领取独立于 hook 业务路径。
+普通 swap 携带 referrer 时，protocol fee 切 rebate 到 hook proxy custody；rebate 配置与领取入口均在 hook。
 
-- **领取 rebate（referrer 主动）**：`MemeverseDynamicFeeEngine::claimRebate(currency, recipient)`。无 modifier，任何地址可作为 `recipient`；caller 是 referrer（`pendingRebate` 按 `msg.sender` 索引），`recipient` 非零。engine 无 `ReentrancyGuard`，`pendingRebate` 在 external transfer 前清零（CEI）。currency 与该 referrer 累计 rebate 的 protocol fee currency 一致（in-kind）。`pendingRebate` 是 `[referrer][token]` 二级 mapping 记账，engine 无批量 claim 入口；referrer 若在多 token 累积 rebate 须逐 token 调用 `claimRebate`。前端/SDK 应先从 `ReferralRebateAccrued` 事件历史聚合 distinct currency（`currency` 未 indexed，须扫全表），再对每个 currency 逐次调用 `claimRebate`。
-- **查询未领 rebate**：`MemeverseDynamicFeeEngine::pendingRebateOf(referrer, currency)`（view）。注意 engine 持有的 token 余额 ≥ Σ 所有 referrer 的 `pendingRebate` 是返佣偿付能力不变量（见 [docs/spec/invariants.md](spec/invariants.md) INV-20）。
-- **改返佣率**：`MemeverseUniswapHook::setReferrerRebateBps(bps)`（hook wrapper，`onlyOwner`）转发到 `MemeverseDynamicFeeEngine::setReferrerRebateBps`。engine 的 `onlyOwner` 是 hook proxy，因此 human governance owner 经 hook wrapper 调整。约束 `bps <= FeeMath.PROTOCOL_FEE_SHARE_BPS`（`3500`），否则 engine revert `RebateExceedsProtocolShare`。触发 `ReferrerRebateBpsUpdated(oldBps, newBps)`。
-- **查询当前返佣率**：`MemeverseDynamicFeeEngine::referrerRebateBps()`（view）。engine `initialize` 默认 `1000`（10%）。
-- **engine implementation 升级（`upgradeDynamicFeeEngineImplementation`）**：UUPS proxy storage 保留，`referrerRebateBps` 与 `pendingRebate` mapping 跨升级不丢。但若把一个老部署的 engine（在不含返佣逻辑的实现下 `initialize` 过，其 `referrerRebateBps == 0`）升级到含返佣的实现，`referrerRebateBps` 保留旧值 `0`，rebate 实际禁用（`_collectProtocolFee` 内 `rebateBps != 0` 检查不通过），须经 `data` migration calldata 或升级后调 `hook.setReferrerRebateBps(1000)` 显式激活。推荐升级 calldata：`abi.encodeCall(IMemeverseDynamicFeeEngine.setReferrerRebateBps, (1000))`。
-- **engine pointer 替换（`upgradeDynamicFeeEngine`）**：换 engine proxy 实例，新 engine 的 dynamic fee state 从零开始（EWVWAP / volatility / short-impact 全 reset）。旧 engine 的 `pendingRebate` 不随之迁移：旧 engine 仍独立部署，其 `claimRebate` 不经 hook，referrer 仍可直接对旧 engine 调 `claimRebate` 领取存量 rebate。运维替换 engine 前应提示 referrer 先领旧 engine 上的 pending rebate，或接受存量 rebate 仍可经旧 engine claim（不会被销毁，只是不再增长）。`upgradeDynamicFeeEngine` 无 on-chain pending-rebate migration 守卫；这是接受的 trade-off（见设计 spec Trade-offs）。前端/SDK 默认读 `hook.dynamicFeeEngine()` 得到当前 engine 地址，对旧 engine 上的存量 rebate 不可见；要领取旧 engine 上的 pending rebate，须从 `DynamicFeeEngineUpdated(oldEngine, newEngine)` 事件历史回溯找旧 engine 地址（每次替换产生一条事件，多轮替换需沿事件链回溯），再直接对旧 engine 调 `claimRebate(currency, recipient)`。建议 engine 替换后前端缓存全部历史 engine 地址列表（含替换前的初始 engine）。
-- **coverage**：返佣只在普通 swap（`_beforeSwap` / `_afterSwap`）路径触发；preorder settlement（`executePreorderSettlement`）不携带 referrer，不参与返佣。
+- **领取 rebate（referrer 主动）**：`MemeverseUniswapHook::claimRebate(currency, recipient)`（Router 直接实现）。无 onlyOwner / caller 白名单，任何地址可作为 `recipient`；caller 是 referrer（`pendingRebate` 按 `msg.sender` 索引），`recipient` 非零。`pendingRebate` 在 external transfer 前清零（CEI），并带 `nonReentrant` 双重防重入。currency 与该 referrer 累计 rebate 的 protocol fee currency 一致（in-kind）。`pendingRebate` 是 `[referrer][token]` 二级 mapping 记账（Router storage），hook 无批量 claim 入口；referrer 若在多 token 累积 rebate 须逐 token 调用 `claimRebate`。前端/SDK 应先从 `ReferralRebateAccrued` 事件历史聚合 distinct currency（`currency` 已 indexed，可按 referrer+currency topic 直接 filter），再对每个 currency 逐次调用 `claimRebate`。
+- **查询未领 rebate**：`MemeverseUniswapHook::pendingRebateOf(referrer, currency)`（view）。注意 hook proxy 持有的 token 余额 ≥ Σ 所有 referrer 的 `pendingRebate` 是返佣偿付能力不变量（见 [docs/spec/invariants.md](spec/invariants.md) INV-20）。
+- **改返佣率**：`MemeverseUniswapHook::setReferrerRebateBps(bps)`（Router 直接实现，`onlyOwner`）。约束 `bps <= FeeMath.PROTOCOL_FEE_SHARE_BPS`（`3500`），否则 revert `RebateExceedsProtocolShare`。触发 `ReferrerRebateBpsUpdated(oldBps, newBps)`。
+- **查询当前返佣率**：`MemeverseUniswapHook::referrerRebateBps()`（view）。默认 `1000`（10%）。
+- **rebate 职责归属**：返佣逻辑分布在 Router 与 SwapFacet，与 DynamicFeeFacet 无关——`setReferrerRebateBps` / `claimRebate` / `pendingRebateOf` / `referrerRebateBps` 在 Router 直接实现，`pendingRebate` 的 accrual 在 SwapFacet 的 `_settleProtocolFee`（`_collectProtocolFee` 与 beforeSwap 主路径均调用它）；`referrerRebateBps` 与 `pendingRebate` 均存于 Router 共享 storage（ERC7201 namespace `outrun.storage.MemeverseUniswapHook`）。
+- **Router implementation 升级（UUPS `upgradeToAndCall`）对 rebate 的影响**：`referrerRebateBps` 与 `pendingRebate` 位于 Hook Router 的 ERC7201 storage；常规升级以空 `data` 运行，在新 implementation 保持兼容 storage layout 的前提下保留其值。`initialize` 仅在 proxy 首次初始化时写入默认 `DEFAULT_REFERRAL_REBATE_BPS`（`1000`），不会在常规升级中再次执行或重置该值。`referrerRebateBps == 0` 只停止新的 rebate accrual；既有 `pendingRebate` 仍可通过 `claimRebate` 领取。启用或调整 rebate 必须由 owner 显式调用 `setReferrerRebateBps(...)`。现有代码没有 versioned reinitializer，因此升级 `data` 必须为空。
+- **facet 替换（`setFacet`）对 rebate 的影响**：换 SwapFacet 切换 rebate accrual 逻辑实现，账本与率仍在 Router storage；换 DynamicFeeFacet 只影响动态费率计算（`dynamicFeeState`：EWVWAP / 波动率 / 短期冲击），不触及 rebate。facet 替换保留 Router storage 中的全部状态。三类 facet 替换均经 `setFacet` → `_requireFacetPoolManager` 强制 PoolManager 一致。
+- **coverage**：返佣只在普通 swap（SwapFacet 的 `beforeSwapLogic` / `afterSwapLogic`）路径触发；preorder settlement（SettlementFacet 的 `executeSettlementLogic`）不携带 referrer，不参与返佣。
 
 #### 3.11.1 返佣相关 revert 条件
 
-- `RebateExceedsProtocolShare`：`MemeverseUniswapHook::setReferrerRebateBps(bps)`（转发到 `MemeverseDynamicFeeEngine::setReferrerRebateBps`）当 `bps > FeeMath.PROTOCOL_FEE_SHARE_BPS`（`3500`）时触发，保证单次 swap 的 rebate ≤ protocol fee，不会透支 protocol share。`[代码已证]`
-- `ERC20TransferFailed`：`MemeverseDynamicFeeEngine::claimRebate(currency, recipient)` 在 rebate token 的 `IERC20Minimal.transfer(recipient, amount)` 返回 `false`（非标准 ERC20 返回值或拒绝）时触发；CEI 下 `pendingRebate` 已先清零，整笔 revert 回滚清零，账本与余额同步。`[代码已证]`
+- `RebateExceedsProtocolShare`：`MemeverseUniswapHook::setReferrerRebateBps(bps)` 当 `bps > FeeMath.PROTOCOL_FEE_SHARE_BPS`（`3500`）时触发，保证单次 swap 的 rebate ≤ protocol fee，不会透支 protocol share。`[代码已证]`
+- `OutrunSafeERC20.SafeERC20FailedOperation(address token)`：`MemeverseUniswapHook::claimRebate(currency, recipient)` 经 `CurrencySettler.transferWithGuard` → `OutrunSafeERC20.safeTransfer` 执行 rebate token 转账，当 transfer 返回 `false`、返回非 bool 数据（非标准 ERC20）、或 low-level call 失败时触发；CEI 下 `pendingRebate` 已先清零，整笔 revert 回滚清零，账本与余额同步。`[文档已对齐实现]`
 
 #### 3.11.2 treasury 必须非零配置
 
-- `treasury` 必须在 hook 上非零配置；`MemeverseUniswapHook::setTreasury` 已 reject 零地址。若 treasury 未配置或在运行期被清零（当前实现无 zero-address 清零路径，但运维侧若错误 retarget 到零地址），普通 swap 在 `_collectProtocolFee → _takeToTreasury` 处 `transfer` 到零地址会按非标准 ERC20 行为 revert；preorder settlement 在 `_collectPreorderSettlementInputFees` 直接 `transferFrom` 到 treasury，零地址同样 revert。`[代码已证]`
+- `treasury` 必须在 hook 上非零配置；`MemeverseUniswapHook::setTreasury` 已 reject 零地址。若 treasury 未配置或在运行期被清零（当前实现无 zero-address 清零路径，但运维侧若错误 retarget 到零地址），普通 swap 在 `_takeToTreasury`（`SwapFacet`）有显式零地址守卫，treasury 为零时在任何 `poolManager.take` 之前直接 `revert Unauthorized()`，不依赖 token 行为；preorder settlement 在 `_collectPreorderSettlementInputFees`（`SettlementFacet`）直接 `transferFrom` 到 treasury，无显式零地址守卫，零地址时是否 revert 取决于具体 token（非标返 false 触发 `ERC20TransferFailed`，标准实现通常自身 revert）。`[代码已证]`
 
-#### 3.11.3 `accrueRebate` 只在 swap unlock session 内可调
+#### 3.11.3 返佣记账（pendingRebate accrual）只在 swap unlock session 内执行
 
-- `MemeverseDynamicFeeEngine::accrueRebate` 受 `onlyAuthorizedCaller` 保护，且 hook 仅在 `_beforeSwap` / `_afterSwap` 内调用该函数——此时 PoolManager 处于 unlock session。修复后 `accrueRebate` 是纯记账（`pendingRebate[referrer][currency] += amount` + emit，无 PoolManager 调用、无外部调用），不再有"engine 内部 `poolManager.take` 在非 unlock 上下文 revert"的问题；take 由 hook 在 `_collectProtocolFee` 内的 unlock session 中执行（v4 `PoolManager.take` delta 记调用者 hook，被 beforeSwap specifiedDelta credit 抵消），故 rebate accrual 仍与 swap 生命周期严格绑定（`onlyAuthorizedCaller` + hook 调用点均在 unlock 内）。`[代码已证]`
+- SwapFacet 的 `_settleProtocolFee`（`_collectProtocolFee` 调用；beforeSwap 主路径直接调）先内联累加 `pendingRebate[referrer][currency] += amount` 并 emit `ReferralRebateAccrued`（effect），再通过 `_takeToTreasury` 调用 `PoolManager.take`（interaction），最后 emit `ProtocolFeeCollected`。返佣记账这一步是纯 storage effect，无 PoolManager 调用、外部调用或 facet→facet delegatecall；它先于 treasury take 与调用方执行的 rebate take，`_settleProtocolFee` 现为严格 CEI（effect → interaction → event）。`PoolManager.take` 不触发 v4 hook callback；对于 ERC20 currency，它仍会调用 token 的 `transfer`，执行外部 token 代码。运维必须只批准标准 fee currency，并保持 treasury 为被动收款方；任一 take 或 token transfer 失败会回滚整笔 swap。beforeSwap 主路径把 rebate take 与 LP fee take 合并为一次 `poolManager.take(currencyIn, address(this), lpFeeInputAmount + rebate)`，afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立执行 rebate take。所有调用点均在 PoolManager unlock session 内；SwapFacet logic 函数开头检查 `address(this) != __self` 防直接 CALL（`__self` 为 facet 自身地址 immutable）。`[代码已证]`
 
 `[代码已证]`
 
@@ -545,7 +573,7 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
 
 #### 部署时序
 
-- `GenesisCreditFactory` 必须先于 `POLend` 部署完成。当 `_deployGenesisCreditFactory` 先于 `_deployPOLend` 执行时，脚本把已部署 factory 地址自动写入 POLend `initialize` 的 `creditFactory` 参数（`_buildPOLendCreationCode` 优先读本次脚本部署的 factory，回退到 `CREDIT_FACTORY_PROXY` env）；后续 `leveragedGenesisWithCredit` 经 `creditOf(uAsset)` 查 GenesisCredit 地址。`setCreditFactory`（owner-only）保留为事后修正 / 迁移入口，不再是主接线路径。readiness 校验 `POLend.creditFactory()` 有代码，阻断占位（未设 `CREDIT_FACTORY_PROXY` 时 owner 兜底写入的 EOA，无代码）无声通过——避免系统开放后 `leveragedGenesisWithCredit` 首次解析因对无代码地址 staticcall 返空、`abi.decode` revert 而阻断 credit 路径。
+- `GenesisCreditFactory` 必须先于 `POLend` 部署完成。`_buildPOLendCreationCode` 将本次脚本部署的 factory 地址写入 POLend `initialize` 的 `creditFactory` 参数；未在本次运行部署 factory 时使用 `CREDIT_FACTORY_PROXY` env。`leveragedGenesisWithCredit` 经 `creditOf(uAsset)` 查 GenesisCredit 地址，`setCreditFactory`（owner-only）用于事后修正或迁移。readiness 校验 `POLend.creditFactory()` 有代码，阻断占位（未设 `CREDIT_FACTORY_PROXY` 时 owner 兜底写入的 EOA，无代码）无声通过——避免系统开放后 `leveragedGenesisWithCredit` 首次解析因对无代码地址 staticcall 返空、`abi.decode` revert 而阻断 credit 路径。
 - 无循环依赖：`GenesisCreditFactory` 自内联 CREATE3（不依赖 `OutrunDeployer`），仅依赖 LayerZero `lzEndpoint`，不依赖 POLend / Launcher。
 - per-uAsset GenesisCredit 通过 `deployCredit(uAsset, name, symbol, delegate)` 按需部署，`salt = keccak256(abi.encode(uAsset))` 保证本链确定性地址（同链不同 uAsset 不冲突、`predictCredit` 可预测；factory 地址作 CREATE3 namespace）。跨链同址需 `factory + uAsset` 均跨链同址（部署前提），非合约强制；`uAsset` 是外部 Outrun 资产，其跨链同址性非本代码校验。`setPeer` 必须按各链实际 `creditOf(localUAsset)` 配置，不得复用本链地址。
 
@@ -567,7 +595,7 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
   3. 日志人工对照：脚本打印 `homeChainEid` 与 `localEid`（localEid 为 best-effort，无 fork simulate 时退化为 `<unavailable>`），运维据此判定 home/remote 关系。
 - 部署后人工对照（runbook）：home 链日志须 `homeChainEid == localEid`；remote 链日志须 `homeChainEid != localEid`。任一链不符合则立即停手，已部署 factory 作废重部。
 - 第二道防线（运维纪律）：`setMerkleRoot` 仅在 home 实例调用；远程实例 `merkleRoot` 恒为 `bytes32(0)`，即便门控因 `homeChainEid` 误配在远程成立，`claim` 路径对零 root 仍 revert `InvalidProof`。此纪律是 homechain-only claim 设计的隐式防线，不得破坏。
-- 部署路径唯一性：`GenesisCreditFactory` 必须仅经 `_deployGenesisCreditFactory` 部署，运维不得带外手动 `new GenesisCreditFactory(...)`——手动部署绕过上述全部护栏（单一来源 / re-check / 日志），直接重引入 R1-F5 双铸风险。若因故必须带外部署，必须人工完成等价校验：构造参数 `homeChainEid_` 取规范 home eid、部署后 `cast call <factory> homeChainEid()` 核对、`cast call <endpoint> eid()` 对照 home/remote 关系。
+- 部署路径唯一性：`GenesisCreditFactory` 必须仅经 `_deployGenesisCreditFactory` 部署，运维不得带外手动 `new GenesisCreditFactory(...)`——手动部署绕过上述全部护栏（单一来源 / re-check / 日志），会引入双铸风险。若因故必须带外部署，必须人工完成等价校验：构造参数 `homeChainEid_` 取规范 home eid、部署后 `cast call <factory> homeChainEid()` 核对、`cast call <endpoint> eid()` 对照 home/remote 关系。
 
 #### `setMerkleRoot` 配置
 

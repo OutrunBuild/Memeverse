@@ -4,9 +4,7 @@
 
 ## 1. 普通创世状态
 
-`Launcher` 不再使用 `GenesisFund`。
-
-`Memeverse` 内保存：
+普通创世资金由 `Memeverse` 的聚合账本保存：
 
 ```text
 totalNormalFunds
@@ -20,7 +18,7 @@ totalNormalFunds
 userGenesisFund
 ```
 
-普通创世不拆存 `userMemecoinFund / userAuxiliaryFund`。
+`userGenesisFund` 是用户普通创世权益的唯一账本。
 
 `genesis(verseId, amount, user)`：
 
@@ -101,7 +99,7 @@ totalLeveragedInterest >= minTotalFund
 ```
 
 杠杆侧成功门槛比较的是 `totalLeveragedInterest`，不是 `totalLeveragedDebt`。
-这只是 `Genesis -> Locked` 的 launch gate；成功后的部署、容量和分账资金口径仍看 `totalGenesisFunds = totalNormalFunds + totalLeveragedDebt`，不要混读。
+这只是 `Genesis -> Locked` 的 launch gate；成功后的部署、容量和分账资金口径使用 `totalGenesisFunds = totalNormalFunds + totalLeveragedDebt`。
 
 `minTotalFund` 按该 verse 的 `uAsset` 精度解释：
 
@@ -252,7 +250,7 @@ POLend.markRefundable(verseId)
 - 只允许 `Refund`
 - 权益和领取标记基于 `msg.sender`
 - `to != address(0)`，退款转给 `to`
-- real 部分：按 `leveragedInterestPaid[verseId][msg.sender]` 退回该 verse 的 `uAsset`（原路径，存储字段复用旧名承载 real 部分），退回成功 emit `ClaimRefund(verseId, user, to, amount)`
+- real 部分：按 `leveragedInterestPaid[verseId][msg.sender]` 退回该 verse 的 `uAsset`，退回成功 emit `ClaimRefund(verseId, user, to, amount)`
 - credit 部分：按 `creditInterestPaid[verseId][msg.sender]` 从 POLend 托管余额 `GenesisCredit.transfer(to, amount)` 退回 GenesisCredit token（不凭空 materialize uAsset）
 - 一次性领取（real 与 credit 合并一次 claim）
 - 不清零 `leveragedInterestPaid` / `creditInterestPaid`

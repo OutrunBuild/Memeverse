@@ -5,7 +5,7 @@ import {IMemeverseLauncher} from "./IMemeverseLauncher.sol";
 
 /// @notice Storage layout for the MemeverseLauncher ERC-7201 namespace.
 ///         Shared between the MemeverseLauncher facade and its delegatecall siblings
-///         (MemeverseBootstrap, MemeverseFeeDistributor) so all bind the same struct to the same
+///         (MemeverseBootstrap, MemeverseFeeDistributor, MemeversePOLMinter) so all bind the same struct to the same
 ///         ERC-7201 base slot via `layout at erc7201(...)`.
 ///         Nested value types (Memeverse, FundMetaData, etc.) are members of `IMemeverseLauncher`,
 ///         so they are referenced via that interface rather than redeclared here.

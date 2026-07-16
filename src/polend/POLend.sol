@@ -535,7 +535,7 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         if (market.state != MarketState.Locked && market.state != MarketState.Settled) revert InvalidState();
 
         // Aggregate real + credit interest: credit participants share YT pro-rata to combined paid interest
-        // (spec docs/spec/polend/genesis.md §7; totalLeveragedInterest = real + credit combined, see core.md §6.3).
+        // (totalLeveragedInterest = real + credit combined).
         uint256 interestPaid = polendStorage.leveragedInterestPaid[verseId][msg.sender]
             + polendStorage.creditInterestPaid[verseId][msg.sender];
         uint256 totalLeveragedInterest = market.totalLeveragedInterest;
@@ -565,7 +565,7 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         if (market.state != MarketState.Settled) revert InvalidState();
 
         // Aggregate real + credit interest: credit participants share residual pro-rata to combined paid interest
-        // (spec docs/spec/polend/settlement-and-fees.md §7; totalLeveragedInterest = real + credit combined, see core.md §6.3).
+        // (totalLeveragedInterest = real + credit combined).
         uint256 interestPaid = polendStorage.leveragedInterestPaid[verseId][msg.sender]
             + polendStorage.creditInterestPaid[verseId][msg.sender];
         uint256 totalLeveragedInterest = market.totalLeveragedInterest;
@@ -635,7 +635,7 @@ contract POLend layout at erc7201("outrun.storage.POLend")
     /// @param user Participant address.
     /// @return Combined real-uAsset and credit interest paid by the user.
     function leveragedInterestPaid(uint256 verseId, address user) external view returns (uint256) {
-        // View-layer aggregate (real + credit) per docs/spec/polend/core.md: storage is split,
+        // View-layer aggregate (real + credit): storage is split,
         // but the public view exposes the combined interest the user paid, matching
         // `getUserLeveragedDebt`'s aggregate accounting. The real-only ledger is internal.
         return polendStorage.leveragedInterestPaid[verseId][user] + polendStorage.creditInterestPaid[verseId][user];

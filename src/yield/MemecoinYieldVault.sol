@@ -26,7 +26,6 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     uint256 public verseId;
     /// @dev Permanent virtual buffer V used by the share/asset conversion helpers. Set once at
     ///      initialization; sized by the launcher at 0.7% of the minimum main-pool memecoin provision.
-    ///      See docs/spec/governance/governance-yield-details.md §4.
     uint256 public virtualAssets;
 
     mapping(address account => RedeemRequest[]) public redeemRequestQueues;
@@ -163,6 +162,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     function executeRedeem() external override returns (uint256 redeemedAmount) {
         RedeemRequest[] storage requestQueue = redeemRequestQueues[msg.sender];
 
+        // asset is written once in initialize and never mutated; caching avoids repeated SLOADs across loop iterations.
+        address asset_ = asset;
+
         for (uint256 i = requestQueue.length; i > 0;) {
             unchecked {
                 --i;
@@ -179,7 +181,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
                 }
                 requestQueue.pop();
 
-                IERC20(asset).safeTransfer(msg.sender, amount);
+                IERC20(asset_).safeTransfer(msg.sender, amount);
 
                 emit RedeemExecuted(msg.sender, amount);
             }

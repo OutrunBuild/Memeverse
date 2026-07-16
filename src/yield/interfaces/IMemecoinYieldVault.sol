@@ -33,8 +33,7 @@ interface IMemecoinYieldVault is IERC20 {
 
     /// @notice Initializes the yield vault proxy.
     /// @dev Wires ERC20 share metadata, the yield dispatcher, the verse-specific underlying asset, and the
-    ///      permanent virtual buffer used to dampen exchange-rate inflation. See
-    ///      docs/spec/governance/governance-yield-details.md §4.
+    ///      permanent virtual buffer used to dampen exchange-rate inflation.
     /// @param name Share token name.
     /// @param symbol Share token symbol.
     /// @param yieldDispatcher Address allowed to re-accumulate remote yield.

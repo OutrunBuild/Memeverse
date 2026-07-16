@@ -532,6 +532,11 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
     error FundBasedAmountTooHigh(uint256 fundBasedAmount, uint256 maxSupportedFundBasedAmount);
     error TotalGenesisFundsTooHigh(uint256 totalGenesisFunds, uint256 maxSupportedTotalGenesisFunds);
 
+    /// @dev Reverted when the derived yield-vault virtual buffer
+    ///      `V = minTotalFund * fundBasedAmount * 7 / 1000` would round to zero; such a config makes
+    ///      `MemecoinYieldVault.initialize` revert `ZeroVirtualAssets()` and DoS governance-chain deploy.
+    error VirtualAssetsTooLow();
+
     /// @dev Reverted when the owner has not configured the bootstrap sibling the facade delegatecalls into.
     error BootstrapImplNotSet();
 

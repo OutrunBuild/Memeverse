@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -27,8 +27,6 @@ import {MemeverseLauncherStorage} from "./interfaces/IMemeverseLauncherStorage.s
 ///         MemeverseLauncher. Binds the SAME ERC-7201 slot so under delegatecall it operates on
 ///         the proxy's MemeverseLauncherStorage. No Initializable, no own storage, empty constructor.
 contract MemeverseBootstrap layout at erc7201("outrun.storage.MemeverseLauncher") is TokenHelper, IMemeverseBootstrap {
-    using PoolIdLibrary for PoolKey;
-
     MemeverseLauncherStorage private memeverseLauncherStorage;
 
     constructor() {}

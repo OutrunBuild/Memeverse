@@ -47,7 +47,7 @@ contract LaunchFeeQuoteHandler is Test {
 
     /// @notice Test helper for quoteVariants.
     /// @param amountSeed See implementation.
-    function quoteVariants(uint256 amountSeed) external view {
+    function quoteVariants(uint256 amountSeed) external {
         uint256 amount = bound(amountSeed, 1 ether, 10_000 ether);
         uint256 expectedFee = _currentQuoteFee();
 
@@ -82,7 +82,7 @@ contract LaunchFeeQuoteHandler is Test {
         assertEq(oneForZeroExactOutput.feeBps, expectedFee, "ofz exact-output fee");
     }
 
-    function _currentQuoteFee() internal view returns (uint256 feeBps) {
+    function _currentQuoteFee() internal returns (uint256 feeBps) {
         return lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
@@ -240,9 +240,9 @@ contract MemeverseUniswapHookLaunchFeeQuoteInvariantTest is StdInvariant, Test, 
         internal
         returns (MemeverseUniswapHook deployed)
     {
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared helper
-        // (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        (address hookProxy,) = deployHookAtFlagAddress(manager_, owner_, treasury_);
+        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // `_validateProxyHookAddress` and facet bindings are exercised.
+        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
         return MemeverseUniswapHook(hookProxy);
     }
 
@@ -273,7 +273,7 @@ contract MemeverseUniswapHookLaunchFeeQuoteInvariantTest is StdInvariant, Test, 
     }
 
     /// @notice Test helper for invariant_quoteFeeMatchesLaunchDecayFormula.
-    function invariant_quoteFeeMatchesLaunchDecayFormula() external view {
+    function invariant_quoteFeeMatchesLaunchDecayFormula() external {
         uint256 expectedFee = _expectedLaunchFee();
 
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
@@ -326,9 +326,9 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
         internal
         returns (MemeverseUniswapHook deployed)
     {
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
-        // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        (address hookProxy,) = deployHookAtFlagAddress(manager_, owner_, treasury_);
+        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // `_validateProxyHookAddress` and facet bindings are exercised.
+        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
         deployed = MemeverseUniswapHook(hookProxy);
     }
 
@@ -464,7 +464,7 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
     }
 
     /// @notice Test helper for invariant_directSettlementNeverBreaksPublicQuoteFloor.
-    function invariant_directSettlementNeverBreaksPublicQuoteFloor() external view {
+    function invariant_directSettlementNeverBreaksPublicQuoteFloor() external {
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,

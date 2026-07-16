@@ -82,7 +82,7 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
             assertEq(treasuryInInc, 0, "no input-side treasury fee");
         }
 
-        // Token conservation across every holder (stateless executor ends holding nothing):
+        // Token conservation across every holder (settlement takes no persistent custody):
         //   input : payer decrease == hook + treasury + pool increase
         //   output: pool decrease   == recipient + treasury + hook increase
         assertEq(payerInDec, hookInInc + treasuryInInc + mgrInInc, "input conservation");
@@ -112,8 +112,9 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
         _assertPreorderConservation(false, key.currency0);
     }
 
-    /// @dev Adversarial: a preorder settlement writes the hook's transient bypass marker only for
-    ///      its own call. The next public swap must use the normal fee path and pay treasury.
+    /// @dev Adversarial: a preorder settlement is a hook-initiated swap, so Uniswap v4 skips its
+    ///      beforeSwap and afterSwap callbacks. The next public router swap must use the normal
+    ///      callback fee path and pay treasury.
     function testPreorderThenPublicSwap_FeePathRestored() external {
         _hook().setProtocolFeeCurrency(key.currency0, true);
 
@@ -137,8 +138,8 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
         assertGt(token0.balanceOf(treasury), treasuryBefore, "public swap charged treasury fee");
     }
 
-    /// @dev Adversarial: public -> preorder -> public catches both marker leakage directions: a public
-    ///      swap must not block preorder, and preorder must not make the following public swap fee-free.
+    /// @dev Adversarial: public -> preorder -> public verifies path isolation: the settlement succeeds,
+    ///      and both public swaps retain the normal treasury-fee behavior.
     function testPublicSwapThenPreorderThenPublicSwap_AllSucceed() external {
         _hook().setProtocolFeeCurrency(key.currency0, true);
         SwapParams memory publicParams = SwapParams({

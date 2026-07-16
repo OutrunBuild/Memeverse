@@ -20,7 +20,7 @@ import {LiquidityQuote} from "../../src/swap/libraries/LiquidityQuote.sol";
 import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
-import {IMemeverseDynamicFeeEngine} from "../../src/swap/interfaces/IMemeverseDynamicFeeEngine.sol";
+import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
 import {IMemeverseUniswapHookLens} from "../../src/swap/interfaces/IMemeverseUniswapHookLens.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRouter.sol";
@@ -28,6 +28,7 @@ import {UniswapLP} from "../../src/swap/tokens/UniswapLP.sol";
 
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
+import {StateWritingDynamicFeeFacetMock} from "../mocks/swap/StateWritingDynamicFeeFacetMock.sol";
 
 contract DirectProtectedSwapCaller {
     MockPoolManagerForRouterTest internal immutable manager;
@@ -96,9 +97,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         internal
         returns (MemeverseUniswapHook deployed)
     {
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
-        // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        (address hookProxy,) = deployHookAtFlagAddress(manager_, owner_, treasury_);
+        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // `_validateProxyHookAddress` and facet bindings are exercised.
+        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
         deployed = MemeverseUniswapHook(hookProxy);
     }
 
@@ -159,12 +160,20 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(feeCurrency, true);
     }
 
+    function _quoteSwap(PoolKey memory quoteKey, SwapParams memory params, address trader)
+        internal
+        view
+        returns (IMemeverseUniswapHook.SwapQuote memory quote)
+    {
+        return router.quoteSwap(quoteKey, params, trader);
+    }
+
     /// @notice Verifies router quotes are delegated through the configured hook lens.
     function testQuoteSwap_UsesConfiguredHookLens() external {
         _setProtocolFeeCurrency(key.currency0);
         SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
 
-        IMemeverseUniswapHook.SwapQuote memory routerQuote = router.quoteSwap(key, params, address(this));
+        IMemeverseUniswapHook.SwapQuote memory routerQuote = _quoteSwap(key, params, address(this));
         IMemeverseUniswapHook.SwapQuote memory lensQuote =
             lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
 
@@ -174,6 +183,18 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         assertEq(routerQuote.estimatedProtocolFeeAmount, lensQuote.estimatedProtocolFeeAmount, "protocol fee");
         assertEq(routerQuote.estimatedLpFeeAmount, lensQuote.estimatedLpFeeAmount, "lp fee");
         assertEq(routerQuote.protocolFeeOnInput, lensQuote.protocolFeeOnInput, "fee side");
+    }
+
+    /// @notice Verifies the quote path enforces read-only execution on replacement facets.
+    function testQuoteSwap_RevertsWhenFacetWritesUnderStaticContext() external {
+        _setProtocolFeeCurrency(key.currency0);
+        StateWritingDynamicFeeFacetMock stateWritingFacet =
+            new StateWritingDynamicFeeFacetMock(IPoolManager(address(manager)));
+        hook.setFacet(hook.DYNAMIC_FEE_FACET_ROLE(), address(stateWritingFacet));
+        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+
+        vm.expectRevert();
+        _quoteSwap(key, params, address(this));
     }
 
     /// @notice Verifies the router constructor rejects a lens address with no deployed code.
@@ -226,7 +247,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies explicit launcher binding rejects the zero address.
-    /// @dev Launch settlement authorization now depends only on the launcher binding.
+    /// @dev Launch settlement authorization depends only on the launcher binding.
     function testSetLauncher_RevertsOnZeroAddress() external {
         vm.expectRevert(IMemeverseUniswapHook.ZeroAddress.selector);
         hook.setLauncher(address(0));
@@ -311,7 +332,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         hook.setTreasury(address(0));
     }
 
-    /// @notice Verifies native protocol-fee pools now fail before reaching treasury handling.
+    /// @notice Verifies native protocol-fee pools fail before reaching treasury handling.
     function testSwapReverts_WhenProtocolFeePoolUsesNativeCurrency() external {
         PoolKey memory nativeKey = _dynamicPoolKey(CurrencyLibrary.ADDRESS_ZERO, Currency.wrap(address(token1)));
         vm.expectRevert();
@@ -429,7 +450,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies router swaps revert during the post-unlock protection window.
-    /// @dev Protection now comes from hook-local pool state, not a launcher pair verdict.
+    /// @dev Protection comes from hook-local pool state.
     function testSwap_RevertsDuringPostUnlockProtectionWindow() external {
         MockPoolManagerForRouterTest guardedManager = new MockPoolManagerForRouterTest();
         MemeverseUniswapHook guardedHook =
@@ -581,7 +602,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies explicit preorder settlement can only be initiated by the configured launcher.
-    /// @dev Settlement no longer routes through router marker swap mode.
+    /// @dev Settlement uses the hook's launcher-authorized entrypoint.
     function testExecutePreorderSettlement_RevertsWhenCallerIsNotLauncher() external {
         _setProtocolFeeCurrency(key.currency0);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
@@ -659,7 +680,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     function testExecutePreorderSettlement_IgnoresConfigurableLaunchFeeFloor() external {
         _setProtocolFeeCurrency(key.currency0);
         hook.setDefaultLaunchFeeConfig(
-            IMemeverseDynamicFeeEngine.LaunchFeeConfig({startFeeBps: 4000, minFeeBps: 300, decayDurationSeconds: 900})
+            IDynamicFeeFacet.LaunchFeeConfig({startFeeBps: 4000, minFeeBps: 300, decayDurationSeconds: 900})
         );
         hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
@@ -686,7 +707,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _setProtocolFeeCurrency(key.currency0);
         hook.setLauncher(address(this));
         hook.setDefaultLaunchFeeConfig(
-            IMemeverseDynamicFeeEngine.LaunchFeeConfig({startFeeBps: 100, minFeeBps: 100, decayDurationSeconds: 1})
+            IDynamicFeeFacet.LaunchFeeConfig({startFeeBps: 100, minFeeBps: 100, decayDurationSeconds: 1})
         );
         token0.approve(address(hook), type(uint256).max);
 
@@ -727,7 +748,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         seedActiveLiquiditySharesForTest(address(pristineHook), pristineKey.toId(), address(this), 1e18);
         pristineHook.setProtocolFeeCurrency(pristineKey.currency0, true);
         pristineHook.setDefaultLaunchFeeConfig(
-            IMemeverseDynamicFeeEngine.LaunchFeeConfig({startFeeBps: 100, minFeeBps: 100, decayDurationSeconds: 1})
+            IDynamicFeeFacet.LaunchFeeConfig({startFeeBps: 100, minFeeBps: 100, decayDurationSeconds: 1})
         );
         MemeverseUniswapHookLens pristineLens = new MemeverseUniswapHookLens(IPoolManager(address(pristineManager)));
 
@@ -1367,7 +1388,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies router-accrued LP fees are claimed directly through the hook without router relays.
-    /// @dev Covers the new owner-direct claim flow while keeping router swap/liquidity integration in scope.
+    /// @dev Covers the owner-direct claim flow while keeping router swap/liquidity integration in scope.
     function testClaimFeesCore_DirectOwnerClaimCanRedirectRecipient() external {
         _setProtocolFeeCurrency(key.currency0);
 
@@ -1497,7 +1518,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies the router returns the hook LP token for a pair.
-    /// @dev Covers the new pair-to-LP-token view helper.
+    /// @dev Covers the pair-to-LP-token view helper.
     function testRouterLpToken_ReturnsHookPoolLpTokenAddress() external {
         PoolKey memory normalizedKey = router.getHookPoolKey(address(token0), address(token1));
         _initializePoolDirect(normalizedKey, SQRT_PRICE_1_1);
@@ -1572,7 +1593,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies the exact-liquidity quote uses the requested liquidity on an initialized empty pool.
-    /// @dev Fresh pools no longer require an extra first-mint locked-liquidity buffer.
+    /// @dev Fresh pools use the requested liquidity without an extra first-mint buffer.
     function testQuoteExactAmountsForLiquidity_FeedsDetailedAddLiquidityOnInitializedEmptyPool() external {
         uint128 liquidityDesired = 10 ether;
         MockERC20 freshToken0 = new MockERC20("Fresh0", "F0", 18);
@@ -1606,7 +1627,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies liquidity-related router selectors remain aligned with the public interface.
-    /// @dev Guards ABI stability while internal parameter plumbing is refactored.
+    /// @dev Guards ABI stability across internal parameter-plumbing changes.
     function testRouterLiquiditySelectors_MatchInterface() external pure {
         assertEq(MemeverseSwapRouter.addLiquidity.selector, IMemeverseSwapRouter.addLiquidity.selector, "add");
         assertEq(
@@ -1666,7 +1687,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies pool bootstrap uses the caller-provided start price.
-    /// @dev Confirms the router no longer derives a bootstrap price from token budgets.
+    /// @dev Confirms the router uses the explicit bootstrap price instead of deriving one from token budgets.
     function testRouterCreatePoolAndAddLiquidity_UsesProvidedStartPrice() external {
         MockERC20 token18 = new MockERC20("Token18", "T18", 18);
         MockERC20 token6 = new MockERC20("Token6", "T6", 6);
@@ -1685,7 +1706,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies bootstrap returns actual spend when desired budgets are larger than execution needs.
-    /// @dev Bootstrap now follows the same desired-budget and refund semantics as other liquidity paths.
+    /// @dev Bootstrap follows the same desired-budget and refund semantics as other liquidity paths.
     function testCreatePoolAndAddLiquidity_ReturnsActualSpendBelowDesiredBudgets() external {
         MockERC20 tokenA = new MockERC20("PreviewA", "PA", 18);
         MockERC20 tokenB = new MockERC20("PreviewB", "PB", 18);
@@ -1764,7 +1785,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies the detailed add-liquidity entrypoint reports actual spend in pool-currency order.
-    /// @dev Locks the new router surface that Launcher exact-liquidity now relies on to avoid balance snapshots.
+    /// @dev Covers the router surface used by Launcher exact-liquidity to avoid balance snapshots.
     function testAddLiquidityDetailed_ReturnsActualUsageInPoolCurrencyOrder() external {
         uint256 token0Before = token0.balanceOf(address(this));
         uint256 token1Before = token1.balanceOf(address(this));
@@ -1781,7 +1802,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies unsorted addLiquidityDetailed inputs still report spend in caller order.
-    /// @dev Guards the launcher path that now passes `(UAsset, memecoin)` directly and relies on router-side normalization.
+    /// @dev Guards the launcher path that passes `(UAsset, memecoin)` directly and relies on router-side normalization.
     function testAddLiquidityDetailed_ReturnsActualUsageInCallerOrderWhenInputsAreUnsorted() external {
         _initializePoolDirect(key, SQRT_PRICE_1_1 / 2);
 

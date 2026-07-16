@@ -14,6 +14,7 @@ import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
+import {TransientStateHarness} from "../mocks/swap/TransientStateHarness.sol";
 
 contract MemeverseTransientStateTest is Test, HookStorageHelper {
     using PoolIdLibrary for PoolKey;
@@ -27,6 +28,7 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
     MockERC20 internal token1;
     PoolKey internal key;
     PoolId internal poolId;
+    TransientStateHarness internal transientStateHarness;
 
     function setUp() public {
         mockManager = new MockPoolManagerForHookLiquidity();
@@ -49,6 +51,7 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
             hooks: IHooks(address(hook))
         });
         poolId = key.toId();
+        transientStateHarness = new TransientStateHarness();
 
         hook.setPoolInitializer(address(this));
         hook.authorizePoolInitialization(key, SQRT_PRICE_1_1);
@@ -82,10 +85,77 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
         assertEq(unspecifiedDelta, 0, "input-side exact-input swap should not emit output delta");
     }
 
+    function test_SamePoolPopThenPushUsesOnlyReplacementContext() external {
+        (uint256 firstFee, uint160 firstPrice, uint256 secondFee, uint160 secondPrice) =
+            transientStateHarness.samePoolPopThenPush(poolId, 65, 11, 35, 22);
+
+        assertEq(firstFee, 65, "first context fee");
+        assertEq(firstPrice, 11, "first context price");
+        assertEq(secondFee, 35, "replacement context fee");
+        assertEq(secondPrice, 22, "replacement context price");
+    }
+
+    function test_NestedDifferentPoolsPopInStackOrder() external {
+        PoolId otherPoolId = PoolId.wrap(bytes32(uint256(123)));
+        (uint256 innerFee, uint160 innerPrice, uint256 outerFee, uint160 outerPrice) =
+            transientStateHarness.nestedDifferentPools(poolId, otherPoolId, 65, 11, 35, 22);
+
+        assertEq(innerFee, 35, "inner context fee");
+        assertEq(innerPrice, 22, "inner context price");
+        assertEq(outerFee, 65, "outer context fee");
+        assertEq(outerPrice, 11, "outer context price");
+    }
+
+    function test_PopThenPushPreservesEncodedFeeMode() external {
+        uint256 inputModeFee = (uint256(65) | (uint256(1) << 255));
+        uint256 outputModeFee = 35;
+        (uint256 firstFee, uint256 secondFee) =
+            transientStateHarness.popThenPushMode(poolId, inputModeFee, outputModeFee);
+
+        assertEq(firstFee, inputModeFee, "input mode fee");
+        assertEq(secondFee, outputModeFee, "output mode fee");
+    }
+
+    function test_PoppedContextIsUnreachableAtDepthZero() external {
+        (uint256 emptyFee, uint160 emptyPrice, bytes32 emptyBase) =
+            transientStateHarness.consumeAfterPop(poolId, 65, 11);
+
+        assertEq(emptyFee, 0, "empty context fee");
+        assertEq(emptyPrice, 0, "empty context price");
+        assertEq(emptyBase, bytes32(0), "empty context base");
+    }
+
+    function test_FirstAcquireReturnsFalse() external {
+        bool alreadyLocked = transientStateHarness.acquireOnce(poolId);
+        assertFalse(alreadyLocked, "first acquire gets the lock");
+    }
+
+    function test_SecondAcquireSamePoolReturnsTrue() external {
+        (bool firstAlreadyLocked, bool secondAlreadyLocked) = transientStateHarness.acquireTwiceSamePool(poolId);
+
+        assertFalse(firstAlreadyLocked, "first acquire gets the lock");
+        assertTrue(secondAlreadyLocked, "second acquire is reentrancy signal");
+    }
+
+    function test_AfterReleaseAcquireReturnsFalseAgain() external {
+        (bool firstAlreadyLocked, bool afterReleaseAlreadyLocked) = transientStateHarness.acquireReleaseAcquire(poolId);
+
+        assertFalse(firstAlreadyLocked, "first acquire gets the lock");
+        assertFalse(afterReleaseAlreadyLocked, "release frees the lock");
+    }
+
+    function test_DifferentPoolsAcquireIndependently() external {
+        PoolId otherPoolId = PoolId.wrap(bytes32(uint256(123)));
+        (bool firstAlreadyLocked, bool secondAlreadyLocked) = transientStateHarness.acquireTwoPools(poolId, otherPoolId);
+
+        assertFalse(firstAlreadyLocked, "pool A gets its lock");
+        assertFalse(secondAlreadyLocked, "pool B has its own lock slot");
+    }
+
     function _deployHookProxy(address owner_, address treasury_) internal returns (MemeverseUniswapHook) {
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared helper
-        // (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        (address hookProxy,) = deployHookAtFlagAddress(IPoolManager(address(mockManager)), owner_, treasury_);
+        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // `_validateProxyHookAddress` and facet bindings are exercised.
+        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(mockManager)), owner_, treasury_);
         return MemeverseUniswapHook(hookProxy);
     }
 

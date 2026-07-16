@@ -10,20 +10,19 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
-import {IMemeverseDynamicFeeEngine} from "../../src/swap/interfaces/IMemeverseDynamicFeeEngine.sol";
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
 import {FeeMath} from "../../src/swap/libraries/FeeMath.sol";
 
 import {RealisticSwapIntegrationBase} from "./helpers/RealisticSwapManagerHarness.sol";
 
-/// @notice End-to-end coverage for the referral-rebate feature: engine storage/setter/views,
-///         hook decode + rebate routing, claim flow, 65/25/10 fee conservation, self-referral,
-///         and engine rebate solvency. Inherits the realistic swap harness so rebate accrues
-///         through a real swap unlock session (engine `take` requires the manager to be unlocked).
+/// @notice End-to-end coverage for the referral-rebate feature: rebate storage/setter/views, hook decode +
+///         rebate routing, claim flow, 65/25/10 fee conservation, self-referral, and rebate solvency.
+/// @dev Rebate custody and the `pendingRebateOf`/`claimRebate` views live on the hook Router. `engine` is an
+///      interface alias for the hook proxy, so rebate-rate reads, pending reads, and claims all target the
+///      Router. The realistic swap harness accrues rebate through a real swap unlock session, where the facet
+///      `take`s rebate into the hook proxy under delegatecall.
 contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
-    /// @dev Pulls the engine address from the hook proxy. The engine owner is the hook proxy,
-    ///      so rebate-rate changes go through `hook.setReferrerRebateBps` (engine `onlyOwner`).
-    IMemeverseDynamicFeeEngine internal engine;
+    /// @dev Interface alias for the hook Router that owns rebate custody and the claim/pending views.
+    IMemeverseUniswapHook internal engine;
 
     /// @dev Canonical referrer address used across accrual/integration tests.
     address internal constant REFERRER = address(0xCAFE);
@@ -31,7 +30,7 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
     function setUp() public {
         // Base owns no `setUp`; integration fixtures are wired through `_setUpIntegration`.
         _setUpIntegration(IPermit2(address(0)));
-        engine = IMemeverseDynamicFeeEngine(address(MemeverseUniswapHook(address(hook)).dynamicFeeEngine()));
+        engine = IMemeverseUniswapHook(address(hook));
         // Charge the protocol fee on the input currency (currency0 for zeroForOne swaps) so a
         // single exact-input swap accrues rebate in token0.
         hook.setProtocolFeeCurrency(key.currency0, true);
@@ -51,13 +50,16 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
 
     /// @notice Owner may raise the rate up to the protocol share boundary inclusive.
     function testSetReferrerRebateBps_OwnerSucceedsUpToProtocolShare() external {
+        uint256 oldBps = engine.referrerRebateBps();
+        vm.expectEmit(false, false, false, true, address(hook));
+        emit IMemeverseUniswapHook.ReferrerRebateBpsUpdated(oldBps, FeeMath.PROTOCOL_FEE_SHARE_BPS);
         hook.setReferrerRebateBps(FeeMath.PROTOCOL_FEE_SHARE_BPS);
         assertEq(engine.referrerRebateBps(), FeeMath.PROTOCOL_FEE_SHARE_BPS, "set to protocol share");
     }
 
     /// @notice Rates above the protocol share would leave the treasury share negative.
     function testSetReferrerRebateBps_RevertsWhenExceedsProtocolShare() external {
-        vm.expectRevert(IMemeverseDynamicFeeEngine.RebateExceedsProtocolShare.selector);
+        vm.expectRevert(IMemeverseUniswapHook.RebateExceedsProtocolShare.selector);
         hook.setReferrerRebateBps(FeeMath.PROTOCOL_FEE_SHARE_BPS + 1);
     }
 
@@ -66,16 +68,6 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
         vm.prank(makeAddr("stranger"));
         vm.expectRevert(); // hook `onlyOwner` bubbles the engine's OwnableUnauthorizedAccount
         hook.setReferrerRebateBps(500);
-    }
-
-    // -------------------------------------------------------------------------
-    // accrueRebate authorization (storage-level guard; success path exercised via swap below)
-    // -------------------------------------------------------------------------
-
-    /// @notice A caller that is not the bound hook is rejected before any PoolManager interaction.
-    function testAccrueRebate_RejectsNonHookCaller() external {
-        vm.expectRevert(abi.encodeWithSelector(IMemeverseDynamicFeeEngine.UnauthorizedCaller.selector, address(this)));
-        engine.accrueRebate(REFERRER, key.currency0, 100);
     }
 
     // -------------------------------------------------------------------------
@@ -125,6 +117,8 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
         uint256 pending = engine.pendingRebateOf(REFERRER, key.currency0);
 
         uint256 recipientBefore = _balanceOf(key.currency0, recipient);
+        vm.expectEmit(true, true, true, true, address(hook));
+        emit IMemeverseUniswapHook.ReferralRebateClaimed(REFERRER, recipient, key.currency0, pending);
         vm.prank(REFERRER);
         uint256 paid = engine.claimRebate(key.currency0, recipient);
 
@@ -145,7 +139,7 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
     function testClaimRebate_RevertsWhenRecipientZero() external {
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(REFERRER));
         vm.prank(REFERRER);
-        vm.expectRevert(IMemeverseDynamicFeeEngine.ZeroAddress.selector);
+        vm.expectRevert(IMemeverseUniswapHook.ZeroAddress.selector);
         engine.claimRebate(key.currency0, address(0));
     }
 
@@ -180,21 +174,23 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
     }
 
     // -------------------------------------------------------------------------
-    // Engine rebate solvency invariant
+    // Rebate solvency postcondition
     // -------------------------------------------------------------------------
 
-    /// @notice Locks the spec invariant: the engine's token balance must cover the sum of all
-    ///         pending rebates. The engine only custodies rebates (LP fees stay in the pool), so
-    ///         its holdings must dominate the accrued ledger at all times.
+    /// @notice After each successful swap, the hook's balance in the rebate currency covers total pending rebates.
+    /// @dev This checks committed post-swap state only; it does not assert an in-call balance relationship.
     function testInvariant_EngineHoldsAtLeastAllPendingRebates() external {
         address r2 = address(0xBEEF);
 
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(REFERRER));
+
+        uint256 firstPending = engine.pendingRebateOf(REFERRER, key.currency0);
+        assertGe(_balanceOf(key.currency0, address(engine)), firstPending, "first swap rebate solvency violated");
+
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(r2));
 
         uint256 pending = engine.pendingRebateOf(REFERRER, key.currency0) + engine.pendingRebateOf(r2, key.currency0);
-        uint256 engineBal = _balanceOf(key.currency0, address(engine));
-        assertGe(engineBal, pending, "rebate solvency violated");
+        assertGe(_balanceOf(key.currency0, address(engine)), pending, "second swap rebate solvency violated");
     }
 
     // -------------------------------------------------------------------------
@@ -203,8 +199,8 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
 
     /// @notice Explicit preorder settlement routes fees through the preorder fee path
     ///         (`_collectPreorderSettlementInputFees`), never through `_collectProtocolFee`, so no
-    ///         referrer rebate can accrue. Locks this invariant against future refactors that would
-    ///         fold the preorder fee collection into the public-swap path.
+    ///         referrer rebate can accrue. This keeps preorder fee collection separate from the
+    ///         public-swap fee path.
     /// @dev Mirrors the setup of `testExecutePreorderSettlement_UsesFixedOnePercentFee` in the
     ///      router suite: protocol fee currency is currency0, the test owns the launcher role, and
     ///      token0 is max-approved to the hook so settlement pulls the fixed 1% from this contract.

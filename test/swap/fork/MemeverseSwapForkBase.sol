@@ -70,7 +70,7 @@ abstract contract MemeverseSwapForkBase is Test, HookStorageHelper {
         token0.mint(address(this), 1_000_000 ether);
         token1.mint(address(this), 1_000_000 ether);
 
-        (address hookProxy,) = deployHookAtFlagAddress(manager, address(this), treasury);
+        address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
         IMemeverseUniswapHook hook = IMemeverseUniswapHook(hookProxy);
         lens = new MemeverseUniswapHookLens(manager);
         router = new MemeverseSwapRouter(manager, hook, lens, permit2);

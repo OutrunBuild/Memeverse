@@ -191,10 +191,10 @@ abstract contract RealisticSwapIntegrationBase is Test, HookStorageHelper {
         token0.mint(alice, 1_000_000 ether);
         token1.mint(alice, 1_000_000 ether);
 
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
-        // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        // hookOwner = address(this), treasury = treasury, engine bound to the hook proxy.
-        (address hookProxy,) = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury);
+        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // `_validateProxyHookAddress` and facet bindings are exercised.
+        // hookOwner = address(this), treasury = treasury.
+        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury);
         hook = MemeverseUniswapHook(hookProxy);
         lens = new MemeverseUniswapHookLens(IPoolManager(address(manager)));
         router = new MemeverseSwapRouter(

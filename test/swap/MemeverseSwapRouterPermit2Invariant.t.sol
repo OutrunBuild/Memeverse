@@ -251,9 +251,9 @@ contract MemeverseSwapRouterPermit2InvariantTest is StdInvariant, Test, HookStor
         internal
         returns (MemeverseUniswapHook deployed)
     {
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
-        // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        (address hookProxy,) = deployHookAtFlagAddress(manager_, owner_, treasury_);
+        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // `_validateProxyHookAddress` and facet bindings are exercised.
+        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
         deployed = MemeverseUniswapHook(hookProxy);
     }
 

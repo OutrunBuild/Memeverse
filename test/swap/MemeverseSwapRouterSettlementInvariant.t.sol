@@ -80,7 +80,7 @@ contract RouterSettlementAccountingHandler is Test {
     }
 
     /// @notice Executes a marker-tagged routed swap and records treasury accounting.
-    /// @dev Marker payload now follows standard public-swap fee behavior.
+    /// @dev Marker payload follows standard public-swap fee behavior.
     /// @param amountSeed Fuzzed swap amount seed.
     function settlementSwap(uint256 amountSeed) external {
         uint256 balance = token0.balanceOf(address(this));
@@ -142,7 +142,7 @@ contract RouterSettlementSpoofHandler is Test {
     }
 
     /// @notice Executes a marker-tagged public swap from an arbitrary caller.
-    /// @dev Marker payload is now treated as regular hook data.
+    /// @dev Marker payload is treated as regular hook data.
     /// @param amountSeed Fuzzed swap amount seed.
     function spoofSettlement(uint256 amountSeed) external {
         uint256 balance = token0.balanceOf(address(this));
@@ -189,9 +189,9 @@ contract MemeverseSwapRouterSettlementInvariantTest is StdInvariant, Test, HookS
         internal
         returns (MemeverseUniswapHook deployed)
     {
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
-        // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        (address hookProxy,) = deployHookAtFlagAddress(manager_, owner_, treasury_);
+        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // `_validateProxyHookAddress` and facet bindings are exercised.
+        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
         deployed = MemeverseUniswapHook(hookProxy);
     }
 

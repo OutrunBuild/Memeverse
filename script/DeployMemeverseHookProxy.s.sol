@@ -4,21 +4,20 @@ pragma solidity ^0.8.28;
 import {Bytes32AddressLib} from "solmate/utils/Bytes32AddressLib.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
-import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
-import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {ImmutableState} from "@uniswap/v4-periphery/src/base/ImmutableState.sol";
 
 import {BaseScript} from "./BaseScript.s.sol";
 import {IOutrunDeployer} from "./IOutrunDeployer.sol";
-import {MemeverseDynamicFeeEngine} from "../src/swap/MemeverseDynamicFeeEngine.sol";
-import {MemeversePreorderSettlementExecutor} from "../src/swap/MemeversePreorderSettlementExecutor.sol";
 import {MemeverseUniswapHook} from "../src/swap/MemeverseUniswapHook.sol";
-import {IMemeverseDynamicFeeEngine} from "../src/swap/interfaces/IMemeverseDynamicFeeEngine.sol";
-import {IMemeversePreorderSettlementExecutor} from "../src/swap/interfaces/IMemeversePreorderSettlementExecutor.sol";
+import {SwapFacet} from "../src/swap/SwapFacet.sol";
+import {DynamicFeeFacet} from "../src/swap/DynamicFeeFacet.sol";
+import {SettlementFacet} from "../src/swap/SettlementFacet.sol";
 import {UniswapLP} from "../src/swap/tokens/UniswapLP.sol";
 
 /// @title DeployMemeverseHookProxy
-/// @notice Deploys the production Memeverse Uniswap v4 hook implementation and transparent proxy.
+/// @notice Deploys the production Memeverse Uniswap v4 hook diamond Router (implementation + UUPS
+///         proxy) together with its three delegatecall facets.
 contract DeployMemeverseHookProxy is BaseScript {
     using Bytes32AddressLib for bytes32;
 
@@ -26,14 +25,13 @@ contract DeployMemeverseHookProxy is BaseScript {
     uint160 internal constant UNISWAP_V4_HOOK_FLAG_MASK = 0x3fff;
     uint256 internal constant MAX_SALT_SEARCH = 1_000_000;
     bytes32 internal constant CREATE3_PROXY_BYTECODE_HASH = keccak256(hex"67363d3d37363d34f03d5260086018f3");
-    bytes internal constant ENGINE_IMPL_SALT_SEED =
-        hex"4d656d65766572736544796e616d6963466565456e67696e65496d706c656d656e746174696f6e";
     bytes internal constant HOOK_IMPL_SALT_SEED =
         hex"4d656d657665727365556e6973776170486f6f6b496d706c656d656e746174696f6e";
     bytes internal constant LP_TOKEN_IMPL_SALT_SEED =
         hex"4d656d657665727365556e69737761704c50546f6b656e496d706c656d656e746174696f6e";
-    bytes internal constant PREORDER_SETTLEMENT_EXECUTOR_SALT_SEED =
-        hex"4d656d6576657273655072656f72646572536574746c656d656e744578656375746f72";
+    bytes internal constant SWAP_FACET_SALT_SEED = hex"4d656d657665727365537761704661636574";
+    bytes internal constant DYNAMIC_FEE_FACET_SALT_SEED = hex"4d656d65766572736544796e616d69634665654661636574";
+    bytes internal constant SETTLEMENT_FACET_SALT_SEED = hex"4d656d657665727365536574746c656d656e744661636574";
 
     error PoolManagerCodeNotReady(address poolManager);
     error ProxySaltNotFound(uint256 checkedSalts);
@@ -41,11 +39,9 @@ contract DeployMemeverseHookProxy is BaseScript {
     error HookFlagMismatch(address hook);
     error DeployerNamespaceMismatch(address expected, address provided);
     error Create3SaltConsumed(bytes32 salt, address create3Proxy);
-    error EngineImplementationCreate3SaltConsumed(bytes32 salt, address create3Proxy);
-    error EngineProxyCreate3SaltConsumed(bytes32 salt, address create3Proxy);
-    error HookImplementationCreate3SaltConsumed(bytes32 salt, address create3Proxy);
-    error LPTokenImplementationCreate3SaltConsumed(bytes32 salt, address create3Proxy);
-    error PreorderSettlementExecutorCreate3SaltConsumed(bytes32 salt, address create3Proxy);
+    /// @dev Generic CREATE3-salt-consumed error for LP-token / facet / hook-implementation
+    ///      deploys; `saltSeed` identifies which artifact collided (its hex literal is readable).
+    error ArtifactCreate3SaltConsumed(bytes saltSeed, bytes32 salt, address create3Proxy);
     error ExistingIntermediateDeploymentNotReusable(address deployed);
     error ExistingHookOwnerMismatch(address hook, address expectedOwner, address actualOwner);
     error ExistingHookTreasuryMismatch(address hook, address expectedTreasury, address actualTreasury);
@@ -53,89 +49,94 @@ contract DeployMemeverseHookProxy is BaseScript {
     error ExistingHookImplementationMismatch(
         address hook, address expectedImplementation, address actualImplementation
     );
-    error ExistingHookEngineMismatch(address hook, address expectedEngine, address actualEngine);
     error ExistingHookLPTokenImplementationMismatch(
         address hook, address expectedImplementation, address actualImplementation
     );
     error ExistingHookLPTokenImplementationCodeMissing(address implementation);
-    error ExistingHookPreorderSettlementExecutorMismatch(
-        address hook, address expectedExecutor, address actualExecutor
-    );
-    error ExistingHookPreorderSettlementExecutorCodeMissing(address executor);
-    error ExistingEngineAuthorizedHookMismatch(address engine, address expectedHook, address actualHook);
-    error ExistingEngineOwnerMismatch(address engine, address expectedOwner, address actualOwner);
-    error ExistingEnginePoolManagerMismatch(address engine, address expectedPoolManager, address actualPoolManager);
-    error ExistingHookImplementationCodehashMismatch(
-        address implementation, bytes32 expectedCodehash, bytes32 currentCodehash
-    );
-    error ExistingEngineImplementationCodehashMismatch(
-        address implementation, bytes32 expectedCodehash, bytes32 currentCodehash
-    );
-    error ExistingLPTokenImplementationCodehashMismatch(
-        address implementation, bytes32 expectedCodehash, bytes32 currentCodehash
-    );
-    error ExistingPreorderSettlementExecutorCodehashMismatch(
-        address executor, bytes32 expectedCodehash, bytes32 currentCodehash
-    );
-    error ExistingHookProxyCodehashMismatch(address proxy, bytes32 expectedCodehash, bytes32 currentCodehash);
-    error ExistingEngineProxyCodehashMismatch(address engine, bytes32 expectedCodehash, bytes32 currentCodehash);
-    error ExistingHookProxyAdminMissing(address proxy);
-    error ExistingHookProxyAdminMismatch(address proxy, address expectedAdmin, address actualAdmin);
-    error ExistingHookProxyAdminOwnerMismatch(address proxy, address admin, address expectedOwner, address actualOwner);
-    error ExpectedHookImplementationCodehashNotSet();
-    error ExpectedHookProxyCodehashNotSet();
-    error ExpectedEngineImplementationCodehashNotSet();
-    error ExpectedLPTokenImplementationCodehashNotSet();
-    error ExpectedPreorderSettlementExecutorCodehashNotSet();
+    error ExistingHookSwapFacetMismatch(address hook, address expectedFacet, address actualFacet);
+    error ExistingHookDynamicFeeFacetMismatch(address hook, address expectedFacet, address actualFacet);
+    error ExistingHookSettlementFacetMismatch(address hook, address expectedFacet, address actualFacet);
+    error ExistingHookFacetCodeMissing(address facet);
+    error ExistingHookFacetPoolManagerMismatch(address facet, address expectedPoolManager, address actualPoolManager);
+    /// @dev Unified codehash-check errors. `CodehashMismatch` carries the artifact address so ops can
+    ///      map it back to the named deployment artifact; `ExpectedCodehashNotSet` carries the missing
+    ///      env var name directly, avoiding a separate address->name lookup.
+    error CodehashMismatch(address artifact, bytes32 expectedCodehash, bytes32 currentCodehash);
+    error ExpectedCodehashNotSet(string envVar);
     error UnusableHookOwner(address hookOwner);
     error ZeroAddressNotAllowed();
 
-    /// @notice Complete deployment artifacts for the Memeverse hook + engine split.
+    /// @notice Complete deployment artifacts for the Memeverse diamond hook (Router proxy + 3 facets).
     struct DeploymentResult {
-        address engineImplementation;
-        address engineProxy;
         address hookImplementation;
         address hookProxy;
         address lpTokenImplementation;
-        address preorderSettlementExecutor;
+        address swapFacet;
+        address dynamicFeeFacet;
+        address settlementFacet;
+    }
+
+    /// @notice Snapshot of all addresses resolved from an existing hook proxy.
+    /// @dev Used to resolve each address exactly once on the reuse/deploy validation paths,
+    ///      then pass to the match/validate functions which become pure comparisons.
+    struct ResolvedDeployment {
+        address implementation;
+        address hookOwner;
+        address hookTreasury;
+        IPoolManager poolManager;
+        address lpTokenImplementation;
+        address swapFacet;
+        address dynamicFeeFacet;
+        address settlementFacet;
+    }
+
+    /// @notice Predicted artifact addresses for the same-nonce reuse check.
+    /// @dev Packs the five expected artifact addresses into one `memory` slot so the salt-search
+    ///      loop stays under the EVM 16-slot stack limit (a `memory` struct is a single pointer).
+    ///      `hookImplementation` doubles as the readiness flag: `address(0)` means not yet computed
+    ///      (lazily resolved only when an occupied proxy candidate needs the reuse check).
+    struct ExpectedArtifacts {
+        address hookImplementation;
+        address lpTokenImplementation;
+        address swapFacet;
+        address dynamicFeeFacet;
+        address settlementFacet;
     }
 
     /// @notice Executes the deployment using environment-provided production addresses.
-    /// @dev All four contracts (engine impl, engine proxy, hook impl, hook proxy) are deployed
-    ///      via OutrunDeployer (CREATE3) with named salts. Addresses are deterministic per
-    ///      (deployer, nonce) pair. A complete same-nonce hook proxy deployment is reusable
-    ///      only after validating the proxy and its engine bindings. Intermediate CREATE3
-    ///      addresses are not reusable without that final hook proxy proof.
-    ///      If a CREATE3 minimal proxy was deployed but the inner contract creation failed
-    ///      (salt consumed, final address empty), re-running reverts with a path-specific
-    ///      consumed-salt error.
+    /// @dev All six contracts (LP token impl, 3 facets, hook impl, hook proxy) are deployed via OutrunDeployer
+    ///      (CREATE3) with named, nonce-scoped salts. Addresses are deterministic per (deployer, nonce) pair.
+    ///      A complete same-nonce hook proxy deployment is reusable only after validating the proxy and its
+    ///      facet bindings. Intermediate CREATE3 addresses are not reusable without that final hook proxy proof.
+    ///      If a CREATE3 minimal proxy was deployed but the inner contract creation failed (salt consumed,
+    ///      final address empty), re-running reverts with a path-specific consumed-salt error.
     ///
-    ///      ATOMICITY: this function executes all four CREATE3 deployments in a single
-    ///      transaction. If any step fails (hook proxy deployment, validation, etc.),
-    ///      the entire transaction reverts — no intermediate CREATE3 salts are consumed
-    ///      and no zombie contracts remain on-chain.
+    ///      ATOMICITY: run() forwards to run(uint256), which carries the broadcaster modifier
+    ///      (BaseScript.s.sol vm.startBroadcast). Under startBroadcast the six outrunDeployer.deploy
+    ///      calls become six independent on-chain transactions — NOT a single atomic transaction.
+    ///      Simulation (forge script without --broadcast) is a full dry-run: any failure reverts the
+    ///      whole script with zero on-chain state and no CREATE3 salt consumed. After --broadcast,
+    ///      a partial on-chain failure does NOT roll back earlier deploys — it consumes CREATE3 salts
+    ///      and DEPLOYMENT_NONCE must be incremented to recover. deployHookProxy(...) is a programmatic/test
+    ///      entrypoint (no broadcaster): its six deploys run inside one call and revert atomically, but it is
+    ///      not a production EOA atomic path — production deploys use run() (non-atomic, 6-broadcast).
     ///
     ///      Deployment order (must not be reordered):
     ///        1. LP token implementation (stateless bytecode, no dependencies)
-    ///        2. Preorder settlement executor (stateless bytecode, no dependencies)
-    ///        3. Engine implementation (stateless bytecode, safe to redeploy)
-    ///        4. Engine proxy — initialized immediately with the predicted hook proxy address
-    ///           as owner and authorizedHook. The hook proxy address is known before deployment
-    ///           because it is mined from the CREATE3 salt.
-    ///        5. Hook implementation (stateless bytecode, safe to redeploy)
-    ///        6. Hook proxy — initialized with (hookOwner, hookTreasury, engine proxy,
-    ///           lpTokenImplementation, preorderSettlementExecutor)
+    ///        2. Swap facet (stateless bytecode, binds PoolManager immutably)
+    ///        3. Dynamic fee facet (stateless bytecode, binds PoolManager immutably)
+    ///        4. Settlement facet (stateless bytecode, binds PoolManager immutably)
+    ///        5. Hook implementation (stateless bytecode, binds PoolManager immutably)
+    ///        6. Hook proxy — initialized with (hookOwner, hookTreasury, lpTokenImplementation, swapFacet,
+    ///           dynamicFeeFacet, settlementFacet). The hook proxy address is the real Uniswap hook address.
     ///
-    ///      The engine proxy must be initialized before the hook proxy because the hook's
-    ///      initialize() validates engine.authorizedHook() == address(this). The predicted
-    ///      hook proxy address is used because the actual address is not yet deployed.
+    ///      The facets are plain contracts (not proxies) and carry no hook-binding state. Each facet's
+    ///      `onlyViaRouter` guard uses an immutable self-address (`__self`) baked at construction, so
+    ///      facet deployment and Router initialization require no storage seeding for delegatecalls.
     ///
-    ///      WARNING: do NOT extract individual deployment steps into separate transactions.
-    ///      A partial deployment (e.g. engine proxy deployed but hook proxy failed in a
-    ///      separate transaction) leaves the engine proxy initialized with a non-existent
-    ///      owner, permanently bricking it. The consumed CREATE3 salts require incrementing
-    ///      the nonce to recover.
-    /// @return result All four deployed addresses: engine impl/proxy and hook impl/proxy.
+    ///      WARNING: do NOT extract individual deployment steps into separate transactions. A partial
+    ///      deployment leaves CREATE3 salts consumed and requires incrementing the nonce to recover.
+    /// @return result All deployed addresses: hook impl/proxy, LP token impl, and the 3 facets.
     function run() public returns (DeploymentResult memory result) {
         return run(vm.envUint("DEPLOYMENT_NONCE"));
     }
@@ -143,7 +144,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     /// @notice Executes the deployment using environment-provided production addresses and deployment nonce.
     /// @dev The nonce is part of the CREATE3 salts and must be incremented for each new deploy.
     /// @param nonce Deployment version nonce.
-    /// @return result All four deployed addresses: engine impl/proxy and hook impl/proxy.
+    /// @return result All deployed addresses: hook impl/proxy, LP token impl, and the 3 facets.
     function run(uint256 nonce) public broadcaster returns (DeploymentResult memory result) {
         IOutrunDeployer outrunDeployer = IOutrunDeployer(vm.envAddress("OUTRUN_DEPLOYER"));
         IPoolManager poolManager = IPoolManager(vm.envAddress("POOL_MANAGER"));
@@ -154,89 +155,24 @@ contract DeployMemeverseHookProxy is BaseScript {
         _requireNoZeroAddress(address(outrunDeployer));
         _requirePoolManagerCode(poolManager);
 
-        (bytes32 proxySalt, address selectedProxy, bool reuseExistingProxy) =
-            _selectProxySalt(outrunDeployer, deployer, nonce, hookOwner, hookTreasury, poolManager);
-        _requireUsableHookOwner(hookOwner, selectedProxy);
-        if (reuseExistingProxy) {
-            result.hookProxy = selectedProxy;
-            result.hookImplementation = _getExistingImplementation(result.hookProxy);
-            result.engineProxy = address(MemeverseUniswapHook(result.hookProxy).dynamicFeeEngine());
-            result.engineImplementation = _getExistingImplementation(result.engineProxy);
-            result.lpTokenImplementation = MemeverseUniswapHook(result.hookProxy).lpTokenImplementation();
-            result.preorderSettlementExecutor =
-                address(MemeverseUniswapHook(result.hookProxy).preorderSettlementExecutor());
-            return result;
-        }
-
-        (, address lpTokenImpl) = _computeLpTokenImpl(outrunDeployer, deployer, nonce);
-        if (lpTokenImpl.code.length == 0) {
-            _deployLpTokenImpl(outrunDeployer, deployer, nonce);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(lpTokenImpl);
-        }
-
-        (, address preorderSettlementExecutor) = _computePreorderSettlementExecutor(outrunDeployer, deployer, nonce);
-        if (preorderSettlementExecutor.code.length == 0) {
-            _deployPreorderSettlementExecutor(outrunDeployer, deployer, nonce, selectedProxy);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(preorderSettlementExecutor);
-        }
-
-        (, address engineImpl) = _computeEngineImpl(outrunDeployer, deployer, nonce);
-        if (engineImpl.code.length == 0) {
-            _deployEngineImpl(outrunDeployer, deployer, nonce, poolManager);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(engineImpl);
-        }
-        (, address engine) = _computeEngineProxy(outrunDeployer, deployer, nonce);
-        if (engine.code.length == 0) {
-            _deployEngineProxy(outrunDeployer, deployer, nonce, engineImpl, selectedProxy, selectedProxy);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(engine);
-        }
-        (, address hookImpl) = _computeHookImpl(outrunDeployer, deployer, nonce);
-        if (hookImpl.code.length == 0) {
-            _deployHookImpl(outrunDeployer, deployer, nonce, poolManager);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(hookImpl);
-        }
-        address proxy = _deployProxy(
-            outrunDeployer,
-            deployer,
-            proxySalt,
-            selectedProxy,
-            hookImpl,
-            hookOwner,
-            hookTreasury,
-            engine,
-            lpTokenImpl,
-            preorderSettlementExecutor
-        );
-        _validateExistingDeployment(
-            proxy, hookImpl, engine, lpTokenImpl, preorderSettlementExecutor, hookOwner, hookTreasury, poolManager
-        );
-
-        result.engineImplementation = engineImpl;
-        result.engineProxy = engine;
-        result.hookImplementation = hookImpl;
-        result.hookProxy = proxy;
-        result.lpTokenImplementation = lpTokenImpl;
-        result.preorderSettlementExecutor = preorderSettlementExecutor;
+        return _executeDeployment(outrunDeployer, deployer, poolManager, hookOwner, hookTreasury, nonce);
     }
 
-    /// @notice Deploys the implementation and a mined transparent proxy through OutrunDeployer.
-    /// @dev ATOMICITY: all four CREATE3 deployments execute in a single call. If any step
-    ///      fails, the entire call reverts — no intermediate salts are consumed.
+    /// @notice Deploys the implementation and a mined UUPS proxy through OutrunDeployer.
+    /// @dev ATOMICITY: all six CREATE3 deployments execute in a single call. If any step fails, the entire
+    ///      call reverts — no intermediate salts are consumed.
+    ///      This is a programmatic/test entrypoint, not a production EOA atomic path (production uses run());
+    ///      see run() NatSpec and docs/operations.md §3.10.
     ///      WARNING: do NOT extract individual steps into separate transactions.
     /// @param outrunDeployer CREATE3 deployer used for the proxy address.
     /// @param deployerNamespace Address that will be the effective msg.sender when
     ///   OutrunDeployer.deploy() is called. Must match msg.sender unless called inside
     ///   a Foundry broadcast that sets msg.sender to this address.
-    /// @param poolManager Uniswap v4 pool manager stored in the hook implementation immutable state.
+    /// @param poolManager Uniswap v4 pool manager stored as immutable in the hook implementation and each facet.
     /// @param hookOwner Owner used for proxy initialization.
     /// @param hookTreasury Treasury used for proxy initialization.
     /// @param nonce Deployment version nonce, incremented for each new deploy.
-    /// @return result All four deployed addresses: engine impl/proxy and hook impl/proxy.
+    /// @return result All deployed addresses: hook impl/proxy, LP token impl, and the 3 facets.
     function deployHookProxy(
         IOutrunDeployer outrunDeployer,
         address deployerNamespace,
@@ -252,53 +188,41 @@ contract DeployMemeverseHookProxy is BaseScript {
         _requireNoZeroAddress(hookTreasury);
         _requirePoolManagerCode(poolManager);
 
+        return _executeDeployment(outrunDeployer, deployerNamespace, poolManager, hookOwner, hookTreasury, nonce);
+    }
+
+    /// @notice Shared deployment body invoked by both `run(uint256)` and `deployHookProxy(...)`.
+    /// @dev Entry-specific validation (env reads, zero-address checks, the deployerNamespace
+    ///      msg.sender guard) stays in each entrypoint; this function trusts pre-validated args
+    ///      and only executes the CREATE3 deployment + reuse/validation + result-fill sequence.
+    function _executeDeployment(
+        IOutrunDeployer outrunDeployer,
+        address deployerNamespace,
+        IPoolManager poolManager,
+        address hookOwner,
+        address hookTreasury,
+        uint256 nonce
+    ) internal returns (DeploymentResult memory result) {
         (bytes32 proxySalt, address selectedProxy, bool reuseExistingProxy) =
             _selectProxySalt(outrunDeployer, deployerNamespace, nonce, hookOwner, hookTreasury, poolManager);
         _requireUsableHookOwner(hookOwner, selectedProxy);
         if (reuseExistingProxy) {
             result.hookProxy = selectedProxy;
             result.hookImplementation = _getExistingImplementation(result.hookProxy);
-            result.engineProxy = address(MemeverseUniswapHook(result.hookProxy).dynamicFeeEngine());
-            result.engineImplementation = _getExistingImplementation(result.engineProxy);
             result.lpTokenImplementation = MemeverseUniswapHook(result.hookProxy).lpTokenImplementation();
-            result.preorderSettlementExecutor =
-                address(MemeverseUniswapHook(result.hookProxy).preorderSettlementExecutor());
+            result.swapFacet = MemeverseUniswapHook(result.hookProxy).swapFacet();
+            result.dynamicFeeFacet = MemeverseUniswapHook(result.hookProxy).dynamicFeeFacet();
+            result.settlementFacet = MemeverseUniswapHook(result.hookProxy).settlementFacet();
             return result;
         }
 
-        (, address lpTokenImpl) = _computeLpTokenImpl(outrunDeployer, deployerNamespace, nonce);
-        if (lpTokenImpl.code.length == 0) {
-            _deployLpTokenImpl(outrunDeployer, deployerNamespace, nonce);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(lpTokenImpl);
-        }
-
-        (, address preorderSettlementExecutor) =
-            _computePreorderSettlementExecutor(outrunDeployer, deployerNamespace, nonce);
-        if (preorderSettlementExecutor.code.length == 0) {
-            _deployPreorderSettlementExecutor(outrunDeployer, deployerNamespace, nonce, selectedProxy);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(preorderSettlementExecutor);
-        }
-
-        (, address engineImpl) = _computeEngineImpl(outrunDeployer, deployerNamespace, nonce);
-        if (engineImpl.code.length == 0) {
-            _deployEngineImpl(outrunDeployer, deployerNamespace, nonce, poolManager);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(engineImpl);
-        }
-        (, address engine) = _computeEngineProxy(outrunDeployer, deployerNamespace, nonce);
-        if (engine.code.length == 0) {
-            _deployEngineProxy(outrunDeployer, deployerNamespace, nonce, engineImpl, selectedProxy, selectedProxy);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(engine);
-        }
-        (, address hookImpl) = _computeHookImpl(outrunDeployer, deployerNamespace, nonce);
-        if (hookImpl.code.length == 0) {
-            _deployHookImpl(outrunDeployer, deployerNamespace, nonce, poolManager);
-        } else {
-            revert ExistingIntermediateDeploymentNotReusable(hookImpl);
-        }
+        // Each _deploy* predicts its CREATE3 address once, refuses occupied targets, deploys, and
+        // returns the landed address — no second prediction in this orchestrator.
+        address lpTokenImpl = _deployLpTokenImpl(outrunDeployer, deployerNamespace, nonce);
+        address swapFacet = _deploySwapFacet(outrunDeployer, deployerNamespace, nonce, poolManager);
+        address dynamicFeeFacet = _deployDynamicFeeFacet(outrunDeployer, deployerNamespace, nonce, poolManager);
+        address settlementFacet = _deploySettlementFacet(outrunDeployer, deployerNamespace, nonce, poolManager);
+        address hookImpl = _deployHookImpl(outrunDeployer, deployerNamespace, nonce, poolManager);
         address proxy = _deployProxy(
             outrunDeployer,
             deployerNamespace,
@@ -307,20 +231,35 @@ contract DeployMemeverseHookProxy is BaseScript {
             hookImpl,
             hookOwner,
             hookTreasury,
-            engine,
             lpTokenImpl,
-            preorderSettlementExecutor
+            swapFacet,
+            dynamicFeeFacet,
+            settlementFacet
         );
-        _validateExistingDeployment(
-            proxy, hookImpl, engine, lpTokenImpl, preorderSettlementExecutor, hookOwner, hookTreasury, poolManager
-        );
+        // Resolve owner/treasury/poolManager from the just-deployed proxy; reuse the 5 addresses
+        // returned by the deploy helpers above.
+        // The deploy path does NOT run `_validateExistingImplementationCodehashes` (no same-nonce reuse), so
+        // code existence + poolManager immutables are checked separately via `_validateDeployedArtifactCode`.
+        ResolvedDeployment memory actual =
+            _resolveDeployment(proxy, hookImpl, lpTokenImpl, swapFacet, dynamicFeeFacet, settlementFacet);
+        // The deploy path knows all five artifact addresses from the _deploy* calls above; pack them
+        // into the same expected-artifacts struct the reuse path uses for validation.
+        ExpectedArtifacts memory expectedDeployed = ExpectedArtifacts({
+            hookImplementation: hookImpl,
+            lpTokenImplementation: lpTokenImpl,
+            swapFacet: swapFacet,
+            dynamicFeeFacet: dynamicFeeFacet,
+            settlementFacet: settlementFacet
+        });
+        _validateExistingDeployment(proxy, actual, expectedDeployed, hookOwner, hookTreasury, poolManager);
+        _validateDeployedArtifactCode(actual, poolManager);
 
-        result.engineImplementation = engineImpl;
-        result.engineProxy = engine;
         result.hookImplementation = hookImpl;
         result.hookProxy = proxy;
         result.lpTokenImplementation = lpTokenImpl;
-        result.preorderSettlementExecutor = preorderSettlementExecutor;
+        result.swapFacet = swapFacet;
+        result.dynamicFeeFacet = dynamicFeeFacet;
+        result.settlementFacet = settlementFacet;
     }
 
     /// @notice Returns the expected Memeverse hook permission flags.
@@ -335,24 +274,25 @@ contract DeployMemeverseHookProxy is BaseScript {
         return UNISWAP_V4_HOOK_FLAG_MASK;
     }
 
-    /// @notice Builds TransparentUpgradeableProxy creation code for CREATE3 deployment.
+    /// @notice Builds ERC1967Proxy (UUPS) creation code for CREATE3 deployment.
+    /// @dev UUPS proxies carry no ProxyAdmin; upgrade authorization lives on the implementation via
+    ///      `_authorizeUpgrade`. The hook owner is encoded inside `initializeData` (the first arg of
+    ///      `MemeverseUniswapHook.initialize`), so only the implementation and initializer data are appended.
     /// @param implementation Hook implementation address passed to the proxy constructor.
-    /// @param initialOwner Owner assigned to the proxy's ProxyAdmin.
-    /// @param initializeData Initializer calldata passed to the proxy constructor.
+    /// @param initializeData Initializer calldata (encodes hook owner + treasury + facet pointers) passed to
+    ///        the proxy constructor.
     /// @return creationCode Complete proxy creation code including constructor args.
-    function proxyCreationCode(address implementation, address initialOwner, bytes memory initializeData)
+    function proxyCreationCode(address implementation, bytes memory initializeData)
         public
         pure
         returns (bytes memory creationCode)
     {
-        return abi.encodePacked(
-            type(TransparentUpgradeableProxy).creationCode, abi.encode(implementation, initialOwner, initializeData)
-        );
+        return abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(implementation, initializeData));
     }
 
     /// @notice Mines an OutrunDeployer salt whose proxy address has the required Uniswap v4 hook flags.
     /// @dev The proxy address, not the implementation address, is what Uniswap v4 checks for hook permissions.
-    ///      Legacy helper for global bytes32(i) search. Deployment uses nonce-scoped salts.
+    ///      Searches global `bytes32(i)` candidates from zero and skips candidates that already have code.
     /// @param outrunDeployer CREATE3 deployer used for address prediction.
     /// @param deployerNamespace Address that will call `OutrunDeployer.deploy`.
     /// @return salt First salt found in the bounded deterministic search.
@@ -374,8 +314,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     }
 
     /// @notice Returns the first global hook-flag-matching proxy address, regardless of deployment status.
-    /// @dev Legacy helper for global bytes32(i) search. Deployment idempotency uses
-    ///      the nonce-scoped getPredictedProxy(..., nonce) overload.
+    /// @dev Searches global `bytes32(i)` candidates from zero without checking whether the candidate has code.
     /// @param outrunDeployer CREATE3 deployer used for address prediction.
     /// @param deployerNamespace Address that will call `OutrunDeployer.deploy`.
     /// @return proxy First predicted proxy address carrying the required hook flags.
@@ -423,7 +362,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     /// @param nonce Deployment version nonce.
     /// @param hookOwner Owner expected on a reusable hook proxy.
     /// @param hookTreasury Treasury expected on a reusable hook proxy.
-    /// @param poolManager PoolManager expected on a reusable hook and engine.
+    /// @param poolManager PoolManager expected on a reusable hook and its facets.
     /// @return proxy Selected proxy address used by deployHookProxy/run.
     function getPredictedProxy(
         IOutrunDeployer outrunDeployer,
@@ -446,11 +385,11 @@ contract DeployMemeverseHookProxy is BaseScript {
         address hookTreasury,
         IPoolManager poolManager
     ) internal view returns (bytes32 salt, address proxy, bool reuseExistingProxy) {
-        (, address expectedHookImpl) = _computeHookImpl(outrunDeployer, deployerNamespace, nonce);
-        (, address expectedEngine) = _computeEngineProxy(outrunDeployer, deployerNamespace, nonce);
-        (, address expectedLpTokenImpl) = _computeLpTokenImpl(outrunDeployer, deployerNamespace, nonce);
-        (, address expectedPreorderSettlementExecutor) =
-            _computePreorderSettlementExecutor(outrunDeployer, deployerNamespace, nonce);
+        // Expected artifact addresses are only needed when an occupied proxy candidate must be checked
+        // for same-nonce reuse. Pure-fresh success never loads them here. They are packed into a single
+        // `memory` struct pointer to keep the loop under the EVM 16-slot stack limit; `hookImplementation`
+        // stays address(0) until lazily resolved on the first occupied candidate.
+        ExpectedArtifacts memory expected;
         for (uint256 i; i < MAX_SALT_SEARCH; ++i) {
             salt = keccak256(abi.encodePacked("MemeverseUniswapHookProxy", nonce, i));
             proxy = outrunDeployer.getDeployed(deployerNamespace, salt);
@@ -460,237 +399,234 @@ contract DeployMemeverseHookProxy is BaseScript {
                 if (create3Proxy.code.length != 0) revert Create3SaltConsumed(salt, create3Proxy);
                 return (salt, proxy, false);
             }
-            if (_getExistingImplementation(proxy) != expectedHookImpl) continue;
-            _validateExistingImplementationCodehashes(proxy);
-            if (_matchesExistingDeployment(
-                    proxy,
-                    expectedHookImpl,
-                    expectedEngine,
-                    expectedLpTokenImpl,
-                    expectedPreorderSettlementExecutor,
-                    hookOwner,
-                    hookTreasury,
-                    poolManager
-                )) return (salt, proxy, true);
-            _validateExistingDeployment(
+            if (expected.hookImplementation == address(0)) {
+                (, expected.hookImplementation) = _computeHookImpl(outrunDeployer, deployerNamespace, nonce);
+                (, expected.lpTokenImplementation) = _computeLpTokenImpl(outrunDeployer, deployerNamespace, nonce);
+                (, expected.swapFacet) = _computeSwapFacet(outrunDeployer, deployerNamespace, nonce);
+                (, expected.dynamicFeeFacet) = _computeDynamicFeeFacet(outrunDeployer, deployerNamespace, nonce);
+                (, expected.settlementFacet) = _computeSettlementFacet(outrunDeployer, deployerNamespace, nonce);
+            }
+            address actualImplementation = _getExistingImplementation(proxy);
+            if (actualImplementation != expected.hookImplementation) continue;
+            (
+                address actualLpTokenImpl,
+                address actualSwapFacet,
+                address actualDynamicFeeFacet,
+                address actualSettlementFacet
+            ) = _validateExistingImplementationCodehashes(proxy, actualImplementation);
+
+            // Resolve remaining addresses (owner/treasury/poolManager) once. Safe to call getters without
+            // try/catch: `_validateExistingImplementationCodehashes` validated the proxy codehash above,
+            // guaranteeing the proxy is valid MemeverseUniswapHook bytecode whose getters cannot revert.
+            ResolvedDeployment memory actual = _resolveDeployment(
                 proxy,
-                expectedHookImpl,
-                expectedEngine,
-                expectedLpTokenImpl,
-                expectedPreorderSettlementExecutor,
-                hookOwner,
-                hookTreasury,
-                poolManager
+                actualImplementation,
+                actualLpTokenImpl,
+                actualSwapFacet,
+                actualDynamicFeeFacet,
+                actualSettlementFacet
             );
+            // Single reuse gate: only when every field matches `_validateExistingDeployment` do we reuse.
+            // Any field that disagrees reverts with that field's dedicated error selector rather than
+            // silently skipping the candidate — a candidate that already passed implementation + codehash
+            // checks yet mismatches on owner/treasury/poolManager/facet binding is a tampered deployment
+            // and must stop here, not continue searching. Not reverting == all fields match == reusable.
+            _validateExistingDeployment(proxy, actual, expected, hookOwner, hookTreasury, poolManager);
+            return (salt, proxy, true);
         }
 
         revert ProxySaltNotFound(MAX_SALT_SEARCH);
     }
 
+    // ──────────────────────── Generic Artifact Compute/Deploy ───────────────────
+    //
+    // Every deployment artifact (LP-token impl, the 3 facets, hook impl) follows one recipe:
+    // salt = keccak(saltSeed ++ nonce); predicted = getDeployed(namespace, salt); refuse if the
+    // CREATE3 proxy slot is occupied; deploy; assert the landed address matches the prediction.
+    // The wrappers below are thin facades that supply each artifact's saltSeed and creationCode.
+
+    /// @notice Computes the deterministic address for any single-salt CREATE3 artifact.
+    /// @param outrunDeployer CREATE3 deployer used for address prediction.
+    /// @param deployerNamespace Address that will call `OutrunDeployer.deploy`.
+    /// @param nonce Deployment version nonce, mixed into every artifact's salt.
+    /// @param saltSeed Per-artifact seed distinguishing salts (e.g. `SWAP_FACET_SALT_SEED`).
+    /// @return salt The computed salt.
+    /// @return artifact The predicted artifact address.
+    function _computeArtifact(
+        IOutrunDeployer outrunDeployer,
+        address deployerNamespace,
+        uint256 nonce,
+        bytes memory saltSeed
+    ) internal view returns (bytes32 salt, address artifact) {
+        salt = keccak256(abi.encodePacked(saltSeed, nonce));
+        artifact = outrunDeployer.getDeployed(deployerNamespace, salt);
+    }
+
+    /// @notice Predicts, guards, and deploys any single-salt CREATE3 artifact in one pass.
+    /// @dev Computes the address once. If that address already has code, reverts
+    ///      `ExistingIntermediateDeploymentNotReusable` (partial same-nonce leftovers are not reused).
+    ///      If the CREATE3 proxy slot is occupied, reverts `ArtifactCreate3SaltConsumed` (saltSeed
+    ///      echoes which artifact collided). A landed address that defies prediction reverts
+    ///      `ProxyDeploymentMismatch`.
+    /// @param outrunDeployer CREATE3 deployer used for deployment.
+    /// @param deployerNamespace Address that will be the effective msg.sender.
+    /// @param nonce Deployment version nonce.
+    /// @param saltSeed Per-artifact seed, echoed in the revert for diagnosis.
+    /// @param creationCode Fully assembled creation code (constructor args already appended).
+    /// @return deployed The predicted and landed artifact address.
+    function _deployArtifact(
+        IOutrunDeployer outrunDeployer,
+        address deployerNamespace,
+        uint256 nonce,
+        bytes memory saltSeed,
+        bytes memory creationCode
+    ) internal returns (address deployed) {
+        (bytes32 salt, address expected) = _computeArtifact(outrunDeployer, deployerNamespace, nonce, saltSeed);
+        if (expected.code.length != 0) revert ExistingIntermediateDeploymentNotReusable(expected);
+        address create3Proxy = _create3ProxyAddress(outrunDeployer, deployerNamespace, salt);
+        if (create3Proxy.code.length != 0) revert ArtifactCreate3SaltConsumed(saltSeed, salt, create3Proxy);
+        deployed = outrunDeployer.deploy(salt, creationCode);
+        if (deployed != expected) revert ProxyDeploymentMismatch(expected, deployed);
+    }
+
     // ─────────────────────────── LP Token Implementation ───────────────────────────
 
     /// @notice Computes the deterministic LP token implementation address.
-    /// @param outrunDeployer CREATE3 deployer used for address prediction.
-    /// @param deployerNamespace Address that will call `OutrunDeployer.deploy`.
-    /// @param nonce Deployment version nonce.
-    /// @return salt The computed salt.
-    /// @return impl The predicted implementation address.
     function _computeLpTokenImpl(IOutrunDeployer outrunDeployer, address deployerNamespace, uint256 nonce)
         internal
         view
         returns (bytes32 salt, address impl)
     {
-        salt = keccak256(abi.encodePacked(LP_TOKEN_IMPL_SALT_SEED, nonce));
-        impl = outrunDeployer.getDeployed(deployerNamespace, salt);
+        (salt, impl) = _computeArtifact(outrunDeployer, deployerNamespace, nonce, LP_TOKEN_IMPL_SALT_SEED);
     }
 
     /// @notice Deploys the LP token implementation via OutrunDeployer if not already deployed.
     /// @dev The implementation has initializers disabled; hook-managed clones initialize their own storage.
-    /// @param outrunDeployer CREATE3 deployer used for deployment.
-    /// @param deployerNamespace Address that will be the effective msg.sender.
-    /// @param nonce Deployment version nonce.
-    function _deployLpTokenImpl(IOutrunDeployer outrunDeployer, address deployerNamespace, uint256 nonce) internal {
-        (bytes32 salt, address expectedImpl) = _computeLpTokenImpl(outrunDeployer, deployerNamespace, nonce);
-        address create3Proxy = _create3ProxyAddress(outrunDeployer, deployerNamespace, salt);
-        if (create3Proxy.code.length != 0) {
-            revert LPTokenImplementationCreate3SaltConsumed(salt, create3Proxy);
-        }
-        address deployed = outrunDeployer.deploy(salt, type(UniswapLP).creationCode);
-        if (deployed != expectedImpl) revert ProxyDeploymentMismatch(expectedImpl, deployed);
+    /// @return impl Predicted and landed LP token implementation address.
+    function _deployLpTokenImpl(IOutrunDeployer outrunDeployer, address deployerNamespace, uint256 nonce)
+        internal
+        returns (address impl)
+    {
+        // UniswapLP has no constructor args, so its creation code is passed verbatim.
+        impl = _deployArtifact(
+            outrunDeployer, deployerNamespace, nonce, LP_TOKEN_IMPL_SALT_SEED, type(UniswapLP).creationCode
+        );
     }
 
-    // ───────────────────── Preorder Settlement Executor ─────────────────────
+    // ─────────────────────────────── Swap Facet ───────────────────────────────────
 
-    /// @notice Computes the deterministic preorder settlement executor address.
-    /// @param outrunDeployer CREATE3 deployer used for address prediction.
-    /// @param deployerNamespace Address that will call `OutrunDeployer.deploy`.
-    /// @param nonce Deployment version nonce.
-    /// @return salt The computed salt.
-    /// @return executor The predicted executor address.
-    function _computePreorderSettlementExecutor(
-        IOutrunDeployer outrunDeployer,
-        address deployerNamespace,
-        uint256 nonce
-    ) internal view returns (bytes32 salt, address executor) {
-        salt = keccak256(abi.encodePacked(PREORDER_SETTLEMENT_EXECUTOR_SALT_SEED, nonce));
-        executor = outrunDeployer.getDeployed(deployerNamespace, salt);
-    }
-
-    /// @notice Deploys the preorder settlement executor via OutrunDeployer if not already deployed.
-    /// @dev The executor is immutable-bound to a single hook proxy at construction time.
-    /// @param outrunDeployer CREATE3 deployer used for deployment.
-    /// @param deployerNamespace Address that will be the effective msg.sender.
-    /// @param nonce Deployment version nonce.
-    /// @param hookProxy Hook proxy address passed to the executor constructor for immutable binding.
-    function _deployPreorderSettlementExecutor(
-        IOutrunDeployer outrunDeployer,
-        address deployerNamespace,
-        uint256 nonce,
-        address hookProxy
-    ) internal {
-        (bytes32 salt, address expectedExecutor) =
-            _computePreorderSettlementExecutor(outrunDeployer, deployerNamespace, nonce);
-        address create3Proxy = _create3ProxyAddress(outrunDeployer, deployerNamespace, salt);
-        if (create3Proxy.code.length != 0) {
-            revert PreorderSettlementExecutorCreate3SaltConsumed(salt, create3Proxy);
-        }
-        bytes memory creationCode =
-            abi.encodePacked(type(MemeversePreorderSettlementExecutor).creationCode, abi.encode(hookProxy));
-        address deployed = outrunDeployer.deploy(salt, creationCode);
-        if (deployed != expectedExecutor) revert ProxyDeploymentMismatch(expectedExecutor, deployed);
-    }
-
-    // ─────────────────────────── Engine Implementation ───────────────────────────
-
-    /// @notice Computes the deterministic engine implementation address.
-    /// @param outrunDeployer CREATE3 deployer used for address prediction.
-    /// @param deployerNamespace Address that will call `OutrunDeployer.deploy`.
-    /// @param nonce Deployment version nonce.
-    /// @return salt The computed salt.
-    /// @return impl The predicted implementation address.
-    function _computeEngineImpl(IOutrunDeployer outrunDeployer, address deployerNamespace, uint256 nonce)
+    /// @notice Computes the deterministic swap facet address.
+    function _computeSwapFacet(IOutrunDeployer outrunDeployer, address deployerNamespace, uint256 nonce)
         internal
         view
-        returns (bytes32 salt, address impl)
+        returns (bytes32 salt, address facet)
     {
-        salt = keccak256(abi.encodePacked(ENGINE_IMPL_SALT_SEED, nonce));
-        impl = outrunDeployer.getDeployed(deployerNamespace, salt);
+        (salt, facet) = _computeArtifact(outrunDeployer, deployerNamespace, nonce, SWAP_FACET_SALT_SEED);
     }
 
-    /// @notice Deploys the engine implementation via OutrunDeployer if not already deployed.
-    /// @dev If the final address has no code but the CREATE3 proxy is occupied, the salt is consumed.
-    /// @param outrunDeployer CREATE3 deployer used for deployment.
-    /// @param deployerNamespace Address that will be the effective msg.sender.
-    /// @param nonce Deployment version nonce.
-    /// @param poolManager PoolManager stored as immutable in the engine implementation.
-    function _deployEngineImpl(
+    /// @notice Deploys the swap facet via OutrunDeployer if not already deployed.
+    /// @dev The facet is a plain contract (not a proxy) and binds the PoolManager immutably at construction.
+    /// @return facet Predicted and landed swap facet address.
+    function _deploySwapFacet(
         IOutrunDeployer outrunDeployer,
         address deployerNamespace,
         uint256 nonce,
         IPoolManager poolManager
-    ) internal {
-        (bytes32 salt, address expectedImpl) = _computeEngineImpl(outrunDeployer, deployerNamespace, nonce);
-        address create3Proxy = _create3ProxyAddress(outrunDeployer, deployerNamespace, salt);
-        if (create3Proxy.code.length != 0) {
-            revert EngineImplementationCreate3SaltConsumed(salt, create3Proxy);
-        }
-        bytes memory creationCode =
-            abi.encodePacked(type(MemeverseDynamicFeeEngine).creationCode, abi.encode(poolManager));
-        address deployed = outrunDeployer.deploy(salt, creationCode);
-        if (deployed != expectedImpl) revert ProxyDeploymentMismatch(expectedImpl, deployed);
+    ) internal returns (address facet) {
+        facet = _deployArtifact(
+            outrunDeployer,
+            deployerNamespace,
+            nonce,
+            SWAP_FACET_SALT_SEED,
+            abi.encodePacked(type(SwapFacet).creationCode, abi.encode(poolManager))
+        );
     }
 
-    // ──────────────────────────── Engine Proxy ───────────────────────────────────
+    // ─────────────────────────── Dynamic Fee Facet ────────────────────────────────
 
-    /// @notice Computes the deterministic engine proxy address.
-    /// @param outrunDeployer CREATE3 deployer used for address prediction.
-    /// @param deployerNamespace Address that will call `OutrunDeployer.deploy`.
-    /// @param nonce Deployment version nonce.
-    /// @return salt The computed salt.
-    /// @return engine The predicted engine proxy address.
-    function _computeEngineProxy(IOutrunDeployer outrunDeployer, address deployerNamespace, uint256 nonce)
+    /// @notice Computes the deterministic dynamic fee facet address.
+    function _computeDynamicFeeFacet(IOutrunDeployer outrunDeployer, address deployerNamespace, uint256 nonce)
         internal
         view
-        returns (bytes32 salt, address engine)
+        returns (bytes32 salt, address facet)
     {
-        salt = keccak256(abi.encodePacked("MemeverseDynamicFeeEngine", nonce));
-        engine = outrunDeployer.getDeployed(deployerNamespace, salt);
+        (salt, facet) = _computeArtifact(outrunDeployer, deployerNamespace, nonce, DYNAMIC_FEE_FACET_SALT_SEED);
     }
 
-    /// @notice Deploys the engine ERC1967 proxy via OutrunDeployer if not already deployed.
-    /// @dev The engine proxy is initialized immediately with the predicted hook proxy address
-    ///      as both owner and authorized caller. This is safe because:
-    ///      1. The hook proxy address is deterministically computed from the CREATE3 salt and
-    ///         is known before any deployment.
-    ///      2. The entire deployHookProxy/run flow executes in a single transaction — if the
-    ///         hook proxy deployment fails, the entire transaction reverts and the engine proxy
-    ///         deployment is also reverted (no zombie state).
-    ///      WARNING: Do NOT call _deployEngineProxy in a standalone transaction without also
-    ///      deploying the hook proxy in the same transaction. A partial deployment leaves the
-    ///      engine proxy initialized with a non-existent owner, permanently bricking it.
-    ///      If the final address has no code but the CREATE3 proxy is occupied, the salt is consumed.
-    /// @param outrunDeployer CREATE3 deployer used for deployment.
-    /// @param deployerNamespace Address that will be the effective msg.sender.
-    /// @param nonce Deployment version nonce.
-    /// @param engineImpl Engine implementation address stored in the proxy's implementation slot.
-    /// @param engineOwner Permanent engine owner (hook proxy address).
-    /// @param authorizedHook Hook proxy address to authorize at init time.
-    function _deployEngineProxy(
+    /// @notice Deploys the dynamic fee facet via OutrunDeployer if not already deployed.
+    /// @dev The facet is a plain contract (not a proxy) and binds the PoolManager immutably at construction.
+    /// @return facet Predicted and landed dynamic fee facet address.
+    function _deployDynamicFeeFacet(
         IOutrunDeployer outrunDeployer,
         address deployerNamespace,
         uint256 nonce,
-        address engineImpl,
-        address engineOwner,
-        address authorizedHook
-    ) internal {
-        (bytes32 salt, address expectedEngine) = _computeEngineProxy(outrunDeployer, deployerNamespace, nonce);
-        address create3Proxy = _create3ProxyAddress(outrunDeployer, deployerNamespace, salt);
-        if (create3Proxy.code.length != 0) {
-            revert EngineProxyCreate3SaltConsumed(salt, create3Proxy);
-        }
-        bytes memory initData = abi.encodeCall(MemeverseDynamicFeeEngine.initialize, (engineOwner, authorizedHook));
-        bytes memory creationCode = abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(engineImpl, initData));
-        address deployed = outrunDeployer.deploy(salt, creationCode);
-        if (deployed != expectedEngine) revert ProxyDeploymentMismatch(expectedEngine, deployed);
+        IPoolManager poolManager
+    ) internal returns (address facet) {
+        facet = _deployArtifact(
+            outrunDeployer,
+            deployerNamespace,
+            nonce,
+            DYNAMIC_FEE_FACET_SALT_SEED,
+            abi.encodePacked(type(DynamicFeeFacet).creationCode, abi.encode(poolManager))
+        );
+    }
+
+    // ─────────────────────────── Settlement Facet ─────────────────────────────────
+
+    /// @notice Computes the deterministic settlement facet address.
+    function _computeSettlementFacet(IOutrunDeployer outrunDeployer, address deployerNamespace, uint256 nonce)
+        internal
+        view
+        returns (bytes32 salt, address facet)
+    {
+        (salt, facet) = _computeArtifact(outrunDeployer, deployerNamespace, nonce, SETTLEMENT_FACET_SALT_SEED);
+    }
+
+    /// @notice Deploys the settlement facet via OutrunDeployer if not already deployed.
+    /// @dev The facet is a plain contract (not a proxy) and binds the PoolManager immutably at construction.
+    /// @return facet Predicted and landed settlement facet address.
+    function _deploySettlementFacet(
+        IOutrunDeployer outrunDeployer,
+        address deployerNamespace,
+        uint256 nonce,
+        IPoolManager poolManager
+    ) internal returns (address facet) {
+        facet = _deployArtifact(
+            outrunDeployer,
+            deployerNamespace,
+            nonce,
+            SETTLEMENT_FACET_SALT_SEED,
+            abi.encodePacked(type(SettlementFacet).creationCode, abi.encode(poolManager))
+        );
     }
 
     // ─────────────────────────── Hook Implementation ─────────────────────────────
 
     /// @notice Computes the deterministic hook implementation address.
-    /// @param outrunDeployer CREATE3 deployer used for address prediction.
-    /// @param deployerNamespace Address that will call `OutrunDeployer.deploy`.
-    /// @param nonce Deployment version nonce.
-    /// @return salt The computed salt.
-    /// @return impl The predicted implementation address.
     function _computeHookImpl(IOutrunDeployer outrunDeployer, address deployerNamespace, uint256 nonce)
         internal
         view
         returns (bytes32 salt, address impl)
     {
-        salt = keccak256(abi.encodePacked(HOOK_IMPL_SALT_SEED, nonce));
-        impl = outrunDeployer.getDeployed(deployerNamespace, salt);
+        (salt, impl) = _computeArtifact(outrunDeployer, deployerNamespace, nonce, HOOK_IMPL_SALT_SEED);
     }
 
     /// @notice Deploys the hook implementation via OutrunDeployer if not already deployed.
-    /// @dev If the final address has no code but the CREATE3 proxy is occupied, the salt is consumed.
-    /// @param outrunDeployer CREATE3 deployer used for deployment.
-    /// @param deployerNamespace Address that will be the effective msg.sender.
-    /// @param nonce Deployment version nonce.
-    /// @param poolManager Uniswap v4 pool manager stored as immutable in the hook implementation.
+    /// @dev The hook implementation binds the PoolManager immutably at construction.
+    /// @return impl Predicted and landed hook implementation address.
     function _deployHookImpl(
         IOutrunDeployer outrunDeployer,
         address deployerNamespace,
         uint256 nonce,
         IPoolManager poolManager
-    ) internal {
-        (bytes32 salt, address expectedImpl) = _computeHookImpl(outrunDeployer, deployerNamespace, nonce);
-        address create3Proxy = _create3ProxyAddress(outrunDeployer, deployerNamespace, salt);
-        if (create3Proxy.code.length != 0) {
-            revert HookImplementationCreate3SaltConsumed(salt, create3Proxy);
-        }
-        bytes memory creationCode = abi.encodePacked(type(MemeverseUniswapHook).creationCode, abi.encode(poolManager));
-        address deployed = outrunDeployer.deploy(salt, creationCode);
-        if (deployed != expectedImpl) revert ProxyDeploymentMismatch(expectedImpl, deployed);
+    ) internal returns (address impl) {
+        impl = _deployArtifact(
+            outrunDeployer,
+            deployerNamespace,
+            nonce,
+            HOOK_IMPL_SALT_SEED,
+            abi.encodePacked(type(MemeverseUniswapHook).creationCode, abi.encode(poolManager))
+        );
     }
 
     // ───────────────────────────── Hook Proxy ────────────────────────────────────
@@ -703,9 +639,10 @@ contract DeployMemeverseHookProxy is BaseScript {
         address implementation,
         address hookOwner,
         address hookTreasury,
-        address hookEngine,
         address lpTokenImplementation,
-        address preorderSettlementExecutor
+        address swapFacet,
+        address dynamicFeeFacet,
+        address settlementFacet
     ) internal returns (address proxy) {
         // Detect if the CREATE3 minimal proxy was already deployed for this salt
         // (e.g. a previous run's inner CREATE failed). The salt is permanently consumed
@@ -716,15 +653,9 @@ contract DeployMemeverseHookProxy is BaseScript {
 
         bytes memory initializeData = abi.encodeCall(
             MemeverseUniswapHook.initialize,
-            (
-                hookOwner,
-                hookTreasury,
-                IMemeverseDynamicFeeEngine(hookEngine),
-                lpTokenImplementation,
-                IMemeversePreorderSettlementExecutor(preorderSettlementExecutor)
-            )
+            (hookOwner, hookTreasury, lpTokenImplementation, swapFacet, dynamicFeeFacet, settlementFacet)
         );
-        bytes memory creationCode = proxyCreationCode(implementation, hookOwner, initializeData);
+        bytes memory creationCode = proxyCreationCode(implementation, initializeData);
 
         proxy = outrunDeployer.deploy(salt, creationCode);
         if (proxy != expectedProxy) revert ProxyDeploymentMismatch(expectedProxy, proxy);
@@ -743,9 +674,9 @@ contract DeployMemeverseHookProxy is BaseScript {
     }
 
     function _requireUsableHookOwner(address hookOwner, address proxy) internal pure {
-        // OZ v5 transparent proxies create their ProxyAdmin from the proxy constructor.
-        // Owning the hook or ProxyAdmin by either generated contract makes upgrades and onlyOwner calls unreachable.
-        if (hookOwner == proxy || hookOwner == vm.computeCreateAddress(proxy, 1)) revert UnusableHookOwner(hookOwner);
+        // UUPS carries no ProxyAdmin. Self-ownership would brick the proxy: the owner could not call any
+        // onlyOwner entrypoint (including UUPS upgrades), so recovery would be impossible.
+        if (hookOwner == proxy) revert UnusableHookOwner(hookOwner);
     }
 
     function _getExistingImplementation(address proxy) internal view returns (address implementation) {
@@ -763,233 +694,154 @@ contract DeployMemeverseHookProxy is BaseScript {
             ).fromLast20Bytes();
     }
 
+    /// @dev Each facet binds the PoolManager immutably via `ImmutableState`; under delegatecall the facet
+    ///      settles/takes against this manager, so a mismatch would silently break accounting. The hook
+    ///      `initialize` re-checks the same invariant; this mirrors it for the deploy-time/reuse validation.
+    function _requireFacetPoolManager(address facet, IPoolManager expectedPoolManager) internal view {
+        if (facet.code.length == 0) revert ExistingHookFacetCodeMissing(facet);
+        address actualPoolManager = address(ImmutableState(facet).poolManager());
+        if (actualPoolManager != address(expectedPoolManager)) {
+            revert ExistingHookFacetPoolManagerMismatch(facet, address(expectedPoolManager), actualPoolManager);
+        }
+    }
+
+    /// @notice Resolves every hook-proxy address into a single snapshot for the validate functions.
+    /// @dev Both call sites pre-resolve `implementation` + `lpTokenImplementation` + the 3 facets before
+    ///      calling here (the deploy path from CREATE3 computes, the reuse path from codehash-validated
+    ///      getters), so they are taken as-is. Only `owner`/`treasury`/`poolManager` are read from the
+    ///      proxy. If a future caller cannot pre-resolve an artifact, surface it explicitly instead of
+    ///      silently falling back to a zero-derived proxy read — that would mask a caller bug.
+    ///      Safe to call getters without try/catch: on the reuse path `_validateExistingImplementationCodehashes`
+    ///      has already validated the proxy codehash, guaranteeing valid MemeverseUniswapHook bytecode; on the
+    ///      deploy path the proxy was just deployed by this script.
+    function _resolveDeployment(
+        address proxy,
+        address implementation,
+        address lpTokenImplementation,
+        address swapFacet,
+        address dynamicFeeFacet,
+        address settlementFacet
+    ) internal view returns (ResolvedDeployment memory actual) {
+        actual.implementation = implementation;
+
+        MemeverseUniswapHook hook = MemeverseUniswapHook(proxy);
+        actual.hookOwner = hook.owner();
+        actual.hookTreasury = hook.treasury();
+        actual.poolManager = hook.poolManager();
+
+        actual.lpTokenImplementation = lpTokenImplementation;
+        actual.swapFacet = swapFacet;
+        actual.dynamicFeeFacet = dynamicFeeFacet;
+        actual.settlementFacet = settlementFacet;
+    }
+
+    /// @notice Validates a resolved deployment against expected values, reverting with a detailed error on
+    ///         any mismatch.
+    /// @dev All addresses come from the `actual` snapshot (resolved once by `_resolveDeployment`). Pure
+    ///      address comparisons only — code existence and poolManager immutable checks live in
+    ///      `_validateDeployedArtifactCode` (deploy path only), since the reuse path covers them via codehash.
     function _validateExistingDeployment(
         address proxy,
-        address expectedHookImplementation,
-        address expectedEngine,
-        address expectedLpTokenImplementation,
-        address expectedPreorderSettlementExecutor,
+        ResolvedDeployment memory actual,
+        ExpectedArtifacts memory expected,
         address expectedHookOwner,
         address expectedHookTreasury,
         IPoolManager expectedPoolManager
-    ) internal view {
-        address actualImplementation = _getExistingImplementation(proxy);
-        if (actualImplementation != expectedHookImplementation) {
-            revert ExistingHookImplementationMismatch(proxy, expectedHookImplementation, actualImplementation);
+    ) internal pure {
+        if (actual.implementation != expected.hookImplementation) {
+            revert ExistingHookImplementationMismatch(proxy, expected.hookImplementation, actual.implementation);
         }
 
-        MemeverseUniswapHook hook = MemeverseUniswapHook(proxy);
-        address actualHookOwner = hook.owner();
-        _requireUsableHookOwner(actualHookOwner, proxy);
-        if (actualHookOwner != expectedHookOwner) {
-            revert ExistingHookOwnerMismatch(proxy, expectedHookOwner, actualHookOwner);
+        _requireUsableHookOwner(actual.hookOwner, proxy);
+        if (actual.hookOwner != expectedHookOwner) {
+            revert ExistingHookOwnerMismatch(proxy, expectedHookOwner, actual.hookOwner);
         }
 
-        address actualHookTreasury = hook.treasury();
-        if (actualHookTreasury != expectedHookTreasury) {
-            revert ExistingHookTreasuryMismatch(proxy, expectedHookTreasury, actualHookTreasury);
+        if (actual.hookTreasury != expectedHookTreasury) {
+            revert ExistingHookTreasuryMismatch(proxy, expectedHookTreasury, actual.hookTreasury);
         }
 
-        address actualHookPoolManager = address(hook.poolManager());
-        if (actualHookPoolManager != address(expectedPoolManager)) {
-            revert ExistingHookPoolManagerMismatch(proxy, address(expectedPoolManager), actualHookPoolManager);
+        if (address(actual.poolManager) != address(expectedPoolManager)) {
+            revert ExistingHookPoolManagerMismatch(proxy, address(expectedPoolManager), address(actual.poolManager));
         }
 
-        IMemeverseDynamicFeeEngine engine = hook.dynamicFeeEngine();
-        if (address(engine) != expectedEngine) {
-            revert ExistingHookEngineMismatch(proxy, expectedEngine, address(engine));
-        }
-
-        address actualLpTokenImplementation = hook.lpTokenImplementation();
-        if (actualLpTokenImplementation != expectedLpTokenImplementation) {
+        if (actual.lpTokenImplementation != expected.lpTokenImplementation) {
             revert ExistingHookLPTokenImplementationMismatch(
-                proxy, expectedLpTokenImplementation, actualLpTokenImplementation
+                proxy, expected.lpTokenImplementation, actual.lpTokenImplementation
             );
         }
-        if (actualLpTokenImplementation.code.length == 0) {
-            revert ExistingHookLPTokenImplementationCodeMissing(actualLpTokenImplementation);
+
+        if (actual.swapFacet != expected.swapFacet) {
+            revert ExistingHookSwapFacetMismatch(proxy, expected.swapFacet, actual.swapFacet);
         }
 
-        address actualPreorderSettlementExecutor = address(hook.preorderSettlementExecutor());
-        if (actualPreorderSettlementExecutor != expectedPreorderSettlementExecutor) {
-            revert ExistingHookPreorderSettlementExecutorMismatch(
-                proxy, expectedPreorderSettlementExecutor, actualPreorderSettlementExecutor
-            );
-        }
-        if (actualPreorderSettlementExecutor.code.length == 0) {
-            revert ExistingHookPreorderSettlementExecutorCodeMissing(actualPreorderSettlementExecutor);
+        if (actual.dynamicFeeFacet != expected.dynamicFeeFacet) {
+            revert ExistingHookDynamicFeeFacetMismatch(proxy, expected.dynamicFeeFacet, actual.dynamicFeeFacet);
         }
 
-        address actualAuthorizedHook = engine.authorizedHook();
-        if (actualAuthorizedHook != proxy) {
-            revert ExistingEngineAuthorizedHookMismatch(address(engine), proxy, actualAuthorizedHook);
-        }
-
-        address actualEngineOwner = MemeverseDynamicFeeEngine(address(engine)).owner();
-        if (actualEngineOwner != proxy) {
-            revert ExistingEngineOwnerMismatch(address(engine), proxy, actualEngineOwner);
-        }
-
-        address actualEnginePoolManager = address(engine.poolManager());
-        if (actualEnginePoolManager != address(expectedPoolManager)) {
-            revert ExistingEnginePoolManagerMismatch(
-                address(engine), address(expectedPoolManager), actualEnginePoolManager
-            );
+        if (actual.settlementFacet != expected.settlementFacet) {
+            revert ExistingHookSettlementFacetMismatch(proxy, expected.settlementFacet, actual.settlementFacet);
         }
     }
 
-    function _matchesExistingDeployment(
-        address proxy,
-        address expectedHookImplementation,
-        address expectedEngine,
-        address expectedLpTokenImplementation,
-        address expectedPreorderSettlementExecutor,
-        address expectedHookOwner,
-        address expectedHookTreasury,
-        IPoolManager expectedPoolManager
-    ) internal view returns (bool matchesDeployment) {
-        if (
-            expectedHookImplementation.code.length == 0 || expectedEngine.code.length == 0
-                || expectedLpTokenImplementation.code.length == 0 || expectedPreorderSettlementExecutor.code.length == 0
-        ) return false;
-        if (_getExistingImplementation(proxy) != expectedHookImplementation) return false;
-
-        MemeverseUniswapHook hook = MemeverseUniswapHook(proxy);
-
-        try hook.owner() returns (address actualHookOwner) {
-            if (actualHookOwner != expectedHookOwner) return false;
-        } catch {
-            return false;
+    /// @notice Validates that deployed artifacts have code and correct poolManager immutables.
+    /// @dev Called only on the deploy path, where `_validateExistingImplementationCodehashes` does not run
+    ///      (no same-nonce reuse to validate against). On the reuse path, the codehash check covers both
+    ///      code existence and the poolManager immutable (baked into facet bytecode at construction), so
+    ///      this function is skipped there.
+    function _validateDeployedArtifactCode(ResolvedDeployment memory actual, IPoolManager expectedPoolManager)
+        internal
+        view
+    {
+        if (actual.lpTokenImplementation.code.length == 0) {
+            revert ExistingHookLPTokenImplementationCodeMissing(actual.lpTokenImplementation);
         }
-
-        try hook.treasury() returns (address actualHookTreasury) {
-            if (actualHookTreasury != expectedHookTreasury) return false;
-        } catch {
-            return false;
-        }
-
-        try hook.poolManager() returns (IPoolManager actualHookPoolManager) {
-            if (address(actualHookPoolManager) != address(expectedPoolManager)) return false;
-        } catch {
-            return false;
-        }
-
-        try hook.lpTokenImplementation() returns (address actualLpTokenImplementation) {
-            if (actualLpTokenImplementation != expectedLpTokenImplementation) return false;
-            if (actualLpTokenImplementation.code.length == 0) return false;
-        } catch {
-            return false;
-        }
-
-        try hook.preorderSettlementExecutor() returns (IMemeversePreorderSettlementExecutor actualExecutor) {
-            if (address(actualExecutor) != expectedPreorderSettlementExecutor) return false;
-            if (address(actualExecutor).code.length == 0) return false;
-        } catch {
-            return false;
-        }
-
-        try hook.dynamicFeeEngine() returns (IMemeverseDynamicFeeEngine engine) {
-            if (address(engine) != expectedEngine) return false;
-
-            try engine.authorizedHook() returns (address actualAuthorizedHook) {
-                if (actualAuthorizedHook != proxy) return false;
-            } catch {
-                return false;
-            }
-
-            try MemeverseDynamicFeeEngine(address(engine)).owner() returns (address actualEngineOwner) {
-                if (actualEngineOwner != proxy) return false;
-            } catch {
-                return false;
-            }
-
-            try engine.poolManager() returns (IPoolManager actualEnginePoolManager) {
-                return address(actualEnginePoolManager) == address(expectedPoolManager);
-            } catch {
-                return false;
-            }
-        } catch {
-            return false;
-        }
+        _requireFacetPoolManager(actual.swapFacet, expectedPoolManager);
+        _requireFacetPoolManager(actual.dynamicFeeFacet, expectedPoolManager);
+        _requireFacetPoolManager(actual.settlementFacet, expectedPoolManager);
     }
 
-    function _validateExistingImplementationCodehashes(address proxy) internal view {
-        bytes32 expectedHookProxyCodehash = vm.envOr(string.concat("EXPECTED_HOOK_PROXY_", "CODEHASH"), bytes32(0));
-        if (expectedHookProxyCodehash == bytes32(0)) revert ExpectedHookProxyCodehashNotSet();
+    /// @notice Validates the runtime codehashes of the proxy and all 5 deployment artifacts (implementation,
+    ///         LP token, 3 facets) against ops-pinned env vars.
+    /// @dev Uses the passed `implementation` (already resolved by the caller for the `continue` filter) to
+    ///      avoid a second storage read. Returns the 4 artifact addresses so downstream functions don't
+    ///      re-resolve them from the proxy.
+    function _validateExistingImplementationCodehashes(address proxy, address implementation)
+        internal
+        view
+        returns (address lpTokenImplementation, address swapFacet, address dynamicFeeFacet, address settlementFacet)
+    {
+        _requireCodehashMatch(proxy, "EXPECTED_HOOK_PROXY_CODEHASH");
 
-        bytes32 currentHookProxyCodehash = proxy.codehash;
-        if (currentHookProxyCodehash != expectedHookProxyCodehash) {
-            revert ExistingHookProxyCodehashMismatch(proxy, expectedHookProxyCodehash, currentHookProxyCodehash);
-        }
+        // UUPS proxies carry no ProxyAdmin (upgrade authorization lives on the implementation via
+        // `_authorizeUpgrade`), so there is no admin slot or admin-owner relationship to validate here.
+        // The proxy owner is still validated downstream by `_validateExistingDeployment` against the
+        // deploy-arg `expectedHookOwner`.
 
-        address hookProxyAdmin = address(uint160(uint256(vm.load(proxy, ERC1967Utils.ADMIN_SLOT))));
-        if (hookProxyAdmin == address(0)) revert ExistingHookProxyAdminMissing(proxy);
-        address expectedHookProxyAdmin = vm.computeCreateAddress(proxy, 1);
-        if (hookProxyAdmin != expectedHookProxyAdmin) {
-            revert ExistingHookProxyAdminMismatch(proxy, expectedHookProxyAdmin, hookProxyAdmin);
-        }
-        address hookOwner = MemeverseUniswapHook(proxy).owner();
-        address adminOwner = ProxyAdmin(hookProxyAdmin).owner();
-        if (adminOwner != hookOwner) {
-            revert ExistingHookProxyAdminOwnerMismatch(proxy, hookProxyAdmin, hookOwner, adminOwner);
-        }
+        _requireCodehashMatch(implementation, "EXPECTED_HOOK_IMPLEMENTATION_CODEHASH");
 
-        bytes32 expectedHookCodehash = vm.envOr(string.concat("EXPECTED_HOOK_", "IMPLEMENTATION_CODEHASH"), bytes32(0));
-        if (expectedHookCodehash == bytes32(0)) revert ExpectedHookImplementationCodehashNotSet();
+        lpTokenImplementation = MemeverseUniswapHook(proxy).lpTokenImplementation();
+        _requireCodehashMatch(lpTokenImplementation, "EXPECTED_LP_TOKEN_IMPLEMENTATION_CODEHASH");
 
-        address hookImplementation = _getExistingImplementation(proxy);
-        bytes32 currentHookCodehash = hookImplementation.codehash;
-        if (currentHookCodehash != expectedHookCodehash) {
-            revert ExistingHookImplementationCodehashMismatch(
-                hookImplementation, expectedHookCodehash, currentHookCodehash
-            );
-        }
+        swapFacet = MemeverseUniswapHook(proxy).swapFacet();
+        _requireCodehashMatch(swapFacet, "EXPECTED_SWAP_FACET_CODEHASH");
 
-        bytes32 expectedProxyCodehash = keccak256(type(ERC1967Proxy).runtimeCode);
-        address engine = address(MemeverseUniswapHook(proxy).dynamicFeeEngine());
-        bytes32 currentEngineProxyCodehash = engine.codehash;
-        if (currentEngineProxyCodehash != expectedProxyCodehash) {
-            revert ExistingEngineProxyCodehashMismatch(engine, expectedProxyCodehash, currentEngineProxyCodehash);
-        }
+        dynamicFeeFacet = MemeverseUniswapHook(proxy).dynamicFeeFacet();
+        _requireCodehashMatch(dynamicFeeFacet, "EXPECTED_DYNAMIC_FEE_FACET_CODEHASH");
 
-        address engineImplementation = _getExistingImplementation(engine);
-        bytes32 expectedEngineCodehash =
-            vm.envOr(string.concat("EXPECTED_ENGINE_", "IMPLEMENTATION_CODEHASH"), bytes32(0));
-        if (expectedEngineCodehash == bytes32(0)) revert ExpectedEngineImplementationCodehashNotSet();
+        settlementFacet = MemeverseUniswapHook(proxy).settlementFacet();
+        _requireCodehashMatch(settlementFacet, "EXPECTED_SETTLEMENT_FACET_CODEHASH");
+    }
 
-        bytes32 currentEngineCodehash = engineImplementation.codehash;
-        if (currentEngineCodehash != expectedEngineCodehash) {
-            revert ExistingEngineImplementationCodehashMismatch(
-                engineImplementation, expectedEngineCodehash, currentEngineCodehash
-            );
-        }
-
-        address lpTokenImplementation = MemeverseUniswapHook(proxy).lpTokenImplementation();
-        bytes32 expectedLpTokenCodehash =
-            vm.envOr(string.concat("EXPECTED_LP_TOKEN_", "IMPLEMENTATION_CODEHASH"), bytes32(0));
-        if (expectedLpTokenCodehash == bytes32(0)) revert ExpectedLPTokenImplementationCodehashNotSet();
-
-        bytes32 currentLpTokenCodehash = lpTokenImplementation.codehash;
-        if (currentLpTokenCodehash != expectedLpTokenCodehash) {
-            revert ExistingLPTokenImplementationCodehashMismatch(
-                lpTokenImplementation, expectedLpTokenCodehash, currentLpTokenCodehash
-            );
-        }
-
-        address preorderSettlementExecutor = address(MemeverseUniswapHook(proxy).preorderSettlementExecutor());
-        bytes32 expectedPreorderSettlementExecutorCodehash =
-            vm.envOr(string.concat("EXPECTED_PREORDER_SETTLEMENT_", "EXECUTOR_CODEHASH"), bytes32(0));
-        if (expectedPreorderSettlementExecutorCodehash == bytes32(0)) {
-            revert ExpectedPreorderSettlementExecutorCodehashNotSet();
-        }
-
-        bytes32 currentPreorderSettlementExecutorCodehash = preorderSettlementExecutor.codehash;
-        if (currentPreorderSettlementExecutorCodehash != expectedPreorderSettlementExecutorCodehash) {
-            revert ExistingPreorderSettlementExecutorCodehashMismatch(
-                preorderSettlementExecutor,
-                expectedPreorderSettlementExecutorCodehash,
-                currentPreorderSettlementExecutorCodehash
-            );
-        }
+    /// @dev Shared recipe for every artifact codehash check: read the ops-pinned expected codehash from
+    ///      `envVar`, reject a missing pin (carrying the variable name), then compare the on-chain
+    ///      runtime codehash. The expected hash is an independent ops anchor for a known-good deploy,
+    ///      so it is read from env rather than recomputed from local bytecode (which would make a stale
+    ///      or tampered on-chain contract indistinguishable from a fresh one).
+    function _requireCodehashMatch(address artifact, string memory envVar) internal view {
+        bytes32 expectedCodehash = vm.envOr(envVar, bytes32(0));
+        if (expectedCodehash == bytes32(0)) revert ExpectedCodehashNotSet(envVar);
+        bytes32 currentCodehash = artifact.codehash;
+        if (currentCodehash != expectedCodehash) revert CodehashMismatch(artifact, expectedCodehash, currentCodehash);
     }
 }

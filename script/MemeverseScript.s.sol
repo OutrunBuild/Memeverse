@@ -605,7 +605,7 @@ contract MemeverseScript is BaseScript {
     ///           env var. This catches constructor-arg packing/order mistakes (abi.encode misuse), NOT
     ///           the semantic mistake of a wrong env value.
     ///        3. Log — `homeChainEid` and the local eid are both logged so the operator can eyeball the
-    ///           relationship per docs/operations.md §3.12 (home: equal; remote: not equal). The local-eid
+    ///           relationship (home: equal; remote: not equal). The local-eid
     ///           read is best-effort: an unavailable endpoint in a no-fork simulate must not block the
     ///           deploy broadcast, so failure degrades to an `<unavailable>` log line.
     function _deployGenesisCreditFactory(uint256 nonce) internal {
@@ -918,23 +918,42 @@ contract MemeverseScript is BaseScript {
         require(_readAddress(hook, "launcher()") == MEMEVERSE_LAUNCHER, "HOOK_LAUNCHER_NOT_READY");
         require(_readAddress(hook, "poolInitializer()") == swapRouter, "HOOK_POOL_INITIALIZER_NOT_READY");
 
-        // DynamicFeeEngine must exist and be correctly bound to hook.
-        address engine = _readAddress(hook, "dynamicFeeEngine()");
-        _requireContractCode(engine, "ENGINE_CODE_NOT_READY");
-        require(_readAddress(engine, "authorizedHook()") == hook, "ENGINE_AUTHORIZED_HOOK_NOT_READY");
-        require(_readAddress(engine, "owner()") == hook, "ENGINE_OWNER_NOT_READY");
+        // Router and Hook each bind an immutable PoolManager at construction. The Router unlocks/initializes
+        // on its own PoolManager, which then calls back into the Hook; the Hook's onlyPoolManager guard
+        // compares msg.sender against the Hook's PoolManager. If the two differ, every swap and pool
+        // initialization reverts with NotPoolManager, so the system must not open until they match.
+        // (mirrors hook.initialize _requireFacetPoolManager, extended to the router<->hook diagonal).
+        address hookPoolManager = _readAddress(hook, "poolManager()");
+        address routerPoolManager = _readAddress(swapRouter, "poolManager()");
+        require(routerPoolManager == hookPoolManager, "ROUTER_POOL_MANAGER_NOT_READY");
+
+        // Diamond facets must exist and share the hook's PoolManager (mirrors hook.initialize _requireFacetPoolManager).
+        address swapFacet = _readAddress(hook, "swapFacet()");
+        address dynamicFeeFacet = _readAddress(hook, "dynamicFeeFacet()");
+        address settlementFacet = _readAddress(hook, "settlementFacet()");
+        _requireContractCode(swapFacet, "SWAP_FACET_CODE_NOT_READY");
+        _requireContractCode(dynamicFeeFacet, "DYNAMIC_FEE_FACET_CODE_NOT_READY");
+        _requireContractCode(settlementFacet, "SETTLEMENT_FACET_CODE_NOT_READY");
+        require(_readAddress(swapFacet, "poolManager()") == hookPoolManager, "SWAP_FACET_POOL_MANAGER_NOT_READY");
         require(
-            _readAddress(engine, "poolManager()") == _readAddress(hook, "poolManager()"),
-            "ENGINE_POOL_MANAGER_NOT_READY"
+            _readAddress(dynamicFeeFacet, "poolManager()") == hookPoolManager,
+            "DYNAMIC_FEE_FACET_POOL_MANAGER_NOT_READY"
+        );
+        require(
+            _readAddress(settlementFacet, "poolManager()") == hookPoolManager, "SETTLEMENT_FACET_POOL_MANAGER_NOT_READY"
+        );
+        // Facets deploy under distinct CREATE3 salts, so equal addresses would already fail the atomic
+        // deploy. This mirrors that invariant so a future initialize/deploy registering a duplicate
+        // facet is caught before the system opens (defense-in-depth, not a runtime check).
+        require(
+            swapFacet != dynamicFeeFacet && swapFacet != settlementFacet && dynamicFeeFacet != settlementFacet,
+            "FACETS_NOT_DISTINCT"
         );
 
         // HookLens must exist and read from the same PoolManager as the Router.
         address lens = _readAddress(swapRouter, "hookLens()");
         _requireContractCode(lens, "LENS_CODE_NOT_READY");
-        require(
-            _readAddress(lens, "poolManager()") == _readAddress(swapRouter, "poolManager()"),
-            "LENS_POOL_MANAGER_NOT_READY"
-        );
+        require(_readAddress(lens, "poolManager()") == routerPoolManager, "LENS_POOL_MANAGER_NOT_READY");
     }
 
     function _hookFlags(address hook) internal pure returns (uint160) {
@@ -951,6 +970,9 @@ contract MemeverseScript is BaseScript {
         (uint256 minTotalFund, uint256 fundBasedAmount) = _readFundMetaData(uAsset);
         // Registration must stay closed until launcher funding thresholds are usable.
         require(minTotalFund > 0 && fundBasedAmount > 0, errorMessage);
+        // Derived virtual buffer must be non-zero, mirroring setFundMetaData's guard: a zero V would
+        // make MemecoinYieldVault.initialize revert and DoS governance-chain deploy.
+        require(minTotalFund * fundBasedAmount * 7 / 1000 > 0, errorMessage);
     }
 
     function _requireContractCode(address target, string memory errorMessage) internal view {

@@ -11,6 +11,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {IMemeverseUniswapHook} from "../../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {IMemeverseSwapRouter} from "../../../src/swap/interfaces/IMemeverseSwapRouter.sol";
+import {FeeMath} from "../../../src/swap/libraries/FeeMath.sol";
 import {MemeverseSwapForkBase} from "./MemeverseSwapForkBase.sol";
 
 contract MemeverseSwapForkTest is MemeverseSwapForkBase {
@@ -181,17 +182,90 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         router.swap(badKey, params, address(this), block.timestamp, 0, 10 ether, "");
     }
 
-    /// @dev Neither currency side registered -> _resolveSwapFeeContext reverts CurrencyNotSupported
-    ///      in hook beforeSwap. Deployed mainnet V4 wraps it with a selector differing from the lib
-    ///      build, so expectRevert() validates the protection fires (setUp isolates this as the only
-    ///      revert cause).
-    function test_RevertWhen_CurrencyNotSupported_WhenNeitherSideRegistered() external {
+    /// @dev Neither currency side registered -> the swap must succeed (not revert). `setUp` registers
+    ///      no protocol-fee currency, so neither `currencyIn` nor `currencyOut` is supported; the fee
+    ///      resolves to the input leg (currency0 for zeroForOne=true). We prove the ordinary-pool path
+    ///      executes end-to-end AND charges the fee on the input currency by asserting (a) a positive
+    ///      output, (b) a `ProtocolFeeCollected` event emitted with currency0 as the fee currency, and
+    ///      (c) a non-zero treasury balance delta on currency0 — so a zero-amount emit or a spurious
+    ///      second emit cannot satisfy the test.
+    function testSwap_OrdinaryPoolWithoutProtocolFeeCurrencyRegistration_Succeeds() external {
+        // Explicit: neither side is a registered protocol-fee currency.
+        _hook().setProtocolFeeCurrency(key.currency0, false);
+        _hook().setProtocolFeeCurrency(key.currency1, false);
         _matureLaunchWindow();
+
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        vm.expectRevert();
-        router.swap(key, params, address(this), block.timestamp, 0, 10 ether, "");
+
+        // Expect the protocol fee to be collected on the input leg (currency0). Match indexed poolId
+        // (topic1) and currency (topic2) only; amount/blockNumber are unchecked. The hook emits this
+        // event directly (not V4-wrapped), so the selector is verbatim.
+        vm.expectEmit(true, true, false, false, address(_hook()));
+        emit IMemeverseUniswapHook.ProtocolFeeCollected(key.toId(), key.currency0, address(0), 0, 0);
+
+        // Snapshot treasury balances BEFORE the swap so the post-swap assertions tie the emitted fee to
+        // a real ERC20 transfer (defeats a zero-amount emit or a duplicate event masking a missing fee)
+        // and rule out an output-side charge.
+        uint256 treasury0Before = token0.balanceOf(treasury);
+        uint256 treasury1Before = token1.balanceOf(treasury);
+
+        BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, 10 ether, "");
+
+        // Input leg is currency0 (zeroForOne=true); a successful swap moves it into the pool (delta0 < 0)
+        // and pays out currency1 (delta1 > 0).
+        assertLt(delta.amount0(), 0, "input flowed into the pool");
+        assertGt(delta.amount1(), 0, "output produced for the swapper");
+        // Real balance delta: treasury actually received a non-zero currency0 protocol fee, and nothing on
+        // the output leg (rules out an afterSwap output-side charge if the !protocolFeeOnInput guard regresses).
+        assertGt(token0.balanceOf(treasury) - treasury0Before, 0, "treasury received non-zero currency0 fee");
+        assertEq(token1.balanceOf(treasury) - treasury1Before, 0, "no output-side fee on ordinary pool");
+    }
+
+    /// @dev Referrer-bearing twin of `testSwap_OrdinaryPoolWithoutProtocolFeeCurrencyRegistration_Succeeds`.
+    ///      With neither currency registered, the ordinary-pool resolution still charges the input leg
+    ///      (currency0 for zeroForOne=true) — and the rebate carved out of that fee must accrue to the
+    ///      referrer while the remainder lands in the treasury. Pins: (a) the swap succeeds on real V4,
+    ///      (b) treasury receives a non-zero currency0 amount (real balance delta, not just an emit), (c)
+    ///      `pendingRebateOf(referrer, currency0)` rises by the expected rebate, and (d)
+    ///      `rebate + toTreasury == protocolFee` (65/25/10 conservation at default rebateBps=1000).
+    function testSwap_OrdinaryPoolWithReferrer_AccruesRebateAndFundsTreasury() external {
+        // Explicit: neither side is a registered protocol-fee currency.
+        _hook().setProtocolFeeCurrency(key.currency0, false);
+        _hook().setProtocolFeeCurrency(key.currency1, false);
+        _matureLaunchWindow();
+
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
+        // Quote so the expected rebate/treasury split is derived from the same fee state the swap sees.
+        IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
+
+        address referrer = makeAddr("ordinaryPoolReferrer");
+        uint256 treasury0Before = token0.balanceOf(treasury);
+        uint256 pendingBefore = _hook().pendingRebateOf(referrer, key.currency0);
+
+        // Referrer is the first 20 bytes of hookData (`_decodeReferrer`). `abi.encodePacked` keeps the
+        // address in the low 20 bytes; `abi.encode` would left-pad to address(0).
+        router.swap(key, params, address(this), block.timestamp, 0, 10 ether, abi.encodePacked(referrer));
+
+        uint256 rebate = _hook().pendingRebateOf(referrer, key.currency0) - pendingBefore;
+        uint256 toTreasury = token0.balanceOf(treasury) - treasury0Before;
+
+        // Rebate accrues on the input currency (currency0 is the ordinary-pool fee leg).
+        assertGt(rebate, 0, "referrer rebate accrued in currency0");
+        // Real balance delta: treasury actually received a non-zero currency0 amount.
+        assertGt(toTreasury, 0, "treasury received non-zero currency0 fee");
+        // 65/25/10 conservation, exact by construction: rebate + toTreasury = protocolFeeInputAmount, and
+        // the quote derives estimatedProtocolFeeAmount from the same feeOnAmount(10 ether, protocolFeeBps)
+        // the execution charges (no state mutates between quote and swap).
+        assertEq(rebate + toTreasury, quote.estimatedProtocolFeeAmount, "rebate + treasury == protocol fee");
+        // Cross-check the rebate amount against the on-chain formula
+        // (protocolFee * referrerRebateBps / PROTOCOL_FEE_SHARE_BPS).
+        uint256 expectedRebate =
+            (quote.estimatedProtocolFeeAmount * _hook().referrerRebateBps()) / FeeMath.PROTOCOL_FEE_SHARE_BPS;
+        assertEq(rebate, expectedRebate, "rebate matches bps formula");
     }
 
     // ── Router slippage check (post-swap, router-level — NOT V4-wrapped) ──

@@ -84,8 +84,8 @@ contract SettlementSamePoolReentrancyTest is Test, HookStorageHelper {
 
         _initializeAndFundPool(settlementPoolKey);
 
-        // The settlement input currency (callbackToken) must be a supported protocol-fee currency so the
-        // settlement path charges its input-side protocol fee straight to treasury.
+        // Register callbackToken as a protocol-fee token so the input leg deterministically carries the
+        // fee (registration selects the leg; the input-side fee would also fire for an ordinary pool).
         hook.setProtocolFeeCurrency(Currency.wrap(address(callbackToken)), true);
         vm.warp(block.timestamp + 900);
     }

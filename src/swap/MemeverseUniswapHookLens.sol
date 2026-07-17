@@ -159,17 +159,17 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
         }
     }
 
-    /// @dev Shares protocol-fee leg resolution with `MemeverseSwapFeeBase._resolveSwapFeeContext`
-    ///      via `SwapFeeMath.protocolFeeOnInputOrRevert`.
+    /// @dev Mirrors `MemeverseSwapFeeBase._resolveSwapFeeContext`'s protocol-fee leg resolution
+    ///      (`inputSupported || !outputSupported`).
     function _protocolFeeOnInput(IMemeverseUniswapHook hook, PoolKey calldata key, bool zeroForOne)
         internal
         view
         returns (bool)
     {
         (Currency currencyIn, Currency currencyOut) = SwapFeeMath.swapCurrencies(key, zeroForOne);
-        // `||` short-circuits: skip the second hook view call when input is the fee leg.
+        // `||` short-circuits: skip the second hook view call when the input is a registered token.
         return hook.supportedProtocolFeeCurrencies(Currency.unwrap(currencyIn))
-            || SwapFeeMath.protocolFeeOnInputOrRevert(hook.supportedProtocolFeeCurrencies(Currency.unwrap(currencyOut)));
+            || !hook.supportedProtocolFeeCurrencies(Currency.unwrap(currencyOut));
     }
 
     /// @dev Gate logic lives in SwapGuardMath. `liquidity` is read once by the caller (quoteSwap) and

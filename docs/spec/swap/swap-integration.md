@@ -74,8 +74,8 @@ fee claim 需要单独区分两类能力：
 
 ### 2.2 Protocol fee
 
-- Protocol fee 币种选择规则（V4：输入侧优先、支持列表、`CurrencyNotSupported` 回退）见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
-- owner 只应批准标准 fee currency；`treasury` 必须是被动收款方，不在收款期间发起协议操作。
+- Protocol fee 币种选择规则（V4：输入侧优先、支持列表、两侧均未注册时落输入侧不回退）见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
+- 协议费代币（`supportedProtocolFeeCurrencies`）只控制收费腿、**不门控是否收费**（规则见上一行 §3）；注册的代币应是标准 ERC20；`treasury` 必须是被动收款方，不在收款期间发起协议操作。
 - 返佣（referral rebate）切流：普通 swap 若 `hookData` 前 20 字节 packed 携带非零 referrer，protocol fee 收取路径（主体 SwapFacet 的 `_collectProtocolFee`，经 Router entry `delegatecall` 到 SwapFacet 执行；rebate 公式提取为 `_computeRebate`，记账 + treasury take + emit 提取为 `_settleProtocolFee`；beforeSwap 主路径不经 `_collectProtocolFee`，改走 `_computeRebate` + `_settleProtocolFee` + 合并 take）先计算 `rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`，再 split：
   - `toTreasury = protocolFee - rebate` 经 `_takeToTreasury` 到 treasury；
   - `_settleProtocolFee` 先内联累加 Router storage 的 `pendingRebate[referrer][currency]` 并 emit `ReferralRebateAccrued`（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 转出 `toTreasury`（interaction），最后 emit `ProtocolFeeCollected`；这段记账本身是纯 storage effect，无 facet→facet delegatecall 或 PoolManager 调用。ledger effect 先于 treasury take 与调用方的 rebate take，helper 现为严格 CEI（effect → interaction → event）：treasury take 不触发 v4 hook callback，ERC20 currency 仍会执行外部 `transfer` token 代码。beforeSwap 主路径将 rebate 与 LP fee 合并 take，afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立 take rebate。任一步骤失败都会回滚整笔 swap。
@@ -90,7 +90,7 @@ fee claim 需要单独区分两类能力：
 正确理解是：
 
 - `LP fee`：输入侧
-- `Protocol fee`：由支持列表决定，输入侧优先；有 referrer 时再切 rebate 到 hook proxy custody
+- `Protocol fee`：池中存在协议费代币时收该代币（输入侧优先），否则收输入侧（普通池，不回退）；有 referrer 时再切 rebate 到 hook proxy custody
 
 ### 2.4 启动期收费语义
 
@@ -228,7 +228,7 @@ Permit2 入口是并行路径，不替代现有 approve 路径。集成时应注
   - 永远在输入侧计价
 - `estimatedProtocolFeeAmount`
   - protocol fee 金额
-  - 输入币优先，输入不支持时再看输出币
+  - 输入币优先，输入不支持时再看输出币；两侧均未注册（普通池）时落输入侧不回退（见 uniswap-v4.md §3）
 
 ### 4.3 `protocolFeeOnInput`
 

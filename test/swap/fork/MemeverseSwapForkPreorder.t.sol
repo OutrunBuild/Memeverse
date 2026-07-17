@@ -165,6 +165,38 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
         assertGt(token0.balanceOf(treasury), treasuryAfterFirstPublic, "second public swap charged fee");
     }
 
+    /// @dev Ordinary-pool preorder settlement: neither currency registered. Pins that the settlement
+    ///      path resolves the fee to the input leg (currency0 for zeroForOne=true) instead of reverting,
+    ///      and charges the input fee to the treasury. Mirrors the registered-currency preorder matrix
+    ///      above with both protocol-fee flags cleared — the protocol-fee path no longer reverts, so an
+    ///      ordinary-pool preorder must succeed and accrue a fee on the input side only.
+    function testPreorder_OrdinaryPool_SucceedsAndChargesInputFee() external {
+        // Explicit: neither side is a registered protocol-fee currency.
+        _hook().setProtocolFeeCurrency(key.currency0, false);
+        _hook().setProtocolFeeCurrency(key.currency1, false);
+
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
+
+        uint256 treasury0Before = token0.balanceOf(treasury);
+        uint256 treasury1Before = token1.balanceOf(treasury);
+
+        BalanceDelta delta = _hook()
+            .executePreorderSettlement(
+                IMemeverseUniswapHook.PreorderSettlementParams({key: key, params: params, recipient: address(this)})
+            );
+
+        // zeroForOne=true: input (currency0) flows into the pool, output (currency1) to the recipient.
+        assertLt(delta.amount0(), 0, "input flowed in");
+        assertGt(delta.amount1(), 0, "output produced");
+
+        // Ordinary-pool resolution: input leg carries the fee. Treasury0 increases by a non-zero amount;
+        // treasury1 is unchanged so a stray output-side fee cannot masquerade as success.
+        assertGt(token0.balanceOf(treasury) - treasury0Before, 0, "treasury charged input-side fee");
+        assertEq(token1.balanceOf(treasury) - treasury1Before, 0, "no output-side fee on ordinary pool");
+    }
+
     /// @dev executePreorderSettlement is launcher-only (hook onlyLauncher modifier -> Unauthorized).
     ///      A non-launcher caller is rejected at the hook entry. Hook-level error, exact selector.
     function test_RevertWhen_Preorder_NonLauncher() external {

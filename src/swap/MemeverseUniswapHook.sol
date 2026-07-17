@@ -926,12 +926,15 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
         emit ReferrerRebateBpsUpdated(old, newBps);
     }
 
-    /// @notice Updates whether a currency is eligible to receive protocol fees.
-    /// @dev If both pool sides are supported, the swap path will prefer charging protocol fees on the input side.
-    /// @param currency The currency whose support flag is being updated.
-    /// @param supported Whether protocol fees may settle in `currency`.
+    /// @notice Registers or removes a protocol-fee token, which controls HOW the protocol fee is collected — not whether.
+    /// @dev A registered currency is collected in when it is a pool leg: if a pool contains a protocol-fee token the fee
+    ///      is taken in that token (input side preferred when both legs are registered); otherwise the fee is taken from
+    ///      the input leg. Registering or removing never disables the fee — it only changes which leg it is charged on
+    ///      (`protocolFeeOnInput = inputSupported || !outputSupported`).
+    /// @param currency The currency whose protocol-fee-token flag is being updated.
+    /// @param supported Whether `currency` should be collected in as the protocol fee when present in a pool leg.
     function setProtocolFeeCurrency(Currency currency, bool supported) external override onlyOwner {
-        // 1-arg eligibility gate; the 2-arg pool-pair gate is `SwapGuardMath.revertIfNativeCurrencyUnsupported`.
+        // 1-arg per-currency protocol-fee-token flag; the 2-arg pool-pair native-currency check is `SwapGuardMath.revertIfNativeCurrencyUnsupported`.
         if (currency.isAddressZero()) revert NativeCurrencyUnsupported();
         _memeverseUniswapHookStorage.supportedProtocolFeeCurrencies[Currency.unwrap(currency)] = supported;
         emit ProtocolFeeCurrencySupportUpdated(currency, supported);

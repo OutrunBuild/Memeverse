@@ -156,7 +156,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
             // swap). `_settleProtocolFee` records the rebate ledger (effect) before the treasury take
             // (interaction); the ledger also precedes this caller-side merged rebate take. `PoolManager.take`
             // does not invoke a v4 hook callback, but its ERC20 transfer still executes currency token code.
-            // Safety relies on an owner-approved standard fee currency, a passive treasury, and atomic
+            // Safety relies on the fee currency being a standard ERC20, a passive treasury, and atomic
             // transaction rollback.
             // `effectiveSupply != 0` gates the merge path: drained pools (liquidity == 0) make
             // _activeLpSupplyForSwap return 0, and _accrueLpFee would divide-by-zero (Panic 0x12) inside
@@ -409,8 +409,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     ///      which precedes the `ProtocolFeeCollected` emit (it needs the `treasury_` return value). The
     ///      ledger effect also precedes the caller-side rebate take. `PoolManager.take` does not invoke a v4
     ///      hook callback, but it does execute the ERC20 currency's `transfer` code. Safety still relies on
-    ///      owner-approved standard fee currencies, a passive treasury, and atomic rollback if any
-    ///      interaction reverts.
+    ///      standard ERC20 fee currencies, a passive treasury, and atomic rollback if any interaction reverts.
     function _settleProtocolFee(
         PoolId poolId,
         Currency feeCurrency,
@@ -429,9 +428,9 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
             emit IMemeverseUniswapHook.ReferralRebateAccrued(referrer, feeCurrency, rebate);
         }
         // Interaction: treasury take. `PoolManager.take` does not invoke a v4 hook callback, but its ERC20
-        // transfer still executes currency token code; approved standard fee currencies and atomic rollback
-        // bound that interaction. Always emit ProtocolFeeCollected for indexer continuity (toTreasury may be 0
-        // when rebateBps == PROTOCOL_FEE_SHARE_BPS). _takeToTreasury with amount 0 is a no-op take.
+        // transfer still executes currency token code; standard ERC20 fee currencies and atomic rollback bound
+        // that interaction. Always emit ProtocolFeeCollected for indexer continuity (toTreasury may be 0 when
+        // rebateBps == PROTOCOL_FEE_SHARE_BPS). _takeToTreasury with amount 0 is a no-op take.
         address treasury_ = _takeToTreasury(feeCurrency, toTreasury);
         emit IMemeverseUniswapHook.ProtocolFeeCollected(poolId, feeCurrency, treasury_, toTreasury, block.number);
     }
@@ -458,8 +457,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
             // delegatecall), so the take is settled by the hook's beforeSwap specifiedDelta credit that
             // already reserved the full protocol fee. The ledger is written before this caller-side take.
             // `PoolManager.take` does not invoke a v4 hook callback, though its ERC20 transfer executes the
-            // currency's token code; approved standard fee currencies and atomic rollback bound that
-            // interaction.
+            // currency's token code; standard ERC20 fee currencies and atomic rollback bound that interaction.
             poolManager.take(feeCurrency, address(this), rebate);
         }
     }

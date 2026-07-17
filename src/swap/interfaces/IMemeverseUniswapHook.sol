@@ -224,11 +224,12 @@ interface IMemeverseUniswapHook {
     /// @param config New default launch-fee schedule.
     function setDefaultLaunchFeeConfig(IDynamicFeeFacet.LaunchFeeConfig calldata config) external;
 
-    /// @notice Updates whether a currency is eligible to receive protocol fees.
-    /// @dev Implementations are expected to restrict this to an admin or owner role. If both pool sides are supported,
-    /// the swap path prefers charging protocol fees on the input side.
-    /// @param currency The currency whose support flag is being updated.
-    /// @param supported Whether protocol fees may settle in `currency`.
+    /// @notice Registers or removes a protocol-fee token, which controls HOW the protocol fee is collected — not whether.
+    /// @dev Implementations are expected to restrict this to an admin or owner role. A registered currency is collected
+    /// in when it is a pool leg (input side preferred when both legs are registered); otherwise the fee is taken from
+    /// the input leg. Registering or removing never disables the fee.
+    /// @param currency The currency whose protocol-fee-token flag is being updated.
+    /// @param supported Whether `currency` should be collected in as the protocol fee when present in a pool leg.
     function setProtocolFeeCurrency(Currency currency, bool supported) external;
 
     /**
@@ -272,9 +273,11 @@ interface IMemeverseUniswapHook {
     /// @return treasury_ Current treasury address.
     function treasury() external view returns (address treasury_);
 
-    /// @notice Returns whether a currency can receive protocol fees.
+    /// @notice Returns whether a currency is registered as a protocol-fee token.
+    /// @dev The flag selects which leg the fee is collected on; it does NOT gate whether the fee accrues.
+    ///      See `setProtocolFeeCurrency` for the leg-resolution semantics.
     /// @param currency Currency address being queried.
-    /// @return supported True when protocol fees may be collected in this currency.
+    /// @return supported True if `currency` is registered as a protocol-fee token.
     function supportedProtocolFeeCurrencies(address currency) external view returns (bool supported);
 
     /// @notice Low-level liquidity execution API.
@@ -465,11 +468,6 @@ interface IMemeverseUniswapHook {
 
     /// @notice Reverts when a launch fee config field exceeds BPS_BASE or when minFee > startFee.
     error InvalidLaunchFeeConfig();
-
-    /// @notice Reverts when neither swap leg is a supported protocol-fee currency.
-    /// @dev Must stay same-name no-arg as `SwapFeeMath.CurrencyNotSupported` — selectors are equal
-    ///      only while signatures match; tests assert via this interface's selector.
-    error CurrencyNotSupported();
 
     /// @notice Reverts when the caller is not authorized.
     error Unauthorized();

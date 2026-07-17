@@ -30,7 +30,7 @@
 | `MemeverseRegistrarAtLocal` | `registrationCenter` | `setRegistrationCenter` | 非零 | 本地 registrar 信任中心地址 | `[代码已证]` |
 | `MemeverseRegistrarOmnichain` | `registrationGasLimit`（base/local/omnichain） | `setRegistrationGasLimit` | owner-only（数值不做额外边界） | remote registrar -> center 的 quote/send gas 预算 | `[代码已证]` |
 | `MemeverseUniswapHook` | `treasury` | `setTreasury` | 非零 | protocol fee 接收地址 | `[代码已证]` |
-| `MemeverseUniswapHook` | `supportedProtocolFeeCurrencies[currency]` | `setProtocolFeeCurrency(Currency,bool)` | owner-only | 协议费币种选择（输入侧优先） | `[代码已证]` |
+| `MemeverseUniswapHook` | `supportedProtocolFeeCurrencies[currency]` | `setProtocolFeeCurrency(Currency,bool)` | owner-only | 协议费代币注册表（控制收费腿、不门控是否收费；详见 uniswap-v4.md §3） | `[代码已证]` |
 | `MemeverseUniswapHook` | `launcher` | `setLauncher` | 非零；允许 owner 在部署后 retarget，属于同一 trust boundary 的接受语义 | preorder settlement 授权 + pair-based `setPublicSwapResumeTime` 写入权限绑定 | `[代码已证]` |
 | `MemeverseUniswapHook` | `defaultLaunchFeeConfig={start,min,decaySeconds}` | `setDefaultLaunchFeeConfig` | 全部非零；`min<=start<=10000` | 启动窗口费率衰减 | `[代码已证]` |
 | `MemeverseUniswapHook`（Router 直接实现） | `referrerRebateBps` | `setReferrerRebateBps`（hook `onlyOwner` 直接写 hook storage `referrerRebateBps`） | `<= FeeMath.PROTOCOL_FEE_SHARE_BPS`（即 `<= 3500`），否则 revert `RebateExceedsProtocolShare` | 返佣率（占总 fee bps）；`initialize` 默认 `1000`（10%） | `[代码已证]` |

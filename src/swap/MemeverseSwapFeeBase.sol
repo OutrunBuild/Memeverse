@@ -22,7 +22,6 @@ import {SwapFeeMath} from "./libraries/SwapFeeMath.sol";
 ///      order is frozen and append-only; see `IMemeverseHookStorage.MemeverseUniswapHookStorage`.
 abstract contract MemeverseSwapFeeBase is FacetGuard {
     // --- shared fee-accounting helpers inherited by SwapFacet & SettlementFacet ---
-    // `CurrencyNotSupported` lives in `SwapFeeMath` (shared with Lens); same 4-byte selector.
     // `CurrencyLibrary` members used elsewhere (e.g. `Currency.isAddressZero`) reach this contract via
     // the global `using CurrencyLibrary for Currency global;` in v4-core; no file-level `using` needed here.
 
@@ -97,9 +96,10 @@ abstract contract MemeverseSwapFeeBase is FacetGuard {
         returns (SwapFeeMath.SwapFeeContext memory ctx)
     {
         (ctx.currencyIn, ctx.currencyOut) = SwapFeeMath.swapCurrencies(key, zeroForOne);
-        // `||` short-circuits: skip the output-side storage read when input is the fee leg.
-        ctx.protocolFeeOnInput = _isProtocolFeeCurrencySupported(ctx.currencyIn)
-            || SwapFeeMath.protocolFeeOnInputOrRevert(_isProtocolFeeCurrencySupported(ctx.currencyOut));
+        // Protocol-fee leg = `inputSupported || !outputSupported`. `||` short-circuits, skipping the
+        // output-side storage read when the input is a registered token.
+        ctx.protocolFeeOnInput =
+            _isProtocolFeeCurrencySupported(ctx.currencyIn) || !_isProtocolFeeCurrencySupported(ctx.currencyOut);
         ctx.inputIsCurrency0 = zeroForOne;
     }
 

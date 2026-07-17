@@ -887,16 +887,88 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(CurrencyLibrary.ADDRESS_ZERO, true);
     }
 
-    /// @notice Verifies swap quoting reverts when neither side is enabled for protocol fees.
-    /// @dev Covers the `CurrencyNotSupported` branch in fee-context resolution.
-    function testQuoteSwapReverts_WhenProtocolFeeCurrencyUnsupported() external {
-        vm.expectRevert(IMemeverseUniswapHook.CurrencyNotSupported.selector);
-        lens.quoteSwap(
+    /// @notice Verifies quoting succeeds when neither side is registered for protocol fees.
+    /// @dev `setUp` registers no protocol-fee currency, so neither `currencyIn` nor `currencyOut` is
+    ///      supported. The protocol fee falls on the input leg (ordinary-pool resolution) and the quote
+    ///      must return sensibly instead of reverting.
+    function testQuoteSwap_OrdinaryPoolWithoutProtocolFeeCurrencyRegistration_Succeeds() external {
+        _addLiquidity();
+        // Explicit: neither side is a registered protocol-fee currency.
+        hook.setProtocolFeeCurrency(key.currency0, false);
+        hook.setProtocolFeeCurrency(key.currency1, false);
+
+        IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
             address(this)
         );
+
+        // Ordinary-pool resolution: protocol fee is charged on the input leg. `protocolFeeOnInput==true`
+        // is the assertion that pins the leg — a wrong (output-leg) resolution would set it false. Note
+        // `estimatedProtocolFeeAmount>0` alone does NOT distinguish the leg: on the output leg it is derived
+        // from gross output and is also >0, so it only confirms a fee is quoted.
+        assertTrue(quote.protocolFeeOnInput, "protocol fee on input leg");
+        assertGt(quote.estimatedProtocolFeeAmount, 0, "ordinary-pool protocol fee charged on input");
+    }
+
+    /// @notice Pins protocol-fee leg selection against explicit `setProtocolFeeCurrency` state.
+    /// @dev Resolution is `inputSupported || !outputSupported`, inlined at each call site.
+    ///      Registered currencies control HOW the fee is collected, not whether: the fee always accrues.
+    ///      Quotes use exact-input (`amountSpecified < 0`) on `zeroForOne=true`, so `currencyIn=currency0`
+    ///      and `currencyOut=currency1`. The three registered cases here contrast with the ordinary-pool
+    ///      case in `testQuoteSwap_OrdinaryPoolWithoutProtocolFeeCurrencyRegistration_Succeeds`, jointly
+    ///      pinning the full four-row leg-resolution truth table.
+    function testQuoteSwap_ProtocolFeeLegResolutionFollowsRegisteredCurrencies() external {
+        _addLiquidity();
+        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+
+        // Row 1: input registered only (currency0). `||` short-circuits → input leg.
+        hook.setProtocolFeeCurrency(key.currency0, true);
+        hook.setProtocolFeeCurrency(key.currency1, false);
+        assertTrue(
+            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this)).protocolFeeOnInput,
+            "input registered only -> fee on input leg"
+        );
+
+        // Row 2: output registered only (currency1). Input not registered, so `!outputSupported=false`
+        // propagates → output leg (protocolFeeOnInput=false). This is the assertion that pins the design:
+        // a wrong (input-leg) resolution would set it true.
+        hook.setProtocolFeeCurrency(key.currency0, false);
+        hook.setProtocolFeeCurrency(key.currency1, true);
+        assertFalse(
+            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this)).protocolFeeOnInput,
+            "output registered only -> fee on output leg"
+        );
+
+        // Row 3: both registered. `||` short-circuits on the input leg → input leg preferred.
+        hook.setProtocolFeeCurrency(key.currency0, true);
+        hook.setProtocolFeeCurrency(key.currency1, true);
+        assertTrue(
+            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this)).protocolFeeOnInput,
+            "both registered -> fee on input leg (input preferred)"
+        );
+    }
+
+    /// @notice Pins the exact-output ordinary-pool quote path: `amountSpecified > 0`, neither registered.
+    /// @dev Mirrors `testQuoteSwap_OrdinaryPoolWithoutProtocolFeeCurrencyRegistration_Succeeds` for the
+    ///      exact-output branch of `MemeverseUniswapHookLens.quoteSwap`. The lens routes the ordinary
+    ///      pool through the input-leg fee (`protocolFeeOnInput=true`), so the quote must report a
+    ///      positive `estimatedProtocolFeeAmount` derived from the grossed-up input.
+    function testQuoteSwap_OrdinaryPool_ExactOutput_ChargesInputProtocolFee() external {
+        _addLiquidity();
+        hook.setProtocolFeeCurrency(key.currency0, false);
+        hook.setProtocolFeeCurrency(key.currency1, false);
+
+        IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
+            IMemeverseUniswapHook(address(hook)),
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: 0}),
+            address(this)
+        );
+
+        assertTrue(quote.protocolFeeOnInput, "exact-output ordinary pool: fee on input leg");
+        assertGt(quote.estimatedProtocolFeeAmount, 0, "exact-output ordinary pool: positive protocol fee");
     }
 
     function testQuoteSwapReverts_WhenPairUsesNativeCurrency() external {
@@ -1140,8 +1212,8 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies preorder settlement output-side protocol fee path.
-    /// @dev When the output currency is the supported protocol fee currency, the settlement callback takes
-    ///      the fee before delivering the remainder to the recipient.
+    /// @dev When only the output leg is a registered protocol-fee token (input unregistered), the
+    ///      settlement callback takes the fee on the output leg before delivering the remainder.
     function testExecutePreorderSettlement_OutputSideProtocolFee() external {
         _addLiquidity();
         // currency1 is the output currency for zeroForOne=true swaps.

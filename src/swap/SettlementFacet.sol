@@ -106,8 +106,9 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
         address treasury_ = _memeverseUniswapHookStorage.treasury;
 
         // Phase 1 — charge input-side fees up front. LP fee is pulled from the launcher and credited to LPs;
-        // the input-side protocol fee (when the input currency is the supported protocol-fee currency) is
-        // pulled straight to treasury. The remainder (netInputAmount) is what actually enters the pool.
+        // the input-side protocol fee (when `protocolFeeOnInput` — input registered, or neither leg
+        // registered / ordinary pool) is pulled straight to treasury. The remainder (netInputAmount) is
+        // what actually enters the pool.
         uint256 grossInputAmount = uint256(-int256(params.params.amountSpecified));
         SwapFeeMath.SwapFeeContext memory ctx = _resolveSwapFeeContext(params.key, params.params.zeroForOne);
 

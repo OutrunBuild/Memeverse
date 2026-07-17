@@ -7,12 +7,17 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeCast} from "./SafeCast.sol";
 
 /// @title SwapFeeMath
-/// @notice Pure swap amount helpers and the fee context shared by SwapFacet, SettlementFacet, and
-///         MemeverseSwapRouter. Contains no storage or events.
-/// @dev Selector-equivalence rule: `CurrencyNotSupported` is selector-identical to its counterpart
-///      declared on `IMemeverseUniswapHook`. Solidity error selectors depend only on `name(params)`,
-///      so the same-name no-arg definitions stay byte-equal; drift is anchored by
-///      `testQuoteSwapReverts_WhenProtocolFeeCurrencyUnsupported`.
+/// @notice Pure swap amount helpers and the fee context shared by SwapFacet, SettlementFacet,
+///         MemeverseSwapRouter, and MemeverseUniswapHookLens. Contains no storage or events.
+/// @dev Protocol-fee leg resolution: `protocolFeeOnInput = inputSupported || !outputSupported`
+///      (input registered → input leg; only output registered → output leg; both → input; neither →
+///      input, "ordinary pool"; the fee always accrues). The `||` is inlined at each caller
+///      (MemeverseSwapFeeBase, MemeverseUniswapHookLens) so the output-side registration read
+///      short-circuits when the input is a registered token. Not extracted into a pure helper taking
+///      both bool flags: Solidity eagerly evaluates call arguments, which would read both sides and
+///      lose the short-circuit (a per-contract `view` helper taking the currencies would preserve it,
+///      but the two callers read registration differently — storage vs external view — so it is not
+///      shareable).
 library SwapFeeMath {
     using SafeCast for int128;
 
@@ -22,24 +27,6 @@ library SwapFeeMath {
         Currency currencyOut;
         bool protocolFeeOnInput;
         bool inputIsCurrency0;
-    }
-
-    /// @notice Selector-identical to `IMemeverseUniswapHook.CurrencyNotSupported` (see file-level note).
-    error CurrencyNotSupported();
-
-    /// @notice Returns the protocol-fee leg when the input currency is NOT supported.
-    /// @dev Shared by `MemeverseSwapFeeBase._resolveSwapFeeContext` and
-    ///      `MemeverseUniswapHookLens._protocolFeeOnInput`. Callers short-circuit the input-supported
-    ///      case via `||` (returns true) before calling, so this helper only handles the output leg
-    ///      (output supported → false) and reverts `CurrencyNotSupported` when neither leg is
-    ///      registered.
-    /// @param outputSupported Whether the output currency is registered for protocol fees.
-    /// @return protocolFeeOnInput Always false (output leg); reverts if neither leg is supported.
-    function protocolFeeOnInputOrRevert(bool outputSupported) internal pure returns (bool protocolFeeOnInput) {
-        // Reaching here means the input leg is NOT the fee leg (caller's `||` short-circuited it).
-        // Output supported → fee falls on the output leg → protocolFeeOnInput is false.
-        if (outputSupported) return false;
-        revert CurrencyNotSupported();
     }
 
     /// @notice Resolves input and output currencies for a swap direction.

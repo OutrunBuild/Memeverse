@@ -103,6 +103,13 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         yt = info.yt;
     }
 
+    function getPTAndYTAndPOL(uint256 verseId) external view returns (address pt, address yt, address pol) {
+        SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
+        pt = info.pt;
+        yt = info.yt;
+        pol = info.pol;
+    }
+
     function getPTSettlementState(uint256 verseId) external view returns (address pt, bool settled) {
         SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
         pt = info.pt;

@@ -610,6 +610,10 @@ contract MockPOLSplitterForPOLendIntegration is IPOLSplitter {
         return (pt, yt);
     }
 
+    function getPTAndYTAndPOL(uint256) external view returns (address, address, address) {
+        return (pt, yt, pol);
+    }
+
     function getPTSettlementState(uint256) external view returns (address, bool) {
         return (pt, false);
     }

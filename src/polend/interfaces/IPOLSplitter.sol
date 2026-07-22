@@ -69,6 +69,8 @@ interface IPOLSplitter {
 
     function getPTAndYT(uint256 verseId) external view returns (address pt, address yt);
 
+    function getPTAndYTAndPOL(uint256 verseId) external view returns (address pt, address yt, address pol);
+
     function getPTSettlementState(uint256 verseId) external view returns (address pt, bool settled);
 
     function getPOLAndMemecoin(uint256 verseId) external view returns (address pol, address memecoin);

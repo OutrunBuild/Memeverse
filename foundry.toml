@@ -13,7 +13,7 @@ evm_version = "prague"
 eth_rpc_timeout = 120
 extra_output = ["storageLayout"]
 gas_reports = ["*"]
-ignored_error_codes = [6335]
+ignored_error_codes = [6335, 2424]
 
 [rpc_endpoints]
 bsc_testnet = "${BSC_TESTNET_RPC}"

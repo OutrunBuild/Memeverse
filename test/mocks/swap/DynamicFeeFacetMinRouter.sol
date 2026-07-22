@@ -69,7 +69,7 @@ contract DynamicFeeFacetMinRouter layout at erc7201("outrun.storage.MemeverseUni
     ///      is a view function, so this cannot be marked `view`.
     function quote(IDynamicFeeFacet.PrepareSwapFeeParams calldata context)
         external
-        returns (IDynamicFeeFacet.PreparedSwapFee memory quote)
+        returns (IDynamicFeeFacet.PreparedSwapFee memory result)
     {
         bytes memory ret =
             Address.functionDelegateCall(address(facet), abi.encodeCall(IDynamicFeeFacet.quote, (context)));

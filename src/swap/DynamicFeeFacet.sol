@@ -55,8 +55,8 @@ contract DynamicFeeFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
     {
         DynamicFeeState storage stored = _memeverseUniswapHookStorage.dynamicFeeState[params.poolId];
         DynamicFeeMath.refreshVolatilityAnchorAndCarry(stored, params.preSqrtPriceX96);
-        PreparedSwapFee memory quote = _estimateDynamicFeeQuote(stored, params);
-        return (quote.feeBps, quote.estimatedGrossOutputAmount);
+        PreparedSwapFee memory fee = _estimateDynamicFeeQuote(stored, params);
+        return (fee.feeBps, fee.estimatedGrossOutputAmount);
     }
 
     /// @inheritdoc IDynamicFeeFacet
@@ -125,7 +125,7 @@ contract DynamicFeeFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
         view
         override
         onlyViaRouter
-        returns (PreparedSwapFee memory quote)
+        returns (PreparedSwapFee memory result)
     {
         DynamicFeeState memory state = _memeverseUniswapHookStorage.dynamicFeeState[params.poolId];
         // Refresh volatility anchor/carry via the shared plan so preview matches execution exactly.

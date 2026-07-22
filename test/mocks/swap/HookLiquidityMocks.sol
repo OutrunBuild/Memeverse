@@ -110,7 +110,14 @@ contract MockPoolManagerForHookLiquidity {
         uint256 amount1Used;
 
         if (params.liquidityDelta > 0) {
-            key.hooks.beforeAddLiquidity(msg.sender, key, params, ZERO_BYTES);
+            // Real v4 skips beforeModifyLiquidity/afterModifyLiquidity when msg.sender == address(key.hooks)
+            // (Hooks.sol noSelfCall guard). Production addLiquidityCore/removeLiquidityCore route through
+            // poolManager.unlock() reentry (MemeverseUniswapHook.sol:647), so msg.sender here IS the hook;
+            // the beforeAddLiquidity callback must be skipped to match v4, otherwise the mock double-fires
+            // the hook's beforeAddLiquidityLogic on every LP add/remove.
+            if (msg.sender != address(key.hooks)) {
+                key.hooks.beforeAddLiquidity(msg.sender, key, params, ZERO_BYTES);
+            }
 
             liquidityState[key.toId()] += uint128(uint256(params.liquidityDelta));
             _syncPoolStorage(key.toId());

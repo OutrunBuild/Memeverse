@@ -42,6 +42,12 @@ contract RealisticSwapManagerHarness {
     }
 
     bytes internal constant ZERO_BYTES = bytes("");
+    // Mirrors v4 `StateLibrary.POOLS_SLOT` (v4-core/src/libraries/StateLibrary.sol:11) and
+    // `LIQUIDITY_OFFSET` (ibid.:19) so `StateLibrary.getSlot0/getLiquidity` can read mock state
+    // through `extsload` exactly as it reads real singleton storage. BRITTLE COUPLING: if v4
+    // changes its `_pools` mapping slot or the `Pool.State` field layout, these constants and
+    // `_syncPoolStorage` must be updated in lockstep, or DrainedPool/integration tests silently
+    // read stale/zero values. Re-verify on any v4-core bump.
     bytes32 internal constant POOLS_SLOT = bytes32(uint256(6));
     uint256 internal constant LIQUIDITY_OFFSET = 3;
 
@@ -68,6 +74,13 @@ contract RealisticSwapManagerHarness {
     uint256 internal nonzeroDeltaCount;
 
     function initialize(PoolKey memory key, uint160 sqrtPriceX96) external returns (int24 tick) {
+        // No self-call skip needed here: production never calls poolManager.initialize from within
+        // the hook — the only call site is MemeverseSwapRouter.createPoolAndAddLiquidity
+        // (MemeverseSwapRouter.sol:519), where msg.sender is the router, not the hook. So the v4
+        // `msg.sender == address(key.hooks)` skip condition is never met for initialize, and
+        // beforeInitialize correctly fires in both real v4 and this mock. Also note: real v4 calls
+        // afterInitialize here (PoolManager.sol:140); this mock omits it because the production
+        // hook sets `afterInitialize: false` (MemeverseUniswapHook.sol:440).
         PoolId poolId = key.toId();
         slot0State[poolId] = Slot0State({sqrtPriceX96: sqrtPriceX96, tick: 0, protocolFee: 0, lpFee: 0});
         _syncPoolStorage(poolId);
@@ -96,7 +109,14 @@ contract RealisticSwapManagerHarness {
         uint256 amount1Used;
 
         if (params.liquidityDelta > 0) {
-            key.hooks.beforeAddLiquidity(msg.sender, key, params, ZERO_BYTES);
+            // Real v4 skips beforeModifyLiquidity/afterModifyLiquidity when msg.sender == address(key.hooks)
+            // (Hooks.sol noSelfCall guard). Production addLiquidityCore/removeLiquidityCore route through
+            // poolManager.unlock() reentry (MemeverseUniswapHook.sol:647), so msg.sender here IS the hook;
+            // the beforeAddLiquidity callback must be skipped to match v4, otherwise the mock double-fires
+            // the hook's beforeAddLiquidityLogic on every LP add/remove.
+            if (msg.sender != address(key.hooks)) {
+                key.hooks.beforeAddLiquidity(msg.sender, key, params, ZERO_BYTES);
+            }
             liquidityState[key.toId()] += uint128(uint256(params.liquidityDelta));
             _syncPoolStorage(key.toId());
             (amount0Used, amount1Used) = LiquidityAmounts.getAmountsForLiquidity(
@@ -126,6 +146,14 @@ contract RealisticSwapManagerHarness {
         external
         returns (BalanceDelta delta)
     {
+        // PREREQUISITE on the production hook under test: all LP and protocol fees must be
+        // collected at the hook layer (beforeSwap/afterSwap deltas), so the pool runs with
+        // zero pool-level fee. Real v4 `Pool.swap` charges swapFee (lpFee + protocolFee) on
+        // the input leg inside the step loop and accrues protocol fee via `_updateProtocolFees`
+        // (Pool.sol:279-). This mock's `_exactInputDelta`/`_exactOutputDelta` perform pure
+        // SqrtPriceMath with NO fee deduction and NO protocol fee accrual. If a future hook
+        // revision relies on pool-level static fee (non-dynamic `key.fee`), these tests will
+        // silently miss that path — route such changes to the fork suite instead.
         if (!unlocked) revert ManagerLocked();
 
         PoolId poolId = key.toId();
@@ -175,10 +203,15 @@ contract RealisticSwapManagerHarness {
 
     function take(Currency currency, address to, uint256 amount) external {
         if (!unlocked) revert ManagerLocked();
-        // Deduct from per-currency backed amount if available; otherwise fall back to
-        // real balance check.  The fallback covers currencies whose tokens come from the
-        // manager's existing balance (e.g. pol output from locking) rather than from a
-        // caller's settle() payment.
+        // INVARIANT divergence from real v4: real `PoolManager.take` (PoolManager.sol:289-295)
+        // only does `_accountDelta` + `currency.transfer`; it does NOT pre-check balances — a
+        // shortfall surfaces as the transfer itself reverting. This mock adds a two-layer guard:
+        // (1) `backedAmountState` (credited in settle() for positive deltas), then
+        // (2) a `balanceOf` fallback for currencies funded by the manager's own balance
+        //     (e.g. pol output from locking) rather than a caller settle() payment.
+        // Behavioral risk: when `backedAmountState[currency] >= amount`, take() succeeds here
+        // even if a real v4 transfer would have reverted for a different reason. Do not use
+        // this path to assert real take() failure modes — use the fork suite for that.
         uint256 backed = backedAmountState[currency];
         if (backed >= amount) {
             backedAmountState[currency] = backed - amount;
@@ -228,12 +261,19 @@ contract RealisticSwapManagerHarness {
         syncedCurrency = Currency.wrap(address(0));
         syncedReserves = 0;
 
-        // Settle ALL deltas for this currency at once, matching real PoolManager semantics.
-        // The caller's transferFrom covers everyone's unsettled positions (pool output + hook fees).
+        // CAUTION — this is NOT real PoolManager settle() semantics.
+        // Real v4 `_settle(recipient)` accounts `paid` to a SINGLE recipient only; each address
+        // must settle its own delta (PoolManager.sol:347-363). This mock instead clears ALL
+        // non-zero deltas for `currency` in one pass, crediting `backedAmountState` for positive
+        // ones. It is a deliberate simplification so a single callback settle() can cover both
+        // the caller's pool input and any hook-returned fees without per-address settle calls.
+        // Consequence: it can MASK bugs where the hook fails to settle its own negative delta —
+        // in real v4 that would leave `nonzeroDeltaCount != 0` and revert at unlock() exit, but
+        // here it is silently absorbed. Do not rely on this path to validate hook settle behavior.
         //
         // backedAmountState tracks per-currency tokens available for take().  We credit it
-        // only for positive deltas (addresses owed tokens) because the caller's payment
-        // backs their claims.  Addresses with negative deltas are the ones paying—they
+        // only for positive deltas (addresses owed tokens) because the caller's payment backs
+        // their claims.  Addresses with negative deltas are the ones paying—they
         // don't receive backing.  This keeps sum(positive deltas) == paid == backed amount.
         address[] storage addrs = deltaAddressesForCurrency[currency];
         for (uint256 i = 0; i < addrs.length; ++i) {

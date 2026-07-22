@@ -11,7 +11,7 @@ disallowedTools:
   - Write
   - Edit
   - Bash
-model: sonnet
+model: opus
 permissionMode: default
 ---
 ## Role

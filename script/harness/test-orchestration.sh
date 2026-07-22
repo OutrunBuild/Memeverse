@@ -884,7 +884,7 @@ jq -e '
   .doc_round_required == true and
   (has("spec_review_required") | not) and
   .code_writer_roles == ["solidity-implementer"] and
-  (.code_review_roles | sort) == ["gas-reviewer", "logic-reviewer", "security-reviewer"]
+  (.code_review_roles | sort) == ["logic-reviewer", "refinement-reviewer", "security-reviewer"]
 ' "$src_record" >/dev/null
 assert_no_removed_fields "$src_record"
 
@@ -897,7 +897,7 @@ jq -e '
   .harness_writer_roles == ["process-implementer"] and
   .doc_round_required == true and
   .code_writer_roles == ["solidity-implementer"] and
-  (.code_review_roles | sort) == ["gas-reviewer", "logic-reviewer", "security-reviewer"] and
+  (.code_review_roles | sort) == ["logic-reviewer", "refinement-reviewer", "security-reviewer"] and
   (.residual_risks[] | select(.rule_id == "planned-solidity-classification"))
 ' "$planned_src_record" >/dev/null
 assert_no_removed_fields "$planned_src_record"
@@ -924,7 +924,7 @@ jq -e '
   .harness_writer_roles == ["process-implementer"] and
   (has("spec_review_required") | not) and
   .code_writer_roles == ["solidity-implementer"] and
-  (.code_review_roles | sort) == ["gas-reviewer", "logic-reviewer", "security-reviewer"] and
+  (.code_review_roles | sort) == ["logic-reviewer", "refinement-reviewer", "security-reviewer"] and
   .doc_round_required == true and
   .requires_human_confirmation == true
 ' "$mixed_record" >/dev/null
@@ -938,7 +938,7 @@ jq -e '
   .harness_writer_roles == ["process-implementer"] and
   (has("spec_review_required") | not) and
   .code_writer_roles == ["solidity-implementer"] and
-  (.code_review_roles | sort) == ["gas-reviewer", "logic-reviewer", "security-reviewer"] and
+  (.code_review_roles | sort) == ["logic-reviewer", "refinement-reviewer", "security-reviewer"] and
   .doc_round_required == true and
   .requires_human_confirmation == false
 ' "$mixed_non_spec_record" >/dev/null

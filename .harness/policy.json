@@ -28,7 +28,7 @@
     "prod-semantic": [
       "logic-reviewer",
       "security-reviewer",
-      "gas-reviewer"
+      "refinement-reviewer"
     ],
     "test-semantic": [
       "logic-reviewer"

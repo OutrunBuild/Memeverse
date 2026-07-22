@@ -154,7 +154,7 @@
     },
     "reviewRoleName": {
       "type": "string",
-      "enum": ["spec-reviewer", "logic-reviewer", "security-reviewer", "gas-reviewer"]
+      "enum": ["spec-reviewer", "logic-reviewer", "security-reviewer", "refinement-reviewer"]
     },
     "reviewRoleArray": {
       "type": "array",

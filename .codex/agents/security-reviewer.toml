@@ -1,7 +1,7 @@
 name = "security-reviewer"
 description = "Review Solidity changes for security vulnerabilities — reentrancy, overflow, access control, upgrade safety, flash-loan surface."
-model = "grok-4.5"
-model_reasoning_effort = "xhigh"
+model = "gpt-5.6-terra"
+model_reasoning_effort = "max"
 sandbox_mode = "read-only"
 developer_instructions = """
 ## Role

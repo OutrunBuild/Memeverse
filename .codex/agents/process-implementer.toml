@@ -1,6 +1,6 @@
 name = "process-implementer"
 description = "Write harness control files, scripts, configs, and documentation. Handles harness_control surface changes."
-model = "grok-4.5"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "max"
 sandbox_mode = "workspace-write"
 developer_instructions = """

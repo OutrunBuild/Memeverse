@@ -76,7 +76,7 @@ The repository's harness (policy, gate, reviewer/implementer roles) works across
 | Hooks | `.claude/settings.json` (PreToolUse) | — | `.zcode/config.json` (`hooks.events`, needs `enabled:true`) |
 | Permissions | `.claude/settings.json` allow/deny | — | client permission mode + hooks (no workspace allow/deny file) |
 
-The seven roles (`solidity-implementer`, `process-implementer`, `spec-reviewer`, `logic-reviewer`, `security-reviewer`, `gas-reviewer`, `verifier`) are kept in three hand-maintained copies. When you change a role, update all three.
+The seven roles (`solidity-implementer`, `process-implementer`, `spec-reviewer`, `logic-reviewer`, `security-reviewer`, `refinement-reviewer`, `verifier`) are kept in three hand-maintained copies. When you change a role, update all three.
 
 ZCode discovers workspace-scoped subagents from `.zcode/agents/` directly (no install step). The `.zcode/agents/` and `.zcode/config.json` files are version-controlled, so `git worktree add` and fresh clones carry them automatically. ZCode also reads user-scoped agents from `~/.zcode/agents/`, but only in the desktop runtime; this repo relies on the workspace scope, which works everywhere.
 

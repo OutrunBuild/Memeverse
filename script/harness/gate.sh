@@ -1867,6 +1867,18 @@ if [ "$verification_profile" = "none" ]; then
     profile_required_commands_json='[]'
 else
     mapfile -t required_command_ids < <(jq -r --arg profile "$verification_profile" '.verification_profiles[$profile].required_commands[]' "$policy_file")
+    # Skip Solidity-only commands (forge build/test, slither, coverage) when the change touches no .sol and no build-affecting config — docs/harness-rule changes must not trigger a full via_ir build.
+    if [ "${#solidity_prod_files[@]}" -eq 0 ] && [ "${#solidity_test_files[@]}" -eq 0 ]; then
+        needs_build_config=0
+        for _f in "${changed_files[@]}"; do
+            case "$_f" in
+                foundry.toml|remappings.txt|.gitmodules|lib/*) needs_build_config=1; break ;;
+            esac
+        done
+        if [ "$needs_build_config" -eq 0 ]; then
+            mapfile -t required_command_ids < <(printf '%s\n' "${required_command_ids[@]}" | grep -vE '^(forge_build|forge_test_full|targeted_tests|slither_when_required|coverage_when_required)$' || true)
+        fi
+    fi
     profile_required_commands_json="$(json_array_from_values "${required_command_ids[@]}")"
 fi
 

@@ -40,6 +40,7 @@ Do not override policy or gate evidence with natural-language guesses.
 
 - main-orchestrator stays in the primary session and is never a project agent file.
 - Derive `change_class`, `surface_sensitivity`, `orchestration_profile`, `harness_writer_roles`, `code_writer_roles`, and `code_review_roles` from policy/gate evidence before delegating.
+- Low-risk small-change exception (see main-session-contract.md): the main session may directly make and self-review a change it judges low-risk (view/pure, getter, constant, error message, NatSpec, comments, wording, typos, formatting) without dispatching writer or reviewer agents, even if gate classifies it `prod-semantic` / `full-review` / `delegated`. Hard-excluded (still dispatch per gate profile): any change altering runtime behavior, spec truth, policy/product semantics, fund flow, permissions, invariants, or reentrancy surface — including semantic or behavioral edits to contracts, `policy.json`, `gate.sh`, `.harness/runtime`, `docs/spec`, or `AGENTS.md`.
 - Current local task completion defaults to `gate:fast`. Use `full`, `ci`, release, or merge-equivalent verification only when explicitly requested or running in that context.
 - Current Solidity contracts are pre-deployment development artifacts unless a human explicitly says deployed compatibility must be preserved.
 - Review roles remain reviewer-only; do not place verifier inside review roles.

@@ -65,14 +65,14 @@ fee claim 需要单独区分两类能力：
 
 ---
 
-## 2. 当前最终收费语义
+## 2. 当前收费语义与目标普通动态规则
 
-### 2.1 LP fee
+### 2.1 LP fee `[代码已证]`
 
 - `LP fee` 永远在 **输入币** 上收取
 - 不会因为协议收费币配置变化而改变结算币种
 
-### 2.2 Protocol fee
+### 2.2 Protocol fee `[代码已证]`
 
 - Protocol fee 币种选择规则（V4：输入侧优先、支持列表、两侧均未注册时落输入侧不回退）见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
 - 协议费代币（`supportedProtocolFeeCurrencies`）只控制收费腿、**不门控是否收费**（规则见上一行 §3）；注册的代币应是标准 ERC20；`treasury` 必须是被动收款方，不在收款期间发起协议操作。
@@ -85,12 +85,18 @@ fee claim 需要单独区分两类能力：
 - 无 referrer（`hookData` 空或前 20 字节为零）时不切 rebate，treasury 收全额 protocol fee。
 - preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，不参与返佣；其 `ProtocolFeeCollected.amount` 仍是完整 protocol fee。
 
-### 2.3 两者是分开结算的
+### 2.3 两者是分开结算的 `[代码已证]`
 
 正确理解是：
 
 - `LP fee`：输入侧
 - `Protocol fee`：池中存在协议费代币时收该代币（输入侧优先），否则收输入侧（普通池，不回退）；有 referrer 时再切 rebate 到 hook proxy custody
+
+### 2.3.1 普通动态 Swap 的结算导览 `[代码已证]`
+
+> **非规范集成摘要。** 精确的一次选费、四路径、raw `sqrtPriceLimitX96`、全范围容量、核心/最终用户 delta 与拒绝规则均以 [uniswap-v4.md §3.1–§3.2](uniswap-v4.md) 为唯一 canonical；本节与其发生任何不一致时，以该 canonical 为准。
+
+集成方应通过 Router 提交普通 swap，并将 Router 返回的最终用户结果用于自身的展示与后续处理；PoolManager 与 Hook 的核心执行和费用结算属于底层实现流程。需要预估普通动态 swap 时，使用 `quoteSwap(...)`，并以 canonical 中定义的相同完整上下文解释其成功或拒绝结果。
 
 ### 2.4 启动期收费语义
 
@@ -150,6 +156,10 @@ function quoteSwap(PoolKey calldata key, SwapParams calldata params, address tra
 
 `quoteSwap` 是公开的只读入口，前端、SDK、链上 Router 与聚合器可按普通 `view` 函数直接调用，无需手动构造 `staticcall`。Lens 会在内部以 `STATICCALL` 进入 non-view Hook bridge，再由 Hook 路由到报价 facet；函数 selector 与返回结构不变。
 
+上述公开入口、Lens 的 `STATICCALL` bridge 与 ABI 结构是当前实现事实。`[代码已证]`
+
+以下仅为面向集成方的非规范报价 API 导览：通常直接调用 `quoteSwap(...)` 获取报价；需要通过 Lens 接入时使用其 `STATICCALL` bridge。非零报价精确的一次选费、四路径、raw limit、容量、可执行性、报价一致性、只读和零金额边界，均以 [uniswap-v4.md §3.1–§3.2](uniswap-v4.md) 为唯一 canonical。
+
 当前推荐把 Router 视为普通用户路由的统一公开入口；公开入口包含可执行用户路由与只读 helper：
 
 - `quoteSwap(...)`
@@ -205,7 +215,7 @@ Permit2 入口是并行路径，不替代现有 approve 路径。集成时应注
 
 ## 4. `SwapQuote` 字段说明
 
-`SwapQuote` 当前包含这些核心字段：
+`SwapQuote` 当前 ABI 包含这些核心字段。`[代码已证]`
 
 - `feeBps`
 - `estimatedUserInputAmount`
@@ -214,14 +224,14 @@ Permit2 入口是并行路径，不替代现有 approve 路径。集成时应注
 - `estimatedLpFeeAmount`
 - `protocolFeeOnInput`
 
-### 4.1 输入/输出金额字段
+### 4.1 输入/输出金额字段 `[代码已证]`
 
 - `estimatedUserInputAmount`
   - 用户最终总共要支付的输入数量
 - `estimatedUserOutputAmount`
   - 用户最终净到手的输出数量
 
-### 4.2 手续费字段
+### 4.2 手续费字段 `[代码已证]`
 
 - `estimatedLpFeeAmount`
   - LP fee 金额
@@ -229,8 +239,9 @@ Permit2 入口是并行路径，不替代现有 approve 路径。集成时应注
 - `estimatedProtocolFeeAmount`
   - protocol fee 金额
   - 输入币优先，输入不支持时再看输出币；两侧均未注册（普通池）时落输入侧不回退（见 uniswap-v4.md §3）
+  - 输出侧路径以最终核心毛输出或 exact-output 的固定毛输出推导；不能把输入侧 LP fee 与它相加
 
-### 4.3 `protocolFeeOnInput`
+### 4.3 `protocolFeeOnInput` `[代码已证]`
 
 - `true`：本次 protocol fee 在输入侧收
 - `false`：本次 protocol fee 在输出侧收

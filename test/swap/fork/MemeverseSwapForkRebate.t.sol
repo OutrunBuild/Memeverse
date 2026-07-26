@@ -197,7 +197,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
 
     /// @dev Adversarial: exact-output + referrer + output-side fee - the exact-output twin of A1.
     ///      Unlike A1 (exact-input, afterSwap returns `unspecifiedDelta = protocolFee`), exact-output
-    ///      grosses up the output delta in beforeSwap (`toBeforeSwapDelta(reservedFee, 0)`) and withholds
+    ///      grosses up the output delta in beforeSwap and withholds
     ///      it via `_collectProtocolFee` on the OUTPUT currency, returning `unspecifiedDelta = lpFee only`.
     ///      The beforeSwap gross-up credit must exactly offset the afterSwap take or the real V4 unlock
     ///      reverts CurrencyNotSettled. Mock settle masks this; only the mainnet V4 singleton validates it.

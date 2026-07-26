@@ -216,6 +216,12 @@ accounting.md 只保留对 Launcher 侧记账入口的引用：launcher 把 fee/
 - LP fee 按 per-share 累加到 `fee0PerShare / fee1PerShare`，LP 持有人通过 `claimFeesCore` 领取。
 - Protocol fee 发送到 `treasury` 地址。
 
+### 7.3.1 普通动态 Swap 的记账导览 `[代码已证]`
+
+> **非规范会计导览。** 普通动态 Swap 的一次选费、四路径、raw `sqrtPriceLimitX96`、全范围容量、核心/最终用户 delta 与拒绝规则均以 [uniswap-v4.md §3.1–§3.2](../swap/uniswap-v4.md) 为唯一 canonical；本节与其发生任何不一致时，以该 canonical 为准。
+
+会计读者只需将普通动态 Swap 视为本节 LP 分配、protocol 收入与（如适用）返佣账本的费用来源；具体费用归属、核心执行结果和用户最终结果均须按 canonical 解释，不得从本节导出独立的执行或拒绝规则。
+
 ### 7.4 Preorder Settlement 的固定费率
 
 - Preorder settlement swap 经独立入口 `executePreorderSettlement` 发起；SettlementFacet 使用显式 typed unlock payload，由 hook proxy 自己调用 PoolManager。真实 v4 对 hook self-call 同时跳过 `beforeSwap` / `afterSwap`，因此固定费率与全部 settlement fee 记账由 settlement 入口和 typed callback 自处理（见 [INV-04A](../invariants.md)）。typed payload/self-call 接线已实现。`[代码已证]`

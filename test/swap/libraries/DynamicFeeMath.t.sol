@@ -3,11 +3,11 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {wadExp} from "solmate/utils/SignedWadMath.sol";
 
 import {DynamicFeeMath} from "../../../src/swap/libraries/DynamicFeeMath.sol";
 import {FeeMath} from "../../../src/swap/libraries/FeeMath.sol";
+import {OrdinarySwapMath} from "../../../src/swap/libraries/OrdinarySwapMath.sol";
 import {IDynamicFeeFacet} from "../../../src/swap/interfaces/IDynamicFeeFacet.sol";
 
 /// @title DynamicFeeMathTest
@@ -57,22 +57,19 @@ contract DynamicFeeMathTest is Test {
         return IDynamicFeeFacet.AddressBatchState({batchAccumPpm: 0, batchStartTs: 0});
     }
 
-    /// @dev Builds a `PreparedSwapFee` with only the fields `populateDynamicFeeQuoteFromState` reads, so the
-    ///      populate branch logic can be tested without running the full convergence loop.
+    /// @dev Builds a dynamic-fee selection result with only the fields
+    ///      `populateDynamicFeeQuoteFromState` reads.
     function _quoteWithSpots(uint256 spotBeforeX18, uint256 spotAfterX18, uint256 pifPpm)
         internal
         pure
-        returns (IDynamicFeeFacet.PreparedSwapFee memory)
+        returns (DynamicFeeMath.DynamicFeeQuote memory)
     {
-        return IDynamicFeeFacet.PreparedSwapFee({
+        return DynamicFeeMath.DynamicFeeQuote({
             feeBps: 0,
             pifPpm: pifPpm,
             adverseImpactPartBps: 0,
             volatilityPartBps: 0,
             shortImpactPartBps: 0,
-            estimatedInputAmount: 0,
-            estimatedOutputAmount: 0,
-            estimatedGrossOutputAmount: 0,
             spotBeforeX18: spotBeforeX18,
             spotAfterX18: spotAfterX18,
             isAdverse: false
@@ -80,136 +77,89 @@ contract DynamicFeeMathTest is Test {
     }
 
     // ===========================================================================
-    // estimateDynamicFeeQuote — precise boundaries
+    // selectDynamicFee — one selection from the original request curve
     // ===========================================================================
-    // Drive the algorithm directly with `state` and `batch` memory arguments so early-return and iteration
-    // boundaries are asserted independently of storage wiring.
+    // The curve is calculated once from the unmodified user request. Fee leg, fee amounts, transformed
+    // targets, and price limits do not enter this library API.
 
-    /// @notice Zero liquidity short-circuits to the base fee and zero swap amounts, regardless of input.
-    function testEstimateDynamicFeeQuoteZeroLiquidityReturnsBaseFeeAndZeroAmounts() external view {
-        // launchTimestamp=0 → launchFeeBps = minFeeBps = 100 (no launch surcharge).
+    /// @notice Zero amount returns only the launch/base floor and skips all dynamic components.
+    function testSelectDynamicFeeZeroAmountReturnsOnlyFeeFloor() external view {
         uint256 launchFeeBps = DynamicFeeMath.quoteLaunchFeeBps(_launchFeeConfig(), 0);
 
-        IDynamicFeeFacet.PreparedSwapFee memory quote = DynamicFeeMath.estimateDynamicFeeQuote(
+        DynamicFeeMath.DynamicFeeQuote memory quote = DynamicFeeMath.selectDynamicFee(
             _emptyState(),
             _emptyBatch(),
-            0, // zero liquidity — must short-circuit before any swap math
             SQRT_PRICE_1_1,
-            true, // zeroForOne
-            -int256(1 ether),
-            true, // feeOnInput
-            launchFeeBps
-        );
-
-        assertEq(quote.feeBps, DynamicFeeMath.FEE_BASE_BPS, "zero liquidity base fee");
-        assertEq(quote.estimatedInputAmount, 0, "zero liquidity no input");
-        assertEq(quote.estimatedOutputAmount, 0, "zero liquidity no output");
-        assertEq(quote.estimatedGrossOutputAmount, 0, "zero liquidity no gross output");
-    }
-
-    /// @notice Zero amount specified short-circuits to the base fee and zero swap amounts.
-    function testEstimateDynamicFeeQuoteZeroAmountSpecifiedReturnsBaseFeeAndZeroAmounts() external view {
-        uint256 launchFeeBps = DynamicFeeMath.quoteLaunchFeeBps(_launchFeeConfig(), 0);
-
-        IDynamicFeeFacet.PreparedSwapFee memory quote = DynamicFeeMath.estimateDynamicFeeQuote(
-            _emptyState(),
-            _emptyBatch(),
-            LIQUIDITY,
             SQRT_PRICE_1_1,
-            true,
             int256(0), // zero amount — must short-circuit before any swap math
-            true,
             launchFeeBps
         );
 
         assertEq(quote.feeBps, DynamicFeeMath.FEE_BASE_BPS, "zero amount base fee");
-        assertEq(quote.estimatedInputAmount, 0, "zero amount no input");
-        assertEq(quote.estimatedOutputAmount, 0, "zero amount no output");
-        assertEq(quote.estimatedGrossOutputAmount, 0, "zero amount no gross output");
+        assertEq(quote.pifPpm, 0, "zero amount no pif");
+        assertEq(quote.spotBeforeX18, 0, "zero amount no spot before");
+        assertEq(quote.spotAfterX18, 0, "zero amount no spot after");
     }
 
-    /// @notice Exact-input path iterates so the reported input equals the net-of-fee amount that actually
-    ///         reaches the pool, and the reported output / pifPpm reflect that smaller net input.
-    function testEstimateDynamicFeeQuoteExactInputUsesNetPoolInputAfterFees() external view {
-        // launchTimestamp=0 (pre-launch): launchFeeBps = minFeeBps = 100, so the dynamic fee dominates.
+    /// @notice Exact input selects its fee from the full original request curve, not a fee-reduced retry.
+    function testSelectDynamicFeeExactInputUsesOriginalRequestCurveOnce() external view {
         uint256 launchFeeBps = DynamicFeeMath.quoteLaunchFeeBps(_launchFeeConfig(), 0);
         uint256 userInputAmount = 10_000 ether;
+        OrdinarySwapMath.CurveResult memory originalCurve =
+            OrdinarySwapMath.calculateOriginalRequestCurve(LIQUIDITY, SQRT_PRICE_1_1, true, -int256(userInputAmount));
 
-        IDynamicFeeFacet.PreparedSwapFee memory quote = DynamicFeeMath.estimateDynamicFeeQuote(
+        DynamicFeeMath.DynamicFeeQuote memory quote = DynamicFeeMath.selectDynamicFee(
             _emptyState(),
             _emptyBatch(),
-            LIQUIDITY,
             SQRT_PRICE_1_1,
-            true,
+            originalCurve.postSqrtPriceX96,
             -int256(userInputAmount),
-            true, // feeOnInput
             launchFeeBps
         );
 
-        // Self-consistent expectation: the net pool input is the user input minus the input-side fee taken at
-        // the converged fee rate. The convergence loop's exit condition is exactly `netPoolInput ==
-        // estimatedInputAmount`, so this must hold regardless of the precise fee bps.
-        uint256 expectedNetPoolInput =
-            userInputAmount - FullMath.mulDiv(userInputAmount, quote.feeBps, FeeMath.BPS_BASE);
-        uint160 expectedPostSqrtPrice =
-            SqrtPriceMath.getNextSqrtPriceFromInput(SQRT_PRICE_1_1, LIQUIDITY, expectedNetPoolInput, true);
-        uint256 expectedOutputAmount =
-            SqrtPriceMath.getAmount1Delta(expectedPostSqrtPrice, SQRT_PRICE_1_1, LIQUIDITY, false);
-        // First-pass post price (from the full user input, before fee) — the loop must move off this.
-        uint160 firstPassPostSqrtPrice =
-            SqrtPriceMath.getNextSqrtPriceFromInput(SQRT_PRICE_1_1, LIQUIDITY, userInputAmount, true);
-
-        assertLt(quote.estimatedInputAmount, userInputAmount, "not first iteration input");
-        assertEq(quote.estimatedInputAmount, expectedNetPoolInput, "net pool input");
-        assertLt(quote.estimatedOutputAmount, userInputAmount, "not gross-output shortcut");
-        assertEq(quote.estimatedOutputAmount, expectedOutputAmount, "net-input output");
-        assertLt(quote.pifPpm, FeeMath.priceMovePpmCapped(SQRT_PRICE_1_1, firstPassPostSqrtPrice), "not first pif");
-        assertEq(quote.pifPpm, FeeMath.priceMovePpmCapped(SQRT_PRICE_1_1, expectedPostSqrtPrice), "net pif");
+        assertEq(
+            quote.pifPpm,
+            FeeMath.priceMovePpmCapped(SQRT_PRICE_1_1, originalCurve.postSqrtPriceX96),
+            "original-request pif"
+        );
+        assertEq(quote.spotBeforeX18, FeeMath.spotX18FromSqrtPrice(SQRT_PRICE_1_1), "original spot before");
+        assertEq(
+            quote.spotAfterX18, FeeMath.spotX18FromSqrtPrice(originalCurve.postSqrtPriceX96), "original spot after"
+        );
     }
 
-    /// @notice Exact-output path grosses the requested output up by the output-side protocol fee, so the pool
-    ///         receives enough to pay both the user's requested output and the protocol share. The user
-    ///         receives exactly the requested net output.
-    function testEstimateDynamicFeeQuoteExactOutputGrossesOutputSideProtocolFee() external view {
+    /// @notice Exact output also selects from the unmodified requested output curve.
+    function testSelectDynamicFeeExactOutputUsesOriginalRequestCurveOnce() external view {
         uint256 launchFeeBps = DynamicFeeMath.quoteLaunchFeeBps(_launchFeeConfig(), 0);
+        int256 requestedNetOutput = int256(10 ether);
+        OrdinarySwapMath.CurveResult memory originalCurve =
+            OrdinarySwapMath.calculateOriginalRequestCurve(LIQUIDITY, SQRT_PRICE_1_1, true, requestedNetOutput);
 
-        IDynamicFeeFacet.PreparedSwapFee memory quote = DynamicFeeMath.estimateDynamicFeeQuote(
+        DynamicFeeMath.DynamicFeeQuote memory quote = DynamicFeeMath.selectDynamicFee(
             _emptyState(),
             _emptyBatch(),
-            LIQUIDITY,
             SQRT_PRICE_1_1,
-            true,
-            int256(10 ether), // exact output
-            false, // feeOnOutput — output side is grossed up
+            originalCurve.postSqrtPriceX96,
+            requestedNetOutput,
             launchFeeBps
         );
 
-        // 10 ether requested output on 1e6 liquidity moves the price by < 1 ppm, so pifPpm rounds to 0 and the
-        // dynamic fee stays at the 100 bps base; the only gross-up is the output-side protocol share
-        // (protocolFeeBps(100) = mulDiv(100, 3500, 10000) = 35 bps).
-        uint256 expectedGrossOutputAmount = 10_035_122_930_255_895_635;
-        uint256 expectedOutputSideProtocolFee = 35_122_930_255_895_635;
-
         assertEq(quote.feeBps, DynamicFeeMath.FEE_BASE_BPS, "base fee");
-        assertEq(quote.estimatedOutputAmount, 10 ether, "net output");
-        assertEq(quote.estimatedGrossOutputAmount, expectedGrossOutputAmount, "gross output includes output-side fee");
         assertEq(
-            quote.estimatedGrossOutputAmount - quote.estimatedOutputAmount,
-            expectedOutputSideProtocolFee,
-            "reserved output-side protocol fee"
+            quote.pifPpm,
+            FeeMath.priceMovePpmCapped(SQRT_PRICE_1_1, originalCurve.postSqrtPriceX96),
+            "original exact-output pif"
         );
-        assertGt(quote.estimatedInputAmount, 0, "input estimated");
     }
 
     /// @notice When the launch-fee schedule yields a bps above the dynamic composition, the launch fee must
     ///         floor the result. Exercises both floors: the initial `quote.feeBps` assignment
-    ///         (`launchFeeBps > FEE_BASE_BPS ? launchFeeBps : FEE_BASE_BPS`) and the per-iteration restore
-    ///         (`if (launchFeeBps > quote.feeBps) quote.feeBps = launchFeeBps`), which `populate` may have
-    ///         lowered toward the dynamic `FEE_BASE_BPS` floor in between.
-    /// @dev The four `testEstimateDynamicFeeQuote*` cases above all pass `launchTimestamp=0`, which makes
+    ///         (`launchFeeBps > FEE_BASE_BPS ? launchFeeBps : FEE_BASE_BPS`) and the single restore after
+    ///         `populate`, which may have lowered the fee toward the dynamic `FEE_BASE_BPS` floor.
+    /// @dev The single-selection cases above all pass `launchTimestamp=0`, which makes
     ///      `launchFeeBps == minFeeBps == FEE_BASE_BPS`. This case supplies a higher launch fee so both floor
     ///      branches execute.
-    function testEstimateDynamicFeeQuoteLaunchFeeFloorsAboveDynamic() external {
+    function testSelectDynamicFeeLaunchFeeFloorsAboveDynamic() external {
         // Halfway through the 900s decay window the launch fee is well above FEE_BASE_BPS, so it must
         // dominate the dynamic composition for an empty-state small swap.
         vm.warp(1_000);
@@ -221,8 +171,10 @@ contract DynamicFeeMathTest is Test {
         // Empty state + a 1-ether swap on 1e6 liquidity: the price move is sub-1 ppm, so the dynamic
         // composition stays at FEE_BASE_BPS (adverseImpactPartBps / volatilityPartBps / shortImpactPartBps
         // all round to 0). The launch-fee floor must therefore win.
-        IDynamicFeeFacet.PreparedSwapFee memory quote = DynamicFeeMath.estimateDynamicFeeQuote(
-            _emptyState(), _emptyBatch(), LIQUIDITY, SQRT_PRICE_1_1, true, -int256(1 ether), true, launchFeeBps
+        OrdinarySwapMath.CurveResult memory originalCurve =
+            OrdinarySwapMath.calculateOriginalRequestCurve(LIQUIDITY, SQRT_PRICE_1_1, true, -int256(1 ether));
+        DynamicFeeMath.DynamicFeeQuote memory quote = DynamicFeeMath.selectDynamicFee(
+            _emptyState(), _emptyBatch(), SQRT_PRICE_1_1, originalCurve.postSqrtPriceX96, -int256(1 ether), launchFeeBps
         );
 
         // The returned fee equals the launch fee exactly (the dynamic composition never exceeds it), and the
@@ -235,8 +187,8 @@ contract DynamicFeeMathTest is Test {
     // populateDynamicFeeQuoteFromState — branch logic
     // ===========================================================================
     // `populateDynamicFeeQuoteFromState` is the heart of the EWVWAP / volatility / short-impact composition.
-    // It is invoked inside the convergence loop with `preVolatilityPartBps` / `preDecayedShortPpm` already
-    // precomputed by the caller (they are loop-invariant). Driving it directly with a hand-built quote
+    // `selectDynamicFee` invokes it once after precomputing `preVolatilityPartBps` / `preDecayedShortPpm`.
+    // Driving it directly with a hand-built quote
     // isolates the two branches: non-adverse early-return, and full adverse composition.
 
     /// @notice A non-adverse move (spot returning toward the EWVWAP) short-circuits to the base fee and
@@ -248,7 +200,7 @@ contract DynamicFeeMathTest is Test {
         state.weightedVolume0 = 1;
         state.ewVWAPX18 = 1.0 ether; // spot moving 1.2 → 1.1 approaches 1.0 → non-adverse
 
-        IDynamicFeeFacet.PreparedSwapFee memory quote = _quoteWithSpots(1.2 ether, 1.1 ether, 50_000);
+        DynamicFeeMath.DynamicFeeQuote memory quote = _quoteWithSpots(1.2 ether, 1.1 ether, 50_000);
 
         DynamicFeeMath.populateDynamicFeeQuoteFromState(quote, state, _emptyBatch(), 0, 0);
 
@@ -273,7 +225,7 @@ contract DynamicFeeMathTest is Test {
         //   adverseImpactPartBps = 10_000 / (1e6 / 1e4)     = 100                // ppm → bps
         //   short    = mulDiv(30_000, 2_500, 1e6)           = 75                 // (50_000 − 20_000 floor) × coeff
         //   feeBps   = 100 (base) + 100 (adverse) + 0 (vol) + 75 (short) = 275
-        IDynamicFeeFacet.PreparedSwapFee memory adverseQuote = _quoteWithSpots(1.0 ether, 1.2 ether, 50_000);
+        DynamicFeeMath.DynamicFeeQuote memory adverseQuote = _quoteWithSpots(1.0 ether, 1.2 ether, 50_000);
         DynamicFeeMath.populateDynamicFeeQuoteFromState(adverseQuote, state, _emptyBatch(), 0, 0);
 
         assertTrue(adverseQuote.isAdverse, "adverse");
@@ -283,7 +235,7 @@ contract DynamicFeeMathTest is Test {
         assertEq(adverseQuote.feeBps, 275, "adverse fee composition");
 
         // Reverting: spot 1.2 → 1.1 moves back toward EWVWAP 1.0 → non-adverse → base fee via early return.
-        IDynamicFeeFacet.PreparedSwapFee memory revertingQuote = _quoteWithSpots(1.2 ether, 1.1 ether, 50_000);
+        DynamicFeeMath.DynamicFeeQuote memory revertingQuote = _quoteWithSpots(1.2 ether, 1.1 ether, 50_000);
         DynamicFeeMath.populateDynamicFeeQuoteFromState(revertingQuote, state, _emptyBatch(), 0, 0);
 
         assertFalse(revertingQuote.isAdverse, "reverting");
@@ -314,69 +266,6 @@ contract DynamicFeeMathTest is Test {
     // DynamicFeeMath pure / view helpers — direct boundary coverage
     // ===========================================================================
     // Each helper is pinned at its documented contract edges.
-
-    /// @notice `estimateSwapFlowAndPostPrice` routes the input/output amount computation by direction and
-    ///         swaps between the v4 input-specified and output-specified post-price helpers. Zero amount is
-    ///         an early return leaving the price unchanged.
-    function testEstimateSwapFlowAndPostPriceBoundaries() external pure {
-        uint256 amt = 1 ether;
-        int256 exactInput = -int256(amt);
-        int256 exactOutput = int256(amt);
-
-        // Zero amount: early return, price unchanged.
-        (uint256 in0, uint256 out0, uint256 gross0, uint160 post0) =
-            DynamicFeeMath.estimateSwapFlowAndPostPrice(LIQUIDITY, SQRT_PRICE_1_1, true, int256(0));
-        assertEq(in0, 0, "zero input");
-        assertEq(out0, 0, "zero output");
-        assertEq(gross0, 0, "zero gross");
-        assertEq(uint256(post0), uint256(SQRT_PRICE_1_1), "zero amount keeps price");
-
-        // Exact input, zeroForOne=true: input drives the post price; output is the amount1 delta (round down).
-        uint160 postZfoExp = SqrtPriceMath.getNextSqrtPriceFromInput(SQRT_PRICE_1_1, LIQUIDITY, amt, true);
-        uint256 outZfoExp = SqrtPriceMath.getAmount1Delta(postZfoExp, SQRT_PRICE_1_1, LIQUIDITY, false);
-        (uint256 inZfo, uint256 outZfo, uint256 grossZfo, uint160 postZfo) =
-            DynamicFeeMath.estimateSwapFlowAndPostPrice(LIQUIDITY, SQRT_PRICE_1_1, true, exactInput);
-        assertEq(inZfo, amt, "zfo input amount");
-        assertEq(outZfo, outZfoExp, "zfo output delta");
-        assertEq(grossZfo, outZfoExp, "zfo gross equals output");
-        assertEq(uint256(postZfo), uint256(postZfoExp), "zfo post price");
-
-        // Exact input, zeroForOne=false: output is the amount0 delta; the argument order to getAmount0Delta
-        // flips relative to the zeroForOne branch above.
-        uint160 postOfzExp = SqrtPriceMath.getNextSqrtPriceFromInput(SQRT_PRICE_1_1, LIQUIDITY, amt, false);
-        uint256 outOfzExp = SqrtPriceMath.getAmount0Delta(SQRT_PRICE_1_1, postOfzExp, LIQUIDITY, false);
-        (, uint256 outOfz,, uint160 postOfz) =
-            DynamicFeeMath.estimateSwapFlowAndPostPrice(LIQUIDITY, SQRT_PRICE_1_1, false, exactInput);
-        assertEq(outOfz, outOfzExp, "ofz output delta");
-        assertEq(uint256(postOfz), uint256(postOfzExp), "ofz post price");
-
-        // Exact output, zeroForOne=true: output drives the post price via getNextSqrtPriceFromOutput; the
-        // gross output equals the requested output (no input-side gross-up at this layer).
-        uint160 postOutExp = SqrtPriceMath.getNextSqrtPriceFromOutput(SQRT_PRICE_1_1, LIQUIDITY, amt, true);
-        uint256 inOutExp = SqrtPriceMath.getAmount0Delta(postOutExp, SQRT_PRICE_1_1, LIQUIDITY, true);
-        (uint256 inOut,, uint256 grossOut, uint160 postOut) =
-            DynamicFeeMath.estimateSwapFlowAndPostPrice(LIQUIDITY, SQRT_PRICE_1_1, true, exactOutput);
-        assertEq(inOut, inOutExp, "exact-output input");
-        assertEq(grossOut, amt, "exact-output gross equals requested");
-        assertEq(uint256(postOut), uint256(postOutExp), "exact-output post price");
-    }
-
-    /// @notice `grossUpFeeFromNetOutput` returns 0 for trivial inputs, saturates at uint256 max once the fee
-    ///         reaches 100% (avoiding a divide-by-zero), and otherwise rounds the gross UP so that taking
-    ///         `feeBps` off the gross leaves at least the requested net output (payer-favorable rounding).
-    function testGrossUpFeeFromNetOutputBoundaries() external pure {
-        assertEq(DynamicFeeMath.grossUpFeeFromNetOutput(0, 35), 0, "zero net returns zero");
-        assertEq(DynamicFeeMath.grossUpFeeFromNetOutput(10 ether, 0), 0, "zero fee returns zero");
-        // feeBps >= FeeMath.BPS_BASE (100%) would divide by zero; the helper saturates instead.
-        assertEq(
-            DynamicFeeMath.grossUpFeeFromNetOutput(10 ether, FeeMath.BPS_BASE), type(uint256).max, ">=100% saturates"
-        );
-
-        // 35 bps on 10 ether: ceil(10e18 * 10000 / 9965) − 10e18. The rounding-up protects the payer's net.
-        uint256 expectedFee = FullMath.mulDivRoundingUp(10 ether, FeeMath.BPS_BASE, FeeMath.BPS_BASE - 35) - 10 ether;
-        assertEq(DynamicFeeMath.grossUpFeeFromNetOutput(10 ether, 35), expectedFee, "normal gross-up");
-        assertEq(expectedFee, 35_122_930_255_895_635, "cross-check 35 bps fee amount");
-    }
 
     /// @notice `volatilityDeltaSteps` returns 0 for degenerate inputs and yields symmetric step counts for
     ///         up/down moves of equal magnitude, because it compares the squared-price ratio (direction-agnostic).

@@ -8,6 +8,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -159,6 +160,10 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
             address(hook).staticcall(abi.encodeWithSignature("publicSwapResumeTime(bytes32)", targetPoolId));
         if (!success || data.length != 32) return (false, 0);
         return (true, abi.decode(data, (uint40)));
+    }
+
+    function _validExecutionPriceLimit(bool zeroForOne) internal pure returns (uint160) {
+        return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
     }
 
     function testBeforeInitialize_RevertsWithoutAuthorizedInitializer() external {
@@ -595,7 +600,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.beforeSwap(
             address(this),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             bytes("")
         );
 
@@ -667,7 +674,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
 
@@ -675,7 +684,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.beforeSwap(
             address(this),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             bytes("")
         );
 
@@ -706,7 +717,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.beforeSwap(
             address(this),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             bytes("")
         );
     }
@@ -816,7 +829,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.beforeSwap(
             address(this),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             bytes("")
         );
 
@@ -851,7 +866,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.beforeSwap(
             address(this),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             bytes("")
         );
 
@@ -900,7 +917,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
 
@@ -921,7 +940,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     ///      pinning the full four-row leg-resolution truth table.
     function testQuoteSwap_ProtocolFeeLegResolutionFollowsRegisteredCurrencies() external {
         _addLiquidity();
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
 
         // Row 1: input registered only (currency0). `||` short-circuits → input leg.
         hook.setProtocolFeeCurrency(key.currency0, true);
@@ -963,7 +984,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
 
@@ -977,7 +1000,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             nativeKey,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
     }
@@ -997,7 +1022,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             mismatchedKey,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
     }
@@ -1007,7 +1034,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
         mockManager.swapAsUnlocked(
-            nativeKey, SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}), bytes("")
+            nativeKey,
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
+            bytes("")
         );
     }
 
@@ -1018,7 +1049,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(key.currency1, true);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
-            key, SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: 0}), bytes("")
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
+            bytes("")
         );
         vm.warp(block.timestamp + 900);
         mockManager.setNextExactInputPoolInputAmount(poolId, 99 ether);
@@ -1027,7 +1062,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
         mockManager.swapAsUnlocked(
-            key, SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}), bytes("")
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
+            bytes("")
         );
 
         _assertRollbackUnchanged(s);
@@ -1043,7 +1082,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
             address(this)
         );
         uint256 expectedPoolInput = quote.estimatedUserInputAmount - quote.estimatedLpFeeAmount;
@@ -1051,7 +1092,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         mockManager.setNextExactInputPoolInputAmount(poolId, expectedPoolInput);
         BalanceDelta delta = mockManager.swapAsUnlocked(
-            key, SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}), bytes("")
+            key,
+            SwapParams({
+                zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
+            bytes("")
         );
 
         assertEq(uint256(uint128(-delta.amount1())), expectedPoolInput, "pool input net of lp fee");
@@ -1066,7 +1111,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(key.currency0, true); // input-side fee for zeroForOne=true
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
-            key, SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: 0}), bytes("")
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
+            bytes("")
         );
         vm.warp(block.timestamp + 900);
         mockManager.setNextExactInputPoolInputAmount(poolId, 99 ether);
@@ -1075,7 +1124,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
         mockManager.swapAsUnlocked(
-            key, SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}), bytes("")
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
+            bytes("")
         );
 
         _assertRollbackUnchanged(s);
@@ -1088,7 +1141,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(key.currency0, true);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
-            key, SwapParams({zeroForOne: false, amountSpecified: -10 ether, sqrtPriceLimitX96: 0}), bytes("")
+            key,
+            SwapParams({
+                zeroForOne: false, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
+            bytes("")
         );
         vm.warp(block.timestamp + 900);
         mockManager.setNextExactInputPoolInputAmount(poolId, 99 ether);
@@ -1097,7 +1154,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
         mockManager.swapAsUnlocked(
-            key, SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}), bytes("")
+            key,
+            SwapParams({
+                zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
+            bytes("")
         );
 
         _assertRollbackUnchanged(s);
@@ -1112,7 +1173,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         token0.approve(address(hook), type(uint256).max);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
-            key, SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: 0}), bytes("")
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
+            bytes("")
         );
         mockManager.setNextExactInputPoolInputAmount(poolId, 98 ether);
 
@@ -1135,12 +1200,23 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @notice Verifies launch fee floor dominates immediately after pool initialization and decays to the minimum fee.
     /// @dev Covers how the launch fee scheduler composes with the dynamic fee calculation.
     function testQuoteSwap_UsesLaunchFeeFloorAndDecaysToMinFee() external {
+        hook.addLiquidityCore(
+            IMemeverseUniswapHook.AddLiquidityCoreParams({
+                currency0: key.currency0,
+                currency1: key.currency1,
+                amount0Desired: 1_000_000 ether,
+                amount1Desired: 1_000_000 ether,
+                to: address(this)
+            })
+        );
         hook.setProtocolFeeCurrency(key.currency0, true);
 
         IMemeverseUniswapHook.SwapQuote memory initialQuote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
         assertEq(initialQuote.feeBps, 5000, "initial launch fee");
@@ -1150,7 +1226,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         IMemeverseUniswapHook.SwapQuote memory maturedQuote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
         assertEq(maturedQuote.feeBps, 100, "matured fee");
@@ -1364,7 +1442,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         evil.arm(
             mockManager,
             evilKey,
-            SwapParams({zeroForOne: zeroForOne, amountSpecified: -int256(0.01 ether), sqrtPriceLimitX96: 0})
+            SwapParams({
+                zeroForOne: zeroForOne,
+                amountSpecified: -int256(0.01 ether),
+                sqrtPriceLimitX96: _validExecutionPriceLimit(zeroForOne)
+            })
         );
 
         // The settlement completes because its own swap is a hook self-call and v4 skips both swap callbacks.

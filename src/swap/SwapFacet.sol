@@ -24,6 +24,7 @@ import {IMemeverseUniswapHook} from "./interfaces/IMemeverseUniswapHook.sol";
 import {MemeversePoolKeyLib} from "./libraries/MemeversePoolKeyLib.sol";
 import {MemeverseTransientState} from "./libraries/MemeverseTransientState.sol";
 import {FeeMath} from "./libraries/FeeMath.sol";
+import {OrdinarySwapMath} from "./libraries/OrdinarySwapMath.sol";
 import {SafeCast} from "./libraries/SafeCast.sol";
 import {SwapFeeMath} from "./libraries/SwapFeeMath.sol";
 import {SwapGuardMath} from "./libraries/SwapGuardMath.sol";
@@ -60,7 +61,6 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
 {
     using StateLibrary for IPoolManager;
     using SafeCast for uint256;
-    using SafeCast for int256;
 
     // Reuse the existing transient fee word so afterSwap can recover the fee side without another storage lookup.
     uint256 internal constant SWAP_CONTEXT_PROTOCOL_FEE_ON_INPUT_FLAG = 1 << 255;
@@ -104,16 +104,15 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         }
         uint128 liquidity = poolManager.getLiquidity(poolId);
         uint256 effectiveSupply = _activeLpSupplyForSwap(poolId, liquidity);
-
-        uint256 absSpecified = params.amountSpecified.abs();
         SwapFeeMath.SwapFeeContext memory ctx = _resolveSwapFeeContext(key, params.zeroForOne);
-
         (uint160 preSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
 
-        // Dynamic-fee quote via internal delegatecall to DynamicFeeFacet (facet-to-facet collaboration).
-        // `address(this)` stays the hook proxy; the facet reads launch config/timestamp from shared
-        // storage, so callers only pass pool/swap/trader context.
-        (uint256 dynamicFeeBps, uint256 estimatedGrossOutputAmount) = _prepareSwapFee(
+        OrdinarySwapMath.CapacityResult memory capacity =
+            OrdinarySwapMath.calculateCapacity(liquidity, preSqrtPriceX96, params.zeroForOne, params.sqrtPriceLimitX96);
+
+        // Fee selection uses the original request curve exactly once. The fee leg and price limit are
+        // carried for settlement/quote geometry but are not inputs to DynamicFeeMath.selectDynamicFee.
+        uint256 dynamicFeeBps = _prepareSwapFee(
             IDynamicFeeFacet.PrepareSwapFeeParams({
                 poolId: poolId,
                 zeroForOne: params.zeroForOne,
@@ -122,80 +121,35 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
                 trader: tx.origin,
                 preSqrtPriceX96: preSqrtPriceX96,
                 liquidity: liquidity,
-                protocolFeeOnInput: ctx.protocolFeeOnInput
+                protocolFeeOnInput: ctx.protocolFeeOnInput,
+                sqrtPriceLimitX96: params.sqrtPriceLimitX96
             })
         );
-
-        (uint256 lpFeeBpsSplit, uint256 protocolFeeBps) = FeeMath.splitFeeBps(dynamicFeeBps);
-
-        uint256 lpFeeInputAmount = 0;
-        uint256 protocolFeeInputAmount = 0;
-        if (params.amountSpecified < 0) {
-            // Exact-input swaps can charge input-side fees immediately because the user's budget is already known up front.
-            // Shared with afterSwapLogic's partial-fill guard via _exactInputFeeAmounts so the two cannot drift.
-            (lpFeeInputAmount, protocolFeeInputAmount) =
-                _exactInputFeeAmounts(absSpecified, lpFeeBpsSplit, protocolFeeBps, ctx.protocolFeeOnInput);
-        }
-
-        bytes32 swapContextBase = MemeverseTransientState.pushSwapContext(
-            poolId, _encodeSwapContextFee(dynamicFeeBps, ctx.protocolFeeOnInput), preSqrtPriceX96
+        OrdinarySwapMath.FeeSplit memory feeSplit = OrdinarySwapMath.deriveFeeSplit(dynamicFeeBps);
+        OrdinarySwapMath.SettlementPlan memory settlementPlan =
+            OrdinarySwapMath.deriveSettlementPlan(params.amountSpecified, ctx.protocolFeeOnInput, feeSplit);
+        OrdinarySwapMath.revertIfFinalTargetIsNotExecutable(
+            liquidity, preSqrtPriceX96, params.amountSpecified, settlementPlan, capacity
         );
-        uint256 exactOutputProtocolFeeOutputAmount = 0;
-        if (params.amountSpecified > 0 && !ctx.protocolFeeOnInput) {
-            // Bounded: drained pools (liquidity == 0) yield estimatedGrossOutputAmount == 0 from the
-            // dynamic-fee early-return, so subtracting absSpecified would underflow. Clamp to 0 so the
-            // swap proceeds to afterSwap's ExactOutputPartialFill guard instead of panicking here.
-            exactOutputProtocolFeeOutputAmount =
-                estimatedGrossOutputAmount > absSpecified ? estimatedGrossOutputAmount - absSpecified : 0;
-            MemeverseTransientState.storeExactOutputProtocolFee(swapContextBase, exactOutputProtocolFeeOutputAmount);
-        }
 
-        if (lpFeeInputAmount > 0 && protocolFeeInputAmount > 0 && effectiveSupply != 0) {
-            // LP fee and rebate both accrue to address(this) in currencyIn, so their takes collapse into one
-            // poolManager.take (saves one PoolManager CALL + one ERC20 transfer per referrer-bearing input-side
-            // swap). `_settleProtocolFee` records the rebate ledger (effect) before the treasury take
-            // (interaction); the ledger also precedes this caller-side merged rebate take. `PoolManager.take`
-            // does not invoke a v4 hook callback, but its ERC20 transfer still executes currency token code.
-            // Safety relies on the fee currency being a standard ERC20, a passive treasury, and atomic
-            // transaction rollback.
-            // `effectiveSupply != 0` gates the merge path: drained pools (liquidity == 0) make
-            // _activeLpSupplyForSwap return 0, and _accrueLpFee would divide-by-zero (Panic 0x12) inside
-            // FullMath.mulDiv. Such pools must fall through to the else branch, where _collectLpFee
-            // early-returns on its own effectiveSupply == 0 guard while protocol fee is still collected.
-            uint256 rebate = _computeRebate(protocolFeeInputAmount, referrer);
-            _accrueLpFee(poolId, ctx.currencyIn, ctx.inputIsCurrency0, lpFeeInputAmount, effectiveSupply);
-            _settleProtocolFee(poolId, ctx.currencyIn, protocolFeeInputAmount, referrer, rebate);
-            poolManager.take(ctx.currencyIn, address(this), lpFeeInputAmount + rebate);
+        uint256 coreTarget =
+            params.amountSpecified < 0 ? settlementPlan.coreInputTarget : settlementPlan.coreOutputTarget;
+        _revertIfBeforeSwapAmountsAreNotRepresentable(params.amountSpecified, coreTarget);
+        MemeverseTransientState.pushSwapContext(
+            poolId, _encodeSwapContextFee(dynamicFeeBps, ctx.protocolFeeOnInput), preSqrtPriceX96, coreTarget
+        );
+
+        uint256 specifiedDeltaAmount;
+        if (params.amountSpecified < 0) {
+            _collectKnownInputFees(poolId, ctx, settlementPlan, effectiveSupply, referrer);
+            specifiedDeltaAmount = _absoluteExactInput(params.amountSpecified) - settlementPlan.coreInputTarget;
         } else {
-            // Edge cases (lpFee == 0, protocol == 0, or drained pool with effectiveSupply == 0): keep the
-            // two independent checks so a drained pool still skips LP fee (_collectLpFee
-            // early-returns) while protocol fee is collected as usual.
-            if (lpFeeInputAmount > 0) {
-                _collectLpFee(poolId, ctx.currencyIn, ctx.inputIsCurrency0, lpFeeInputAmount, effectiveSupply);
-            }
-            if (protocolFeeInputAmount > 0) {
-                _collectProtocolFee(poolId, ctx.currencyIn, protocolFeeInputAmount, referrer);
-            }
+            specifiedDeltaAmount = settlementPlan.coreOutputTarget - uint256(params.amountSpecified);
         }
-
-        if (params.amountSpecified > 0 && !ctx.protocolFeeOnInput) {
-            // Exact-output with output-side protocol fees asks the pool for the gross output now; the hook keeps the fee delta later.
-            return (
-                IHooks.beforeSwap.selector,
-                toBeforeSwapDelta(exactOutputProtocolFeeOutputAmount.toInt128(), int128(0)),
-                0
-            );
-        }
-
-        if (params.amountSpecified > 0) {
+        if (specifiedDeltaAmount == 0) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
-
-        int128 specifiedDeltaInput = (lpFeeInputAmount + protocolFeeInputAmount).toInt128();
-        if (specifiedDeltaInput == 0) {
-            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-        }
-        return (IHooks.beforeSwap.selector, toBeforeSwapDelta(specifiedDeltaInput, int128(0)), 0);
+        return (IHooks.beforeSwap.selector, toBeforeSwapDelta(specifiedDeltaAmount.toInt128(), int128(0)), 0);
     }
 
     /// @inheritdoc ISwapFacet
@@ -235,19 +189,39 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         address referrer = _decodeReferrer(hookData);
 
         (Currency currencyIn, Currency currencyOut) = SwapFeeMath.swapCurrencies(key, params.zeroForOne);
-        (uint256 encodedFeeBps, uint160 preSqrtPriceX96, bytes32 swapContextBase) =
+        (uint256 encodedFeeBps, uint160 preSqrtPriceX96, uint256 storedCoreTarget) =
             MemeverseTransientState.consumeCurrentSwapContext(poolId);
         uint256 feeBps = _decodeSwapContextFee(encodedFeeBps);
         bool protocolFeeOnInput = _swapContextProtocolFeeOnInput(encodedFeeBps);
-        SwapFeeMath.SwapFeeContext memory ctx = SwapFeeMath.SwapFeeContext({
-            currencyIn: currencyIn,
-            currencyOut: currencyOut,
-            inputIsCurrency0: params.zeroForOne,
-            protocolFeeOnInput: protocolFeeOnInput
-        });
         (uint160 postSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        OrdinarySwapMath.FeeSplit memory feeSplit = OrdinarySwapMath.deriveFeeSplit(feeBps);
+        OrdinarySwapMath.SettlementPlan memory settlementPlan =
+            OrdinarySwapMath.deriveSettlementPlan(params.amountSpecified, protocolFeeOnInput, feeSplit);
+        uint256 derivedCoreTarget =
+            params.amountSpecified < 0 ? settlementPlan.coreInputTarget : settlementPlan.coreOutputTarget;
+        if (storedCoreTarget != derivedCoreTarget) revert OrdinarySwapMath.FinalTargetNotMet();
 
-        // Realized-state update via internal delegatecall to DynamicFeeFacet.
+        OrdinarySwapMath.CurveResult memory actualCurve = OrdinarySwapMath.CurveResult({
+            coreInput: SwapFeeMath.actualInputAmount(delta, params.zeroForOne),
+            coreGrossOutput: SwapFeeMath.actualOutputAmount(delta, params.zeroForOne),
+            postSqrtPriceX96: postSqrtPriceX96
+        });
+        if (params.amountSpecified < 0 && actualCurve.coreInput != settlementPlan.coreInputTarget) {
+            revert IMemeverseUniswapHook.ExactInputPartialFill();
+        }
+        if (params.amountSpecified > 0 && actualCurve.coreGrossOutput < settlementPlan.coreOutputTarget) {
+            revert IMemeverseUniswapHook.ExactOutputPartialFill();
+        }
+        OrdinarySwapMath.FinalSettlement memory finalSettlement = OrdinarySwapMath.deriveFinalSettlement(
+            params.amountSpecified, protocolFeeOnInput, feeSplit, settlementPlan, actualCurve
+        );
+        uint256 unspecifiedDeltaAmount = params.amountSpecified < 0
+            ? actualCurve.coreGrossOutput - finalSettlement.userNetOutput
+            : finalSettlement.userInput - actualCurve.coreInput;
+        int128 callbackDelta = unspecifiedDeltaAmount.toInt128();
+        _revertIfFinalUserAmountsAreNotRepresentable(finalSettlement);
+
+        // History advances only after actual core deltas pass the complete-fill and callback-bound checks.
         _updateAfterSwap(
             IDynamicFeeFacet.UpdateAfterSwapParams({
                 poolId: poolId,
@@ -259,78 +233,22 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
             })
         );
 
-        (uint256 lpFeeBps, uint256 protocolFeeBps) = FeeMath.splitFeeBps(feeBps);
-
         if (params.amountSpecified < 0) {
-            uint256 absSpecified = uint256(-params.amountSpecified);
-            // The input-fee charge and partial-fill guard both use `_exactInputFeeAmounts`, so they apply
-            // the identical formula.
-            (uint256 lpFeeInputAmount, uint256 protocolFeeInputAmount) =
-                _exactInputFeeAmounts(absSpecified, lpFeeBps, protocolFeeBps, ctx.protocolFeeOnInput);
-            uint256 expectedPoolInput = absSpecified - lpFeeInputAmount - protocolFeeInputAmount;
-            uint256 actualPoolInput = SwapFeeMath.actualInputAmount(delta, params.zeroForOne);
-            if (actualPoolInput != expectedPoolInput) revert IMemeverseUniswapHook.ExactInputPartialFill();
-
-            if (!ctx.protocolFeeOnInput) {
-                uint256 actualOutputAbs = SwapFeeMath.actualOutputAmount(delta, params.zeroForOne);
-                uint256 exactInputProtocolFeeOutputAmount = FeeMath.feeOnAmount(actualOutputAbs, protocolFeeBps);
-                if (exactInputProtocolFeeOutputAmount > 0) {
-                    _collectProtocolFee(poolId, ctx.currencyOut, exactInputProtocolFeeOutputAmount, referrer);
-                }
-                // V4 afterSwap contract: a positive unspecifiedDelta means the hook takes that much of the
-                // unspecified currency. For exact-input swaps unspecified=output, so returning the output-side
-                // protocol fee as positive withholds it from the taker (user receives less output).
-                return (IHooks.afterSwap.selector, int128(int256(exactInputProtocolFeeOutputAmount)));
+            if (!protocolFeeOnInput && finalSettlement.protocolFee > 0) {
+                _collectProtocolFee(poolId, currencyOut, finalSettlement.protocolFee, referrer);
             }
-
-            return (IHooks.afterSwap.selector, 0);
+            return (IHooks.afterSwap.selector, callbackDelta);
         }
 
-        if (params.amountSpecified > 0) {
-            // Exact-output fees settle against the actual fill, so only afterSwap knows the final input amount to charge.
-            uint256 requestedOutputAbs = uint256(params.amountSpecified);
-            uint256 actualOutputAbs = SwapFeeMath.actualOutputAmount(delta, params.zeroForOne);
-            uint256 minimumOutputAbs = requestedOutputAbs;
-            uint256 reservedProtocolFeeOutputAmount = 0;
-            if (!ctx.protocolFeeOnInput) {
-                reservedProtocolFeeOutputAmount = MemeverseTransientState.consumeExactOutputProtocolFee(swapContextBase);
-                // Match the exact beforeSwap reservation so overfills are delivered to the recipient instead of skimmed.
-                minimumOutputAbs += reservedProtocolFeeOutputAmount;
-            }
-            if (actualOutputAbs < minimumOutputAbs) revert IMemeverseUniswapHook.ExactOutputPartialFill();
-
-            uint256 actualInputAbs = SwapFeeMath.actualInputAmount(delta, params.zeroForOne);
-
-            uint256 exactOutputLpFeeInputAmount = FeeMath.feeOnAmount(actualInputAbs, lpFeeBps);
-            if (exactOutputLpFeeInputAmount > 0) {
-                uint256 effectiveSupply = _memeverseUniswapHookStorage.cachedLpTotalSupply[poolId];
-                _collectLpFee(
-                    poolId, ctx.currencyIn, ctx.inputIsCurrency0, exactOutputLpFeeInputAmount, effectiveSupply
-                );
-            }
-
-            uint256 unspecifiedDeltaAmount;
-            if (ctx.protocolFeeOnInput) {
-                uint256 exactOutputProtocolFeeInputAmount = FeeMath.feeOnAmount(actualInputAbs, protocolFeeBps);
-                if (exactOutputProtocolFeeInputAmount > 0) {
-                    _collectProtocolFee(poolId, ctx.currencyIn, exactOutputProtocolFeeInputAmount, referrer);
-                }
-                unspecifiedDeltaAmount = exactOutputLpFeeInputAmount + exactOutputProtocolFeeInputAmount;
-            } else {
-                // Output-side protocol fee was grossed up in beforeSwapLogic; here the hook withholds the realized output fee from the taker.
-                if (reservedProtocolFeeOutputAmount > 0) {
-                    _collectProtocolFee(poolId, ctx.currencyOut, reservedProtocolFeeOutputAmount, referrer);
-                }
-                unspecifiedDeltaAmount = exactOutputLpFeeInputAmount;
-            }
-
-            // V4 afterSwap contract: a positive unspecifiedDelta means the hook takes that much of the
-            // unspecified currency. For exact-output swaps unspecified=input, so returning the input-side
-            // fee total (LP + protocol when protocolFeeOnInput) as positive charges it to the taker
-            // (user pays more input); the output-side protocol fee was already grossed up in beforeSwap.
-            return (IHooks.afterSwap.selector, int128(int256(unspecifiedDeltaAmount)));
+        uint256 effectiveSupply = _memeverseUniswapHookStorage.cachedLpTotalSupply[poolId];
+        if (finalSettlement.lpFee > 0) {
+            _collectLpFee(poolId, currencyIn, params.zeroForOne, finalSettlement.lpFee, effectiveSupply);
         }
-        return (IHooks.afterSwap.selector, 0);
+        if (finalSettlement.protocolFee > 0) {
+            Currency protocolFeeCurrency = protocolFeeOnInput ? currencyIn : currencyOut;
+            _collectProtocolFee(poolId, protocolFeeCurrency, finalSettlement.protocolFee, referrer);
+        }
+        return (IHooks.afterSwap.selector, callbackDelta);
     }
 
     /// @inheritdoc ISwapFacet
@@ -399,6 +317,28 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     // -----------------------------------------------------------------
     // Internal state-changing helpers
     // -----------------------------------------------------------------
+
+    /// @dev Exact-input fees known before the core swap keep the existing LP/rebate merged-take optimization.
+    function _collectKnownInputFees(
+        PoolId poolId,
+        SwapFeeMath.SwapFeeContext memory ctx,
+        OrdinarySwapMath.SettlementPlan memory settlementPlan,
+        uint256 effectiveSupply,
+        address referrer
+    ) internal {
+        uint256 lpFee = settlementPlan.knownLpInputFee;
+        uint256 protocolFee = settlementPlan.knownProtocolInputFee;
+        if (lpFee > 0 && protocolFee > 0 && effectiveSupply != 0) {
+            uint256 rebate = _computeRebate(protocolFee, referrer);
+            _accrueLpFee(poolId, ctx.currencyIn, ctx.inputIsCurrency0, lpFee, effectiveSupply);
+            _settleProtocolFee(poolId, ctx.currencyIn, protocolFee, referrer, rebate);
+            poolManager.take(ctx.currencyIn, address(this), lpFee + rebate);
+            return;
+        }
+
+        if (lpFee > 0) _collectLpFee(poolId, ctx.currencyIn, ctx.inputIsCurrency0, lpFee, effectiveSupply);
+        if (protocolFee > 0) _collectProtocolFee(poolId, ctx.currencyIn, protocolFee, referrer);
+    }
 
     /// @dev Treasury take + rebate ledger/emit, WITHOUT the rebate take. The rebate take is the caller's
     ///      responsibility: `_collectProtocolFee` takes rebate inline (afterSwap / beforeSwap edge), while
@@ -554,14 +494,10 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
 
     /// @dev `beforeSwapLogic` uses this wrapper to delegate through
     ///      `MemeverseSwapFeeBase._delegatecallDynamicFeeFacet`. The settlement path uses its fixed fee and
-    ///      does not call this quote wrapper. The hot path decodes only `feeBps` and
-    ///      `estimatedGrossOutputAmount`.
-    function _prepareSwapFee(IDynamicFeeFacet.PrepareSwapFeeParams memory params)
-        internal
-        returns (uint256 feeBps, uint256 estimatedGrossOutputAmount)
-    {
+    ///      does not call this quote wrapper. The hot path decodes one `feeBps` word.
+    function _prepareSwapFee(IDynamicFeeFacet.PrepareSwapFeeParams memory params) internal returns (uint256 feeBps) {
         bytes memory ret = _delegatecallDynamicFeeFacet(abi.encodeCall(IDynamicFeeFacet.prepareSwapFee, (params)));
-        return abi.decode(ret, (uint256, uint256));
+        return abi.decode(ret, (uint256));
     }
 
     // -----------------------------------------------------------------
@@ -602,6 +538,30 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     // -----------------------------------------------------------------
     // Internal pure helpers
     // -----------------------------------------------------------------
+
+    function _revertIfBeforeSwapAmountsAreNotRepresentable(int256 amountSpecified, uint256 coreTarget) internal pure {
+        uint256 largestDelta = uint256(uint128(type(int128).max));
+        if (coreTarget > largestDelta) revert OrdinarySwapMath.AmountNotRepresentable();
+        if (amountSpecified < 0 && _absoluteExactInput(amountSpecified) > largestDelta) {
+            revert OrdinarySwapMath.AmountNotRepresentable();
+        }
+    }
+
+    function _revertIfFinalUserAmountsAreNotRepresentable(OrdinarySwapMath.FinalSettlement memory finalSettlement)
+        internal
+        pure
+    {
+        uint256 largestDelta = uint256(uint128(type(int128).max));
+        if (finalSettlement.userInput > largestDelta || finalSettlement.userNetOutput > largestDelta) {
+            revert OrdinarySwapMath.AmountNotRepresentable();
+        }
+    }
+
+    function _absoluteExactInput(int256 amountSpecified) internal pure returns (uint256 absoluteAmount) {
+        unchecked {
+            absoluteAmount = uint256(-amountSpecified);
+        }
+    }
 
     function _encodeSwapContextFee(uint256 feeBps, bool protocolFeeOnInput) internal pure returns (uint256 encodedFee) {
         encodedFee = feeBps;

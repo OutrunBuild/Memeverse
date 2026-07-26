@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {console2 as console} from "forge-std/console2.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FeeMath} from "src/swap/libraries/FeeMath.sol";
 
 /// @notice Focused CPMM simulation tests for the ewVWAP + PIF + DAMM v2-style volatility fee model.
 contract MemeverseDynamicFeeSimulation is Test {
@@ -44,8 +45,6 @@ contract MemeverseDynamicFeeSimulation is Test {
         uint24 volFilterPeriodSec;
         uint24 volDecayPeriodSec;
         uint24 volDecayFactorBps;
-        uint24 volMaxFeeBps;
-        uint24 volMaxDeviationAccumulator;
         uint24 shortDecayWindowSec;
         uint24 shortCoeffBps;
         uint24 shortFloorPpm;
@@ -153,8 +152,6 @@ contract MemeverseDynamicFeeSimulation is Test {
             volFilterPeriodSec: 10,
             volDecayPeriodSec: 60,
             volDecayFactorBps: 5_000,
-            volMaxFeeBps: 50,
-            volMaxDeviationAccumulator: 1_500_000,
             shortDecayWindowSec: 15,
             shortCoeffBps: 2_500,
             shortFloorPpm: 20_000,
@@ -186,17 +183,14 @@ contract MemeverseDynamicFeeSimulation is Test {
     }
 
     function _spotX18FromSqrtPrice(uint160 sqrtPriceX96) internal pure returns (uint256) {
-        uint256 ratioX18 = FullMath.mulDiv(uint256(sqrtPriceX96), PRECISION, Q96);
-        return FullMath.mulDiv(ratioX18, uint256(sqrtPriceX96), Q96);
+        return FeeMath.spotX18FromSqrtPrice(sqrtPriceX96);
     }
 
     function _priceMovePpm(uint160 preSqrtPrice, uint160 postSqrtPrice) internal pure returns (uint256) {
-        (uint256 upper, uint256 lower) = preSqrtPrice > postSqrtPrice
-            ? (uint256(preSqrtPrice), uint256(postSqrtPrice))
-            : (uint256(postSqrtPrice), uint256(preSqrtPrice));
-        uint256 sqrtRatioPpm = FullMath.mulDiv(upper, PPM_BASE, lower);
-        uint256 priceRatioPpm = FullMath.mulDiv(sqrtRatioPpm, sqrtRatioPpm, PPM_BASE);
-        return priceRatioPpm > PPM_BASE ? priceRatioPpm - PPM_BASE : 0;
+        // Delegates to the production formula so simulation matches FeeMath.priceMovePpmCapped,
+        // including the 150_000 ppm cap, the up/down short-bucket fast path, and the wide-int
+        // rounding correction. The pure helper only re-exposes it for in-test readability.
+        return FeeMath.priceMovePpmCapped(preSqrtPrice, postSqrtPrice);
     }
 
     function _ppmToBps(uint256 ppm) internal pure returns (uint256) {
@@ -241,20 +235,9 @@ contract MemeverseDynamicFeeSimulation is Test {
     }
 
     function _volatilitySqrtFeeBps() internal view returns (uint256) {
-        if (ewState.volDeviationAccumulator == 0) return 0;
-        return _sqrt(
-            ewState.volDeviationAccumulator * uint256(cfg.volMaxFeeBps) ** 2 / uint256(cfg.volMaxDeviationAccumulator)
-        );
-    }
-
-    function _sqrt(uint256 x) internal pure returns (uint256 z) {
-        if (x == 0) return 0;
-        z = x;
-        uint256 y = (x + 1) / 2;
-        while (y < z) {
-            z = y;
-            y = (x / y + y) / 2;
-        }
+        // Production formula: same FeeMath.volatilitySqrtFeeBps used by DynamicFeeMath.selectDynamicFee,
+        // so simulation and execution cannot drift on the sqrt shape or the VOL_MAX_* constants.
+        return FeeMath.volatilitySqrtFeeBps(ewState.volDeviationAccumulator);
     }
 
     function _predictPostSqrtPrice(uint160 preSqrtPriceX96, bool zeroForOne, uint256 amountIn)
@@ -305,6 +288,8 @@ contract MemeverseDynamicFeeSimulation is Test {
         returns (uint256 feeBps, uint256 pifPpm)
     {
         feeBps = cfg.baseFeeBps;
+        // Argument order is load-bearing: FeeMath.priceMovePpmCapped is direction-aware (up/down
+        // short-bucket fast path). pre must stay first.
         pifPpm = _priceMovePpm(prePrice, postPrice);
 
         bool hasHistory = ewState.weightedVolume0 > 0 && ewState.ewVWAPX18 > 0;
@@ -356,8 +341,10 @@ contract MemeverseDynamicFeeSimulation is Test {
 
         uint256 deltaSteps = _volatilityDeltaSteps(ewState.volAnchorSqrtPriceX96, postPrice);
         uint256 updatedVolAccumulator = ewState.volCarryAccumulator + deltaSteps * uint256(cfg.volIncrementPerStep);
-        if (updatedVolAccumulator > cfg.volMaxDeviationAccumulator) {
-            updatedVolAccumulator = cfg.volMaxDeviationAccumulator;
+        // Cap mirrors DynamicFeeFacet._updateVolatilityDeviationAccumulatorAfterSwap, which clamps at
+        // FeeMath.VOL_MAX_DEVIATION_ACCUMULATOR (1_500_000) rather than a tunable config field.
+        if (updatedVolAccumulator > FeeMath.VOL_MAX_DEVIATION_ACCUMULATOR) {
+            updatedVolAccumulator = FeeMath.VOL_MAX_DEVIATION_ACCUMULATOR;
         }
         ewState.volDeviationAccumulator = updatedVolAccumulator;
         if (deltaSteps > 0) {

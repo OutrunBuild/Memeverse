@@ -33,10 +33,31 @@
 
 | 函数 | 源 | 作用 |
 |---|---|---|
-| `quoteSwap` | `MemeverseSwapRouter::quoteSwap` / `MemeverseUniswapHookLens::quoteSwap`（`view` facade；Lens 对 non-view `hook.quoteSwapFeeWithContext` 发起 `STATICCALL`），Hook bridge 再经 `DELEGATECALL` 路由到 `DynamicFeeFacet::quote` | 完整报价：先通过 `DynamicFeeMath.estimateDynamicFeeQuote` 计算动态费率，取动态费率与 launch fee 的较大值作为 effective fee，再拆分为 LP fee 与 protocol fee，按 exact-input / exact-output 两种方向估算用户实际输入输出。 |
+| `quoteSwap` | `MemeverseSwapRouter::quoteSwap` / `MemeverseUniswapHookLens::quoteSwap`（`view` facade；Lens 对 non-view `hook.quoteSwapFeeWithContext` 发起 `STATICCALL`），Hook bridge 再经 `DELEGATECALL` 路由到 `DynamicFeeFacet::quote` | 公开 `SwapQuote` 返回 `feeBps`、最终用户输入/输出、LP/protocol fee 与 `protocolFeeOnInput`。报价已按原始用户请求一次选费，复用四路径结算、原始价格限制与全范围容量校验；同一完整上下文给出与执行一致的最终用户金额。核心毛输出仅位于内部 `quoteSwapFeeWithContext` 的 11-word `PreparedSwapFee` bridge ABI。报价不写 Hook 或 PoolManager 状态、不结算资金。`[代码已证]` |
 | `quoteLaunchFeeBps` | `DynamicFeeMath::quoteLaunchFeeBps` | 根据指数衰减公式计算当前 launch fee bps：从 `startFeeBps` 按经过时间衰减到 `minFeeBps`，衰减形状由 `LAUNCH_FEE_EXP_SHAPE_WAD` 控制。 |
 
-**动态费率与状态更新**
+#### 普通动态 Swap：一次选费与四路径结算
+
+以下为当前普通动态 Swap 实现。`[代码已证]`
+
+普通单池动态 Swap 的唯一选费输入是原始用户请求：exact-input 的 `requestedGrossInput`，或 exact-output 的 `requestedNetOutput`。动态费计算器只运行一次；原始 `sqrtPriceLimitX96`、协议费币腿、变换后的核心目标及本笔费用都不能再次参与选费。因此不支持 fee-on-fee，也不使用多轮迭代去寻找费率。
+
+费率先拆为 `protocolFeeBps` 与 `lpFeeBps`，再按下表把唯一的 `totalFeeBps` 结算到正确币腿。`OrdinarySwapMath` 是这四条普通动态路径的唯一实现归属；`SwapFeeMath` 只保留方向、`BalanceDelta` 与共用上下文，固定费路径才使用 `FeeMath.feeOnAmount`。
+
+| 请求 | 协议费币腿 | v4 核心目标 | 最终用户与费用边界 |
+| --- | --- | --- | --- |
+| exact-input | 输入侧 | `poolInput = floor(requestedGrossInput × (BPS_BASE - totalFeeBps) / BPS_BASE)` | 用户支付原始输入；输入侧总费按已取整总费拆为 protocol 与 LP。 |
+| exact-input | 输出侧 | `poolInput = floor(requestedGrossInput × (BPS_BASE - lpFeeBps) / BPS_BASE)` | LP 费在输入侧；协议费从实际核心毛输出扣除，用户收到净输出。 |
+| exact-output | 输入侧 | 核心输出目标等于 `requestedNetOutput` | 由实际核心输入向上反推用户输入；输入侧总费按已取整总费拆分。 |
+| exact-output | 输出侧 | 核心输出目标为按总费与 LP 费生存率反推并向上取整的 `grossOutput` | 用户收到请求净输出；协议费为毛输出与请求净输出之差，LP 费由实际核心输入向上反推。 |
+
+`afterSwap` 的 PoolManager `BalanceDelta` 是实际核心 delta，用于实际成交、完整填充和动态费历史更新；Hook 返回 delta 后 Router 看到的是最终用户 delta，只能用它执行 `amountOutMinimum` 与 `amountInMaximum`。两者不得混用。非零直接报价、Lens 与执行在同一完整上下文必须给出同一可执行性与最终用户金额；报价在任何调用方式下均只读。
+
+原始价格限制只限制可执行性，绝不改变本笔 `feeBps`。非零请求必须有活跃流动性，事前价格位于全范围的下端点（可等于）与上端点（严格小于）之间；用户内部有效停止价允许核心目标等于容量，但全范围端点只允许严格小于容量。端点 equality 必须拒绝，避免把唯一全范围仓位耗尽。
+
+`DynamicFeeFacet::prepareSwapFee` 在执行热路径只返回一个 `feeBps` word；`SwapFacet` 与 Lens 都用 `OrdinarySwapMath` 完成四路径、容量和最终金额计算。`beforeSwap` 把编码的费率/协议费币腿、事前价格与变换后的核心目标写入 transient context，`afterSwap` 消费它并以实际核心 delta 完成结算。完整 11-word `PreparedSwapFee` 仅由 `DynamicFeeFacet::quote` 经 bridge/Lens 用于只读报价。`[代码已证]`
+
+**动态费率与状态更新 `[代码已证]`**
 
 | 函数 | 源 | 作用 |
 |---|---|---|
@@ -65,7 +86,7 @@
 
 | 函数 | 源 | 作用 |
 |---|---|---|
-| `_collectProtocolFee` | `SwapFacet::_collectProtocolFee` | 按 referrer 切 protocol fee rebate：`toTreasury = protocolFee - rebate`。`_settleProtocolFee` 先内联累加 hook storage `pendingRebate`（`pendingRebate[referrer][currency] += rebate`）并 emit `ReferralRebateAccrued`（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 把 `toTreasury` 转给 treasury（interaction），最后 emit `ProtocolFeeCollected`；记账本身是纯 storage effect，无 facet→facet delegatecall 或 PoolManager 调用。该 helper 现为严格 CEI（effect → interaction → event）：treasury take 不触发 v4 hook callback，但 ERC20 currency 会执行外部 `transfer` token 代码；记账先于 treasury take 与调用方执行的 rebate take。`_collectProtocolFee` = `_computeRebate` + `_settleProtocolFee` + 独立 `take(rebate)`，用于 afterSwap 3 点 + beforeSwap 边界（lpFee==0、protocolFee==0、或 effectiveSupply==0（drained pool））；beforeSwap 主路径（`lpFeeInputAmount > 0 && protocolFeeInputAmount > 0 && effectiveSupply != 0`）改走 `_computeRebate` + `_settleProtocolFee` + 合并 `take(currencyIn, address(this), lpFeeInputAmount + rebate)`。当前顺序的安全边界是 fee currency 为标准 ERC20（注册的协议费代币；普通池下为输入代币）、treasury 是被动收款方，且任一外部调用失败会回滚整笔 swap。进入非零 protocol fee 路径后始终触发 `ProtocolFeeCollected`（`amount` 是 treasury 实收 `toTreasury`；仅当 `rebate > 0` 时 `toTreasury < 完整 protocolFee`，`rebate == 0` 时 `toTreasury` 等于完整 protocolFee）；`protocolFeeAmount == 0` 时函数早返不 emit，`rebate > 0` 时额外触发 hook 的 `ReferralRebateAccrued`。无 referrer（`_decodeReferrer` 返回零）、`referrerRebateBps == 0`、或 `mulDiv` 向下取整使 `rebate == 0` 时不切正数返佣。 |
+| `_collectProtocolFee` | `SwapFacet::_collectProtocolFee` | 按 referrer 切 protocol fee rebate：`toTreasury = protocolFee - rebate`。`_settleProtocolFee` 先内联累加 hook storage `pendingRebate`（`pendingRebate[referrer][currency] += rebate`）并 emit `ReferralRebateAccrued`（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 把 `toTreasury` 转给 treasury（interaction），最后 emit `ProtocolFeeCollected`；记账本身是纯 storage effect，无 facet→facet delegatecall 或 PoolManager 调用。该 helper 现为严格 CEI（effect → interaction → event）：treasury take 不触发 v4 hook callback，但 ERC20 currency 会执行外部 `transfer` token 代码；记账先于 treasury take 与调用方执行的 rebate take。`_collectProtocolFee` = `_computeRebate` + `_settleProtocolFee` + 独立 `take(rebate)`，用于 afterSwap 3 点 + beforeSwap 边界（lpFee==0、protocolFee==0、或 effectiveSupply==0（drained pool））；beforeSwap 主路径（`knownLpInputFee > 0 && knownProtocolInputFee > 0 && effectiveSupply != 0`）改走 `_computeRebate` + `_settleProtocolFee` + 合并 `take(currencyIn, address(this), knownLpInputFee + rebate)`。当前顺序的安全边界是 fee currency 为标准 ERC20（注册的协议费代币；普通池下为输入代币）、treasury 是被动收款方，且任一外部调用失败会回滚整笔 swap。进入非零 protocol fee 路径后始终触发 `ProtocolFeeCollected`（`amount` 是 treasury 实收 `toTreasury`；仅当 `rebate > 0` 时 `toTreasury < 完整 protocolFee`，`rebate == 0` 时 `toTreasury` 等于完整 protocolFee）；`protocolFeeAmount == 0` 时函数早返不 emit，`rebate > 0` 时额外触发 hook 的 `ReferralRebateAccrued`。无 referrer（`_decodeReferrer` 返回零）、`referrerRebateBps == 0`、或 `mulDiv` 向下取整使 `rebate == 0` 时不切正数返佣。 |
 
 **返佣（Referral Rebate）**
 
@@ -81,7 +102,7 @@ rebate 公式：`rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_
 hook 侧返佣路径锚点：
 
 - `_decodeReferrer`：从 `hookData` 前 20 字节 packed 解码 referrer（caller 用 `abi.encodePacked`；`abi.encode` 左 padding 会误读，禁用）；长度 < 20 或前 20 字节全零视为无 referrer。在 `SwapFacet::beforeSwapLogic` 与 `::afterSwapLogic` 各解码一次。
-- `_collectProtocolFee`：用于 beforeSwap 边界（lpFee==0、protocolFee==0、或 effectiveSupply==0（drained pool））+ afterSwap 3 点（exact-input output 侧、exact-output input 侧、exact-output output 侧），均传入 referrer（位于 `SwapFacet`）；beforeSwap 主路径（`lpFeeInputAmount > 0 && protocolFeeInputAmount > 0 && effectiveSupply != 0`）不走 `_collectProtocolFee`，改走 `_computeRebate` + `_settleProtocolFee` + 合并 take。
+- `_collectProtocolFee`：用于 beforeSwap 边界（lpFee==0、protocolFee==0、或 effectiveSupply==0（drained pool））+ afterSwap 3 点（exact-input output 侧、exact-output input 侧、exact-output output 侧），均传入 referrer（位于 `SwapFacet`）；beforeSwap 主路径（`knownLpInputFee > 0 && knownProtocolInputFee > 0 && effectiveSupply != 0`）不走 `_collectProtocolFee`，改走 `_computeRebate` + `_settleProtocolFee` + 合并 take。
 - `返佣记账`：`SwapFacet::_settleProtocolFee`（`_collectProtocolFee` 与 beforeSwap 主路径均调）内联写 hook storage `pendingRebate` 并 emit `ReferralRebateAccrued`；该职责与 DynamicFeeFacet 隔离。
 - `claimRebate` / `pendingRebateOf`：Router 直接实现（非 facet），从 hook custody 转 token，CEI 清零后 transfer。
 - `setReferrerRebateBps`：hook `onlyOwner` 直接实现（Router，写 hook storage `referrerRebateBps`）。
@@ -178,6 +199,8 @@ preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，
 
 ## 4. Transient Storage (EIP-1153) 在 Hook Swap 流程中的使用
 
+本节记录当前已实现的 transient 布局与调用流程；普通动态 Swap 的 slot 布局已由源码和测试验证。`[代码已证]`
+
 ### 4.1 问题背景
 
 Uniswap V4 的 hook 回调将一次 swap 拆分为 `beforeSwap` 和 `afterSwap` 两个独立的外部调用帧。两者之间无法通过内存（memory）或调用栈传递状态。传统方案是将中间状态写入持久化 storage，但这会带来不必要的 SSTORE 开销（即使后续立即覆盖）。
@@ -188,40 +211,41 @@ EIP-1153 引入的 transient storage 通过 `TSTORE`（写入）和 `TLOAD`（�
 
 `src/swap/libraries/MemeverseTransientState.sol` 将底层 `tstore`/`tload` 操作封装为类型安全的 library 函数，与 hook 业务逻辑解耦。
 
-**存储槽位设计**：槽位通过 `keccak256(<preimage>) - 1` 推导，避免与持久化 storage 布局冲突，同时保持确定性寻址。swap callback 的当前调用栈 depth 存在一个不带 `poolId` 的独立 transient 槽位；每层 context payload 再按 `(SWAP_CONTEXT_TAG, poolId, depth)` keccak 出 base，以 `base + offset` 定位 fee、price、protocolFee（fee=0、price=1、protocolFee=2），避免每个字段各自重复哈希。
+**存储槽位设计**：swap callback 的当前调用栈 depth 存在一个不带 `poolId` 的独立 transient 槽位，其 slot 通过 `keccak256(...) - 1` 推导；每层 context payload 的 base 也通过 `keccak256(...) - 1` 推导。per-pool lifecycle lock 则使用 `keccak256(abi.encode(SWAP_LIFECYCLE_LOCK_TAG, poolId))`，不减一。上述槽位位于持久化 storage 布局之外，同时保持确定性寻址。`base + 0/1/2` 分别保存编码的 `feeBps + protocolFeeOnInput`、`preSqrtPriceX96`、`coreTarget`，避免每个字段各自重复哈希。
 
 **导出函数**：
 
 | 函数 | 方向 | 作用 |
 |---|---|---|
-| `pushSwapContext(PoolId, feeBps, preSqrtPriceX96)` | 写入 | 将 swap 上下文（fee + 价格）推入 transient 栈，返回 `base`，透传给 `storeExactOutputProtocolFee` 避免重算 keccak |
-| `consumeCurrentSwapContext(PoolId)` | 读取+弹出 depth | 弹出当前深度的 swap 上下文（feeBps, preSqrtPriceX96, base），并将 LIFO depth 计数器 -1；`base` 透传给 `consumeExactOutputProtocolFee` 避免重算 keccak。fee/price 槽（offset 0,1）**不主动清零**，安全性来自两点：(1) v4 将每个 `beforeSwap`(push) 与其 `afterSwap`(consume) 配对，故本次读取的必是本 swap 自己 push 刚写入的槽；(2) `depth` 是全局 per-tx 计数器（非 per-pool），同一 `(poolId, depth)` 槽只有在完全相同的元组重现时才复用，此时 `pushSwapContext` 的无条件覆盖会替换任何先前值。offset 2（protocol fee）归 `MemeverseTransientState::consumeExactOutputProtocolFee` 独占清零；本函数返回 `base` 供后续按需读取，故此处不得触碰 |
-| `storeExactOutputProtocolFee(base, amount)` | 写入 | 使用 `pushSwapContext` 返回并透传的 `base`，存储 exact-output 场景下预留的 output 侧 protocol fee |
-| `consumeExactOutputProtocolFee(base)` | 读取+清除 | 使用 `consumeCurrentSwapContext` 返回并透传的 `base`，读取并清除 exact-output 预留的 protocol fee |
+| `pushSwapContext(PoolId, uint256, uint160, uint256)` | 写入 | 将编码费率/协议费币腿、事前价格与变换后的 `coreTarget` 写入当前 `(poolId, depth)` 的 offsets `0/1/2`，并将全局 LIFO depth +1；无返回值。 |
+| `consumeCurrentSwapContext(PoolId)` | 读取+弹出 depth | 返回当前 `(poolId, depth)` 的编码费率/协议费币腿、`preSqrtPriceX96` 与 `coreTarget`，并将全局 LIFO depth -1。三个字段均不主动清零：v4 将 matching `beforeSwap`/`afterSwap` 配对，且相同 `(poolId, depth)` 被复用前，下一次 `pushSwapContext` 会无条件覆盖 offsets `0/1/2`。 |
+| `acquireSwapLifecycleLock(PoolId)` | 写入 | 获取 per-pool transient lifecycle lock；若已持有则返回 `true`，由调用方决定抛出的错误；首次获取写入 lock 并返回 `false`。 |
+| `releaseSwapLifecycleLock(PoolId)` | 写入 | 将对应 per-pool transient lifecycle lock 清零。 |
 
 ### 4.3 传递的数据
 
-Transient storage 在 `beforeSwap` 与 `afterSwap` 之间传递两项关键数据：
+Transient storage 在 `beforeSwap` 与 `afterSwap` 之间传递三项关键数据：
 
-- **`feeBps`**：`beforeSwap` 中通过动态费率报价（或 launch fee / base fee 降级路径）计算得到的 effective fee bps。`afterSwap` 读取此值以拆分 LP fee 和 protocol fee，确保两个回调使用完全一致的费率。
+- **编码费率与协议费币腿**：`beforeSwap` 中通过一次动态选费得到的 effective `feeBps` 与 `protocolFeeOnInput` 被编码在同一 word。`afterSwap` 解码它以复现相同的四路径结算边界。
 - **`preSqrtPriceX96`**：`beforeSwap` 开始时从 `PoolManager.getSlot0` 读取的 swap 前价格。`afterSwap` 中通过 `consumeCurrentSwapContext` 读取此值，经 SwapFacet internal delegatecall `DynamicFeeFacet.updateAfterSwap(...)`（与 §1.3 一致）传入此值与 swap 后价格对比计算价格冲击（PIF），用于更新 EWVWAP、波动率偏差累加器、短期冲击状态和 per-address batch 累积。
+- **`coreTarget`**：按唯一 fee 和四路径变换得到的核心输入或输出目标。`afterSwap` 必须验证重新推导的 target 与此值一致，并以 PoolManager 的实际核心 delta 做完整成交与最终金额结算。
 
 
 
 Preorder settlement 的当前实现不使用 transient state 路由。`SettlementFacet::executeSettlementLogic` 通过显式 `Settlement` discriminator 发起 unlock；Router 根据 payload 选择 typed settlement callback。settlement swap 由 hook proxy 自己调用 PoolManager，真实 v4 在 `msg.sender == address(key.hooks)` 时同时跳过 `beforeSwap` 与 `afterSwap`，固定 1% fee 与其记账全部由 settlement 路径处理。回调型 token 发起的外部重入 swap 不是 hook self-call，仍执行普通 callbacks、使用 swap-context transient 栈并走公开费率路径。`[代码已证]` 详见 [docs/spec/invariants.md INV-04A](spec/invariants.md)。
 
-### 4.4 完整流程
+### 4.4 当前完整流程 `[代码已证]`
 
 1. **`beforeSwap` 阶段**：
    - 从 `PoolManager.getSlot0` 获取 `preSqrtPriceX96`。
-   - 经 SwapFacet internal delegatecall `DynamicFeeFacet::prepareSwapFee` 计算动态费率（与 §1.3 一致；内部处理波动率锚定刷新）。执行热路径只返回结算必需的 `(feeBps, estimatedGrossOutputAmount)`，不回完整 `PreparedSwapFee`（完整结构仅 `DynamicFeeFacet::quote` / Lens 路径）。`PrepareSwapFeeParams` 仅携带结算输入；`DynamicFeeFacet` 从共享 ERC7201 storage 读取 `defaultLaunchFeeConfig` 与 `poolLaunchTimestamp[poolId]`，`SwapFacet` / `quoteSwapFeeWithContext` 调用方不传 launch 配置。
-   - 调用 `MemeverseTransientState.pushSwapContext(poolId, feeBps, preSqrtPriceX96)`，将 feeBps 和 preSqrtPriceX96 推入 transient 栈，返回 `base`，透传给 `storeExactOutputProtocolFee` 写入 exact-output 预留的 output 侧 protocol fee。
+   - 经 SwapFacet internal delegatecall `DynamicFeeFacet::prepareSwapFee` 计算动态费率（与 §1.3 一致；内部处理波动率锚定刷新）。执行热路径只返回 `feeBps`；`SwapFacet` 用该值调用 `OrdinarySwapMath` 得到四路径的核心目标。完整 11-word `PreparedSwapFee` 仅保留给 `DynamicFeeFacet::quote` / Lens 路径。`PrepareSwapFeeParams` 仅携带结算输入；`DynamicFeeFacet` 从共享 ERC7201 storage 读取 `defaultLaunchFeeConfig` 与 `poolLaunchTimestamp[poolId]`，`SwapFacet` / `quoteSwapFeeWithContext` 调用方不传 launch 配置。
+   - 调用 `MemeverseTransientState.pushSwapContext(poolId, encodedFeeBps, preSqrtPriceX96, coreTarget)`，将编码费率/协议费币腿、事前价格与变换后的核心目标推入 transient 栈。
    - 对 exact-input 方向立即收取 input 侧费用（LP fee 和 protocol fee）。
 
 2. **PoolManager 执行 swap**：核心 AMM 逻辑运行，价格移动。
 
 3. **`afterSwap` 阶段**：
-   - 通过 `MemeverseTransientState.consumeCurrentSwapContext(poolId)` 弹出 transient 栈，获取 feeBps、preSqrtPriceX96 与 `base`（`base` 透传给 `consumeExactOutputProtocolFee` 读取 exact-output 预留的 output 侧 protocol fee）。
+   - 通过 `MemeverseTransientState.consumeCurrentSwapContext(poolId)` 弹出 transient 栈，获取编码费率/协议费币腿、`preSqrtPriceX96` 与 `coreTarget`；重新推导的目标必须与储存值一致。
    - 经 SwapFacet internal delegatecall `DynamicFeeFacet.updateAfterSwap(...)`（与 §1.3 一致），传入 preSqrtPriceX96 与 post-swap 价格对比，更新 EWVWAP 和冲击状态。
    - 将 feeBps 拆分为 LP fee bps 和 protocol fee bps。
    - 对 exact-output 方向，基于实际成交金额收取 input 侧 LP fee 和 protocol fee；对 exact-input + output 侧 protocol fee 的场景，从实际 output 中扣除 protocol fee。
@@ -231,7 +255,7 @@ Preorder settlement 的当前实现不使用 transient state 路由。`Settlemen
 
 - Transient storage 的作用域为单笔交易，交易结束自动清除，无跨交易残留风险。
 - 每次写入覆盖前值，同一交易内不存在数据竞争。
-- Slot 均由 keccak256 派生（独立常量槽取 `keccak256 - 1`；swap-context 字段取 `keccak256 - 1` 为 base 再 `+ offset`），位于持久化 storage 布局之外，不会与常规 storage mapping 冲突。
+- Slot 由 keccak256 派生：独立 depth 槽与 swap-context 字段的 base 取 `keccak256 - 1`（context 字段再 `+ offset`）；per-pool lifecycle lock 取 `keccak256(abi.encode(SWAP_LIFECYCLE_LOCK_TAG, poolId))`，不减一。它们位于持久化 storage 布局之外，不会与常规 storage mapping 冲突。
 
 ## 5. 当前已知边界提醒
 

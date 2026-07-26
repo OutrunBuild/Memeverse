@@ -6,6 +6,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -220,8 +221,23 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
         });
         PoolId poolId = key.toId();
 
+        firstToken.mint(address(this), 1 ether);
+        secondToken.mint(address(this), 1 ether);
+        firstToken.approve(address(hook), type(uint256).max);
+        secondToken.approve(address(hook), type(uint256).max);
+        hook.setPoolInitializer(address(this));
+        hook.authorizePoolInitialization(key, 79228162514264337593543950336);
+        mockManager.initialize(key, 79228162514264337593543950336);
+        hook.addLiquidityCore(
+            IMemeverseUniswapHook.AddLiquidityCoreParams({
+                currency0: currency0,
+                currency1: currency1,
+                amount0Desired: 1 ether,
+                amount1Desired: 1 ether,
+                to: address(this)
+            })
+        );
         hook.setProtocolFeeCurrency(currency0, true);
-        _writeSlot(address(hook), _poolIdMappingSlot(OFF_CACHED_LP_TOTAL_SUPPLY, poolId), bytes32(uint256(1 ether)));
         MockERC20(Currency.unwrap(currency0)).mint(address(mockManager), 10_000);
 
         DynamicFeeFacetReplacementMock replacement =
@@ -229,7 +245,9 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
         _assertFacetReplacement(hook.DYNAMIC_FEE_FACET_ROLE(), hook.dynamicFeeFacet(), address(replacement));
 
         BalanceDelta delta = mockManager.swapAsUnlocked(
-            key, SwapParams({zeroForOne: true, amountSpecified: -10_000, sqrtPriceLimitX96: 0}), bytes("")
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: -10_000, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            bytes("")
         );
 
         assertEq(delta.amount0(), -9_000, "replacement fee changes pool input");
@@ -351,7 +369,8 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
             trader: address(this),
             preSqrtPriceX96: 0,
             liquidity: 0,
-            protocolFeeOnInput: false
+            protocolFeeOnInput: false,
+            sqrtPriceLimitX96: 0
         });
     }
 
@@ -366,6 +385,7 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
     }
 
     function _dummySwapParams() internal pure returns (SwapParams memory) {
-        return SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+        return
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1});
     }
 }

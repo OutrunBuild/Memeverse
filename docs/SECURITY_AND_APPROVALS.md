@@ -78,6 +78,16 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证（`leveragedGenesisWithCredit` 用
 - **地址确定性边界**：`deployCredit` 由 factory 直接执行 CREATE3，使用 `CREATE3 salt = keccak256(abi.encode(uAsset))` 保证本链 per-uAsset 地址确定，`creditOf / predictCredit` 与本链 factory 部署结果自洽。跨链同址是条件性假设、非合约保证：需 `factory` 与 `uAsset` 都跨链同址（`uAsset` 是外部 Outrun 资产，其跨链同址性非本代码创建/校验）。若 `factory` 或 `uAsset` 跨链不一致，后果是 credit 地址跨链漂移 → `setPeer` 配错 → 跨链 OFT send 投递失败/误投（不影响本链 `creditOf` 解析——本链解析只看本链 factory 本地部署）。部署 / 迁移时必须核验两层同址；`setPeer` 必须逐链查实际 `creditOf(localUAsset)`。
 - **credit / uAsset decimals 一致性**：GenesisCredit 固定 18 decimals，credit path 要求 credit 与 `uAsset` 同 raw-unit 口径，否则 `1e18` raw credit 会被当作 `1e18` raw uAsset 利息，导致 debt / launch gate / YT / residual 按错误数量级计算（6-dec `uAsset` 下错位 1e12 倍）。`GenesisCreditFactory.deployCredit` 必须拒绝非 18-dec `uAsset`（revert `InvalidUAssetDecimals`），`POLend.leveragedGenesisWithCredit` 首次缓存 credit token 前也必须校验 18-dec（revert `CreditDecimalsMismatch`，防止可替换 `creditFactory` 指针绕过 factory 边界）。放开 credit path 到非 18-dec `uAsset`、或改 GenesisCredit 为可变 decimals，属于产品规则变化，必须先经人工确认。
 
+### 4.4 普通 Swap 动态费与 v4 费用边界 `[代码已证]`
+
+已批准的普通单池动态 Swap 规则是：对原始 exact-input 输入或原始 exact-output 净输出选费一次；不得用变换后的核心目标、费用、本笔 fee-induced flow、协议费币腿或用户原始价格限制再次选费。审阅不得把 fee-on-fee、自递归或多轮估算作为安全修复重新引入。
+
+安全审阅必须区分实际核心 delta 和最终用户 delta：前者用于成交完整性、状态更新和 Hook 结算；后者才是 Router 的最小输出/最大输入保护依据。不同币种的金额不得相加形成虚假的总费用；referral rebate 不得超过该笔实际 protocol fee。普通动态费的四条请求/协议费币腿路径属于产品规则，固定费路径继续使用 `FeeMath.feeOnAmount`，两者不能互相替代。
+
+原始价格限制仅决定交易是否可完整执行，不能影响已选 `feeBps`。全范围端点 equality 必须拒绝：它会耗尽唯一仓位并可能令活跃流动性归零。exact-output 仍是支持的公开请求类型；非零 100% exact-output、不可完整成交或不可表示的金额必须拒绝，不能返回部分成交或无穷大哨兵金额。
+
+v4 LP fee 的源码结构事实是：新池初始化为零、当前没有 `updateDynamicLPFee`、普通 `beforeSwap` 不返回 fee override。本任务不为这些事实增加 runtime、首次发布、持续治理或运维控制。PoolManager protocol fee 是外部 controller 的行为，不受 Memeverse 权限或保证，也不属于本任务的 protocol fee 模型。
+
 ## 5. 审阅输出格式建议
 
 审阅结论应尽量包含：

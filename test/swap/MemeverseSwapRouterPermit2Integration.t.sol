@@ -66,6 +66,30 @@ contract MemeverseSwapRouterPermit2IntegrationTest is RealisticSwapIntegrationBa
         assertGt(followUpQuote.feeBps, quote.feeBps, "state affects next quote fee");
     }
 
+    function testPermit2_ExactOutput_PrepullsBudgetAndRefundsAboveFinalInput() external {
+        hook.setProtocolFeeCurrency(key.currency0, true);
+        _matureLaunchWindow();
+
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
+        IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, alice);
+        uint256 inputBudget = quote.estimatedUserInputAmount + 1 ether;
+        uint256 alice0Before = token0.balanceOf(alice);
+
+        vm.prank(alice);
+        BalanceDelta delta = router.swapWithPermit2(
+            _singlePermit(address(token0), inputBudget), key, params, alice, block.timestamp, 0, inputBudget, ""
+        );
+
+        uint256 finalUserInput = uint256(uint128(-delta.amount0()));
+        assertEq(permit2.lastRequestedAmount(), inputBudget, "permit2 prepulls the signed budget");
+        assertEq(finalUserInput, quote.estimatedUserInputAmount, "delta reports final user input");
+        assertEq(alice0Before - token0.balanceOf(alice), finalUserInput, "unused budget refunded to payer");
+        assertEq(inputBudget - finalUserInput, 1 ether, "refund equals unused prefund");
+        assertEq(token0.balanceOf(address(router)), 0, "router retains no input budget");
+    }
+
     function testPermit2_ExactInput_OutputFee_PartialFill_RevertsAndRollsBack() external {
         hook.setProtocolFeeCurrency(key.currency1, true);
 

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -89,7 +90,7 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
         );
         router.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             address(this),
             block.timestamp,
             0,
@@ -116,7 +117,7 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
         );
         router.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             address(this),
             block.timestamp,
             0,
@@ -131,7 +132,7 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
         hook.setFacet(hook.DYNAMIC_FEE_FACET_ROLE(), originalFacet);
         BalanceDelta delta = router.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             address(this),
             block.timestamp,
             0,
@@ -161,7 +162,9 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: key,
-                params: SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+                params: SwapParams({
+                    zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
                 recipient: address(this)
             })
         );
@@ -178,7 +181,9 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
         BalanceDelta delta = hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: key,
-                params: SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+                params: SwapParams({
+                    zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
                 recipient: address(this)
             })
         );

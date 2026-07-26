@@ -5,6 +5,7 @@
 本文描述 Memeverse 与 Uniswap v4 的集成边界（Router/Hook/PoolManager）。  
 标签：
 
+- `[目标规范]`
 - `[代码已证]`
 - `[未知]`
 
@@ -53,15 +54,44 @@
 
 本节是 swap 栈收费语义、币种配置与 native 拒绝规则的 canonical home。其它 swap 文档（`swap-flow.md`、`swap-integration.md`、`permit2.md`、`common/common-foundations.md`）只引用本节，不重述这些规则本体。
 
+### 3.1 普通动态 Swap 的一次选费与四路径 `[代码已证]`
+
+普通动态 Swap 保留 exact-input 与 exact-output。动态费只按原始用户请求选择一次：exact-input 使用 `requestedGrossInput`，exact-output 使用 `requestedNetOutput`。原始价格限制只限制可执行性；协议费币腿、费后核心目标、任一费用和本笔 fee-induced flow 都不能重新选择费率。因此没有 fee-on-fee、递归收费或多轮费率估算。
+
+设 `totalFeeBps = lpFeeBps + protocolFeeBps`。四条路径必须按下面的资产归属结算：
+
+| 请求 | 协议费币腿 | 核心目标 | 最终结算 |
+| --- | --- | --- | --- |
+| exact-input | 输入侧 | `floor(requestedGrossInput × (BPS_BASE - totalFeeBps) / BPS_BASE)` 输入 | 用户支付原始输入；已取整总输入费按费率拆为 protocol 与 LP。 |
+| exact-input | 输出侧 | `floor(requestedGrossInput × (BPS_BASE - lpFeeBps) / BPS_BASE)` 输入 | LP 费在输入侧；protocol fee 从实际核心毛输出扣除，用户取得净输出。 |
+| exact-output | 输入侧 | `requestedNetOutput` 输出 | 用户输入由实际核心输入按总费生存率向上反推；输入侧总费拆分。 |
+| exact-output | 输出侧 | 按 LP/总费生存率向上反推的核心毛输出 | protocol fee 固定为毛输出减请求净输出；用户输入由实际核心输入按 LP 生存率向上反推。 |
+
+输出侧 protocol fee 按总费/LP 费生存率之比从核心毛输出扣除：`protocolFee = coreGrossOutput − floor(coreGrossOutput × (BPS_BASE − totalFeeBps) / (BPS_BASE − lpFeeBps))`，即输出侧有效率 = `protocolFeeBps / (BPS_BASE − lpFeeBps)`（grossed-up，非裸 `protocolFeeBps / BPS_BASE`）。
+
+上式只适用于 `exact-input / 输出侧`。非零 `exact-output` 在 `totalFeeBps == BPS_BASE` 时由 `OrdinarySwapMath.deriveSettlementPlan` 提前回退 `ExactOutputAtFullFee`；仅当 `totalFeeBps < BPS_BASE` 时，`exact-output / 输出侧` 才适用 `coreOutputTarget = ceil(requestedNetOutput × (BPS_BASE - lpFeeBps) / (BPS_BASE - totalFeeBps))` 及固定 `protocolFee = coreOutputTarget - requestedNetOutput`。`userNetOutput = actualCoreGrossOutput - protocolFee`；`overfill = actualCoreGrossOutput - coreOutputTarget` 全部归用户，不再收 protocol fee。pinned v4 正常完整成交通常 `actualCoreGrossOutput == coreOutputTarget`，仍须记录这一定义的防御性/adapter 结算语义。
+
+输入侧已取整总费中的 protocol share 向下取整，余数归 LP。不同币种 amount 不得相加；protocol fee、rebate 和 treasury share 必须同币种，且 `rebate <= actualProtocolFee`。`FeeMath.feeOnAmount` 只用于固定费，普通动态路径由 `OrdinarySwapMath` 实现。
+
+PoolManager 传入 `afterSwap` 的 `BalanceDelta` 是实际核心 delta：它决定完整成交、费用与动态历史。Hook 返回 charging delta 后的 Router 返回值是最终用户 delta：`amountOutMinimum` 与 `amountInMaximum` 只能基于它检查。失败交易必须使全部收费与状态更新回滚。
+
+### 3.2 原始价格限制、全范围容量与报价 `[代码已证]`
+
+非零请求必须有活跃流动性，且事前价格在全范围下端点（允许 equality）与上端点（严格小于）之间。原始限制必须在全局方向边界内并严格位于事前价格的正确一侧；有效停止价再裁入全范围边界。若有效停止价是用户内部限制，核心目标可等于容量；若它是全范围端点，核心目标必须严格小于容量。端点 equality、零/错误方向 raw limit、零流动性、不可完整成交和不可表示金额都必须 revert。V4 `SwapMath` 的输出取整也可能把 post-swap 价格推到全范围端点；即使 core target 严格小于 capacity，此情形同样 revert `FinalTargetNotExecutable`，以避免端点仓位被取整差值耗尽。
+
+`quoteSwapFeeWithContext`、Lens 与执行对同一非零完整上下文执行相同的一次选费、四路径和容量判断，必须同样成功或失败并给出相同最终用户金额。报价始终只读：即使外层 bridge 为 non-view，Lens 的 `STATICCALL` 与传播的静态上下文也禁止状态写入、`settle`、`take` 和可写外部调用。零金额报价是兼容预览，不代表可执行交易。
+
+### 3.3 当前实现收费、币种与回调边界 `[代码已证]`
+
 - `LP fee` 永远在输入侧。
 - `Protocol fee` 币种由 `supportedProtocolFeeCurrencies` 决定：输入侧优先，输入不支持再看输出侧；若两侧均未注册（普通池），protocol fee 仍落在输入侧，swap 正常成交、不回退。
   - 解析式：`protocolFeeOnInput = inputSupported || !outputSupported`。真值表：输入侧注册→input；仅输出侧注册→output；两侧注册→input；两侧均未注册→input（普通池按输入侧收 protocol fee）。
-- Exact-output swap 若实际 gross output 小于请求输出，Hook 回退 `ExactOutputPartialFill()`。
-- Exact-input swap 若实际 pool input 与预期不符，Hook 回退 `ExactInputPartialFill()`。
+- Exact-output swap 必须用实际核心输出与本条路径的核心输出目标比较；不足时 Hook 回退 `ExactOutputPartialFill()`。
+- Exact-input swap 必须用实际核心输入与变换后的核心输入目标比较；不相等时 Hook 回退 `ExactInputPartialFill()`。
 - `FeeMath.PROTOCOL_FEE_SHARE_BPS = 3500`；shared fee math 将 `feeBps` 按 35% protocol / 65% LP 拆分。
 - 公开 swap 始终使用正常费率路径：`feeBps = max(current launch fee, dynamic fee, FEE_BASE_BPS)`；dynamic fee 故障通过 `setFacet(DYNAMIC_FEE_FACET_ROLE, newAddr)` 升级/修复处理，不提供 bypass mode。
-- 返佣（referral rebate）：普通 swap 可在 `hookData` 前 20 字节 packed 携带 referrer 地址（caller 用 `abi.encodePacked(referrer)`；`abi.encode` 会左 padding 导致 `SwapFacet::_decodeReferrer` 误读，禁止使用）。有 referrer 时，`rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`（默认 `referrerRebateBps = 1000` = 总 fee 的 10%），`toTreasury = protocolFee - rebate`。`SwapFacet::_settleProtocolFee`（`_collectProtocolFee` 调用；beforeSwap 主路径直接调）先内联累加 Router storage 的 `pendingRebate[referrer][currency]` 并 emit `ReferralRebateAccrued`（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 转出 treasury share（interaction），最后 emit `ProtocolFeeCollected`；记账本身无 PoolManager 调用或 facet→facet delegatecall，并且先于 treasury take 与调用方执行的 rebate take。该 helper 现为严格 CEI（effect → interaction → event）：`PoolManager.take` 不触发 v4 hook callback，但 ERC20 currency 的 `transfer` 仍执行外部 token 代码；安全性依赖 fee currency 为标准 ERC20（注册的协议费代币；普通池下为输入代币）、treasury 是被动收款方，以及任一步失败时整笔事务原子回滚。beforeSwap 主路径（`lpFeeInputAmount > 0 && protocolFeeInputAmount > 0 && effectiveSupply != 0`）不经 `_collectProtocolFee`，走 `_computeRebate` + `_settleProtocolFee`，并将 rebate take 与 LP fee take 合并为一次 `poolManager.take(currencyIn, address(this), lpFeeInputAmount + rebate)`；afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立 take rebate。无 referrer 时不切 rebate，protocol 收全额 35%。rebate custody 在 hook proxy（`address(this)` 在 delegatecall 下即 hook proxy；v4 `PoolManager.take` delta 记调用者 hook，被 beforeSwap specifiedDelta credit 抵消；`pendingRebate` 账本在 Router storage，与 LP per-share accounting 分离）；referrer 经 `MemeverseUniswapHook::claimRebate` pull 领取（入口在 hook，Router 直接实现）。preorder settlement 路径不携带 referrer，不参与返佣。**返佣按链独立**：每条链的 hook 独立 settle / accrue / claim 该链 swap 的 rebate，无 LayerZero 同步、无跨链聚合、无全局 referrer 状态；referrer 在 A 链累积的 `pendingRebate` 只能在 A 链经 A 链的 hook `claimRebate` 领取，不能在 B 链领。
-- `_decodeReferrer` 在 `SwapFacet::beforeSwapLogic` 与 `SwapFacet::afterSwapLogic` 各解码一次；rebate 路径调用点：beforeSwap 主路径（`lpFeeInputAmount > 0 && protocolFeeInputAmount > 0 && effectiveSupply != 0`）走 `_computeRebate` + `_settleProtocolFee` + 合并 take，beforeSwap 边界（lpFee==0、protocolFee==0、或 effectiveSupply==0/drained pool）与 afterSwap 3 点（exact-input output 侧、exact-output input 侧、exact-output output 侧）走 `_collectProtocolFee`（内含 `_computeRebate` + `_settleProtocolFee` + 独立 rebate take）；以上均传入 referrer。
+- 返佣（referral rebate）：普通 swap 可在 `hookData` 前 20 字节 packed 携带 referrer 地址（caller 用 `abi.encodePacked(referrer)`；`abi.encode` 会左 padding 导致 `SwapFacet::_decodeReferrer` 误读，禁止使用）。有 referrer 时，`rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`（默认 `referrerRebateBps = 1000` = 总 fee 的 10%），`toTreasury = protocolFee - rebate`。`SwapFacet::_settleProtocolFee`（`_collectProtocolFee` 调用；beforeSwap 主路径直接调）先内联累加 Router storage 的 `pendingRebate[referrer][currency]` 并 emit `ReferralRebateAccrued`（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 转出 treasury share（interaction），最后 emit `ProtocolFeeCollected`；记账本身无 PoolManager 调用或 facet→facet delegatecall，并且先于 treasury take 与调用方执行的 rebate take。该 helper 现为严格 CEI（effect → interaction → event）：`PoolManager.take` 不触发 v4 hook callback，但 ERC20 currency 的 `transfer` 仍执行外部 token 代码；安全性依赖 fee currency 为标准 ERC20（注册的协议费代币；普通池下为输入代币）、treasury 是被动收款方，以及任一步失败时整笔事务原子回滚。beforeSwap 主路径（`knownLpInputFee > 0 && knownProtocolInputFee > 0 && effectiveSupply != 0`）不经 `_collectProtocolFee`，走 `_computeRebate` + `_settleProtocolFee`，并将 rebate take 与 LP fee take 合并为一次 `poolManager.take(currencyIn, address(this), knownLpInputFee + rebate)`；afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立 take rebate。无 referrer 时不切 rebate，protocol 收全额 35%。rebate custody 在 hook proxy（`address(this)` 在 delegatecall 下即 hook proxy；v4 `PoolManager.take` delta 记调用者 hook，被 beforeSwap specifiedDelta credit 抵消；`pendingRebate` 账本在 Router storage，与 LP per-share accounting 分离）；referrer 经 `MemeverseUniswapHook::claimRebate` pull 领取（入口在 hook，Router 直接实现）。preorder settlement 路径不携带 referrer，不参与返佣。**返佣按链独立**：每条链的 hook 独立 settle / accrue / claim 该链 swap 的 rebate，无 LayerZero 同步、无跨链聚合、无全局 referrer 状态；referrer 在 A 链累积的 `pendingRebate` 只能在 A 链经 A 链的 hook `claimRebate` 领取，不能在 B 链领。
+- `_decodeReferrer` 在 `SwapFacet::beforeSwapLogic` 与 `SwapFacet::afterSwapLogic` 各解码一次；rebate 路径调用点：beforeSwap 主路径（`knownLpInputFee > 0 && knownProtocolInputFee > 0 && effectiveSupply != 0`）走 `_computeRebate` + `_settleProtocolFee` + 合并 take，beforeSwap 边界（lpFee==0、protocolFee==0、或 effectiveSupply==0/drained pool）与 afterSwap 3 点（exact-input output 侧、exact-output input 侧、exact-output output 侧）走 `_collectProtocolFee`（内含 `_computeRebate` + `_settleProtocolFee` + 独立 rebate take）；以上均传入 referrer。
 - native 拒绝（V5）：swap 栈只支持 ERC20/ERC20 pair；`key.currency0` / `key.currency1` 任一侧为 `address(0)` 直接 `revert NativeCurrencyUnsupported`。swap 栈不接受 `msg.value`，Permit2 也不为 native 提供任何兜底路径。
 - 非 standard 余额语义 token（fee-on-transfer / rebasing / 其它使名义 `amount` 与实到余额不一致的 token）不在支持范围内：swap 栈（含 preorder settlement 路径）一律按名义 `amount` 执行 `transferFrom` / `settle` / `take`。FoT token 下 settle 因余额不足而整笔原子回滚，不产生资金损失；准入应排除此类 token，运行时不做 FoT 检测。
 - 同池 swap 生命周期重入保护：`SwapFacet.beforeSwapLogic` 在 `_revertIfPublicSwapBlocked(poolId)` 之后经 `MemeverseTransientState.acquireSwapLifecycleLock(poolId)` acquire（故仍在保护期内的同池重入优先回退 `PublicSwapDisabled`，保护期外的同池生命周期重入才回退 `SwapLifecycleReentrant`）per-pool transient lock，`afterSwapLogic` 出口 release；同一 poolId 在 outer `beforeSwap → _swap → afterSwap` 未完成期间再次进入 `beforeSwapLogic` 触发 `SwapLifecycleReentrant` revert。transient storage 事务结束自动清除，revert 不留脏 lock；settlement self-call 因 v4 跳过 callback 不进这两个函数的 acquire/release 路径，但 `SettlementFacet.executeSettlementLogic` 在 Phase 1 `transferFrom` 前 acquire、Phase 3 `_updateAfterSwap` 后的函数末尾 release 同一 per-pool lock，覆盖 Phase 1 transferFrom → Phase 3 `_updateAfterSwap` 全窗口（含 settle/take 窗口）；settlement self-call 不重复 acquire，无死锁（见 [docs/spec/invariants.md](../invariants.md) INV-04A）；跨池嵌套 swap 因 per-pool key 互不影响。
@@ -75,20 +105,20 @@
 - preorder settlement 只消费 preorder 托管的 `uAsset`，不消费普通 genesis 本金；preorder 容量口径由 launcher 侧 `totalNormalFunds + totalLeveragedDebt` 决定。
 - 解锁后的公开 swap 保护由 launcher 在 `Locked -> Unlocked` 迁移的 settlement 调用完成后写入各受保护池的 `publicSwapResumeTime`，再由 `hook.beforeSwap` 执行；hook-side public swap protection 在该写入后生效。
 - `Locked -> Unlocked` 同交易 settlement 顺序与公开 swap 恢复时间写入约束见 [docs/spec/invariants.md](../invariants.md) INV-07A / INV-12（窗口数值见 [docs/spec/verse/config-matrix.md §3](../verse/config-matrix.md)）。
+- v4 LP fee 的代码结构事实是：新池初始化为零、当前没有 `updateDynamicLPFee`、普通 `beforeSwap` 不返回 fee override。它们不增加 runtime、deployment 或 governance check。PoolManager protocol fee 是外部 controller 的行为，不受 Memeverse 权限或保证，也不属于本任务的 protocol fee 模型。
 - swap API 保持单路径结算语义。
 
 ## 5. LP 总量与零供给语义
 
 - 加/减流动性路径在 LP token `mint` / `burn` 后直接同步 `cachedLpTotalSupply[poolId]`，保持缓存总量与实际 LP token `totalSupply()` 一致；fee per-share 以全部已发行 LP token 为分母，不设置永久锁定或排除分账的 LP 份额；不要求额外的一行转发 helper。
 - swap 路径使用 `_activeLpSupplyForSwap` 作为有效 LP 供应量的业务入口：`cachedLpTotalSupply == 0` 时 fallback 到 `poolManager.getLiquidity(poolId)`。
-  - 两者均为 0 → 返回 0，允许零流动性 quote 语义正常执行。
+  - 两者均为 0 → 非零普通动态报价与公开 swap 都必须拒绝；不能以零输出、partial fill 或费用预估伪装为可执行。
   - 缓存为 0 但 pool liquidity > 0 → revert `NoActiveLiquidityShares`（不一致状态，不应出现）。
 - LP 全部移除后（drained pool：`cachedLpTotalSupply == 0` 且 `poolManager.getLiquidity() == 0`），三种路径行为如下：
-  - **quote（Lens 预览）**：quote 为纯模拟，不应用 `BeforeSwapDelta`/不移动资金，零流动性下不 revert；底层 `quoteSwapFeeWithContext`/`PreparedSwapFee`（内部结构，非公开 `SwapQuote` 字段）的池侧 deliverable 估算（gross input/output/grossOutput）在 `liquidity==0` 下均为 0。公开 `SwapQuote` 字段按方向分化：exact-input（`amountSpecified < 0`）下 `estimatedUserInputAmount` = 用户请求输入（非零，echo `uint256(-amountSpecified)`），`estimatedLpFeeAmount` = `feeOnAmount(userInput, lpFeeBps) > 0`（`feeBps` 保留 floor `max(launch fee, FEE_BASE_BPS)`，`lpFeeBps >= 65`），`estimatedUserOutputAmount` = 0（drained pool 无 deliverable 输出），`estimatedProtocolFeeAmount` 在 `protocolFeeOnInput` 时非零（`feeOnAmount(userInput, protocolFeeBps)`），否则 0（由 `feeOnAmount(estimatedGrossOutputAmount=0, protocolFeeBps)` 收敛，drained 下 mulDiv(0,…) 向下取整为 0）；exact-output（`amountSpecified > 0`）下池侧估算为 0，gross>0 门控（`Lens.sol:85`）使 `estimatedUserOutputAmount` = 0，`estimatedLpFeeAmount`/`estimatedProtocolFeeAmount` 由零输入/输出派生亦为 0——原"全方向归零"说法仅在此方向成立。`feeBps` 在两方向均保留 floor（动态费在 `amount=0`/`liquidity=0` 时早返，跳过 amount 计算但不重置 `feeBps`）。协议费输出侧子情况不 panic：gross 输出为 0，按有界减法收敛到 0。
-  - **可执行公开 swap**：因零流动性无法成交而统一 revert。exact-input 在 afterSwap partial-fill 守卫 revert `ExactInputPartialFill`（`actualPoolInput == 0 ≠ expectedPoolInput > 0`），exact-output 在 afterSwap partial-fill 守卫 revert `ExactOutputPartialFill`（`actualOutputAbs == 0 < minimumOutputAbs > 0`），与协议费落在输入侧还是输出侧无关。底层 SwapMath 在零流动性下两方向均返回 `amountIn=0, amountOut=0, fee=0`（走 `sqrtPriceNext = target` 的 "capped by target" 分支，不触发 `InvalidPriceOrLiquidity`），`Pool.swap` 循环正常返回 delta=0，控制流到达 afterSwap 守卫；beforeSwap 的 gross 估算额同样按有界减法收敛到 0，不会在进入 pool swap 前提前 panic。注：经 PoolManager 公开执行的 swap，上述 selector 被 V4 包装层（`Hooks.callHook` → `WrappedError`，ERC-7751）包裹，不 verbatim 浮现于 revert data，故不应按 `.selector` 直接断言；hook 自结算路径（`msg.sender == hook`，如 preorder settlement）跳过 swap callback，不触发此 revert。
+  - **非零 quote 与公开 swap**：两者都因缺少活跃流动性拒绝。quote 不应用 `BeforeSwapDelta`、不移动资金，但仍必须在返回报价前完成同一可执行性检查；执行路径也不得在 v4 返回零 delta 后继续收取费用。
   - **preorder settlement**：`effectiveSupply == 0`（drained 池，无 LP 可接收 fee 分配）时 fail-closed。具体 selector 随 lpFee 是否非零分两种：当 `lpFeeInputAmount > 0`（常规输入）时入口 revert `NoActiveLiquidityShares`；当 gross 输入极小使 `feeOnAmount(gross, 65)` 下取整为 0 时，`NoActiveLiquidityShares` 检查被跳过，但因零流动性 swap 返回 delta=0，函数末尾的 `actualInputAmount != netInputAmount` 守卫 revert `ExactInputPartialFill`——同样 fail-closed，且该 dust 区间下 protocol fee（需 `gross >= 286`）亦为 0，无任何费用收取代入。
 
-`[代码已证]`
+普通动态 Swap 的零金额报价可保留兼容行为：它跳过 raw limit、流动性、容量与曲线检查，但只返回费率预览，不代表 PoolManager 的零金额执行可通过。
 
 ## 6. 运维配置边界
 

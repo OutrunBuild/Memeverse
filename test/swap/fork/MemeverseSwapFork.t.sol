@@ -257,9 +257,8 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         assertGt(rebate, 0, "referrer rebate accrued in currency0");
         // Real balance delta: treasury actually received a non-zero currency0 amount.
         assertGt(toTreasury, 0, "treasury received non-zero currency0 fee");
-        // 65/25/10 conservation, exact by construction: rebate + toTreasury = protocolFeeInputAmount, and
-        // the quote derives estimatedProtocolFeeAmount from the same feeOnAmount(10 ether, protocolFeeBps)
-        // the execution charges (no state mutates between quote and swap).
+        // 65/25/10 conservation, exact by construction: rebate + toTreasury = protocolFeeInputAmount.
+        // Quote and execution use the same ordinary settlement formula (no state mutates between quote and swap).
         assertEq(rebate + toTreasury, quote.estimatedProtocolFeeAmount, "rebate + treasury == protocol fee");
         // Cross-check the rebate amount against the on-chain formula
         // (protocolFee * referrerRebateBps / PROTOCOL_FEE_SHARE_BPS).
@@ -270,38 +269,50 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
 
     // ── Router slippage check (post-swap, router-level — NOT V4-wrapped) ──
 
-    /// @dev exact-input: actual output (~8.3 ether) < demanded amountOutMinimum (100 ether) -> router
-    ///      OutputAmountBelowMinimum. This is a router-level post-swap check (NOT a V4-wrapped hook
-    ///      revert). A bare expectRevert() is used because this forge version's expectRevert(bytes4)
-    ///      does not match parameterized errors (selector 0x13ff959c is correct, but bytes4 matching
-    ///      fails on the (actual, minimum) payload); setUp isolates this as the only revert cause.
-    function test_RevertWhen_OutputAmountBelowMinimum() external {
-        _hook().setProtocolFeeCurrency(key.currency0, true);
+    /// @dev The core output clears the minimum, but the output-side protocol fee lowers the final user delta below it.
+    function test_RevertWhen_FinalOutputAmountBelowMinimum() external {
+        _hook().setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        vm.expectRevert();
-        router.swap(key, params, address(this), block.timestamp, 100 ether, 10 ether, "");
+        IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
+        uint256 amountOutMinimum = quote.estimatedUserOutputAmount + 1;
+        uint256 coreGrossOutput = quote.estimatedUserOutputAmount + quote.estimatedProtocolFeeAmount;
+        assertGt(coreGrossOutput, amountOutMinimum, "core output clears minimum before output fee");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMemeverseSwapRouter.OutputAmountBelowMinimum.selector,
+                quote.estimatedUserOutputAmount,
+                amountOutMinimum
+            )
+        );
+        router.swap(key, params, address(this), block.timestamp, amountOutMinimum, 10 ether, "");
     }
 
-    /// @dev exact-output: actual input > amountInMaximum -> router InputAmountExceedsMaximum. The
-    ///      router pulls `amountInMaximum` as the input budget BEFORE swap (router _swap:244-245),
-    ///      so a sub-quote cap underflows inside the V4 unlock callback (panic 0x11) before the
-    ///      post-swap cap check at router _swap:578 can fire. To reach the router-level revert the
-    ///      cap must be >= actual input (so pull succeeds and swap completes) yet still < actual input
-    ///      — impossible since pull budget == cap. Hence the router-level path is unreachable for
-    ///      sub-quote caps; this test pins the actually-reachable failure so the boundary is
-    ///      documented and guards regressions if the pull/cap split ever changes.
-    function test_RevertWhen_ExactOutput_InputCapBelowActual_SettleFails() external {
+    /// @dev One prefunded wei lets settlement finish so the router can compare the final user input delta to the cap.
+    function test_RevertWhen_FinalInputAmountExceedsMaximum() external {
         _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        // Cap (1) < actual input (~11.1 ether): router pulls 1 wei, swap settles short -> V4 panic 0x11.
-        vm.expectRevert();
-        router.swap(key, params, address(this), block.timestamp, 0, 1, "");
+        IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
+        assertGt(
+            quote.estimatedLpFeeAmount + quote.estimatedProtocolFeeAmount,
+            1,
+            "input fees create a core-to-user input gap"
+        );
+        uint256 amountInMaximum = quote.estimatedUserInputAmount - 1;
+        assertTrue(token0.transfer(address(router), 1), "router prefund");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMemeverseSwapRouter.InputAmountExceedsMaximum.selector, quote.estimatedUserInputAmount, amountInMaximum
+            )
+        );
+        router.swap(key, params, address(this), block.timestamp, 0, amountInMaximum, "");
     }
 
     // ── Router entry validation (pre-swap, router-level — exact selector) ──
@@ -325,24 +336,5 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
             SwapParams({zeroForOne: true, amountSpecified: 0, sqrtPriceLimitX96: _validExecutionPriceLimit(true)});
         vm.expectRevert(IMemeverseSwapRouter.SwapAmountCannotBeZero.selector);
         router.swap(key, params, address(this), block.timestamp, 0, 0, "");
-    }
-
-    // ── B3: 1-wei swap boundary (fee rounds to 0 → hook skips take) ────────────────────────────
-
-    /// @dev Adversarial: a 1-wei exact-input swap. `FeeMath.feeOnAmount(1, bps)` rounds to 0 for any
-    ///      fee rate below 10000 bps, so `_beforeSwap`'s `lpFeeInputAmount + protocolFeeInputAmount`
-    ///      sums to 0 and the hook takes the early-return at the `specifiedDeltaInput == 0` guard
-    ///      (hook:577-579). Verify no revert and no spurious fee accrual: the user's 1 wei reaches
-    ///      the pool untouched (delta0 = -1) and pool fee-per-share is unchanged.
-    function testAdversarial_1WeiSwap_FeeZeroSkipsTake() external {
-        _hook().setProtocolFeeCurrency(key.currency0, true);
-        _matureLaunchWindow();
-        (, uint256 fee0Before,) = _hook().poolInfo(poolId);
-        SwapParams memory params =
-            SwapParams({zeroForOne: true, amountSpecified: -1, sqrtPriceLimitX96: _validExecutionPriceLimit(true)});
-        BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, 1, "");
-        assertEq(delta.amount0(), -1, "delta0 = -1 wei");
-        (, uint256 fee0After,) = _hook().poolInfo(poolId);
-        assertEq(fee0After, fee0Before, "no fee accrual on 1 wei");
     }
 }

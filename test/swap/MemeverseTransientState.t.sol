@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -63,7 +64,8 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(key.currency0, true);
         vm.warp(block.timestamp + 900);
 
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory params =
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1});
         IMemeverseUniswapHook.SwapQuote memory quote =
             lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
         assertTrue(quote.protocolFeeOnInput, "expected input-side protocol fee");
@@ -86,24 +88,40 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
     }
 
     function test_SamePoolPopThenPushUsesOnlyReplacementContext() external {
-        (uint256 firstFee, uint160 firstPrice, uint256 secondFee, uint160 secondPrice) =
-            transientStateHarness.samePoolPopThenPush(poolId, 65, 11, 35, 22);
+        (
+            uint256 firstFee,
+            uint160 firstPrice,
+            uint256 firstCoreTarget,
+            uint256 secondFee,
+            uint160 secondPrice,
+            uint256 secondCoreTarget
+        ) = transientStateHarness.samePoolPopThenPush(poolId, 65, 11, 101, 35, 22, 202);
 
         assertEq(firstFee, 65, "first context fee");
         assertEq(firstPrice, 11, "first context price");
+        assertEq(firstCoreTarget, 101, "first context core target");
         assertEq(secondFee, 35, "replacement context fee");
         assertEq(secondPrice, 22, "replacement context price");
+        assertEq(secondCoreTarget, 202, "replacement context core target");
     }
 
     function test_NestedDifferentPoolsPopInStackOrder() external {
         PoolId otherPoolId = PoolId.wrap(bytes32(uint256(123)));
-        (uint256 innerFee, uint160 innerPrice, uint256 outerFee, uint160 outerPrice) =
-            transientStateHarness.nestedDifferentPools(poolId, otherPoolId, 65, 11, 35, 22);
+        (
+            uint256 innerFee,
+            uint160 innerPrice,
+            uint256 innerCoreTarget,
+            uint256 outerFee,
+            uint160 outerPrice,
+            uint256 outerCoreTarget
+        ) = transientStateHarness.nestedDifferentPools(poolId, otherPoolId, 65, 11, 101, 35, 22, 202);
 
         assertEq(innerFee, 35, "inner context fee");
         assertEq(innerPrice, 22, "inner context price");
+        assertEq(innerCoreTarget, 202, "inner context core target");
         assertEq(outerFee, 65, "outer context fee");
         assertEq(outerPrice, 11, "outer context price");
+        assertEq(outerCoreTarget, 101, "outer context core target");
     }
 
     function test_PopThenPushPreservesEncodedFeeMode() external {
@@ -117,12 +135,12 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
     }
 
     function test_PoppedContextIsUnreachableAtDepthZero() external {
-        (uint256 emptyFee, uint160 emptyPrice, bytes32 emptyBase) =
+        (uint256 emptyFee, uint160 emptyPrice, uint256 emptyCoreTarget) =
             transientStateHarness.consumeAfterPop(poolId, 65, 11);
 
         assertEq(emptyFee, 0, "empty context fee");
         assertEq(emptyPrice, 0, "empty context price");
-        assertEq(emptyBase, bytes32(0), "empty context base");
+        assertEq(emptyCoreTarget, 0, "empty context core target");
     }
 
     function test_FirstAcquireReturnsFalse() external {

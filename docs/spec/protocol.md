@@ -63,7 +63,7 @@
   - 依赖 POL 全局结算窗口的上层模块（如 POL Lend）按一致基准结算
 - 当前接受的产品规则是：有效的公开 swap 恢复时刻锚定在实际 `changeStage()` 完成 `Locked -> Unlocked` 的交易时间，再加上固定保护窗口（数值与配置面见 [docs/spec/verse/config-matrix.md §3](verse/config-matrix.md) `UNLOCK_PROTECTION_WINDOW`；结算顺序与保护窗口的不变量见 [docs/spec/invariants.md](invariants.md) INV-07A 与 INV-12）。
 - 当前实现把这套语义落在 `Locked -> Unlocked` 同交易 settlement 顺序 + pool-level `publicSwapResumeTime` 写入 + `hook.beforeSwap` 阻断公开 swap；机械口径见 [docs/spec/invariants.md](invariants.md) INV-07A / INV-12。
-- 保护窗口是固定产品常量，pool-level 恢复时间仅由 `Locked -> Unlocked` 迁移按该常量写入，owner 无配置入口。
+- 保护窗口在正常 `Locked -> Unlocked` 且 `launcher` binding 指向真实 Launcher proxy 时按固定 24 小时写入。Hook owner 无直接 resume-time setter，但可 retarget `launcher` 至受控地址间接覆写，非无权限外部调用者能力；binding 偏离真实 Launcher proxy 会使正常迁移回滚，详见 INV-12 / operations §3.8。
 
 ## 5. 模块矩阵（按生命周期）
 

@@ -2,13 +2,16 @@
 pragma solidity ^0.8.35;
 
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {IMemeverseSwapRouter} from "../../../src/swap/interfaces/IMemeverseSwapRouter.sol";
 import {IMemeverseUniswapHook} from "../../../src/swap/interfaces/IMemeverseUniswapHook.sol";
+import {OrdinarySwapMath} from "../../../src/swap/libraries/OrdinarySwapMath.sol";
 import {MemeverseSwapForkBase} from "./MemeverseSwapForkBase.sol";
 
 contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
@@ -63,7 +66,7 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         // No revert == remove succeeded on real V4.
     }
 
-    function testRemoveAllLiquidity_ZeroLiquiditySwapDoesNotRevert() external {
+    function testRemoveAllLiquidity_NonZeroQuoteReverts() external {
         _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
@@ -72,10 +75,11 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         IERC20(lpToken).approve(address(router), lpBal);
         router.removeLiquidity(key.currency0, key.currency1, uint128(lpBal), 0, 0, address(this), block.timestamp);
 
-        // Zero-liquidity quote path must not revert.
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
+
+        vm.expectRevert(OrdinarySwapMath.InvalidActiveLiquidity.selector);
         router.quoteSwap(key, params, address(this));
     }
 
@@ -88,12 +92,7 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         router.removeLiquidity(key.currency0, key.currency1, uint128(lpBal), 0, 0, address(this), block.timestamp);
     }
 
-    /// @notice CI-016 regression (quote path, real V4 SwapMath). On a drained pool, an exact-output quote
-    ///         with the protocol fee on the OUTPUT leg used to underflow
-    ///         (`estimatedGrossOutputAmount(0) - requestedOutputAmount` → Panic 0x11). It must now return a
-    ///         zero-fee quote without reverting.
-    function testDrainedPool_QuoteSwap_ExactOutput_OutputFee_ReturnsZeroNotRevert() external {
-        // Output currency (currency1) carries the protocol fee -> protocolFeeOnInput == false, the buggy branch.
+    function testDrainedPool_QuoteSwap_ExactOutput_OutputFee_Reverts() external {
         _hook().setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
         _drainAllLiquidity();
@@ -102,31 +101,12 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
             zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
 
-        // Pre-fix this reverted with Panic 0x11. LR-001 now makes a drained pool advertise no net
-        // take/output/input/fees (gross==0 gates), matching the mock regression in
-        // MemeverseUniswapHookDrainedPool.t.sol. Asserting every amount is zero pins the full drained
-        // quote semantics rather than just the clamped fee.
-        IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
-        assertEq(quote.estimatedUserOutputAmount, 0, "drained pool delivers no net output (LR-001)");
-        assertEq(quote.estimatedUserInputAmount, 0, "drained pool requires no net input");
-        assertEq(quote.estimatedProtocolFeeAmount, 0, "grossed-up protocol fee clamped to 0");
-        assertEq(quote.estimatedLpFeeAmount, 0, "no LP fee on drained pool");
+        vm.expectRevert(OrdinarySwapMath.InvalidActiveLiquidity.selector);
+        router.quoteSwap(key, params, address(this));
     }
 
-    /// @notice CI-012 regression (execution path, real V4 SwapMath). On a drained pool, an exact-output
-    ///         swap with the protocol fee on the OUTPUT leg used to underflow inside `beforeSwapLogic`
-    ///         (`estimatedGrossOutputAmount(0) - absSpecified` → Panic 0x11). With the bounded subtraction
-    ///         the swap now reaches afterSwap's partial-fill guard and reverts `ExactOutputPartialFill`
-    ///         (the pool can deliver none of the requested output), never panicking.
-    /// @dev A bare `vm.expectRevert()` would pass even if the CI-012 fix regressed: beforeSwap's Panic 0x11
-    ///      reverts just the same. V4 invokes hooks via low-level CALL (`Hooks.callHook`), so ANY hook
-    ///      revert — `ExactOutputPartialFill` (afterSwap) OR a regressed Panic 0x11 (beforeSwap) — is captured
-    ///      and re-raised as `CustomRevert.WrappedError` (selector 0x90bfb865) carrying the raw revert data in
-    ///      its `reason` field. Asserting `WrappedError.selector` alone therefore CANNOT distinguish the two
-    ///      paths. Instead, capture the revert bytes and scan them for `ExactOutputPartialFill.selector`: that
-    ///      selector is present only on the fixed afterSwap path and absent from a Panic's reason bytes,
-    ///      making the test fail loudly if the bounded subtraction is removed.
-    function testDrainedPool_Swap_ExactOutput_OutputFee_RevertsPartialFillNotPanic() external {
+    /// @dev Real V4 wraps hook errors, so inspect the nested revert bytes for the active-liquidity selector.
+    function testDrainedPool_Swap_ExactOutput_OutputFee_RevertsForInactiveLiquidity() external {
         _hook().setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
         _drainAllLiquidity();
@@ -134,17 +114,16 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        // The router pulls the exact-output input budget up front; fund it from the test account.
         uint256 inputBudget = token0.balanceOf(address(this));
 
-        // Must revert AND surface ExactOutputPartialFill, not Panic 0x11. Capture the v4-wrapped bytes and
-        // assert the partial-fill selector is present somewhere inside them (see _containsSelector).
         bytes memory revertData = _swapCapturingRevert(key, params, address(this), inputBudget);
-        assertTrue(revertData.length > 0, "drained exact-output swap must revert");
-        assertTrue(
-            _containsSelector(revertData, IMemeverseUniswapHook.ExactOutputPartialFill.selector),
-            "revert carries ExactOutputPartialFill (afterSwap partial-fill path), not a beforeSwap Panic"
-        );
+        assertEq(bytes4(revertData), CustomRevert.WrappedError.selector, "outer selector");
+        (address target, bytes4 callbackSelector, uint256 reasonLength, bytes4 reasonSelector) =
+            _wrappedReason(revertData);
+        assertEq(target, address(key.hooks), "wrapped target");
+        assertEq(callbackSelector, IHooks.beforeSwap.selector, "wrapped callback");
+        assertEq(reasonLength, 4, "nested reason length");
+        assertEq(reasonSelector, OrdinarySwapMath.InvalidActiveLiquidity.selector, "nested reason selector");
     }
 
     /// @dev Runs the router swap inside a try/catch so the reverted bytes are inspectable. Required because a
@@ -172,27 +151,30 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         router.swap(swapKey, params, recipient, block.timestamp, 0, inputBudget, "");
     }
 
-    /// @dev Scans raw revert bytes (incl. v4 WrappedError payloads) for a 4-byte selector. v4 wraps hook
-    ///      reverts as `WrappedError(target, selector, reason, details)` and copies the hook's raw revert data
-    ///      verbatim into `reason`, so a partial-fill revert surfaces its selector inside the wrapper rather
-    ///      than as the outermost word. Scanning finds it there but NOT inside a Panic(0x11) reason (which is
-    ///      just `0x4e487b71` + a uint256), which is what distinguishes the two control-flow paths.
-    ///      Mirrors `test/swap/BeforeSwapReentrancyGuard.t.sol:_containsSelector`.
-    function _containsSelector(bytes memory data, bytes4 selector) internal pure returns (bool) {
-        if (data.length < 4) return false;
-        for (uint256 i = 0; i + 4 <= data.length; i++) {
-            bytes4 word;
-            assembly ("memory-safe") {
-                // Read 4 bytes starting at data[i]; the 4 target bytes sit in the low half-word (bytes4 is
-                // right-aligned), then mask.
-                word := and(
-                    mload(add(add(data, 0x20), i)),
-                    0xffffffff00000000000000000000000000000000000000000000000000000000
-                )
-            }
-            if (word == selector) return true;
+    /// @dev Decodes the fixed head and nested reason of `WrappedError(address,bytes4,bytes,bytes)`.
+    function _wrappedReason(bytes memory wrapped)
+        internal
+        pure
+        returns (address target, bytes4 callbackSelector, uint256 reasonLength, bytes4 reasonSelector)
+    {
+        require(wrapped.length >= 132, "wrapped error too short");
+
+        uint256 reasonOffset;
+        assembly ("memory-safe") {
+            target := mload(add(wrapped, 0x24))
+            callbackSelector := mload(add(wrapped, 0x44))
+            reasonOffset := mload(add(wrapped, 0x64))
         }
-        return false;
+
+        require(reasonOffset <= wrapped.length - 68, "wrapped reason out of bounds");
+        uint256 reasonLengthPosition = 0x24 + reasonOffset;
+        assembly ("memory-safe") {
+            reasonLength := mload(add(wrapped, reasonLengthPosition))
+        }
+        require(reasonLength >= 4, "wrapped reason too short");
+        assembly ("memory-safe") {
+            reasonSelector := mload(add(wrapped, add(reasonLengthPosition, 0x20)))
+        }
     }
 
     function testCreatePoolAndAddLiquidity_OnlyLauncher() external {

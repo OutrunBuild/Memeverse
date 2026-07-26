@@ -6,6 +6,7 @@ import {SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
+import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRouter.sol";
 import {RealisticSwapIntegrationBase} from "./helpers/RealisticSwapManagerHarness.sol";
 
 contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
@@ -128,6 +129,103 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
         );
         assertEq(token0.balanceOf(treasury) - treasury0Before, quote.estimatedProtocolFeeAmount, "exact treasury fee");
         assertEq(delta.amount0(), int128(int256(quote.estimatedUserOutputAmount)), "delta0 exact");
+    }
+
+    function testExactInput_InputFee_RevertsWithFinalOutputBelowMinimum() external {
+        hook.setProtocolFeeCurrency(key.currency0, true);
+        _matureLaunchWindow();
+
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
+        IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
+        assertTrue(quote.protocolFeeOnInput, "protocol fee is on input");
+        assertGt(quote.estimatedProtocolFeeAmount, 0, "input protocol fee is non-zero");
+        uint256 amountOutMinimum = quote.estimatedUserOutputAmount + 1;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMemeverseSwapRouter.OutputAmountBelowMinimum.selector,
+                quote.estimatedUserOutputAmount,
+                amountOutMinimum
+            )
+        );
+        router.swap(key, params, address(this), block.timestamp, amountOutMinimum, 100 ether, "");
+    }
+
+    function testExactInput_OutputFee_RevertsWithNetOutputBelowCoreOutputMinimum() external {
+        hook.setProtocolFeeCurrency(key.currency1, true);
+        _matureLaunchWindow();
+
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
+        IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
+        assertFalse(quote.protocolFeeOnInput, "protocol fee is on output");
+        assertGt(quote.estimatedProtocolFeeAmount, 0, "output protocol fee is non-zero");
+        uint256 amountOutMinimum = quote.estimatedUserOutputAmount + 1;
+        uint256 coreGrossOutput = quote.estimatedUserOutputAmount + quote.estimatedProtocolFeeAmount;
+        assertGt(coreGrossOutput, amountOutMinimum, "core output clears minimum before output fee");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMemeverseSwapRouter.OutputAmountBelowMinimum.selector,
+                quote.estimatedUserOutputAmount,
+                amountOutMinimum
+            )
+        );
+        router.swap(key, params, address(this), block.timestamp, amountOutMinimum, 100 ether, "");
+    }
+
+    function testExactOutput_InputFee_RevertsWhenFinalInputExceedsCoreInputMaximum() external {
+        hook.setProtocolFeeCurrency(key.currency0, true);
+        _matureLaunchWindow();
+
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
+        IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
+        assertTrue(quote.protocolFeeOnInput, "protocol fee is on input");
+        assertGt(quote.estimatedProtocolFeeAmount, 0, "input protocol fee is non-zero");
+        uint256 amountInMaximum = quote.estimatedUserInputAmount - 1;
+        uint256 coreInput =
+            quote.estimatedUserInputAmount - quote.estimatedLpFeeAmount - quote.estimatedProtocolFeeAmount;
+        assertLe(coreInput, amountInMaximum, "core input clears maximum");
+        assertLt(amountInMaximum, quote.estimatedUserInputAmount, "final user input exceeds maximum");
+
+        // The extra wei lets settlement complete so the test reaches the router's final-delta limit check.
+        assertTrue(token0.transfer(address(router), 1), "router prefund");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMemeverseSwapRouter.InputAmountExceedsMaximum.selector, quote.estimatedUserInputAmount, amountInMaximum
+            )
+        );
+        router.swap(key, params, address(this), block.timestamp, 0, amountInMaximum, "");
+    }
+
+    function testExactOutput_OutputFee_RevertsWhenFinalInputExceedsCoreInputMaximum() external {
+        hook.setProtocolFeeCurrency(key.currency1, true);
+        _matureLaunchWindow();
+
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
+        IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
+        assertFalse(quote.protocolFeeOnInput, "protocol fee is on output");
+        assertGt(quote.estimatedProtocolFeeAmount, 0, "output protocol fee is non-zero");
+        uint256 amountInMaximum = quote.estimatedUserInputAmount - 1;
+        uint256 coreInput = quote.estimatedUserInputAmount - quote.estimatedLpFeeAmount;
+        assertLe(coreInput, amountInMaximum, "core input clears maximum");
+        assertLt(amountInMaximum, quote.estimatedUserInputAmount, "final user input exceeds maximum");
+
+        // Output-side protocol fees still leave the input-side LP fee in the final user delta.
+        assertTrue(token0.transfer(address(router), 1), "router prefund");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMemeverseSwapRouter.InputAmountExceedsMaximum.selector, quote.estimatedUserInputAmount, amountInMaximum
+            )
+        );
+        router.swap(key, params, address(this), block.timestamp, 0, amountInMaximum, "");
     }
 
     function testExactInput_InputFee_PartialFill_RevertsAndRollsBack() external {

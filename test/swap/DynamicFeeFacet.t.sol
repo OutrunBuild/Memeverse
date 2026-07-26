@@ -4,11 +4,13 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 import {DynamicFeeFacet} from "../../src/swap/DynamicFeeFacet.sol";
 import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
+import {OrdinarySwapMath} from "../../src/swap/libraries/OrdinarySwapMath.sol";
 import {DynamicFeeFacetMinRouter} from "../mocks/swap/DynamicFeeFacetMinRouter.sol";
 
 /// @title DynamicFeeFacetTest
@@ -96,58 +98,53 @@ contract DynamicFeeFacetTest is Test {
         assertEq(state.volAnchorSqrtPriceX96, SQRT_PRICE_1_1, "vol anchor refreshed to preSqrtPriceX96");
     }
 
-    /// @notice The view `quote` forwarder must converge with `prepareSwapFee` on the two settlement
-    ///         fields for identical input — the view memory-refresh path mirrors the storage-refresh
-    ///         path (OPT-013), both feeding the same `estimateDynamicFeeQuote` core. Activates the
-    ///         mini-Router `quote` delegatecall (otherwise dead code).
+    /// @notice The view `quote` forwarder must converge with `prepareSwapFee` on the selected fee for
+    ///         identical input — the view memory-refresh path mirrors the storage-refresh path.
     /// @dev Refresh-active seed (mirrors `testPrepareSwapFeeDoesNotWriteRealizedState`): a stale
     ///      `volAnchorSqrtPriceX96` plus `volLastMoveTs` aged past `VOL_FILTER_PERIOD_SEC` force the
     ///      volatility refresh to fire on BOTH paths. Non-zero realized state (EWVWAP / short-impact /
     ///      batch accumulator) makes every derived fee component non-trivial, so a memory-vs-storage
-    ///      refresh divergence surfaces in the settlement fields rather than hiding behind zeros.
+    ///      refresh divergence surfaces in the selected fee rather than hiding behind zeros.
     ///      `quote` is a view, so calling it first leaves storage untouched; `prepareSwapFee` then reads
-    ///      the identical pre-refresh state. Hot-path `prepareSwapFee` returns only the two settlement
-    ///      fields (`feeBps`, `estimatedGrossOutputAmount`); full-field breakdown stays on `quote`.
+    ///      the identical pre-refresh state. Hot-path `prepareSwapFee` returns only `feeBps`; final amounts
+    ///      and the full dynamic breakdown stay on `quote`.
     ///      Launch-fee floor dominance above the dynamic floor is covered separately in
-    ///      `DynamicFeeMath.t.sol::testEstimateDynamicFeeQuoteLaunchFeeFloorsAboveDynamic`.
+    ///      `DynamicFeeMath.t.sol::testSelectDynamicFeeLaunchFeeFloorsAboveDynamic`.
     function testQuoteReturnsPreparedSwapFee() external {
         vm.warp(1_000);
         _seedRefreshActiveState();
 
         IDynamicFeeFacet.PrepareSwapFeeParams memory params = _prepareParams(TRADER_A);
 
-        // `quote` (view, memory volatility refresh) and `prepareSwapFee` (storage refresh) feed identical
-        // state into `estimateDynamicFeeQuote`, so the settlement fields must match bit-for-bit.
+        // `quote` (view, memory volatility refresh) and `prepareSwapFee` (storage refresh) select once from
+        // the same original request curve, so the fee must match bit-for-bit.
         IDynamicFeeFacet.PreparedSwapFee memory quoted = minRouter.quote(params);
-        (uint256 preparedFeeBps, uint256 preparedGrossOutput) = minRouter.prepareSwapFee(params);
+        uint256 preparedFeeBps = minRouter.prepareSwapFee(params);
 
-        _assertQuotePrepareConvergence(quoted, preparedFeeBps, preparedGrossOutput, "");
-        assertGt(quoted.estimatedInputAmount, 0, "non-zero estimate");
+        _assertQuotePrepareConvergence(quoted, preparedFeeBps, "");
+        assertGt(quoted.estimatedInputAmount, 0, "final user input");
+        assertGt(quoted.estimatedOutputAmount, 0, "final user output");
+        assertGt(quoted.estimatedGrossOutputAmount, 0, "final core gross output");
     }
 
-    /// @notice Same memory-vs-storage refresh convergence as `testQuoteReturnsPreparedSwapFee`, but on the
-    ///         exact-OUTPUT path (`amountSpecified > 0`, `protocolFeeOnInput = false`). This drives the
-    ///         `grossUpFeeFromNetOutput` convergence loop, distinct from the exact-input fee-deduction
-    ///         loop covered above. Captures divergence in the gross-up iteration between `quote`'s memory
-    ///         refresh and `prepareSwapFee`'s storage refresh.
-    /// @dev `protocolFeeOnInput = false` is required to reach the gross-up branch: with `feeOnInput = true`
-    ///      the output path short-circuits before grossing up. Same refresh-active seed so the volatility
-    ///      refresh fires on both paths.
-    function testQuoteExactOutputConverges() external {
+    /// @notice Exact-output quote and prepare select the same fee while quote returns final settlement amounts.
+    function testQuoteExactOutputReturnsFinalSettlementAndMatchesPreparedFee() external {
         vm.warp(1_000);
         _seedRefreshActiveState();
 
         IDynamicFeeFacet.PrepareSwapFeeParams memory params = _prepareExactOutputParams(TRADER_A);
 
         IDynamicFeeFacet.PreparedSwapFee memory quoted = minRouter.quote(params);
-        (uint256 preparedFeeBps, uint256 preparedGrossOutput) = minRouter.prepareSwapFee(params);
+        uint256 preparedFeeBps = minRouter.prepareSwapFee(params);
 
-        _assertQuotePrepareConvergence(quoted, preparedFeeBps, preparedGrossOutput, " exact-output");
-        assertGt(quoted.estimatedOutputAmount, 0, "non-zero output");
+        _assertQuotePrepareConvergence(quoted, preparedFeeBps, " exact-output");
+        assertGt(quoted.estimatedInputAmount, 0, "final user input");
+        assertGe(quoted.estimatedOutputAmount, uint256(params.amountSpecified), "requested net output met");
+        assertGe(quoted.estimatedGrossOutputAmount, quoted.estimatedOutputAmount, "gross output covers net output");
     }
 
-    /// @notice `quote` (view, memory refresh) and `prepareSwapFee` (storage refresh) must converge
-    ///         on the settlement fields ON THE REFRESH BOUNDARY — when elapsed >= VOL_FILTER_PERIOD_SEC
+    /// @notice `quote` (view, memory refresh) and `prepareSwapFee` (storage refresh) must select the same fee
+    ///         ON THE REFRESH BOUNDARY — when elapsed >= VOL_FILTER_PERIOD_SEC
     ///         and a non-zero deviation forces the decay mulDiv to run. `testQuoteReturnsPreparedSwapFee`
     ///         seeds elapsed=100 (>= VOL_DECAY_PERIOD_SEC=60), so its refresh takes the reset-to-zero
     ///         sub-branch and would NOT catch divergence in the decay-mulDiv ternary — the exact OPT-013
@@ -158,7 +155,7 @@ contract DynamicFeeFacetTest is Test {
     ///      the reset-to-zero branch) — the highest-value coverage for the quote/prepare mirror invariant.
     ///      The catching power comes from `volDeviationAccumulator = 1000`: refresh decays it to 500, a skipped
     ///      refresh leaves 1000, so `volatilityPartBps` (and therefore `feeBps`) diverges between the two paths.
-    ///      `volCarryAccumulator` is NOT read by `estimateDynamicFeeQuote`, so its seeded value is irrelevant here.
+    ///      `volCarryAccumulator` is not read by fee selection, so its seeded value is irrelevant here.
     function testQuoteMatchesPrepareSwapFeeOnRefreshBoundary() external {
         vm.warp(1_000);
 
@@ -173,7 +170,7 @@ contract DynamicFeeFacetTest is Test {
                 volAnchorSqrtPriceX96: SQRT_PRICE_UP, // stale, != params.preSqrtPriceX96 (SQRT_PRICE_1_1)
                 volLastMoveTs: uint40(block.timestamp - 50), // elapsed=50 -> refresh + decay branch
                 volDeviationAccumulator: 1000, // refresh decays to 500; drift surfaces in volatilityPartBps
-                volCarryAccumulator: 0, // not read by estimateDynamicFeeQuote; irrelevant to the assertion
+                volCarryAccumulator: 0, // not read by fee selection; irrelevant to the assertion
                 shortImpactPpm: 0,
                 shortLastTs: 0
             })
@@ -184,10 +181,72 @@ contract DynamicFeeFacetTest is Test {
         // `quote` is a view: it runs the memory refresh but does not persist, so `prepareSwapFee` next reads
         // the identical pre-refresh state. If the two refresh implementations agree, the quotes must match.
         IDynamicFeeFacet.PreparedSwapFee memory quoted = minRouter.quote(params);
-        (uint256 preparedFeeBps, uint256 preparedGrossOutput) = minRouter.prepareSwapFee(params);
+        uint256 preparedFeeBps = minRouter.prepareSwapFee(params);
 
-        // Settlement-field convergence on the decay sub-branch: feeBps encodes the volatility refresh result.
-        _assertQuotePrepareConvergence(quoted, preparedFeeBps, preparedGrossOutput, " on refresh boundary");
+        _assertQuotePrepareConvergence(quoted, preparedFeeBps, " on refresh boundary");
+    }
+
+    /// @notice Fee selection ignores protocol-fee leg and valid price-limit choices that both fully fill.
+    function testQuoteFeeSelectionIgnoresFeeLegAndSufficientPriceLimit() external {
+        IDynamicFeeFacet.PrepareSwapFeeParams memory first = _prepareParams(TRADER_A);
+        first.sqrtPriceLimitX96 = SQRT_PRICE_1_1 - SQRT_PRICE_1_1 / 100;
+
+        IDynamicFeeFacet.PrepareSwapFeeParams memory second = first;
+        second.protocolFeeOnInput = false;
+        second.sqrtPriceLimitX96 = TickMath.MIN_SQRT_PRICE + 1;
+
+        IDynamicFeeFacet.PreparedSwapFee memory firstQuote = minRouter.quote(first);
+        IDynamicFeeFacet.PreparedSwapFee memory secondQuote = minRouter.quote(second);
+
+        assertEq(firstQuote.feeBps, secondQuote.feeBps, "fee independent of fee leg and sufficient limit");
+        assertEq(firstQuote.pifPpm, secondQuote.pifPpm, "pif uses the same original request curve");
+    }
+
+    /// @notice Every ordinary path is independent of the raw limit while capacity remains sufficient.
+    function testQuoteSufficientPriceLimitsKeepCoreAndFinalAmountsIdentical() external {
+        for (uint256 directionIndex; directionIndex < 2; ++directionIndex) {
+            for (uint256 requestKindIndex; requestKindIndex < 2; ++requestKindIndex) {
+                for (uint256 feeLegIndex; feeLegIndex < 2; ++feeLegIndex) {
+                    _assertSufficientPriceLimitsAreEquivalent(
+                        directionIndex == 0, requestKindIndex == 0, feeLegIndex == 0
+                    );
+                }
+            }
+        }
+    }
+
+    /// @notice Zero-amount quote keeps compatibility even when its raw price limit is zero.
+    function testQuoteZeroAmountAllowsZeroRawPriceLimit() external {
+        IDynamicFeeFacet.PrepareSwapFeeParams memory params = _prepareParams(TRADER_A);
+        params.amountSpecified = 0;
+        params.sqrtPriceLimitX96 = 0;
+
+        IDynamicFeeFacet.PreparedSwapFee memory quoted = minRouter.quote(params);
+
+        assertEq(quoted.feeBps, 100, "base fee");
+        assertEq(quoted.estimatedInputAmount, 0, "zero user input");
+        assertEq(quoted.estimatedOutputAmount, 0, "zero user output");
+        assertEq(quoted.estimatedGrossOutputAmount, 0, "zero core output");
+    }
+
+    /// @notice The quote return remains exactly 11 static words in the frozen field order.
+    function testQuoteRawReturndataRemainsElevenWordsInFrozenOrder() external {
+        IDynamicFeeFacet.PrepareSwapFeeParams memory params = _prepareParams(TRADER_A);
+        IDynamicFeeFacet.PreparedSwapFee memory quoted = minRouter.quote(params);
+        bytes memory raw = minRouter.rawQuote(params);
+
+        assertEq(raw.length, 352, "11 words");
+        assertEq(_word(raw, 0), quoted.feeBps, "word 1 feeBps");
+        assertEq(_word(raw, 1), quoted.pifPpm, "word 2 pifPpm");
+        assertEq(_word(raw, 2), quoted.adverseImpactPartBps, "word 3 adverse part");
+        assertEq(_word(raw, 3), quoted.volatilityPartBps, "word 4 volatility part");
+        assertEq(_word(raw, 4), quoted.shortImpactPartBps, "word 5 short part");
+        assertEq(_word(raw, 5), quoted.estimatedInputAmount, "word 6 final user input");
+        assertEq(_word(raw, 6), quoted.estimatedOutputAmount, "word 7 final user output");
+        assertEq(_word(raw, 7), quoted.estimatedGrossOutputAmount, "word 8 core gross output");
+        assertEq(_word(raw, 8), quoted.spotBeforeX18, "word 9 spot before");
+        assertEq(_word(raw, 9), quoted.spotAfterX18, "word 10 spot after");
+        assertEq(_word(raw, 10), quoted.isAdverse ? 1 : 0, "word 11 adverse flag");
     }
 
     // -----------------------------------------------------------------
@@ -318,6 +377,80 @@ contract DynamicFeeFacetTest is Test {
     // Helpers
     // -----------------------------------------------------------------
 
+    function _assertSufficientPriceLimitsAreEquivalent(bool zeroForOne, bool exactInput, bool protocolFeeOnInput)
+        internal
+    {
+        int256 amountSpecified = exactInput ? -int256(1 ether) : int256(1 ether);
+        uint160 closerLimit = zeroForOne ? SQRT_PRICE_1_1 - SQRT_PRICE_1_1 / 100 : SQRT_PRICE_1_1 + SQRT_PRICE_1_1 / 100;
+        uint160 fullRangeLimit = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+
+        IDynamicFeeFacet.PrepareSwapFeeParams memory closerLimitParams =
+            _prepareScenario(zeroForOne, amountSpecified, protocolFeeOnInput, closerLimit);
+        IDynamicFeeFacet.PrepareSwapFeeParams memory fullRangeLimitParams =
+            _prepareScenario(zeroForOne, amountSpecified, protocolFeeOnInput, fullRangeLimit);
+        IDynamicFeeFacet.PreparedSwapFee memory closerLimitQuote = minRouter.quote(closerLimitParams);
+        IDynamicFeeFacet.PreparedSwapFee memory fullRangeLimitQuote = minRouter.quote(fullRangeLimitParams);
+
+        OrdinarySwapMath.CurveResult memory closerLimitCurve =
+            _calculateFinalCurve(closerLimitParams, closerLimitQuote.feeBps);
+        OrdinarySwapMath.CurveResult memory fullRangeLimitCurve =
+            _calculateFinalCurve(fullRangeLimitParams, fullRangeLimitQuote.feeBps);
+
+        assertEq(closerLimitQuote.feeBps, fullRangeLimitQuote.feeBps, "same selected fee");
+        assertEq(closerLimitCurve.coreInput, fullRangeLimitCurve.coreInput, "same core input");
+        assertEq(closerLimitCurve.coreGrossOutput, fullRangeLimitCurve.coreGrossOutput, "same core gross output");
+        assertEq(
+            closerLimitQuote.estimatedInputAmount, fullRangeLimitQuote.estimatedInputAmount, "same final user input"
+        );
+        assertEq(
+            closerLimitQuote.estimatedOutputAmount, fullRangeLimitQuote.estimatedOutputAmount, "same final user output"
+        );
+
+        uint160 insufficientLimit = zeroForOne ? SQRT_PRICE_1_1 - 1 : SQRT_PRICE_1_1 + 1;
+        IDynamicFeeFacet.PrepareSwapFeeParams memory insufficientLimitParams =
+            _prepareScenario(zeroForOne, amountSpecified, protocolFeeOnInput, insufficientLimit);
+        vm.expectRevert(OrdinarySwapMath.FinalTargetNotExecutable.selector);
+        minRouter.quote(insufficientLimitParams);
+    }
+
+    function _prepareScenario(
+        bool zeroForOne,
+        int256 amountSpecified,
+        bool protocolFeeOnInput,
+        uint160 sqrtPriceLimitX96
+    ) internal pure returns (IDynamicFeeFacet.PrepareSwapFeeParams memory params) {
+        params = _prepareParams(TRADER_A);
+        params.zeroForOne = zeroForOne;
+        params.amountSpecified = amountSpecified;
+        params.protocolFeeOnInput = protocolFeeOnInput;
+        params.sqrtPriceLimitX96 = sqrtPriceLimitX96;
+    }
+
+    function _calculateFinalCurve(IDynamicFeeFacet.PrepareSwapFeeParams memory params, uint256 feeBps)
+        internal
+        pure
+        returns (OrdinarySwapMath.CurveResult memory)
+    {
+        OrdinarySwapMath.CapacityResult memory capacity = OrdinarySwapMath.calculateCapacity(
+            params.liquidity, params.preSqrtPriceX96, params.zeroForOne, params.sqrtPriceLimitX96
+        );
+        OrdinarySwapMath.CurveResult memory originalCurve = OrdinarySwapMath.calculateOriginalRequestCurve(
+            params.liquidity, params.preSqrtPriceX96, params.zeroForOne, params.amountSpecified
+        );
+        OrdinarySwapMath.SettlementPlan memory settlementPlan = OrdinarySwapMath.deriveSettlementPlan(
+            params.amountSpecified, params.protocolFeeOnInput, OrdinarySwapMath.deriveFeeSplit(feeBps)
+        );
+        return OrdinarySwapMath.calculateFinalQuoteCurve(
+            params.liquidity,
+            params.preSqrtPriceX96,
+            params.zeroForOne,
+            params.amountSpecified,
+            settlementPlan,
+            originalCurve,
+            capacity
+        );
+    }
+
     function _prepareParams(address trader)
         internal
         pure
@@ -330,7 +463,8 @@ contract DynamicFeeFacetTest is Test {
             trader: trader,
             preSqrtPriceX96: SQRT_PRICE_1_1,
             liquidity: 1_000_000 ether,
-            protocolFeeOnInput: true
+            protocolFeeOnInput: true,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
     }
 
@@ -342,7 +476,7 @@ contract DynamicFeeFacetTest is Test {
     ///      (`SQRT_PRICE_UP` != `SQRT_PRICE_1_1`) + `volLastMoveTs` aged past `VOL_FILTER_PERIOD_SEC` (10s)
     ///      force `_refreshVolatilityAnchorAndCarry` to fire on both `quote` (memory) and `prepareSwapFee`
     ///      (storage) paths. Non-zero EWVWAP / short-impact / batch accumulator make every fee component
-    ///      non-trivial so a refresh divergence surfaces in the asserted settlement fields. Launch fee
+    ///      non-trivial so a refresh divergence surfaces in the asserted fee word. Launch fee
     ///      config is seeded into shared storage because the facet self-reads it (not params).
     function _seedRefreshActiveState() internal {
         minRouter.seedDynamicFeeState(
@@ -368,9 +502,8 @@ contract DynamicFeeFacetTest is Test {
         minRouter.seedDefaultLaunchFeeConfig(_launchFeeConfig());
     }
 
-    /// @dev Exact-OUTPUT variant of `_prepareParams`: `amountSpecified > 0` requests a fixed output, and
-    ///      `protocolFeeOnInput = false` routes through `grossUpFeeFromNetOutput` instead of the
-    ///      exact-input fee-deduction loop.
+    /// @dev Exact-output variant of `_prepareParams`: `amountSpecified > 0` requests a fixed user output, and
+    ///      `protocolFeeOnInput = false` makes shared settlement math gross up the core output target.
     function _prepareExactOutputParams(address trader)
         internal
         pure
@@ -383,24 +516,25 @@ contract DynamicFeeFacetTest is Test {
             trader: trader,
             preSqrtPriceX96: SQRT_PRICE_1_1,
             liquidity: 1_000_000 ether,
-            protocolFeeOnInput: false
+            protocolFeeOnInput: false,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
     }
 
-    /// @dev Asserts settlement-field convergence between the view `quote` (memory refresh, full
-    ///      `PreparedSwapFee`) and hot-path `prepareSwapFee` (storage refresh, two settlement fields).
+    /// @dev Asserts fee equality between the view `quote` and one-word hot-path `prepareSwapFee`.
     ///      `suffix` tags every assertion message so the caller's scenario is identifiable on failure.
-    ///      Both paths feed identical pre-refresh state into `estimateDynamicFeeQuote`, so the two
-    ///      settlement fields must match exactly.
+    ///      Both paths use the same refreshed state and original request curve, so they select the same fee word.
     function _assertQuotePrepareConvergence(
         IDynamicFeeFacet.PreparedSwapFee memory quoted,
         uint256 preparedFeeBps,
-        uint256 preparedGrossOutput,
         string memory suffix
     ) internal pure {
         assertEq(quoted.feeBps, preparedFeeBps, string.concat("quote==prepare feeBps", suffix));
-        assertEq(
-            quoted.estimatedGrossOutputAmount, preparedGrossOutput, string.concat("quote==prepare gross output", suffix)
-        );
+    }
+
+    function _word(bytes memory data, uint256 index) internal pure returns (uint256 value) {
+        assembly ("memory-safe") {
+            value := mload(add(add(data, 0x20), mul(index, 0x20)))
+        }
     }
 }

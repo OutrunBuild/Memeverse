@@ -34,10 +34,12 @@ contract RevertingDynamicFeeFacetMock layout at erc7201("outrun.storage.Memevers
         view
         override
         onlyViaRouter
-        returns (uint256 feeBps, uint256 estimatedGrossOutputAmount)
+        returns (uint256 feeBps)
     {
-        if (failurePoint == PREPARE_SWAP_FEE_POINT) revert ForcedDynamicFeeFacetRevert(failurePoint);
-        return (0, 0);
+        if (failurePoint == PREPARE_SWAP_FEE_POINT) {
+            revert ForcedDynamicFeeFacetRevert(failurePoint);
+        }
+        return 0;
     }
 
     function updateAfterSwap(UpdateAfterSwapParams calldata params) external override onlyViaRouter {

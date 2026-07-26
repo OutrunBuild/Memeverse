@@ -7,6 +7,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -20,9 +21,11 @@ import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 
-contract LaunchFeeQuoteHandler is Test {
-    uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
+function _validExecutionPriceLimit(bool zeroForOne) pure returns (uint160) {
+    return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+}
 
+contract LaunchFeeQuoteHandler is Test {
     MemeverseUniswapHook internal immutable hook;
     MemeverseUniswapHookLens internal immutable lens;
     PoolKey internal key;
@@ -54,25 +57,33 @@ contract LaunchFeeQuoteHandler is Test {
         IMemeverseUniswapHook.SwapQuote memory zeroForOneExactInput = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -int256(amount), sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -int256(amount), sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
         IMemeverseUniswapHook.SwapQuote memory zeroForOneExactOutput = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: int256(amount), sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: int256(amount), sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
         IMemeverseUniswapHook.SwapQuote memory oneForZeroExactInput = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: false, amountSpecified: -int256(amount), sqrtPriceLimitX96: SQRT_PRICE_1_1}),
+            SwapParams({
+                zeroForOne: false, amountSpecified: -int256(amount), sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
             address(this)
         );
         IMemeverseUniswapHook.SwapQuote memory oneForZeroExactOutput = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: false, amountSpecified: int256(amount), sqrtPriceLimitX96: SQRT_PRICE_1_1}),
+            SwapParams({
+                zeroForOne: false, amountSpecified: int256(amount), sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
             address(this)
         );
 
@@ -86,7 +97,9 @@ contract LaunchFeeQuoteHandler is Test {
         return lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         )
         .feeBps;
@@ -268,6 +281,21 @@ contract MemeverseUniswapHookLaunchFeeQuoteInvariantTest is StdInvariant, Test, 
         manager.initialize(key, SQRT_PRICE_1_1);
         hook.setProtocolFeeCurrency(key.currency0, true);
 
+        uint256 liquidityAmount = 1_000_000_000_000 ether;
+        token0.mint(address(this), liquidityAmount);
+        token1.mint(address(this), liquidityAmount);
+        token0.approve(address(hook), liquidityAmount);
+        token1.approve(address(hook), liquidityAmount);
+        hook.addLiquidityCore(
+            IMemeverseUniswapHook.AddLiquidityCoreParams({
+                currency0: key.currency0,
+                currency1: key.currency1,
+                amount0Desired: liquidityAmount,
+                amount1Desired: liquidityAmount,
+                to: address(this)
+            })
+        );
+
         handler = new LaunchFeeQuoteHandler(hook, lens, key);
         targetContract(address(handler));
     }
@@ -279,7 +307,9 @@ contract MemeverseUniswapHookLaunchFeeQuoteInvariantTest is StdInvariant, Test, 
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
 
@@ -468,7 +498,9 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
         IMemeverseUniswapHook.SwapQuote memory quote = lens.quoteSwap(
             IMemeverseUniswapHook(address(hook)),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this)
         );
         assertGe(quote.feeBps, 100, "public fee floor");

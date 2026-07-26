@@ -19,6 +19,7 @@ import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRouter.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
+import {OrdinarySwapMath} from "../../src/swap/libraries/OrdinarySwapMath.sol";
 
 import {
     MockPoolManagerForPermit2RouterTest,
@@ -274,19 +275,16 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         );
     }
 
-    /// @notice Covers the local manager revert surface when Permit2 execution swaps pass a zero price limit.
-    /// @dev Locks that the Permit2 prefund path still forwards the swap params into the mock execution path, so `0` reverts locally.
+    /// @notice Covers the Hook entrypoint's upfront price-limit boundary for Permit2 execution swaps.
+    /// @dev Locks that a raw zero limit is rejected before the PoolManager execution path.
     function testSwapWithPermit2_RevertsWhenExecutionPriceLimitIsZero() external {
         hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
-        manager.setEnforceV4PriceLimitValidation(true);
 
         IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(token0), 100 ether);
 
         vm.prank(alice);
-        vm.expectRevert(
-            abi.encodeWithSelector(MockPoolManagerForPermit2RouterTest.PriceLimitOutOfBounds.selector, uint160(0))
-        );
+        vm.expectRevert(OrdinarySwapMath.InvalidRawSqrtPriceLimit.selector);
         router.swapWithPermit2(
             singlePermit,
             key,
@@ -323,7 +321,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
 
         assertEq(mockPermit2.lastRequestedAmount(), amountInMaximum, "prefunded amountInMaximum");
         assertEq(manager.lastUnlockPayer(), address(router), "router should pay exact-output input");
-        assertEq(balance0Before - token0.balanceOf(alice), 300 ether, "unused input refunded");
+        assertEq(balance0Before - token0.balanceOf(alice), 400 ether, "net input after refund");
         assertEq(token0.balanceOf(address(router)), 0, "router should not retain refunded input");
     }
 
@@ -368,7 +366,9 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         router.swapWithPermit2(
             singlePermit,
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             alice,
             block.timestamp,
             0,
@@ -439,7 +439,9 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         router.swapWithPermit2(
             singlePermit,
             key,
-            SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
             alice,
             block.timestamp,
             0,
@@ -555,7 +557,9 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         router.swapWithPermit2(
             singlePermit,
             nativeKey,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             alice,
             block.timestamp,
             40 ether,
@@ -575,7 +579,9 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         router.swapWithPermit2(
             singlePermit,
             nativeKey,
-            SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
             alice,
             block.timestamp,
             40 ether,

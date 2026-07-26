@@ -48,15 +48,11 @@ contract DynamicFeeFacetMinRouter layout at erc7201("outrun.storage.MemeverseUni
     // Covered by `DynamicFeeFacetMinRouterRevertTest`.
 
     /// @notice Forwards `IDynamicFeeFacet.prepareSwapFee` into the facet via delegatecall.
-    /// @dev Hot path returns only the two settlement fields used by SwapFacet.
-    function prepareSwapFee(IDynamicFeeFacet.PrepareSwapFeeParams calldata params)
-        external
-        returns (uint256 feeBps, uint256 estimatedGrossOutputAmount)
-    {
-        bytes memory ret = Address.functionDelegateCall(
-            address(facet), abi.encodeCall(IDynamicFeeFacet.prepareSwapFee, (params))
-        );
-        return abi.decode(ret, (uint256, uint256));
+    /// @dev Hot path returns the one fee word used by SwapFacet.
+    function prepareSwapFee(IDynamicFeeFacet.PrepareSwapFeeParams calldata params) external returns (uint256 feeBps) {
+        bytes memory ret =
+            Address.functionDelegateCall(address(facet), abi.encodeCall(IDynamicFeeFacet.prepareSwapFee, (params)));
+        return abi.decode(ret, (uint256));
     }
 
     /// @notice Forwards `IDynamicFeeFacet.updateAfterSwap` into the facet via delegatecall.
@@ -74,6 +70,11 @@ contract DynamicFeeFacetMinRouter layout at erc7201("outrun.storage.MemeverseUni
         bytes memory ret =
             Address.functionDelegateCall(address(facet), abi.encodeCall(IDynamicFeeFacet.quote, (context)));
         return abi.decode(ret, (IDynamicFeeFacet.PreparedSwapFee));
+    }
+
+    /// @notice Returns the facet quote bytes without decoding so tests can freeze the external 11-word ABI.
+    function rawQuote(IDynamicFeeFacet.PrepareSwapFeeParams calldata context) external returns (bytes memory) {
+        return Address.functionDelegateCall(address(facet), abi.encodeCall(IDynamicFeeFacet.quote, (context)));
     }
 
     // -----------------------------------------------------------------

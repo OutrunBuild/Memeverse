@@ -5,14 +5,17 @@ import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
+import {SwapGuardMath} from "../../src/swap/libraries/SwapGuardMath.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 
@@ -29,7 +32,12 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
 
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
+    MockPoolManagerForHookLiquidity internal manager;
     MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookLens internal lens;
+    MockERC20 internal token0;
+    MockERC20 internal token1;
+    PoolKey internal key;
     PoolId internal poolId;
 
     function _deployHookProxy(IPoolManager manager_, address owner_, address treasury_)
@@ -44,14 +52,14 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
     }
 
     function setUp() external {
-        // `hook` and `poolId` are the only fixtures the test functions use; the rest of the deployment
-        // (manager, tokens, key) is pure setUp construction material and stays local to this function.
-        MockPoolManagerForHookLiquidity manager = new MockPoolManagerForHookLiquidity();
-        MockERC20 token0 = new MockERC20("Token0", "TK0", 18);
-        MockERC20 token1 = new MockERC20("Token1", "TK1", 18);
+        // The deployed manager, lens, tokens, key, hook, and poolId are shared fixtures for later checks.
+        manager = new MockPoolManagerForHookLiquidity();
+        token0 = new MockERC20("Token0", "TK0", 18);
+        token1 = new MockERC20("Token1", "TK1", 18);
         hook = _deployHookProxy(IPoolManager(address(manager)), address(this), address(this));
+        lens = new MemeverseUniswapHookLens(IPoolManager(address(manager)));
 
-        PoolKey memory key = PoolKey({
+        key = PoolKey({
             currency0: Currency.wrap(address(token0)),
             currency1: Currency.wrap(address(token1)),
             fee: 0x800000,
@@ -64,6 +72,7 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
         hook.authorizePoolInitialization(key, SQRT_PRICE_1_1);
         manager.initialize(key, SQRT_PRICE_1_1);
         hook.setProtocolFeeCurrency(key.currency0, true);
+        seedActiveLiquiditySharesForTest(address(hook), poolId, address(this), 1_000_000 ether);
     }
 
     /// @dev Captures all `DynamicFeeState` fields into a flat uint256 array so two snapshots can be
@@ -102,7 +111,8 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
     /// @dev This is the core read-only invariant. The Lens forces STATICCALL, but `quoteSwapFeeWithContext`
     ///      is an unrestricted `external` entry, so the ordinary-CALL path must be independently read-only.
     function testQuoteSwapFeeWithContext_OrdinaryCallLeavesDynamicFeeStateUntouched() external {
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory params =
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1});
 
         uint256[9] memory pre = _snapshotFeeState(poolId);
 
@@ -110,7 +120,7 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
         // EIP-214 static flag does NOT protect. `quoteSwapFeeWithContext` is non-view (delegatecall) so a
         // direct call compiles and executes; correctness rests on the facet's memory-only refresh.
         IDynamicFeeFacet.PreparedSwapFee memory quote = IMemeverseUniswapHook(address(hook))
-            .quoteSwapFeeWithContext(poolId, params, address(this), SQRT_PRICE_1_1, 0, true);
+            .quoteSwapFeeWithContext(poolId, params, address(this), SQRT_PRICE_1_1, 1_000_000 ether, true);
 
         // The quote must still return a sane value — read-only does not mean no-op.
         assertGt(quote.feeBps, 0, "quote returned zero fee");
@@ -124,11 +134,12 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
     ///      is old; the refresh must still write only the memory copy. We warp forward to force the
     ///      refresh branch on the second call so this path is covered, not just the all-zero first call.
     function testQuoteSwapFeeWithContext_RepeatedOrdinaryCallsStayReadOnly() external {
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory params =
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1});
 
         uint256[9] memory beforeFirst = _snapshotFeeState(poolId);
         IMemeverseUniswapHook(address(hook))
-            .quoteSwapFeeWithContext(poolId, params, address(this), SQRT_PRICE_1_1, 0, true);
+            .quoteSwapFeeWithContext(poolId, params, address(this), SQRT_PRICE_1_1, 1_000_000 ether, true);
         _assertFeeStateUnchanged(beforeFirst, _snapshotFeeState(poolId));
 
         // Warp past the volatility refresh window so the next quote takes the `shouldRefresh` branch.
@@ -136,7 +147,70 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
 
         uint256[9] memory beforeSecond = _snapshotFeeState(poolId);
         IMemeverseUniswapHook(address(hook))
-            .quoteSwapFeeWithContext(poolId, params, address(this), SQRT_PRICE_1_1, 0, true);
+            .quoteSwapFeeWithContext(poolId, params, address(this), SQRT_PRICE_1_1, 1_000_000 ether, true);
         _assertFeeStateUnchanged(beforeSecond, _snapshotFeeState(poolId));
+    }
+
+    /// @notice A non-zero direct quote observes the same active public-swap pause as execution.
+    function testQuoteSwapFeeWithContext_NonZeroAmountRejectsActivePublicSwapPause() external {
+        hook.setLauncher(address(this));
+        hook.setPublicSwapResumeTime(address(token0), address(token1), uint40(block.timestamp + 1 hours));
+        SwapParams memory params =
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1});
+
+        vm.expectRevert(SwapGuardMath.PublicSwapDisabled.selector);
+        IMemeverseUniswapHook(address(hook))
+            .quoteSwapFeeWithContext(poolId, params, address(this), SQRT_PRICE_1_1, 1_000_000 ether, true);
+    }
+
+    /// @notice Direct bridge, Lens, and execution all reject live pool liquidity with no active LP shares.
+    function testQuoteAndExecutionRejectOrphanLiquidityWithTheSameError() external {
+        token0.mint(address(this), 100 ether);
+        token1.mint(address(this), 100 ether);
+        token0.approve(address(hook), type(uint256).max);
+        token1.approve(address(hook), type(uint256).max);
+        hook.addLiquidityCore(
+            IMemeverseUniswapHook.AddLiquidityCoreParams({
+                currency0: key.currency0,
+                currency1: key.currency1,
+                amount0Desired: 100 ether,
+                amount1Desired: 100 ether,
+                to: address(this)
+            })
+        );
+
+        uint128 liquidity = manager.getLiquidity(poolId);
+        assertGt(liquidity, 0, "live pool liquidity");
+        _writeSlot(address(hook), _poolIdMappingSlot(OFF_CACHED_LP_TOTAL_SUPPLY, poolId), bytes32(0));
+        assertEq(hook.cachedLpTotalSupply(poolId), 0, "orphaned cached supply");
+
+        SwapParams memory params =
+            SwapParams({zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1});
+
+        vm.expectRevert(SwapGuardMath.NoActiveLiquidityShares.selector);
+        IMemeverseUniswapHook(address(hook))
+            .quoteSwapFeeWithContext(poolId, params, address(this), SQRT_PRICE_1_1, liquidity, true);
+
+        vm.expectRevert(SwapGuardMath.NoActiveLiquidityShares.selector);
+        lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
+
+        vm.expectRevert(SwapGuardMath.NoActiveLiquidityShares.selector);
+        manager.swapAsUnlocked(key, params, "");
+    }
+
+    /// @notice Zero direct quote skips liquidity and raw-limit validation and remains read-only.
+    function testQuoteSwapFeeWithContext_ZeroAmountAllowsZeroContext() external {
+        hook.setLauncher(address(this));
+        hook.setPublicSwapResumeTime(address(token0), address(token1), uint40(block.timestamp + 1 hours));
+        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: 0, sqrtPriceLimitX96: 0});
+        uint256[9] memory beforeQuote = _snapshotFeeState(poolId);
+
+        IDynamicFeeFacet.PreparedSwapFee memory quote =
+            IMemeverseUniswapHook(address(hook)).quoteSwapFeeWithContext(poolId, params, address(this), 0, 0, true);
+
+        assertEq(quote.feeBps, 5000, "current launch/base floor");
+        assertEq(quote.estimatedInputAmount, 0, "zero user input");
+        assertEq(quote.estimatedOutputAmount, 0, "zero user output");
+        _assertFeeStateUnchanged(beforeQuote, _snapshotFeeState(poolId));
     }
 }

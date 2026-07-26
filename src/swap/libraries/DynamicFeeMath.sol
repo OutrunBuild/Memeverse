@@ -2,7 +2,6 @@
 pragma solidity ^0.8.35;
 
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {wadExp} from "solmate/utils/SignedWadMath.sol";
 
 import {FeeMath} from "./FeeMath.sol";
@@ -17,9 +16,20 @@ import {IDynamicFeeFacet} from "../interfaces/IDynamicFeeFacet.sol";
 ///      - `refreshVolatilityAnchorAndCarry` intentionally takes a `storage` reference so both
 ///        `DynamicFeeFacet` and `SettlementFacet` write directly into the shared hook namespace, avoiding a
 ///        memory copy and keeping the storage-writing refresh in one place.
-///      - Other helpers such as `estimateDynamicFeeQuote` continue to accept `memory` state so the `quote`
-///        preview can run read-only without touching storage.
+///      - Fee selection accepts `memory` state so the `quote` preview can run read-only without touching storage.
 library DynamicFeeMath {
+    /// @notice Dynamic components selected once from the unmodified user-request curve.
+    struct DynamicFeeQuote {
+        uint256 feeBps;
+        uint256 pifPpm;
+        uint256 adverseImpactPartBps;
+        uint256 volatilityPartBps;
+        uint256 shortImpactPartBps;
+        uint256 spotBeforeX18;
+        uint256 spotAfterX18;
+        bool isAdverse;
+    }
+
     // -----------------------------------------------------------------
     // Algorithm constants
     // -----------------------------------------------------------------
@@ -61,123 +71,32 @@ library DynamicFeeMath {
         return config.minFeeBps + FullMath.mulDiv(config.startFeeBps - config.minFeeBps, decayWad, 1e18);
     }
 
-    /// @notice Estimates the dynamic swap fee quote by fixed-point iteration of fee-vs-swap-amount coupling.
-    /// @dev Entry point for both `prepareSwapFee` (storage-backed) and `quote` (memory-backed) paths.
-    ///      Loop-invariant quantities (`preVolatilityPartBps`, `preDecayedShortPpm`) are precomputed once
-    ///      because `state.volDeviationAccumulator` and `state.shortImpactPpm` are unchanged inside the loop.
-    function estimateDynamicFeeQuote(
+    /// @notice Selects the fee once from the original user-request curve.
+    /// @dev `postSqrtPriceX96` must come from the unmodified request. Protocol-fee leg, fee amounts,
+    ///      transformed core targets, and user price limits are intentionally absent from this API.
+    function selectDynamicFee(
         IDynamicFeeFacet.DynamicFeeState memory state,
         IDynamicFeeFacet.AddressBatchState memory senderBatchState,
-        uint128 liquidity,
         uint160 preSqrtPriceX96,
-        bool zeroForOne,
+        uint160 postSqrtPriceX96,
         int256 amountSpecified,
-        bool feeOnInput,
         uint256 launchFeeBps
-    ) internal view returns (IDynamicFeeFacet.PreparedSwapFee memory quote) {
+    ) internal view returns (DynamicFeeQuote memory quote) {
         quote.feeBps = launchFeeBps > FEE_BASE_BPS ? launchFeeBps : FEE_BASE_BPS;
-        if (amountSpecified == 0 || liquidity == 0) return quote;
+        if (amountSpecified == 0) return quote;
 
-        int256 workingAmountSpecified = amountSpecified;
-        uint256 userInputAmount = amountSpecified < 0 ? uint256(-amountSpecified) : 0;
-        uint256 requestedNetOutputAmount = amountSpecified > 0 ? uint256(amountSpecified) : 0;
-        uint256 spotBeforeX18 = FeeMath.spotX18FromSqrtPrice(preSqrtPriceX96);
-        // preVolatilityPartBps and preDecayedShortPpm are loop-invariant (state.volDeviationAccumulator /
-        // state.shortImpactPpm are unchanged inside the loop); precompute once to avoid per-iteration recomputation.
-        uint256 preVolatilityPartBps = FeeMath.volatilitySqrtFeeBps(state.volDeviationAccumulator);
-        uint256 preDecayedShortPpm = decayLinearPpm(state.shortImpactPpm, state.shortLastTs, SHORT_DECAY_WINDOW_SEC);
-
-        // Fixed-point iteration: fee and swap amount are mutually dependent — fee reduces the
-        // net amount reaching the pool (input path) or requires grossing up the requested output
-        // (output path). Each iteration re-estimates the swap with the fee-adjusted amount until
-        // the pool's actual I/O matches what the fee was computed from. Typically converges in
-        // 1–2 rounds; 3 is a safety cap. If still divergent after 3 rounds, the last estimate
-        // is returned (the fallback after the loop handles the output-specified case).
-        for (uint256 i = 0; i < 3; ++i) {
-            bool converged;
-            (quote, workingAmountSpecified, converged) = estimateDynamicFeeQuoteIter(
-                quote,
-                state,
-                senderBatchState,
-                liquidity,
-                preSqrtPriceX96,
-                spotBeforeX18,
-                preVolatilityPartBps,
-                preDecayedShortPpm,
-                zeroForOne,
-                amountSpecified,
-                workingAmountSpecified,
-                userInputAmount,
-                requestedNetOutputAmount,
-                feeOnInput,
-                launchFeeBps
-            );
-            if (quote.estimatedInputAmount == 0) return quote;
-            if (converged) return quote;
-        }
-
-        if (amountSpecified > 0 && !feeOnInput) quote.estimatedOutputAmount = requestedNetOutputAmount;
-    }
-
-    /// @dev Single iteration of the iterative dynamic fee quote convergence loop.
-    ///      Returns the updated quote, the next `workingAmountSpecified`, and whether the loop has
-    ///      converged (caller should return). A non-converged iteration may still produce a zero
-    ///      next `workingAmountSpecified` (e.g. fee consumes the entire input), so convergence is
-    ///      signaled explicitly via the bool rather than reusing the amount value.
-    function estimateDynamicFeeQuoteIter(
-        IDynamicFeeFacet.PreparedSwapFee memory quote,
-        IDynamicFeeFacet.DynamicFeeState memory state,
-        IDynamicFeeFacet.AddressBatchState memory senderBatchState,
-        uint128 liquidity,
-        uint160 preSqrtPriceX96,
-        uint256 spotBeforeX18,
-        uint256 preVolatilityPartBps,
-        uint256 preDecayedShortPpm,
-        bool zeroForOne,
-        int256 amountSpecified,
-        int256 workingAmountSpecified,
-        uint256 userInputAmount,
-        uint256 requestedNetOutputAmount,
-        bool feeOnInput,
-        uint256 launchFeeBps
-    ) internal view returns (IDynamicFeeFacet.PreparedSwapFee memory, int256 nextWorkingAmount, bool converged) {
-        uint160 postSqrtPriceX96;
-        (quote.estimatedInputAmount, quote.estimatedOutputAmount, quote.estimatedGrossOutputAmount, postSqrtPriceX96) =
-            estimateSwapFlowAndPostPrice(liquidity, preSqrtPriceX96, zeroForOne, workingAmountSpecified);
-        if (quote.estimatedInputAmount == 0) return (quote, 0, true);
-
-        quote.spotBeforeX18 = spotBeforeX18;
+        quote.spotBeforeX18 = FeeMath.spotX18FromSqrtPrice(preSqrtPriceX96);
         quote.spotAfterX18 = FeeMath.spotX18FromSqrtPrice(postSqrtPriceX96);
         quote.pifPpm = FeeMath.priceMovePpmCapped(preSqrtPriceX96, postSqrtPriceX96);
+        uint256 preVolatilityPartBps = FeeMath.volatilitySqrtFeeBps(state.volDeviationAccumulator);
+        uint256 preDecayedShortPpm = decayLinearPpm(state.shortImpactPpm, state.shortLastTs, SHORT_DECAY_WINDOW_SEC);
         populateDynamicFeeQuoteFromState(quote, state, senderBatchState, preVolatilityPartBps, preDecayedShortPpm);
-
         if (launchFeeBps > quote.feeBps) quote.feeBps = launchFeeBps;
-
-        if (amountSpecified < 0) {
-            uint256 inputSideFeeBps = feeOnInput ? quote.feeBps : FeeMath.lpFeeBps(quote.feeBps);
-            uint256 inputSideFeeAmount = FeeMath.feeOnAmount(userInputAmount, inputSideFeeBps);
-            uint256 netPoolInputAmount = userInputAmount > inputSideFeeAmount ? userInputAmount - inputSideFeeAmount : 0;
-            // Fee fully consuming the input (netPoolInputAmount == 0) is NOT convergence; the loop
-            // must continue so the next iteration estimates with zero input and reports failure.
-            if (netPoolInputAmount == quote.estimatedInputAmount) return (quote, 0, true);
-            return (quote, -int256(netPoolInputAmount), false);
-        }
-
-        if (feeOnInput) return (quote, 0, true);
-        uint256 grossedOutputAmount = requestedNetOutputAmount
-            + grossUpFeeFromNetOutput(requestedNetOutputAmount, FeeMath.protocolFeeBps(quote.feeBps));
-        if (grossedOutputAmount == quote.estimatedGrossOutputAmount) {
-            quote.estimatedOutputAmount = requestedNetOutputAmount;
-            return (quote, 0, true);
-        }
-        return (quote, int256(grossedOutputAmount), false);
     }
 
-    /// @dev `preVolatilityPartBps` and `preDecayedShortPpm` are loop-invariant: they depend only on
-    ///      `state.volDeviationAccumulator` and `state.shortImpactPpm`, which are unchanged inside the
-    ///      convergence loop. Callers precompute them once to avoid redundant recomputation per iteration.
+    /// @dev `preVolatilityPartBps` and `preDecayedShortPpm` depend only on the pre-swap state snapshot.
     function populateDynamicFeeQuoteFromState(
-        IDynamicFeeFacet.PreparedSwapFee memory quote,
+        DynamicFeeQuote memory quote,
         IDynamicFeeFacet.DynamicFeeState memory state,
         IDynamicFeeFacet.AddressBatchState memory senderBatchState,
         uint256 preVolatilityPartBps,
@@ -294,56 +213,6 @@ library DynamicFeeMath {
         int256 expAtElapsedWad = wadExp(-int256(FullMath.mulDiv(elapsed, uint256(LAUNCH_FEE_EXP_SHAPE_WAD), duration)));
         int256 expAtEndWad = wadExp(-LAUNCH_FEE_EXP_SHAPE_WAD);
         decayWad = uint256((expAtElapsedWad - expAtEndWad) * 1e18 / (1e18 - expAtEndWad));
-    }
-
-    /// @notice Estimates swap I/O amounts and the resulting post-swap sqrt price for a given
-    ///         (liquidity, pre-price, direction, amountSpecified) tuple, without touching storage.
-    /// @dev Output-specified path grosses the output up before computing the post price; input-specified
-    ///      path uses the input directly. Rounding direction is dictated by `SqrtPriceMath` (v4-core).
-    function estimateSwapFlowAndPostPrice(
-        uint128 liquidity,
-        uint160 preSqrtPriceX96,
-        bool zeroForOne,
-        int256 amountSpecified
-    )
-        internal
-        pure
-        returns (uint256 inputAmount, uint256 outputAmount, uint256 grossOutputAmount, uint160 postSqrtPriceX96)
-    {
-        if (amountSpecified == 0) return (0, 0, 0, preSqrtPriceX96);
-        if (amountSpecified < 0) {
-            inputAmount = uint256(-amountSpecified);
-            postSqrtPriceX96 =
-                SqrtPriceMath.getNextSqrtPriceFromInput(preSqrtPriceX96, liquidity, inputAmount, zeroForOne);
-            outputAmount = zeroForOne
-                ? SqrtPriceMath.getAmount1Delta(postSqrtPriceX96, preSqrtPriceX96, liquidity, false)
-                : SqrtPriceMath.getAmount0Delta(preSqrtPriceX96, postSqrtPriceX96, liquidity, false);
-            grossOutputAmount = outputAmount;
-            return (inputAmount, outputAmount, grossOutputAmount, postSqrtPriceX96);
-        }
-        outputAmount = uint256(amountSpecified);
-        grossOutputAmount = outputAmount;
-        postSqrtPriceX96 =
-            SqrtPriceMath.getNextSqrtPriceFromOutput(preSqrtPriceX96, liquidity, grossOutputAmount, zeroForOne);
-        inputAmount = zeroForOne
-            ? SqrtPriceMath.getAmount0Delta(postSqrtPriceX96, preSqrtPriceX96, liquidity, true)
-            : SqrtPriceMath.getAmount1Delta(preSqrtPriceX96, postSqrtPriceX96, liquidity, true);
-    }
-
-    /// @notice Returns the fee amount that must be added on top of a requested net output so that,
-    ///         after taking `feeBps` off the gross, the payer receives exactly `netOutputAmount`.
-    /// @dev Rounds the gross UP (payer-favorable rounding) via `mulDivRoundingUp`. Saturates at
-    ///      `type(uint256).max` when `feeBps >= BPS_BASE` (100%) to avoid divide-by-zero.
-    function grossUpFeeFromNetOutput(uint256 netOutputAmount, uint256 feeBps)
-        internal
-        pure
-        returns (uint256 feeAmount)
-    {
-        if (netOutputAmount == 0 || feeBps == 0) return 0;
-        if (feeBps >= FeeMath.BPS_BASE) return type(uint256).max;
-        uint256 grossOutputAmount =
-            FullMath.mulDivRoundingUp(netOutputAmount, FeeMath.BPS_BASE, FeeMath.BPS_BASE - feeBps);
-        return grossOutputAmount - netOutputAmount;
     }
 
     /// @notice Number of volatility-deviation steps between two sqrt prices for a given step size in bps.

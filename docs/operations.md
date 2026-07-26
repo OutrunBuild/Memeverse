@@ -102,12 +102,12 @@
 - 地址级替换、迁移或从零地址恢复不在当前规范内；如需支持，必须先给出显式迁移设计。`[代码已证]`
 - `SettlementDustInsufficient` 出现在回退交易上时，不会留下可用事件日志，不能按失败交易已发事件监控。keeper/monitor 应在目标区块状态用 `eth_call` 或 fork simulation 预执行 `MemeverseLauncher.changeStage(verseId)` 的 `Locked -> Unlocked` 路径；如需单独模拟内部结算步骤，可预执行 `POLend.executeGlobalSettlement(verseId)`。若模拟回退 `SettlementDustInsufficient(uint256 deficit,uint256 availableReserve)`，需先用 `POLend.getLendMarket(verseId).uAsset` 确认目标 uAsset，再计算 `topUpAmount = deficit - availableReserve`，对该 uAsset 完成 approve/transfer 后调用 `fundSettlementDustReserve(uAsset, topUpAmount)`，随后重试 settlement / `changeStage`。补资前还要检查 `settlementDustStates(uAsset)` 的容量：若 `topUpAmount` 超过剩余 capacity，非 Launcher 调用 `fundSettlementDustReserve` 会回退 `SettlementDustReserveExceeded(amount, capacity)`；此时应走告警、升级或配置处理，不能盲目重试。当前合约没有暴露完整 side-effect-free preview 来提前得出 `recoveredUAsset`，因为 settlement 会通过移除 LP、POL redemption、PT redemption 路径回收 uAsset。`[代码已证]`
 
-### 3.8 unlock 后保护窗口运维语义
+### 3.8 unlock 后固定保护窗口语义
 
-- 按产品安全要求，unlock 后应先进入 `post-unlock liquidity protection period`
-- 在该窗口内，运维与 keeper 应优先支持退出/结算，而不是开放普通公开 swap
-- 当前实现已把这套窗口语义落在“解锁迁移时写入 pool-level `publicSwapResumeTime` + `hook.beforeSwap` 阻断”
-- 因此现阶段仍不能把”`unlockTime` 到达”误解为”产品上已经安全进入完全开放交易阶段”；是否恢复公开 swap 还要看实际 `changeStage()` 时间点加上固定 `24 hours` 保护窗口
+- 正常 `Locked -> Unlocked` 路径在 `launcher` binding 指向真实 Launcher proxy 时，由该 Launcher 为既有非零 ERC-20 池写入固定 24 小时的 `publicSwapResumeTime` 保护窗口；窗口内不开放普通公开 swap，运维与 keeper 优先支持退出/结算。
+- Hook owner 没有直接设置 resume time 的入口；但 owner 可将可变 `launcher` retarget 至受控地址，该 launcher 可覆写既有非零 ERC-20 池的 resume time：写 `0` 清除阻断，写过去或当前时间解除或缩短窗口，写未来时间延长窗口或阻断公开 swap。
+- 该覆写能力与 launcher retarget 同属 Hook owner trust boundary，不属于普通无权限调用者或普通 Swap fee 运维的暂停权限。
+- 若 `launcher` binding 被 retarget 至不同于真实 Launcher proxy 的地址，真实 Launcher 在保护时间写入处不满足 `onlyLauncher`，正常 `Locked -> Unlocked` 以 `Unauthorized` 整笔回滚；调用 `changeStage` 前必须恢复真实 Launcher binding。
 
 ### 3.9 Proxy 升级操作步骤
 
@@ -567,7 +567,7 @@ cast call $INCENTIVIZER_PROXY "governor()(address)" --rpc-url $RPC
 
 #### 3.11.3 返佣记账（pendingRebate accrual）只在 swap unlock session 内执行
 
-- SwapFacet 的 `_settleProtocolFee`（`_collectProtocolFee` 调用；beforeSwap 主路径直接调）先内联累加 `pendingRebate[referrer][currency] += amount` 并 emit `ReferralRebateAccrued`（effect），再通过 `_takeToTreasury` 调用 `PoolManager.take`（interaction），最后 emit `ProtocolFeeCollected`。返佣记账这一步是纯 storage effect，无 PoolManager 调用、外部调用或 facet→facet delegatecall；它先于 treasury take 与调用方执行的 rebate take，`_settleProtocolFee` 现为严格 CEI（effect → interaction → event）。`PoolManager.take` 不触发 v4 hook callback；对于 ERC20 currency，它仍会调用 token 的 `transfer`，执行外部 token 代码。fee currency 必须为标准 ERC20（注册的协议费代币；普通池下为输入代币），并保持 treasury 为被动收款方；任一 take 或 token transfer 失败会回滚整笔 swap。beforeSwap 主路径把 rebate take 与 LP fee take 合并为一次 `poolManager.take(currencyIn, address(this), lpFeeInputAmount + rebate)`，afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立执行 rebate take。所有调用点均在 PoolManager unlock session 内；SwapFacet logic 函数开头检查 `address(this) != __self` 防直接 CALL（`__self` 为 facet 自身地址 immutable）。`[代码已证]`
+- SwapFacet 的 `_settleProtocolFee`（`_collectProtocolFee` 调用；beforeSwap 主路径直接调）先内联累加 `pendingRebate[referrer][currency] += amount` 并 emit `ReferralRebateAccrued`（effect），再通过 `_takeToTreasury` 调用 `PoolManager.take`（interaction），最后 emit `ProtocolFeeCollected`。返佣记账这一步是纯 storage effect，无 PoolManager 调用、外部调用或 facet→facet delegatecall；它先于 treasury take 与调用方执行的 rebate take，`_settleProtocolFee` 现为严格 CEI（effect → interaction → event）。`PoolManager.take` 不触发 v4 hook callback；对于 ERC20 currency，它仍会调用 token 的 `transfer`，执行外部 token 代码。fee currency 必须为标准 ERC20（注册的协议费代币；普通池下为输入代币），并保持 treasury 为被动收款方；任一 take 或 token transfer 失败会回滚整笔 swap。beforeSwap 主路径把 rebate take 与 LP fee take 合并为一次 `poolManager.take(currencyIn, address(this), knownLpInputFee + rebate)`，afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立执行 rebate take。所有调用点均在 PoolManager unlock session 内；SwapFacet logic 函数开头检查 `address(this) != __self` 防直接 CALL（`__self` 为 facet 自身地址 immutable）。`[代码已证]`
 
 `[代码已证]`
 
@@ -627,7 +627,6 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
 - 资金分发：`RedeemAndDistributeFees`、`OFTProcessed`
 - 跨链 staking：`OmnichainMemecoinStaking`、`OmnichainMemecoinStakingProcessed`
 - 配置变更：Launcher/Hook/RegistrationCenter 的 `Set*` 事件
-- unlock 后保护：当前缺少专用事件，需结合 stage、时间与 swap/赎回行为联合判断
 
 ## 6. EVM 兼容性要求
 

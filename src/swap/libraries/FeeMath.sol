@@ -62,8 +62,8 @@ library FeeMath {
         }
     }
 
-    /// @notice Scales `amount` by a basis-points fee rate, rounding down toward the payer.
-    /// @dev Single source of truth for fee rounding across hook settlement, lens quotes, the engine, and the executor.
+    /// @notice Scales `amount` by a basis-points fee rate for fixed/preorder settlement, rounding down toward the payer.
+    /// @dev Fee primitive for fixed/preorder settlement. Ordinary dynamic settlement uses `OrdinarySwapMath`.
     /// @param amount Base amount to apply the fee rate to.
     /// @param feeBps Fee rate in basis points (1 bps = 0.01%).
     /// @return Fee amount rounded down.

@@ -11,6 +11,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {FeeMath} from "./libraries/FeeMath.sol";
+import {OrdinarySwapMath} from "./libraries/OrdinarySwapMath.sol";
 import {SwapFeeMath} from "./libraries/SwapFeeMath.sol";
 import {SwapGuardMath} from "./libraries/SwapGuardMath.sol";
 import {UniswapLP} from "./tokens/UniswapLP.sol";
@@ -60,44 +61,42 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
             )
         );
         IDynamicFeeFacet.PreparedSwapFee memory feeQuote = abi.decode(feeQuoteData, (IDynamicFeeFacet.PreparedSwapFee));
-        (uint256 lpFeeBps, uint256 protocolFeeBps) = FeeMath.splitFeeBps(feeQuote.feeBps);
 
         quote.feeBps = feeQuote.feeBps;
         quote.protocolFeeOnInput = protocolFeeOnInput;
+        quote.estimatedUserInputAmount = feeQuote.estimatedInputAmount;
+        quote.estimatedUserOutputAmount = feeQuote.estimatedOutputAmount;
+        if (params.amountSpecified == 0) return quote;
 
+        OrdinarySwapMath.FeeSplit memory feeSplit = OrdinarySwapMath.deriveFeeSplit(feeQuote.feeBps);
+        OrdinarySwapMath.SettlementPlan memory settlementPlan =
+            OrdinarySwapMath.deriveSettlementPlan(params.amountSpecified, protocolFeeOnInput, feeSplit);
+        OrdinarySwapMath.CurveResult memory finalCurve;
+        finalCurve.coreGrossOutput = feeQuote.estimatedGrossOutputAmount;
         if (params.amountSpecified < 0) {
-            uint256 userInputAmount = uint256(-params.amountSpecified);
-            quote.estimatedUserInputAmount = userInputAmount;
-            quote.estimatedLpFeeAmount = FeeMath.feeOnAmount(userInputAmount, lpFeeBps);
-            if (protocolFeeOnInput) {
-                quote.estimatedProtocolFeeAmount = FeeMath.feeOnAmount(userInputAmount, protocolFeeBps);
-                quote.estimatedUserOutputAmount = feeQuote.estimatedOutputAmount;
-            } else {
-                quote.estimatedProtocolFeeAmount =
-                    FeeMath.feeOnAmount(feeQuote.estimatedGrossOutputAmount, protocolFeeBps);
-                quote.estimatedUserOutputAmount = feeQuote.estimatedGrossOutputAmount - quote.estimatedProtocolFeeAmount;
-            }
+            finalCurve.coreInput = settlementPlan.coreInputTarget;
         } else {
-            uint256 requestedOutputAmount = uint256(params.amountSpecified);
-            // Bounded: a drained pool (liquidity == 0) yields estimatedGrossOutputAmount == 0, so the user
-            // receives nothing despite requesting a positive output. Gate on the gross estimate so the
-            // quote does not advertise a free positive-sum swap that cannot be filled.
-            quote.estimatedUserOutputAmount = feeQuote.estimatedGrossOutputAmount > 0 ? requestedOutputAmount : 0;
-            quote.estimatedLpFeeAmount = FeeMath.feeOnAmount(feeQuote.estimatedInputAmount, lpFeeBps);
-            if (protocolFeeOnInput) {
-                quote.estimatedProtocolFeeAmount = FeeMath.feeOnAmount(feeQuote.estimatedInputAmount, protocolFeeBps);
-                quote.estimatedUserInputAmount =
-                    feeQuote.estimatedInputAmount + quote.estimatedLpFeeAmount + quote.estimatedProtocolFeeAmount;
-            } else {
-                // Bounded: drained pools (liquidity == 0) yield estimatedGrossOutputAmount == 0, so
-                // subtracting requestedOutputAmount would underflow. Clamp to 0 to keep the quote a
-                // pure preview that returns zero instead of panicking on drained pools.
-                quote.estimatedProtocolFeeAmount = feeQuote.estimatedGrossOutputAmount > requestedOutputAmount
-                    ? feeQuote.estimatedGrossOutputAmount - requestedOutputAmount
-                    : 0;
-                quote.estimatedUserInputAmount = feeQuote.estimatedInputAmount + quote.estimatedLpFeeAmount;
+            uint256 appliedInputFeeBps = protocolFeeOnInput ? feeSplit.totalFeeBps : feeSplit.lpFeeBps;
+            uint256 inputSurvivalBps = FeeMath.BPS_BASE - appliedInputFeeBps;
+            finalCurve.coreInput = FullMath.mulDiv(feeQuote.estimatedInputAmount, inputSurvivalBps, FeeMath.BPS_BASE);
+            // Paired floor/ceil operations recover the unique core input represented by the final gross input.
+            if (
+                FullMath.mulDivRoundingUp(finalCurve.coreInput, FeeMath.BPS_BASE, inputSurvivalBps)
+                    != feeQuote.estimatedInputAmount
+            ) {
+                revert OrdinarySwapMath.FinalTargetNotMet();
             }
         }
+
+        OrdinarySwapMath.FinalSettlement memory finalSettlement = OrdinarySwapMath.deriveFinalSettlement(
+            params.amountSpecified, protocolFeeOnInput, feeSplit, settlementPlan, finalCurve
+        );
+        if (
+            finalSettlement.userInput != feeQuote.estimatedInputAmount
+                || finalSettlement.userNetOutput != feeQuote.estimatedOutputAmount
+        ) revert OrdinarySwapMath.FinalTargetNotMet();
+        quote.estimatedLpFeeAmount = finalSettlement.lpFee;
+        quote.estimatedProtocolFeeAmount = finalSettlement.protocolFee;
     }
 
     /// @inheritdoc IMemeverseUniswapHookLens

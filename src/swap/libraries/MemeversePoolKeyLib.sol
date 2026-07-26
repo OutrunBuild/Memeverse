@@ -9,6 +9,13 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 library MemeversePoolKeyLib {
     int24 internal constant DEFAULT_TICK_SPACING = 200;
 
+    // FULL_RANGE_LOWER_TICK / FULL_RANGE_UPPER_TICK bound full-range liquidity and must remain multiples of
+    // DEFAULT_TICK_SPACING — V4 modifyLiquidity requires tickLower % tickSpacing == 0. If DEFAULT_TICK_SPACING
+    // changes, update both to the largest multiples within V4's ±887272 tick bound, else full-range
+    // addLiquidity/removeLiquidity reverts and LP funds lock.
+    int24 internal constant FULL_RANGE_LOWER_TICK = -887200;
+    int24 internal constant FULL_RANGE_UPPER_TICK = 887200;
+
     function sortedCurrencies(address tokenA, address tokenB)
         internal
         pure

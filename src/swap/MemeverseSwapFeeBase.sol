@@ -103,9 +103,7 @@ abstract contract MemeverseSwapFeeBase is FacetGuard {
         ctx.inputIsCurrency0 = zeroForOne;
     }
 
-    /// @dev Single source of truth for the exact-input LP + protocol fee split. Both facets and
-    ///      the partial-fill guard route through this helper so the charge and the guard use the
-    ///      identical formula.
+    /// @dev Computes the exact-input LP and input-side protocol fees for fixed/preorder `SettlementFacet`.
     function _exactInputFeeAmounts(
         uint256 grossAmount,
         uint256 lpFeeBps,

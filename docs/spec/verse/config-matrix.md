@@ -80,7 +80,7 @@ canonical Launcher address 是 `IOutrunDeployer` CREATE3 部署的 ERC1967 proxy
 | `MemeverseUniswapHook` | `defaultLaunchFeeConfig` 初始值 | `start=5000,min=100,decay=900s` | proxy `initialize(initialOwner, treasury_, lpTokenImplementation_, swapFacet_, dynamicFeeFacet_, settlementFacet_)` 初始化；同时建立默认启动费率配置、LP template 与 3 facet 指针绑定；owner 可通过 `setDefaultLaunchFeeConfig(...)` 后续修改 | `[代码已证]` |
 | `MemeverseSwapRouter` | `hook`,`permit2` | 构造注入（immutable） | 外部依赖地址，部署后不可改 | `[代码已证]` |
 | `DeployMemeverseHookProxy` | `DEPLOYMENT_NONCE` | 首次 `0`，每次新部署递增 | 嵌入 CREATE3 salt，决定 `lpTokenImplementation`、`SwapFacet`/`DynamicFeeFacet`/`SettlementFacet` 三 facet、hook implementation/proxy 等 deployment artifacts；同 nonce 同配置幂等，同 nonce 不同配置 revert；`deployHookProxy` 原子回滚或广播前仿真失败且未消耗 salt 时可用同 nonce 重试，仅部分广播已消耗 CREATE3 salt 时递增 nonce | `[代码已证]` |
-| `MemeverseSettlementImpl` | `UNLOCK_PROTECTION_WINDOW` | `24 hours` 固定常量 | 不再暴露 owner 配置面；用于 `Locked -> Unlocked` 后受保护公开 swap 的固定恢复窗口 | `[代码已证]` |
+| `MemeverseSettlementImpl` | `UNLOCK_PROTECTION_WINDOW` | `24 hours` 固定常量 | `UNLOCK_PROTECTION_WINDOW` 与 pool-level resume time 均无直接 owner setter；常量仅在 `launcher` binding 指向真实 Launcher proxy 的正常 `Locked -> Unlocked` 中规定 `24 hours` 写入值。Hook owner 仍可 retarget `launcher` 使受控地址覆写 pool-level resume time；binding 偏离时正常迁移回滚（见本表 unlock 后公开 swap 保护 / INV-12） | `[代码已证]` |
 | `MemeverseLauncher` / `POLend` | `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` | `type(uint128).max` | 普通创世与杠杆创世共享的聚合部署资金上限；preorder 不计入该口径 | `[代码已证]` |
 | `GovernanceCycleIncentivizerUpgradeable` | `CYCLE_DURATION` | `90 days` | 治理周期长度 | `[代码已证]` |
 | `MemecoinYieldVault` | `REDEEM_DELAY` | `1 days` | 赎回延迟 | `[代码已证]` |
@@ -93,7 +93,7 @@ canonical Launcher address 是 `IOutrunDeployer` CREATE3 部署的 ERC1967 proxy
 | 主题 | 说明 | 当前实现事实 | 结论 |
 | --- | --- | --- | --- |
 | swap 启动保护 | 启动期保护机制 | 当前主路径为 execute-or-revert + launch fee 衰减 + 显式 `Launcher -> Hook.executePreorderSettlement(...)` | 以当前实现为准 |
-| unlock 后公开 swap 保护 | 公开交易恢复时机 | 公开 swap 恢复时间由 `Locked -> Unlocked` 迁移同交易写入的 pool-level `publicSwapResumeTime` 控制；窗口为固定产品常量，owner 无配置入口 | 以当前实现为准 |
+| unlock 后公开 swap 保护 | 公开交易恢复时机 | 公开 swap 恢复时间由 pool-level `publicSwapResumeTime` 控制；固定 24 小时窗口仅是正常 `Locked -> Unlocked` 且 binding 指向真实 Launcher proxy 时的同交易写入语义。Hook owner 无直接 `resumeTime` setter，但可 retarget `launcher` 至受控地址覆写既有非零 ERC-20 池的 `resumeTime`，非无权限外部调用者能力；若 binding 偏离真实 Launcher proxy，真实 Launcher 不满足 `onlyLauncher`，正常迁移在保护时间写入处 `Unauthorized` 整笔回滚，`changeStage` 前须恢复真实 binding（详见 INV-12 / operations §3.8） | 以当前实现为准 |
 | unlock settlement 执行顺序 | 解锁结算与公开 swap 保护 | 同交易 settlement 顺序与保护窗口写入的不变量口径见 [docs/spec/invariants.md](../invariants.md) INV-07A / INV-12 | 以当前实现为准 |
 | launch fee 时间单位 | launch fee 的时间语义 | 代码使用 `decayDurationSeconds`（秒） | 以秒语义解读 |
 | 注册天数语义 | 注册时长的时间语义 | 中心链写入与本地 quote 均使用 registration center 的 `DAY` | 当前链上语义由 center 配置决定 |

@@ -16,6 +16,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {LiquidityAmounts} from "../../src/swap/libraries/LiquidityAmounts.sol";
 import {LiquidityQuote} from "../../src/swap/libraries/LiquidityQuote.sol";
+import {OrdinarySwapMath} from "../../src/swap/libraries/OrdinarySwapMath.sol";
 
 import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
@@ -171,7 +172,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     /// @notice Verifies router quotes are delegated through the configured hook lens.
     function testQuoteSwap_UsesConfiguredHookLens() external {
         _setProtocolFeeCurrency(key.currency0);
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
 
         IMemeverseUniswapHook.SwapQuote memory routerQuote = _quoteSwap(key, params, address(this));
         IMemeverseUniswapHook.SwapQuote memory lensQuote =
@@ -191,7 +194,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         StateWritingDynamicFeeFacetMock stateWritingFacet =
             new StateWritingDynamicFeeFacetMock(IPoolManager(address(manager)));
         hook.setFacet(hook.DYNAMIC_FEE_FACET_ROLE(), address(stateWritingFacet));
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
 
         vm.expectRevert();
         _quoteSwap(key, params, address(this));
@@ -267,7 +272,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.expectRevert(IMemeverseSwapRouter.InvalidHook.selector);
         router.swap(
             invalidKey,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this),
             block.timestamp,
             0,
@@ -282,7 +289,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.expectRevert(IMemeverseSwapRouter.SwapAmountCannotBeZero.selector);
         router.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: 0, sqrtPriceLimitX96: 0}),
+            SwapParams({zeroForOne: true, amountSpecified: 0, sqrtPriceLimitX96: _validExecutionPriceLimit(true)}),
             address(this),
             block.timestamp,
             0,
@@ -291,14 +298,13 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         );
     }
 
-    /// @notice Covers the local manager revert surface for execution swaps that pass a zero price limit.
-    /// @dev Locks that the router forwards `sqrtPriceLimitX96` into the mock execution path instead of silently bypassing it.
+    /// @notice Verifies execution swaps reject a zero raw price limit before entering V4 core.
+    /// @dev The hook owns this validation so quote and execution reject the same request boundary.
     function testSwapReverts_WhenExecutionPriceLimitIsZero() external {
         _setProtocolFeeCurrency(key.currency0);
         _matureLaunchWindow();
-        manager.setEnforceV4PriceLimitValidation(true);
 
-        vm.expectRevert(abi.encodeWithSelector(MockPoolManagerForRouterTest.PriceLimitOutOfBounds.selector, uint160(0)));
+        vm.expectRevert(OrdinarySwapMath.InvalidRawSqrtPriceLimit.selector);
         router.swap(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
@@ -316,7 +322,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.expectRevert(IMemeverseSwapRouter.AmountInMaximumRequired.selector);
         router.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this),
             block.timestamp,
             0,
@@ -338,7 +346,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.expectRevert();
         router.swap(
             nativeKey,
-            SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this),
             block.timestamp,
             0,
@@ -507,7 +517,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
         router.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this),
             block.timestamp,
             0,
@@ -518,7 +530,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.warp(resumeTime);
         BalanceDelta delta = router.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this),
             block.timestamp,
             0,
@@ -580,7 +594,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
         guardedRouter.swap(
             blockedKey,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this),
             block.timestamp,
             0,
@@ -590,7 +606,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
 
         BalanceDelta openDelta = guardedRouter.swap(
             openKey,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this),
             block.timestamp,
             0,
@@ -717,7 +735,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: key,
-                params: SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+                params: SwapParams({
+                    zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+                }),
                 recipient: address(this)
             })
         );
@@ -752,8 +772,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         );
         MemeverseUniswapHookLens pristineLens = new MemeverseUniswapHookLens(IPoolManager(address(pristineManager)));
 
-        SwapParams memory followUpParams =
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory followUpParams = SwapParams({
+            zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
         IMemeverseUniswapHook.SwapQuote memory settledQuote = router.quoteSwap(key, followUpParams, address(this));
         IMemeverseUniswapHook.SwapQuote memory pristineQuote = pristineLens.quoteSwap(
             IMemeverseUniswapHook(address(pristineHook)), pristineKey, followUpParams, address(this)
@@ -886,15 +907,15 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             address(this),
             block.timestamp,
             0,
-            300 ether,
+            400 ether,
             ""
         );
 
         assertEq(token1.balanceOf(address(this)) - balance1Before, 100 ether, "exact output received");
-        assertGt(balance0Before - token0.balanceOf(address(this)), 200 ether, "input includes fee");
+        assertEq(balance0Before - token0.balanceOf(address(this)), 400 ether, "input includes fee");
         assertGt(token0.balanceOf(treasury), treasury0Before, "treasury collected token0");
         assertEq(delta.amount1(), int128(int256(100 ether)), "delta1");
-        assertLt(delta.amount0(), -int128(int256(200 ether)), "delta0 fee-adjusted");
+        assertEq(delta.amount0(), -int128(int256(400 ether)), "delta0 fee-adjusted");
     }
 
     /// @notice Verifies exact-output ERC20 swaps refund unused prefunded input.
@@ -917,7 +938,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         );
 
         assertEq(manager.lastUnlockPayer(), address(router), "router should pay exact-output input");
-        assertEq(balance0Before - token0.balanceOf(address(this)), 300 ether, "unused input refunded");
+        assertEq(balance0Before - token0.balanceOf(address(this)), 400 ether, "unused input refunded");
         assertEq(token0.balanceOf(address(router)), 0, "router should not retain refunded input");
     }
 
@@ -936,15 +957,15 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             address(this),
             block.timestamp,
             0,
-            300 ether,
+            400 ether,
             ""
         );
 
         assertEq(token0.balanceOf(address(this)) - balance0Before, 100 ether, "exact output received");
-        assertGt(balance1Before - token1.balanceOf(address(this)), 200 ether, "input includes fee");
+        assertEq(balance1Before - token1.balanceOf(address(this)), 400 ether, "input includes fee");
         assertGt(token1.balanceOf(treasury), treasury1Before, "treasury collected token1");
         assertEq(delta.amount0(), int128(int256(100 ether)), "delta0");
-        assertLt(delta.amount1(), -int128(int256(200 ether)), "delta1 fee-adjusted");
+        assertEq(delta.amount1(), -int128(int256(400 ether)), "delta1 fee-adjusted");
     }
 
     /// @notice Covers the mock harness branch for zero-for-one exact-output output-side fee gross-up handling.
@@ -1095,7 +1116,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.expectRevert(IMemeverseSwapRouter.ExpiredPastDeadline.selector);
         router.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this),
             block.timestamp - 1,
             0,
@@ -1155,7 +1178,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
             router.swap(
                 key,
-                SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+                SwapParams({
+                    zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+                }),
                 address(this),
                 block.timestamp,
                 0,
@@ -1186,7 +1211,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
             router.swap(
                 key,
-                SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+                SwapParams({
+                    zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+                }),
                 address(this),
                 block.timestamp,
                 0,
@@ -1239,7 +1266,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
             router.swap(
                 key,
-                SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+                SwapParams({
+                    zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+                }),
                 address(this),
                 block.timestamp,
                 0,
@@ -1270,7 +1299,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
             router.swap(
                 key,
-                SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+                SwapParams({
+                    zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+                }),
                 address(this),
                 block.timestamp,
                 0,
@@ -1298,7 +1329,11 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     function testPreviewSwap_ExactOutputInputSideIncludesFeeInUserInput() external {
         _setProtocolFeeCurrency(key.currency0);
         IMemeverseUniswapHook.SwapQuote memory preview = router.quoteSwap(
-            key, SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: 0}), address(this)
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
+            address(this)
         );
 
         assertTrue(preview.protocolFeeOnInput, "protocolFeeOnInput");
@@ -1316,7 +1351,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     /// @dev Covers the router quote passthrough to the stateless lens.
     function testRouterQuoteSwap_DelegatesToConfiguredLens() external {
         _setProtocolFeeCurrency(key.currency0);
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory params = SwapParams({
+            zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
 
         IMemeverseUniswapHook.SwapQuote memory lensQuote =
             lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
@@ -1337,7 +1374,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
         router.swap(
             nativeKey,
-            SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            }),
             address(this),
             block.timestamp,
             0,
@@ -1354,7 +1393,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
         router.swap(
             nativeKey,
-            SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({
+                zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
             address(this),
             block.timestamp,
             0,

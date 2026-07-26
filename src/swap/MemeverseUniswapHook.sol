@@ -74,14 +74,6 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
     using SafeCast for int256;
     using SafeCast for int128;
 
-    // MIN_TICK/MAX_TICK bound full-range liquidity and must remain multiples of
-    // MemeversePoolKeyLib.DEFAULT_TICK_SPACING — V4 modifyLiquidity requires
-    // tickLower % tickSpacing == 0. If DEFAULT_TICK_SPACING changes, update both
-    // to the largest multiples within V4's ±887272 tick bound, else full-range
-    // addLiquidity/removeLiquidity reverts and LP funds lock.
-    int24 internal constant MIN_TICK = -887200;
-    int24 internal constant MAX_TICK = 887200;
-
     /// @notice Role discriminator for the swap callback facet (`beforeSwap` / `afterSwap` /
     ///         `beforeInitialize` / `beforeAddLiquidity` + `updateUserSnapshotLogic`).
     bytes32 public constant SWAP_FACET_ROLE = keccak256("mv.hook.facet.swap");
@@ -510,7 +502,10 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
             payer,
             key,
             ModifyLiquidityParams({
-                tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: uint256(liquidity).toInt256(), salt: 0
+                tickLower: MemeversePoolKeyLib.FULL_RANGE_LOWER_TICK,
+                tickUpper: MemeversePoolKeyLib.FULL_RANGE_UPPER_TICK,
+                liquidityDelta: uint256(liquidity).toInt256(),
+                salt: 0
             })
         );
 
@@ -558,8 +553,8 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
             params.recipient,
             key,
             ModifyLiquidityParams({
-                tickLower: MIN_TICK,
-                tickUpper: MAX_TICK,
+                tickLower: MemeversePoolKeyLib.FULL_RANGE_LOWER_TICK,
+                tickUpper: MemeversePoolKeyLib.FULL_RANGE_UPPER_TICK,
                 liquidityDelta: -(uint256(params.liquidity).toInt256()),
                 salt: 0
             })
@@ -796,7 +791,7 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
     /// @param preSqrtPriceX96 Pool price before the quoted swap.
     /// @param liquidity Current pool liquidity.
     /// @param protocolFeeOnInput Whether the protocol fee is charged from the input currency.
-    /// @return quote Prepared fee data returned by the dynamic fee facet.
+    /// @return Prepared fee data returned by the dynamic fee facet.
     function quoteSwapFeeWithContext(
         PoolId poolId,
         SwapParams calldata params,
@@ -804,7 +799,15 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
         uint160 preSqrtPriceX96,
         uint128 liquidity,
         bool protocolFeeOnInput
-    ) external override returns (IDynamicFeeFacet.PreparedSwapFee memory quote) {
+    ) external override returns (IDynamicFeeFacet.PreparedSwapFee memory) {
+        if (params.amountSpecified != 0) {
+            SwapGuardMath.revertIfPublicSwapBlocked(_memeverseUniswapHookStorage.publicSwapResumeTime[poolId]);
+            // A live pool with no cached LP shares cannot distribute LP fees. Match Lens and execution
+            // before delegating so every non-zero quote entry rejects the same orphaned-liquidity state.
+            if (_memeverseUniswapHookStorage.cachedLpTotalSupply[poolId] == 0) {
+                SwapGuardMath.revertIfNoActiveLiquidityShares(liquidity);
+            }
+        }
         bytes memory ret = _facetDelegatecall(
             _memeverseUniswapHookStorage.dynamicFeeFacet,
             abi.encodeCall(
@@ -816,7 +819,8 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
                         trader: trader,
                         preSqrtPriceX96: preSqrtPriceX96,
                         liquidity: liquidity,
-                        protocolFeeOnInput: protocolFeeOnInput
+                        protocolFeeOnInput: protocolFeeOnInput,
+                        sqrtPriceLimitX96: params.sqrtPriceLimitX96
                     }))
             )
         );

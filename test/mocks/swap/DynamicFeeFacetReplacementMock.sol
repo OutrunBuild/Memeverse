@@ -27,10 +27,9 @@ contract DynamicFeeFacetReplacementMock layout at erc7201("outrun.storage.Memeve
         view
         override
         onlyViaRouter
-        returns (uint256 feeBps, uint256 estimatedGrossOutputAmount)
+        returns (uint256 feeBps)
     {
         feeBps = 1_000;
-        estimatedGrossOutputAmount = 0;
     }
 
     /// @inheritdoc IDynamicFeeFacet

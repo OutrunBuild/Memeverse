@@ -7,6 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -191,7 +192,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
         guardedRouter.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             address(this),
             block.timestamp,
             0,
@@ -205,14 +206,14 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         guardedHook.beforeSwap(
             address(this),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             bytes("")
         );
 
         vm.warp(block.timestamp + 24 hours);
         BalanceDelta routerDelta = guardedRouter.swap(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             address(this),
             block.timestamp,
             0,
@@ -223,7 +224,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         guardedHook.beforeSwap(
             address(this),
             key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: 0}),
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             bytes("")
         );
         assertLt(routerDelta.amount0(), 0, "router input");

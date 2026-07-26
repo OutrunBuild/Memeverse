@@ -13,22 +13,28 @@ contract TransientStateHarness {
         PoolId poolId,
         uint256 firstFee,
         uint160 firstPrice,
+        uint256 firstCoreTarget,
         uint256 secondFee,
-        uint160 secondPrice
+        uint160 secondPrice,
+        uint256 secondCoreTarget
     )
         external
         returns (
             uint256 consumedFirstFee,
             uint160 consumedFirstPrice,
+            uint256 consumedFirstCoreTarget,
             uint256 consumedSecondFee,
-            uint160 consumedSecondPrice
+            uint160 consumedSecondPrice,
+            uint256 consumedSecondCoreTarget
         )
     {
-        MemeverseTransientState.pushSwapContext(poolId, firstFee, firstPrice);
-        (consumedFirstFee, consumedFirstPrice,) = MemeverseTransientState.consumeCurrentSwapContext(poolId);
+        MemeverseTransientState.pushSwapContext(poolId, firstFee, firstPrice, firstCoreTarget);
+        (consumedFirstFee, consumedFirstPrice, consumedFirstCoreTarget) =
+            MemeverseTransientState.consumeCurrentSwapContext(poolId);
 
-        MemeverseTransientState.pushSwapContext(poolId, secondFee, secondPrice);
-        (consumedSecondFee, consumedSecondPrice,) = MemeverseTransientState.consumeCurrentSwapContext(poolId);
+        MemeverseTransientState.pushSwapContext(poolId, secondFee, secondPrice, secondCoreTarget);
+        (consumedSecondFee, consumedSecondPrice, consumedSecondCoreTarget) =
+            MemeverseTransientState.consumeCurrentSwapContext(poolId);
     }
 
     /// @notice Pops nested contexts in last-in-first-out order when the pools differ.
@@ -37,22 +43,28 @@ contract TransientStateHarness {
         PoolId innerPoolId,
         uint256 outerFee,
         uint160 outerPrice,
+        uint256 outerCoreTarget,
         uint256 innerFee,
-        uint160 innerPrice
+        uint160 innerPrice,
+        uint256 innerCoreTarget
     )
         external
         returns (
             uint256 consumedInnerFee,
             uint160 consumedInnerPrice,
+            uint256 consumedInnerCoreTarget,
             uint256 consumedOuterFee,
-            uint160 consumedOuterPrice
+            uint160 consumedOuterPrice,
+            uint256 consumedOuterCoreTarget
         )
     {
-        MemeverseTransientState.pushSwapContext(outerPoolId, outerFee, outerPrice);
-        MemeverseTransientState.pushSwapContext(innerPoolId, innerFee, innerPrice);
+        MemeverseTransientState.pushSwapContext(outerPoolId, outerFee, outerPrice, outerCoreTarget);
+        MemeverseTransientState.pushSwapContext(innerPoolId, innerFee, innerPrice, innerCoreTarget);
 
-        (consumedInnerFee, consumedInnerPrice,) = MemeverseTransientState.consumeCurrentSwapContext(innerPoolId);
-        (consumedOuterFee, consumedOuterPrice,) = MemeverseTransientState.consumeCurrentSwapContext(outerPoolId);
+        (consumedInnerFee, consumedInnerPrice, consumedInnerCoreTarget) =
+            MemeverseTransientState.consumeCurrentSwapContext(innerPoolId);
+        (consumedOuterFee, consumedOuterPrice, consumedOuterCoreTarget) =
+            MemeverseTransientState.consumeCurrentSwapContext(outerPoolId);
     }
 
     /// @notice Preserves separately encoded fee modes across a pop and replacement push.
@@ -60,19 +72,19 @@ contract TransientStateHarness {
         external
         returns (uint256 consumedFirstFee, uint256 consumedSecondFee)
     {
-        MemeverseTransientState.pushSwapContext(poolId, firstEncodedFee, 1);
+        MemeverseTransientState.pushSwapContext(poolId, firstEncodedFee, 1, 11);
         (consumedFirstFee,,) = MemeverseTransientState.consumeCurrentSwapContext(poolId);
 
-        MemeverseTransientState.pushSwapContext(poolId, secondEncodedFee, 2);
+        MemeverseTransientState.pushSwapContext(poolId, secondEncodedFee, 2, 22);
         (consumedSecondFee,,) = MemeverseTransientState.consumeCurrentSwapContext(poolId);
     }
 
     /// @notice Confirms a popped context is unreachable through the public library API.
     function consumeAfterPop(PoolId poolId, uint256 fee, uint160 price)
         external
-        returns (uint256 emptyFee, uint160 emptyPrice, bytes32 emptyBase)
+        returns (uint256 emptyFee, uint160 emptyPrice, uint256 emptyCoreTarget)
     {
-        MemeverseTransientState.pushSwapContext(poolId, fee, price);
+        MemeverseTransientState.pushSwapContext(poolId, fee, price, 123);
         MemeverseTransientState.consumeCurrentSwapContext(poolId);
         return MemeverseTransientState.consumeCurrentSwapContext(poolId);
     }

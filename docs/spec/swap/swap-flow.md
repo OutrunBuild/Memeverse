@@ -13,6 +13,8 @@
 
 ## 1. 总体交易执行流
 
+Router 调用 PoolManager、PoolManager 回调 Hook 的入口顺序，以及图中普通动态 Swap 的一次选费与最终用户 delta 结算，均为当前实现事实。`[代码已证]`
+
 ```mermaid
 flowchart TD
     A[用户调用 Router.swap / swapWithPermit2] --> B[Router 基础校验]
@@ -21,7 +23,7 @@ flowchart TD
     B1 -- 否 --> C[准备 ERC20 输入资金]
     C --> D[调用 PoolManager.swap]
     D --> E[Hook.beforeSwap]
-    E --> F[执行动态费与启动期费率逻辑]
+    E --> F[按原始用户请求一次选择动态费]
     F --> G[PoolManager 完成 swap]
     G --> H[Hook.afterSwap]
     H --> I[Router 做 minOut / maxIn 校验]
@@ -34,7 +36,13 @@ flowchart TD
 - swap 栈只支持 ERC20/ERC20 pair；native 拒绝规则（V5）与收费/币种边界见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
 - 启动期保护通过 Hook 内的 `launch fee window` 费率逻辑体现。
 
-### 1.1 返佣资金流（Referral Rebate）
+### 1.1 普通动态 Swap 的费用与 delta 流 `[代码已证]`
+
+> **非规范流程摘要。** 精确的一次选费、四路径、raw `sqrtPriceLimitX96`、全范围容量、核心/最终用户 delta 与拒绝规则均以 [uniswap-v4.md §3.1–§3.2](uniswap-v4.md) 为唯一 canonical；本节与其发生任何不一致时，以该 canonical 为准。
+
+对流程读者而言，`beforeSwap` 在普通动态路径开始时准备本笔 swap 的费用与核心执行上下文；PoolManager 完成核心 swap 后将实际核心 delta 交给 `afterSwap` 进行后续结算；Hook 调整后的最终用户 delta 返回 Router，由 Router 完成用户侧预算检查并返回结果。固定 fee 与 preorder settlement 不复用此普通动态流程。
+
+### 1.2 返佣资金流（Referral Rebate）
 
 普通 swap 携带 referrer 且收取 protocol fee 时，SwapFacet 的返佣处理按收费入口分流：满足合并领取条件的 `beforeSwap` 路径直接执行 `_computeRebate` 与 `_settleProtocolFee`，并将 LP fee 与 rebate 合并为一次 `PoolManager.take` 至 hook proxy；其余仍收取 protocol fee 的 `beforeSwap` 分支，以及 `afterSwap` 的 protocol-fee 路径，经 `_collectProtocolFee` 处理，rebate 非零时单独 `take`。rebate custody 在 hook proxy（`address(this)` 在 delegatecall 下为 hook proxy），`pendingRebate` 账本在 Router storage。
 

@@ -9,6 +9,7 @@ import {FacetGuard} from "./FacetGuard.sol";
 import {IDynamicFeeFacet} from "./interfaces/IDynamicFeeFacet.sol";
 import {DynamicFeeMath} from "./libraries/DynamicFeeMath.sol";
 import {FeeMath} from "./libraries/FeeMath.sol";
+import {OrdinarySwapMath} from "./libraries/OrdinarySwapMath.sol";
 import {SafeCast} from "./libraries/SafeCast.sol";
 
 /// @title DynamicFeeFacet
@@ -45,18 +46,17 @@ contract DynamicFeeFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
     }
 
     /// @inheritdoc IDynamicFeeFacet
-    /// @dev Hot path only returns the two settlement fields; full `PreparedSwapFee` still runs
-    ///      through `DynamicFeeMath.estimateDynamicFeeQuote` so fee math cannot drift from `quote`.
+    /// @dev Selects once from the original request curve. The final settlement geometry is quote-only.
     function prepareSwapFee(PrepareSwapFeeParams calldata params)
         external
         override
         onlyViaRouter
-        returns (uint256 feeBps, uint256 estimatedGrossOutputAmount)
+        returns (uint256 feeBps)
     {
         DynamicFeeState storage stored = _memeverseUniswapHookStorage.dynamicFeeState[params.poolId];
         DynamicFeeMath.refreshVolatilityAnchorAndCarry(stored, params.preSqrtPriceX96);
-        PreparedSwapFee memory fee = _estimateDynamicFeeQuote(stored, params);
-        return (fee.feeBps, fee.estimatedGrossOutputAmount);
+        (DynamicFeeMath.DynamicFeeQuote memory fee,) = _selectDynamicFee(stored, params);
+        return fee.feeBps;
     }
 
     /// @inheritdoc IDynamicFeeFacet
@@ -137,33 +137,86 @@ contract DynamicFeeFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
                 DynamicFeeMath.volatilityRefreshApply(params.preSqrtPriceX96, refreshedCarry);
         }
 
-        return _estimateDynamicFeeQuote(state, params);
-    }
+        OrdinarySwapMath.CapacityResult memory capacity;
+        if (params.amountSpecified != 0) {
+            capacity = OrdinarySwapMath.calculateCapacity(
+                params.liquidity, params.preSqrtPriceX96, params.zeroForOne, params.sqrtPriceLimitX96
+            );
+        }
 
-    /// @dev Thin parameter-assembly wrapper around `DynamicFeeMath.estimateDynamicFeeQuote`.
-    ///      Extracted so `prepareSwapFee` and `quote` share a single call-site wiring; the two
-    ///      entry points differ only in how they prepare `state` (storage write vs memory refresh)
-    ///      before calling this helper. Launch fee config/timestamp are read from shared hook
-    ///      storage (not caller-supplied) because the facet already executes in the Router
-    ///      storage context under delegatecall.
-    function _estimateDynamicFeeQuote(DynamicFeeState memory state, PrepareSwapFeeParams calldata params)
-        internal
-        view
-        returns (PreparedSwapFee memory)
-    {
-        return DynamicFeeMath.estimateDynamicFeeQuote(
-            state,
-            _memeverseUniswapHookStorage.addressBatchState[params.trader][params.poolId],
+        (DynamicFeeMath.DynamicFeeQuote memory selectedFee, OrdinarySwapMath.CurveResult memory originalCurve) =
+            _selectDynamicFee(state, params);
+        _copySelectedFee(result, selectedFee);
+        if (params.amountSpecified == 0) return result;
+
+        OrdinarySwapMath.FeeSplit memory feeSplit = OrdinarySwapMath.deriveFeeSplit(selectedFee.feeBps);
+        OrdinarySwapMath.SettlementPlan memory settlementPlan =
+            OrdinarySwapMath.deriveSettlementPlan(params.amountSpecified, params.protocolFeeOnInput, feeSplit);
+        OrdinarySwapMath.CurveResult memory finalCurve = OrdinarySwapMath.calculateFinalQuoteCurve(
             params.liquidity,
             params.preSqrtPriceX96,
             params.zeroForOne,
             params.amountSpecified,
-            params.protocolFeeOnInput,
+            settlementPlan,
+            originalCurve,
+            capacity
+        );
+        OrdinarySwapMath.FinalSettlement memory finalSettlement = OrdinarySwapMath.deriveFinalSettlement(
+            params.amountSpecified, params.protocolFeeOnInput, feeSplit, settlementPlan, finalCurve
+        );
+        _revertIfQuoteAmountsAreNotRepresentable(finalCurve, finalSettlement);
+
+        result.estimatedInputAmount = finalSettlement.userInput;
+        result.estimatedOutputAmount = finalSettlement.userNetOutput;
+        result.estimatedGrossOutputAmount = finalCurve.coreGrossOutput;
+    }
+
+    /// @dev Computes the original request curve once, then selects the fee from that unmodified curve.
+    function _selectDynamicFee(DynamicFeeState memory state, PrepareSwapFeeParams calldata params)
+        internal
+        view
+        returns (DynamicFeeMath.DynamicFeeQuote memory selectedFee, OrdinarySwapMath.CurveResult memory originalCurve)
+    {
+        originalCurve = OrdinarySwapMath.calculateOriginalRequestCurve(
+            params.liquidity, params.preSqrtPriceX96, params.zeroForOne, params.amountSpecified
+        );
+        selectedFee = DynamicFeeMath.selectDynamicFee(
+            state,
+            _memeverseUniswapHookStorage.addressBatchState[params.trader][params.poolId],
+            params.preSqrtPriceX96,
+            originalCurve.postSqrtPriceX96,
+            params.amountSpecified,
             DynamicFeeMath.quoteLaunchFeeBps(
                 _memeverseUniswapHookStorage.defaultLaunchFeeConfig,
                 _memeverseUniswapHookStorage.poolLaunchTimestamp[params.poolId]
             )
         );
+    }
+
+    function _copySelectedFee(PreparedSwapFee memory result, DynamicFeeMath.DynamicFeeQuote memory selectedFee)
+        internal
+        pure
+    {
+        result.feeBps = selectedFee.feeBps;
+        result.pifPpm = selectedFee.pifPpm;
+        result.adverseImpactPartBps = selectedFee.adverseImpactPartBps;
+        result.volatilityPartBps = selectedFee.volatilityPartBps;
+        result.shortImpactPartBps = selectedFee.shortImpactPartBps;
+        result.spotBeforeX18 = selectedFee.spotBeforeX18;
+        result.spotAfterX18 = selectedFee.spotAfterX18;
+        result.isAdverse = selectedFee.isAdverse;
+    }
+
+    /// @dev PoolManager and hook callback deltas are int128. Reject known-unrepresentable quotes early.
+    function _revertIfQuoteAmountsAreNotRepresentable(
+        OrdinarySwapMath.CurveResult memory finalCurve,
+        OrdinarySwapMath.FinalSettlement memory finalSettlement
+    ) internal pure {
+        uint256 largestDelta = uint256(uint128(type(int128).max));
+        if (
+            finalCurve.coreInput > largestDelta || finalCurve.coreGrossOutput > largestDelta
+                || finalSettlement.userInput > largestDelta || finalSettlement.userNetOutput > largestDelta
+        ) revert OrdinarySwapMath.AmountNotRepresentable();
     }
 
     /// @dev Updates the post-swap volatility deviation accumulator: computes price-move steps against the

@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {IPoolManager, SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -11,6 +12,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {ISwapFacet} from "../../src/swap/interfaces/ISwapFacet.sol";
 import {ISettlementFacet} from "../../src/swap/interfaces/ISettlementFacet.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
+import {MemeversePoolKeyLib} from "../../src/swap/libraries/MemeversePoolKeyLib.sol";
 
 /// @notice Forward byte-equality drift guard: proves `bytes.concat(innerSelector, msg.data[4:])` is byte-identical to
 ///         `abi.encodeCall(innerFunc, (args))` for every thin entry whose inner `*Logic` signature mirrors
@@ -214,7 +216,8 @@ contract ForwardByteEqTest is Test {
     ///         must still equal `abi.encodeCall(...)` (which encodes an empty dynamic bytes as offset+0 len).
     function test_BoundaryEmptyBytesPayloads() external {
         PoolKey memory key = _anyKey();
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory params =
+            SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1});
         bytes memory empty = bytes("");
 
         probe.beforeSwap(address(1), key, params, empty);
@@ -226,7 +229,8 @@ contract ForwardByteEqTest is Test {
     ///         dynamic-bytes tail encoding path.
     function test_BoundaryLongHookData() external {
         PoolKey memory key = _anyKey();
-        SwapParams memory params = SwapParams({zeroForOne: false, amountSpecified: -1 ether, sqrtPriceLimitX96: 0});
+        SwapParams memory params =
+            SwapParams({zeroForOne: false, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1});
         bytes memory longHookData = new bytes(4096);
         for (uint256 i = 0; i < longHookData.length; i++) {
             longHookData[i] = bytes1(uint8(i % 251 + 1));
@@ -248,7 +252,10 @@ contract ForwardByteEqTest is Test {
 
     function _anyModifyLiquidityParams() internal pure returns (ModifyLiquidityParams memory params) {
         params = ModifyLiquidityParams({
-            tickLower: -887200, tickUpper: 887200, liquidityDelta: 1e18, salt: bytes32(uint256(0xabc))
+            tickLower: MemeversePoolKeyLib.FULL_RANGE_LOWER_TICK,
+            tickUpper: MemeversePoolKeyLib.FULL_RANGE_UPPER_TICK,
+            liquidityDelta: 1e18,
+            salt: bytes32(uint256(0xabc))
         });
     }
 }

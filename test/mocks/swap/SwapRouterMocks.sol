@@ -26,8 +26,6 @@ contract MockPoolManagerForRouterTest {
     using BeforeSwapDeltaLibrary for BeforeSwapDelta;
 
     error ManagerLocked();
-    error PriceLimitAlreadyExceeded(uint160 sqrtPriceCurrentX96, uint160 sqrtPriceLimitX96);
-    error PriceLimitOutOfBounds(uint160 sqrtPriceLimitX96);
 
     struct Slot0State {
         uint160 sqrtPriceX96;
@@ -44,7 +42,6 @@ contract MockPoolManagerForRouterTest {
 
     bool internal unlocked;
     bool internal quoteAlignedSwapMath;
-    bool internal enforceV4PriceLimitValidation;
     address internal lastUnlockCallbackPayer;
     mapping(bytes32 => bytes32) internal extStorage;
     mapping(PoolId => Slot0State) internal slot0State;
@@ -82,10 +79,6 @@ contract MockPoolManagerForRouterTest {
 
     function setQuoteAlignedSwapMath(bool enabled) external {
         quoteAlignedSwapMath = enabled;
-    }
-
-    function setEnforceV4PriceLimitValidation(bool enabled) external {
-        enforceV4PriceLimitValidation = enabled;
     }
 
     /// @notice Applies a mocked liquidity modification for a pool key.
@@ -151,25 +144,6 @@ contract MockPoolManagerForRouterTest {
             (, beforeSwapDelta,) = key.hooks.beforeSwap(msg.sender, key, params, hookData);
         }
         amountToSwap += beforeSwapDelta.getSpecifiedDelta();
-
-        if (enforceV4PriceLimitValidation) {
-            Slot0State memory state = slot0State[poolId];
-            if (params.zeroForOne) {
-                if (params.sqrtPriceLimitX96 >= state.sqrtPriceX96) {
-                    revert PriceLimitAlreadyExceeded(state.sqrtPriceX96, params.sqrtPriceLimitX96);
-                }
-                if (params.sqrtPriceLimitX96 <= SQRT_PRICE_LOWER_X96) {
-                    revert PriceLimitOutOfBounds(params.sqrtPriceLimitX96);
-                }
-            } else {
-                if (params.sqrtPriceLimitX96 <= state.sqrtPriceX96) {
-                    revert PriceLimitAlreadyExceeded(state.sqrtPriceX96, params.sqrtPriceLimitX96);
-                }
-                if (params.sqrtPriceLimitX96 >= SQRT_PRICE_UPPER_X96) {
-                    revert PriceLimitOutOfBounds(params.sqrtPriceLimitX96);
-                }
-            }
-        }
 
         BalanceDelta poolDelta = BalanceDeltaLibrary.ZERO_DELTA;
         if (amountToSwap != 0) {

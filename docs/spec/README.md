@@ -126,7 +126,9 @@
 
 | 规则/概念 | canonical home | 说明 |
 | --- | --- | --- |
-| 收费/币种/native/execute-or-revert | [uniswap-v4.md §4](swap/uniswap-v4.md) | Uniswap v4 集成与启动保护边界（execute-or-revert 见 §4） |
+| 收费/币种/native | [uniswap-v4.md §3](swap/uniswap-v4.md) | swap 栈收费语义、币种配置与 native 拒绝边界 |
+| 普通动态 Swap 的一次选费、四路径、价格限制、容量、核心/最终用户 delta | [uniswap-v4.md §3.1–§3.2](swap/uniswap-v4.md) | 普通动态 Swap 的唯一 canonical |
+| execute-or-revert | [uniswap-v4.md §4](swap/uniswap-v4.md) | 普通 swap 的执行边界 |
 | Permit2 入口 | [permit2.md](swap/permit2.md) | Permit2 token 入口边界 |
 
 ### 2.6 跨链/interop

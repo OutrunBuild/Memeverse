@@ -109,11 +109,20 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
         token1.mint(address(mockManager), 1_000_000 ether);
     }
 
-    /// @dev Seeds the main pool as the reentrant/public swap target: cached LP supply (so the public path
-    ///      collects LP fee), token0 as the supported protocol-fee currency (so protocolFeeOnInput=true and
-    ///      fees land in token0), and token0 funded in the mock manager so `take` can pay fee collection.
+    /// @dev Seeds the main pool as the reentrant/public swap target with real manager liquidity and matching
+    ///      cached LP supply, then enables input-side protocol fees and funds the manager's fee payout.
     function _seedMainPoolForReentry() internal {
-        seedActiveLiquiditySharesForTest(address(hook), poolId, address(this), 100 ether);
+        token0.approve(address(hook), type(uint256).max);
+        token1.approve(address(hook), type(uint256).max);
+        hook.addLiquidityCore(
+            IMemeverseUniswapHook.AddLiquidityCoreParams({
+                currency0: key.currency0,
+                currency1: key.currency1,
+                amount0Desired: 100 ether,
+                amount1Desired: 100 ether,
+                to: address(this)
+            })
+        );
         hook.setProtocolFeeCurrency(Currency.wrap(address(token0)), true);
         token0.mint(address(mockManager), 1_000_000 ether);
     }
@@ -121,7 +130,13 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
     /// @dev Reentrant swap parameters fired from inside settle: a small exact-input swap on the main pool
     ///      (token0 input, zeroForOne). Negative amountSpecified = exact-input.
     function _reentrySwapParams() internal pure returns (SwapParams memory) {
-        return SwapParams({zeroForOne: true, amountSpecified: -int256(0.01 ether), sqrtPriceLimitX96: 0});
+        return SwapParams({
+            zeroForOne: true, amountSpecified: -int256(0.01 ether), sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+        });
+    }
+
+    function _validExecutionPriceLimit(bool zeroForOne) internal pure returns (uint160) {
+        return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
     }
 
     function _setPublicSwapResumeTime(address tokenA, address tokenB, uint40 resumeTime) internal {
@@ -148,7 +163,11 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: evilKey,
-                params: SwapParams({zeroForOne: zeroForOne, amountSpecified: -int256(10 ether), sqrtPriceLimitX96: 0}),
+                params: SwapParams({
+                    zeroForOne: zeroForOne,
+                    amountSpecified: -int256(10 ether),
+                    sqrtPriceLimitX96: _validExecutionPriceLimit(zeroForOne)
+                }),
                 recipient: address(this)
             })
         );
@@ -181,7 +200,11 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: evilKey,
-                params: SwapParams({zeroForOne: zeroForOne, amountSpecified: -int256(10 ether), sqrtPriceLimitX96: 0}),
+                params: SwapParams({
+                    zeroForOne: zeroForOne,
+                    amountSpecified: -int256(10 ether),
+                    sqrtPriceLimitX96: _validExecutionPriceLimit(zeroForOne)
+                }),
                 recipient: address(this)
             })
         );
@@ -242,7 +265,11 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: evilKey,
-                params: SwapParams({zeroForOne: zeroForOne, amountSpecified: -int256(10 ether), sqrtPriceLimitX96: 0}),
+                params: SwapParams({
+                    zeroForOne: zeroForOne,
+                    amountSpecified: -int256(10 ether),
+                    sqrtPriceLimitX96: _validExecutionPriceLimit(zeroForOne)
+                }),
                 recipient: address(this)
             })
         );
@@ -281,7 +308,11 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: mismatchedKey,
-                params: SwapParams({zeroForOne: true, amountSpecified: -int256(10 ether), sqrtPriceLimitX96: 0}),
+                params: SwapParams({
+                    zeroForOne: true,
+                    amountSpecified: -int256(10 ether),
+                    sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+                }),
                 recipient: address(this)
             })
         );

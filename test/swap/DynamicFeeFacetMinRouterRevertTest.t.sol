@@ -97,7 +97,8 @@ contract DynamicFeeFacetMinRouterRevertTest is Test {
             trader: TRADER_A,
             preSqrtPriceX96: SQRT_PRICE_1_1,
             liquidity: 1_000_000 ether,
-            protocolFeeOnInput: true
+            protocolFeeOnInput: true,
+            sqrtPriceLimitX96: 1
         });
     }
 }

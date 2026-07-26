@@ -48,6 +48,7 @@ interface IDynamicFeeFacet {
         uint160 preSqrtPriceX96;
         uint128 liquidity;
         bool protocolFeeOnInput;
+        uint160 sqrtPriceLimitX96;
     }
 
     /// @notice Prepared fee quote returned before a swap.
@@ -85,15 +86,11 @@ interface IDynamicFeeFacet {
     /// @notice Prepares the dynamic fee for one hot-path swap settlement.
     /// @dev Reads/writes the facet's hook-owned dynamic fee state keyed by `params.poolId`.
     ///      Launch fee config/timestamp come from shared storage (`defaultLaunchFeeConfig`,
-    ///      `poolLaunchTimestamp[params.poolId]`). Hot path returns only the two fields used by
-    ///      SwapFacet settlement (`feeBps`, `estimatedGrossOutputAmount`); the full breakdown
-    ///      remains available via `quote`.
+    ///      `poolLaunchTimestamp[params.poolId]`). The hot path returns only the selected fee;
+    ///      final settlement amounts remain available through `quote`.
     /// @param params Hook-supplied swap and pool state (no launch fields).
     /// @return feeBps Final fee in bps (`max(launch, dynamic, base)`).
-    /// @return estimatedGrossOutputAmount Gross output estimate used by exact-output fee reservation.
-    function prepareSwapFee(PrepareSwapFeeParams calldata params)
-        external
-        returns (uint256 feeBps, uint256 estimatedGrossOutputAmount);
+    function prepareSwapFee(PrepareSwapFeeParams calldata params) external returns (uint256 feeBps);
 
     /// @notice Updates realized dynamic fee state after one completed swap.
     /// @param params Hook-supplied realized swap state.

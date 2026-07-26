@@ -93,7 +93,7 @@ Multiple sessions (possibly across ZCode, Claude Code, and Codex) may work in th
 - Before editing any dirty target file, run an ownership check with `git status --short` plus a path-scoped `git diff --name-only` or equivalent, so you know which files already carry uncommitted changes.
 - Before each `Edit`/`MultiEdit`, verify that every part of `old_string` originates from your own session: either it is committed content (present in `git show HEAD:<path>`), or it is content your session or your dispatched subagents wrote (it appears in your context as something you read or authored). If any part of `old_string` is working-tree content your session never produced and that is not in `HEAD`, treat it as another session's foreign change.
 - Never delete, revert, or overwrite another session's uncommitted changes. If you encounter foreign changes mixed into a file you are editing, edit around them, or stop and surface the situation to the human — do not "clean up" content you did not author.
-- If concurrent or foreign edits affect the same target files, stop writing and establish ownership or a merge strategy before any further edits.
+- If concurrent or foreign edits affect the same target files, compare the foreign content with the intended patch. Continue when they do not overlap and the patch can be applied around it; stop and establish a merge strategy only when they overlap or the relationship cannot be determined.
 - Treat out-of-scope existing changes as foreign-owned by default: report them or request direction. Only remove out-of-scope changes introduced by the current session or assigned writer.
 - Maintain one active writer per file set. Reviewers stay read-only; if review requires changes, route back to the assigned writer or explicitly transfer ownership before editing.
 - Gate or review failures do not authorize overwriting foreign edits. First determine whether the failure comes from owned changes or foreign changes.
@@ -101,15 +101,15 @@ Multiple sessions (possibly across ZCode, Claude Code, and Codex) may work in th
 
 ### Ownership Reconciliation (Post-Dispatch)
 
-When a dispatched writer subagent returns, the main session reconciles what that subagent actually changed against the working tree, to detect foreign (parallel-session) hunks mixed into the same files:
+When a dispatched writer subagent returns, the main session reconciles the writer's complete snapshot-to-current diff against a fresh rendering, including tracked, untracked, and ignored requested paths:
 
-1. Before dispatching a writer, capture `BASE` = `$(git stash create || git rev-parse HEAD)`. `git stash create` is non-destructive (it returns a commit object without moving anything) and anchors all uncommitted content present at dispatch time.
-2. The writer's output contract includes its `git diff $BASE -- <files>` as ground truth (the honest record of which hunks it authored).
-3. After the writer returns, run `bash script/harness/ownership-reconcile.sh "$BASE" --reported-diff <subagent.diff> --files <paths...>`. It performs mechanical hunk-set subtraction: worktree hunks present in the reported diff are `owned`; worktree hunks absent from the reported diff are `foreign`.
-4. If the verdict is `foreign-detected`: **STOP, report the foreign hunks to the human, and do NOT revert them.** The only permitted remediation is for hunks the session explicitly authored or that were retry-routed to a writer. Foreign hunks have exactly one exit: report to the human.
+1. Before dispatching a writer, the caller creates a private `OWNERSHIP_SNAPSHOT_DIR` with `mktemp -d` and runs `bash script/harness/capture-ownership-baseline.sh "$OWNERSHIP_SNAPSHOT_DIR" --files <paths...>`. The bundle records one non-destructive `git stash create` tracked base (falling back to `HEAD` only when that command succeeds with empty output) and private copies of requested untracked or ignored regular files and symlinks.
+2. The writer's output contract includes `bash script/harness/render-ownership-diff.sh "$OWNERSHIP_SNAPSHOT_DIR" --files <paths...> > <subagent.diff>`. This is the byte-sorted, complete baseline-to-current diff; it may validly be empty.
+3. After the writer returns, run `bash script/harness/ownership-reconcile.sh "$OWNERSHIP_SNAPSHOT_DIR" --reported-diff <subagent.diff> --files <paths...>`. It freshly renders the same complete diff and compares it byte-for-byte with the report, so a same-line rewrite or binary, mode, symlink, deletion, or untracked/ignored change that occurs after the writer renders its report cannot still receive `clean`. After recording the verdict, delete exactly that private `mktemp -d` directory.
+4. A dirty requested target is not itself a conflict. Stop only when the writer's intended patch overlaps foreign working-tree content or the exact reconciliation verdict is `foreign-detected`; preserve and report that foreign content without reverting it.
 5. If the verdict is `clean`: proceed to the review/gate step.
 
-The reconciliation is advisory tooling — it does set arithmetic only; the ownership judgment (owned vs foreign) still belongs to the session per the rules above. A foreign-detected result is a signal to stop and surface, never a license to revert.
+The reconciliation is advisory evidence — it does not make the ownership judgment for the session. A `foreign-detected` result is a signal to stop and surface, never a license to revert.
 
 ### Pre-Edit Reminder Hook
 
@@ -195,6 +195,7 @@ Before final response, check:
 
 - all requested files or items are handled, or marked blocked
 - no edited path is outside the classified surface
+- every dispatched writer has a captured ownership snapshot, rendered report, and fresh `clean` exact reconciliation result, or a `foreign-detected` result is surfaced as blocked
 - validation command and result are fresh
 - final answer reports only completed work, validation, and blockers
 

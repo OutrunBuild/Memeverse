@@ -513,134 +513,162 @@ if [ "${ORCHESTRATION_TEST_FOCUS-}" = "pre-edit-check" ]; then
     exit 0
 fi
 
-# Ownership reconcile: a dispatched writer's self-reported `git diff $BASE`
-# (ground truth) is reconciled against the live working tree by
-# ownership-reconcile.sh. It does mechanical hunk-set subtraction — worktree
-# hunks present in the reported diff are owned, absent ones are foreign — and
-# is advisory only (always exit 0 for reconciliation outcomes; exit 2 is for
-# usage errors). Three cases are pinned: clean, foreign-detected, and usage
-# error, so deleting any classification branch turns this red.
+# Ownership reconciliation snapshots both the tracked worktree base and every
+# requested untracked/ignored file. The writer reports a deterministic complete
+# baseline-to-current diff; reconciliation succeeds only when its bytes exactly
+# match a freshly rendered current diff.
 assert_ownership_reconcile() {
-    local script="$repo_root/script/harness/ownership-reconcile.sh"
+    local capture="$repo_root/script/harness/capture-ownership-baseline.sh"
+    local render="$repo_root/script/harness/render-ownership-diff.sh"
+    local reconcile="$repo_root/script/harness/ownership-reconcile.sh"
     local scratch="$tmp_dir/ownership-reconcile.repo"
-    local target="$scratch/src/Foo.sol"
+    local snapshot="$tmp_dir/ownership-reconcile.snapshot"
+    local duplicate_snapshot="$tmp_dir/ownership-reconcile.duplicate.snapshot"
     local reported="$tmp_dir/ownership-reconcile.reported.diff"
-    local base
     local out
     local status
+    local -a files=(
+        src/tracked.txt
+        src/deleted-before-dispatch.txt
+        notes/present.txt
+        new/absent.txt
+        ignored/artifact.bin
+        src/empty.txt
+        script/run.sh
+        notes/present.link
+    )
 
     rm -rf "$scratch"
-    mkdir -p "$scratch/src"
+    mkdir -p "$scratch/src" "$scratch/script"
     (
         cd "$scratch"
         git init -q
         git config user.email test@example.invalid
         git config user.name "Harness Test"
-        mkdir -p src
-        # The fixture is tall on purpose: the reconciler keys hunks by identity
-        # (path, new_start, new_count) with NO content comparison. To produce a
-        # foreign hunk the owned and foreign edits must fall into SEPARATE git
-        # hunks, so the foreign one gets a distinct line range. git merges two
-        # edits into one hunk when <= 2*context (default context 3 -> <= 6)
-        # unchanged lines separate them; here the edits sit on lines 2 and 13,
-        # 10 unchanged lines apart, so they never merge.
-        {
-            echo 'contract Foo {'
-            for i in a b c d e f g h i j; do
-                printf '    uint256 %s;\n' "$i"
-            done
-            echo '}'
-        } >src/Foo.sol
+        printf 'ignored/\n' >.gitignore
+        printf 'tracked baseline\n' >src/tracked.txt
+        printf 'deleted tracked baseline\n' >src/deleted-before-dispatch.txt
+        : >src/empty.txt
+        printf '#!/usr/bin/env bash\nexit 0\n' >script/run.sh
+        chmod 0644 script/run.sh
         git add .
         git commit -q -m baseline
+        git config diff.noprefix true
+        git config diff.mnemonicPrefix true
 
-        # Capture BASE before any writer edit. `git stash create` returns empty
-        # in a clean scratch repo (nothing to stash), so fall back to HEAD — the
-        # same fallback the session contract documents.
-        base="$(git stash create || true)"
-        [ -n "$base" ] || base="$(git rev-parse HEAD)"
+        # The snapshot must retain pre-dispatch tracked work as its baseline,
+        # rather than comparing the writer's work against HEAD.
+        printf 'pre-dispatch tracked edit\n' >src/tracked.txt
+        rm src/deleted-before-dispatch.txt
 
-        # --- Case 1: clean (reported diff == worktree diff) ---------------
-        # One writer edit (line 2, field `a`); the reported diff honestly
-        # records exactly that edit, so the lone hunk is owned and nothing is
-        # foreign.
-        printf '    uint256 a; // owned edit\n' >src/_new
-        awk 'NR==2{while((getline l <"src/_new")>0)print l;next}1' src/Foo.sol >src/_tmp && mv src/_tmp src/Foo.sol && rm -f src/_new
-        git diff "$base" -- src/Foo.sol >"$reported"
+        # Both a normal untracked file and an ignored binary file must be
+        # privately copied into the snapshot. An absent path and an empty
+        # tracked file cover additions and deletions without special casing.
+        mkdir -p notes ignored
+        printf 'untracked baseline\n' >notes/present.txt
+        ln -s present.txt notes/present.link
+        printf 'ignored baseline\0bytes\n' >ignored/artifact.bin
+        mkdir "$snapshot"
+        bash "$capture" "$snapshot" --files "${files[@]}" >/dev/null
 
-        out="$(bash "$script" "$base" --reported-diff "$reported" --files src/Foo.sol)"
+        [ "$(tr -d '\n' <"$snapshot/tracked-base")" != "$(git rev-parse HEAD)" ]
+        jq -e '
+          [.files[].path] == [
+            "ignored/artifact.bin",
+            "new/absent.txt",
+            "notes/present.link",
+            "notes/present.txt",
+            "script/run.sh",
+            "src/deleted-before-dispatch.txt",
+            "src/empty.txt",
+            "src/tracked.txt"
+          ] and
+          (.files[] | select(.path == "notes/present.txt") |
+            .state == "untracked-present" and .type == "regular" and
+            (.mode | type == "string") and
+            (.content_hash | test("^[0-9a-f]{64}$"))) and
+          (.files[] | select(.path == "notes/present.link") |
+            .state == "untracked-present" and .type == "symlink") and
+          (.files[] | select(.path == "ignored/artifact.bin") |
+            .state == "untracked-present" and .type == "regular") and
+          (.files[] | select(.path == "new/absent.txt") | .state == "absent") and
+          (.files[] | select(.path == "src/deleted-before-dispatch.txt") | .state == "absent") and
+          (.files[] | select(.path == "src/tracked.txt") | .state == "tracked")
+        ' "$snapshot/manifest.json" >/dev/null
+        cmp "$snapshot/untracked/notes/present.txt" notes/present.txt
+        cmp "$snapshot/untracked/ignored/artifact.bin" ignored/artifact.bin
+        [ -L "$snapshot/untracked/notes/present.link" ]
+        [ "$(readlink "$snapshot/untracked/notes/present.link")" = "present.txt" ]
+
+        # A no-change report is valid and must reconcile cleanly even though it
+        # is empty. This pins the reported-diff empty-file contract.
+        bash "$render" "$snapshot" --files "${files[@]}" >"$reported"
+        [ ! -s "$reported" ]
+        out="$(bash "$reconcile" "$snapshot" --reported-diff "$reported" --files "${files[@]}")"
         jq -e '
           .verdict == "clean" and
-          (.foreign_hunks | length) == 0 and
-          (.owned_hunks | length) >= 1
+          .reported_sha256 == .actual_sha256 and
+          (.reported_sha256 | test("^[0-9a-f]{64}$")) and
+          .files == [
+            "ignored/artifact.bin",
+            "new/absent.txt",
+            "notes/present.link",
+            "notes/present.txt",
+            "script/run.sh",
+            "src/deleted-before-dispatch.txt",
+            "src/empty.txt",
+            "src/tracked.txt"
+          ]
         ' <<<"$out" >/dev/null
 
-        # --- Case 2: foreign-detected (worktree has an extra hunk) -------
-        # Reset to BASE, make the owned edit (line 2) and report it, then add a
-        # SECOND edit on line 11 (field `j`) that the writer never reported —
-        # simulating a parallel session silently dropping a hunk into the same
-        # file. The two edits are 9 lines apart, so git emits two separate
-        # hunks; the reported diff carries only the first, so the second is
-        # classified foreign.
-        git checkout -q -- src/Foo.sol
-        printf '    uint256 a; // owned edit\n' >src/_new
-        awk 'NR==2{while((getline l <"src/_new")>0)print l;next}1' src/Foo.sol >src/_tmp && mv src/_tmp src/Foo.sol && rm -f src/_new
-        git diff "$base" -- src/Foo.sol >"$reported"
-        printf '    uint256 j; // foreign edit\n' >src/_new
-        awk 'NR==11{while((getline l <"src/_new")>0)print l;next}1' src/Foo.sol >src/_tmp && mv src/_tmp src/Foo.sol && rm -f src/_new
+        # Report the complete writer-owned change set. It spans tracked,
+        # untracked, ignored, absent, deleted-empty, mode-only, and symlink
+        # entries, so the helper APIs cannot rely on Git's tracked diff alone.
+        printf 'tracked writer edit\n' >src/tracked.txt
+        printf 'untracked writer edit\n' >notes/present.txt
+        ln -sfn ../ignored/artifact.bin notes/present.link
+        printf 'ignored writer\0artifact\n' >ignored/artifact.bin
+        mkdir -p new
+        printf 'created after capture\n' >new/absent.txt
+        printf 'recreated after capture\n' >src/deleted-before-dispatch.txt
+        rm src/empty.txt
+        chmod 0755 script/run.sh
+        bash "$render" "$snapshot" --files "${files[@]}" >"$reported"
+        grep -Fq 'diff --git a/src/tracked.txt b/src/tracked.txt' "$reported"
+        grep -Fq -- '-pre-dispatch tracked edit' "$reported"
+        ! grep -Fq -- '-tracked baseline' "$reported"
+        grep -Fq 'diff --git a/src/deleted-before-dispatch.txt b/src/deleted-before-dispatch.txt' "$reported"
+        grep -Fq 'diff --git a/ignored/artifact.bin b/ignored/artifact.bin' "$reported"
+        grep -Fq 'diff --git a/new/absent.txt b/new/absent.txt' "$reported"
+        grep -Fq 'deleted file mode 100644' "$reported"
+        grep -Fq 'old mode 100644' "$reported"
+        grep -Fq 'new mode 100755' "$reported"
+        grep -Fq 'GIT binary patch' "$reported"
 
-        out="$(bash "$script" "$base" --reported-diff "$reported" --files src/Foo.sol)"
+        out="$(bash "$reconcile" "$snapshot" --reported-diff "$reported" --files "${files[@]}")"
+        jq -e '
+          .verdict == "clean" and
+          .reported_sha256 == .actual_sha256
+        ' <<<"$out" >/dev/null
+
+        # Rewriting the same hunk after the report must be foreign. The former
+        # hunk-set scheme incorrectly called this clean because its line range
+        # did not change; byte-for-byte complete-diff comparison must reject it.
+        printf 'same hunk rewritten after report\n' >src/tracked.txt
+        out="$(bash "$reconcile" "$snapshot" --reported-diff "$reported" --files "${files[@]}")"
         jq -e '
           .verdict == "foreign-detected" and
-          (.foreign_hunks | length) == 1 and
-          (.foreign_hunks[0].path == "src/Foo.sol")
+          .reported_sha256 != .actual_sha256 and
+          (.actual_sha256 | test("^[0-9a-f]{64}$"))
         ' <<<"$out" >/dev/null
 
-        # --- Case 3: usage error -> exit 2 -------------------------------
-        # Missing BASE and missing --reported-diff each yield exit 2 with a
-        # usage message on stderr; the tool never blocks on a real reconcile.
+        # Canonical duplicate paths are rejected before snapshot capture.
+        mkdir "$duplicate_snapshot"
         set +e
-        bash "$script" --reported-diff "$reported" --files src/Foo.sol >/dev/null 2>/dev/null
+        bash "$capture" "$duplicate_snapshot" --files src/tracked.txt ./src/tracked.txt >/dev/null 2>/dev/null
         status=$?
         set -e
-        [ "$status" -eq 2 ] || { echo "missing BASE: expected exit 2, got $status" >&2; return 1; }
-
-        set +e
-        bash "$script" "$base" --files src/Foo.sol >/dev/null 2>/dev/null
-        status=$?
-        set -e
-        [ "$status" -eq 2 ] || { echo "missing --reported-diff: expected exit 2, got $status" >&2; return 1; }
-
-        # --- Case 4: git diff failure -> exit 2 (fail-loud, never false clean) -
-        # Shadow git so `diff` fails (exit 128) but other subcommands
-        # (rev-parse) delegate to the real git. With the bug (process
-        # substitution swallowing the inner pipeline's status) this would emit
-        # verdict:"clean" + exit 0 and let the session skip reconciliation — the
-        # tool's worst failure mode. The fix must exit 2 instead. $tmp_dir is the
-        # shared scratch directory created at the top of this file; the wrapper
-        # lives in a dedicated bin subdir so prepending that dir to PATH shadows
-        # `git` by name.
-        local fake_bin="$tmp_dir/ownership-reconcile.fake-bin"
-        local real_git
-        real_git="$(command -v git)"
-        mkdir -p "$fake_bin"
-        cat >"$fake_bin/git" <<EOF
-#!/usr/bin/env bash
-if [ "\$1" = "diff" ]; then
-  echo "fatal: simulated git diff failure" >&2
-  exit 128
-fi
-exec "$real_git" "\$@"
-EOF
-        chmod +x "$fake_bin/git"
-        # Reset to a clean-ish tree for BASE validity, then run with git shadowed.
-        git checkout -q -- src/Foo.sol 2>/dev/null || true
-        set +e
-        out="$(PATH="$fake_bin:$PATH" bash "$script" "$base" \
-            --reported-diff "$reported" --files src/Foo.sol 2>/dev/null)"
-        status=$?
-        set -e
-        [ "$status" -eq 2 ] || { echo "git diff failure: expected exit 2, got $status" >&2; return 1; }
+        [ "$status" -eq 2 ] || { echo "canonical duplicate: expected exit 2, got $status" >&2; return 1; }
     )
 }
 

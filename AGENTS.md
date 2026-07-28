@@ -162,7 +162,7 @@ For `prod-semantic` work, use this sequence:
 8. run `code_review_roles`
 9. run the selected gate profile and report the result
 
-`spec-reviewer` is a main-session orchestration hook, not a `gate.sh` routing field. `requires_human_confirmation` remains a separate policy signal for spec/doc paths.
+`spec-reviewer` is a main-session orchestration hook, not a `gate.sh` routing field. A `requires_spec_authorization_evidence=true` result requires the recorded authorization source and coverage before spec edits; see `.harness/runtime/main-session-contract.md`. The gate does not validate that natural-language evidence.
 
 Production Solidity semantic changes without structural escalation require a Risk Analysis Record before selecting `direct-review`. If analysis is incomplete or uncertain, use at least `full-review`.
 

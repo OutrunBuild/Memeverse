@@ -1548,7 +1548,7 @@ structural_escalation=false
 risk_analysis_summary_required=false
 requires_main_risk_analysis=false
 requires_doc_editorial_attestation=false
-requires_human_confirmation=false
+requires_spec_authorization_evidence=false
 semantic_escalation_json='null'
 default_orchestration_profile=""
 candidate_orchestration_profile=""
@@ -1575,7 +1575,7 @@ mapfile -t spec_paths < <(jq -r '.orchestration_rules.spec_paths[]? // empty' "$
 if [ "${#spec_paths[@]}" -gt 0 ]; then
     for changed_file in "${changed_files[@]}"; do
         if match_path_against_patterns "$changed_file" "${spec_paths[@]}"; then
-            requires_human_confirmation=true
+            requires_spec_authorization_evidence=true
             break
         fi
     done
@@ -1674,36 +1674,6 @@ else
         for review_role in "${review_roles[@]}"; do
             append_unique code_review_roles "$review_role"
         done
-    elif [ "$orchestration_profile" = "delegated" ]; then
-        while IFS= read -r delegated_rule; do
-            [ -n "$delegated_rule" ] || continue
-            mapfile -t delegated_paths < <(jq -r '.paths[]? // empty' <<<"$delegated_rule")
-            mapfile -t delegated_exclude_paths < <(jq -r '.exclude_paths[]? // empty' <<<"$delegated_rule")
-            if [ "${#delegated_paths[@]}" -eq 0 ]; then
-                continue
-            fi
-            rule_path_matched=0
-            for changed_file in "${changed_files[@]}"; do
-                if [ "${#delegated_paths[@]}" -gt 0 ] && ! match_path_against_patterns "$changed_file" "${delegated_paths[@]}"; then
-                    continue
-                fi
-                if [ "${#delegated_exclude_paths[@]}" -gt 0 ] && match_path_against_patterns "$changed_file" "${delegated_exclude_paths[@]}"; then
-                    continue
-                fi
-                rule_path_matched=1
-                break
-            done
-
-            [ "$rule_path_matched" -eq 1 ] || continue
-
-            mapfile -t delegated_review_roles < <(jq -r '.reviewers[]? // empty' <<<"$delegated_rule")
-            for review_role in "${delegated_review_roles[@]}"; do
-                append_unique code_review_roles "$review_role"
-            done
-            if [ "$(jq -r '.requires_human_confirmation // false' <<<"$delegated_rule")" = "true" ]; then
-                requires_human_confirmation=true
-            fi
-        done < <(jq -c '.delegated_review_rules[]? // empty' "$policy_file")
     elif [ "$orchestration_profile" = "full-review" ] || [ "$orchestration_profile" = "full-subagent" ]; then
         mapfile -t review_roles < <(jq -r --arg class "$change_class" '.full_review_matrix[$class][]? // empty' "$policy_file")
         for review_role in "${review_roles[@]}"; do
@@ -1744,7 +1714,7 @@ classification_record_json="$(jq -cn \
     --argjson risk_analysis_summary_required "$risk_analysis_summary_required" \
     --argjson requires_doc_editorial_attestation "$requires_doc_editorial_attestation" \
     --argjson doc_round_required "$doc_round_required" \
-    --argjson requires_human_confirmation "$requires_human_confirmation" \
+    --argjson requires_spec_authorization_evidence "$requires_spec_authorization_evidence" \
     --arg orchestration_profile "$orchestration_profile" \
     --arg default_orchestration_profile "$default_orchestration_profile" \
     --arg candidate_orchestration_profile "$candidate_orchestration_profile" \
@@ -1782,7 +1752,7 @@ classification_record_json="$(jq -cn \
       doc_editorial_attestation: null,
       requires_doc_editorial_attestation: $requires_doc_editorial_attestation,
       doc_round_required: $doc_round_required,
-      requires_human_confirmation: $requires_human_confirmation,
+      requires_spec_authorization_evidence: $requires_spec_authorization_evidence,
       orchestration_profile: $orchestration_profile,
       verification_profile: $verification_profile,
       harness_writer_roles: $harness_writer_roles,

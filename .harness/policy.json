@@ -1,27 +1,4 @@
 {
-  "delegated_review_rules": [
-    {
-      "id": "harness-control",
-      "paths": [
-        "^\\.harness/.*$",
-        "^script/harness/.*$",
-        "^\\.github/workflows/.*$"
-      ],
-      "requires_human_confirmation": false,
-      "reviewers": []
-    },
-    {
-      "exclude_paths": [
-        "(^|.*/)(spec|specs)/.*\\.(md|mdx)$"
-      ],
-      "id": "non-spec-doc",
-      "paths": [
-        "^docs/.*$"
-      ],
-      "requires_human_confirmation": false,
-      "reviewers": []
-    }
-  ],
   "full_review_matrix": {
     "no-op": [],
     "non-semantic": [],

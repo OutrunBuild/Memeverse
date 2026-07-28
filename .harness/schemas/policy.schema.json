@@ -11,7 +11,6 @@
     "write_roles",
     "risk_rules",
     "orchestration_review_roles",
-    "delegated_review_rules",
     "full_review_matrix",
     "orchestration_rules",
     "verification_profiles",
@@ -56,11 +55,6 @@
         "prod-semantic-risk-analysis-passed": { "$ref": "#/$defs/reviewRoleArray" }
       },
       "additionalProperties": false
-    },
-    "delegated_review_rules": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/delegatedReviewRule" },
-      "uniqueItems": true
     },
     "full_review_matrix": {
       "type": "object",
@@ -160,18 +154,6 @@
       "type": "array",
       "items": { "$ref": "#/$defs/reviewRoleName" },
       "uniqueItems": true
-    },
-    "delegatedReviewRule": {
-      "type": "object",
-      "required": ["id", "paths", "reviewers", "requires_human_confirmation"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "paths": { "$ref": "#/$defs/stringArray" },
-        "exclude_paths": { "$ref": "#/$defs/stringArray" },
-        "reviewers": { "$ref": "#/$defs/reviewRoleArray" },
-        "requires_human_confirmation": { "type": "boolean" }
-      },
-      "additionalProperties": false
     },
     "orchestrationRules": {
       "type": "object",

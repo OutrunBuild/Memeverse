@@ -277,6 +277,58 @@ assert_invalid_test_mapping_references_are_rejected() {
     grep -Fq "\"reason\":\"$fmt_reason\"" "$case_stderr"
 }
 
+assert_delegated_review_rules_are_rejected_and_removed() {
+    local repo="$tmp_dir/delegated-review-rules.repo"
+    local stderr="$tmp_dir/delegated-review-rules.stderr"
+    local policy="$repo/.harness/policy.json"
+    local status
+
+    mkdir -p "$repo/script/harness" "$repo/.harness"
+    cp script/harness/gate.sh "$repo/script/harness/gate.sh"
+    cp -R .harness/policy.json .harness/schemas "$repo/.harness/"
+    materialize_test_mapping_tests "$policy" "$repo"
+    jq '.delegated_review_rules = []' \
+        "$policy" >"$policy.tmp" && mv "$policy.tmp" "$policy"
+
+    (
+        cd "$repo"
+        git init -q
+        git config user.email test@example.invalid
+        git config user.name "Harness Test"
+        git add .
+        git commit -q -m baseline
+        printf 'dirty\n' >README.md
+    )
+
+    set +e
+    (
+        cd "$repo"
+        bash script/harness/gate.sh --classify-only
+    ) >/dev/null 2>"$stderr"
+    status=$?
+    set -e
+
+    [ "$status" -ne 0 ] || {
+        echo "delegated_review_rules top-level field was accepted" >&2
+        return 1
+    }
+    grep -Fqx '[gate] ERROR: policy schema validation failed' "$stderr"
+
+    for production_file in \
+        .harness/policy.json \
+        .harness/schemas/policy.schema.json \
+        script/harness/gate.sh; do
+        if grep -Fq 'delegated_review_rules' "$production_file"; then
+            echo "delegated_review_rules remains in $production_file" >&2
+            return 1
+        fi
+    done
+    if grep -Fq 'delegatedReviewRule' .harness/schemas/policy.schema.json; then
+        echo 'delegatedReviewRule remains in policy schema' >&2
+        return 1
+    fi
+}
+
 # CI-002 regression: shared fee/facet source files consumed by multiple facets
 # must be registered in each consuming rule's paths, so a standalone change to
 # any shared file selects the consumer suites (settlement reentrancy / dynamic
@@ -828,6 +880,8 @@ EOF
 assert_no_removed_fields() {
     local record="$1"
     jq -e '
+      (has("requires_human_confirmation") | not) and
+      has("requires_spec_authorization_evidence") and
       (has("risk_tier") | not) and
       (has("high-risk") | not) and
       (has("high_risk_paths") | not) and
@@ -856,7 +910,8 @@ jq -e '
   (has("spec_review_required") | not) and
   .code_writer_roles == [] and
   .code_review_roles == [] and
-  .doc_round_required == false
+  .doc_round_required == false and
+  .requires_spec_authorization_evidence == false
 ' "$docs_record" >/dev/null
 assert_no_removed_fields "$docs_record"
 
@@ -883,7 +938,7 @@ jq -e '
   (has("spec_review_required") | not) and
   .code_writer_roles == [] and
   .code_review_roles == [] and
-  .requires_human_confirmation == true and
+  .requires_spec_authorization_evidence == true and
   .doc_round_required == false
 ' "$spec_record" >/dev/null
 assert_no_removed_fields "$spec_record"
@@ -944,6 +999,52 @@ jq -e '
 ' "$planned_test_record" >/dev/null
 assert_no_removed_fields "$planned_test_record"
 
+planned_spec_record="$(run_classify_with_changed_args plannedspec 0 --planned-files docs/spec/foo.md)"
+jq -e '
+  .changed_files == ["docs/spec/foo.md"] and
+  .file_input_mode == "planned-files" and
+  .requires_spec_authorization_evidence == true
+' "$planned_spec_record" >/dev/null
+assert_no_removed_fields "$planned_spec_record"
+
+planned_non_spec_record="$(run_classify_with_changed_args plannednonspec 0 --planned-files docs/foo.md)"
+jq -e '
+  .changed_files == ["docs/foo.md"] and
+  .file_input_mode == "planned-files" and
+  .requires_spec_authorization_evidence == false
+' "$planned_non_spec_record" >/dev/null
+assert_no_removed_fields "$planned_non_spec_record"
+
+planned_mixed_spec_record="$(run_classify_with_changed_args plannedmixedspec 0 --planned-files src/verse/MemeverseLauncher.sol docs/spec/verse/state-machines.md)"
+jq -e '
+  .changed_files == ["src/verse/MemeverseLauncher.sol", "docs/spec/verse/state-machines.md"] and
+  .file_input_mode == "planned-files" and
+  .change_class == "prod-semantic" and
+  .orchestration_profile == "full-review" and
+  .harness_writer_roles == ["process-implementer"] and
+  .doc_round_required == true and
+  .code_writer_roles == ["solidity-implementer"] and
+  (.code_review_roles | sort) == ["logic-reviewer", "refinement-reviewer", "security-reviewer"] and
+  .requires_spec_authorization_evidence == true and
+  (.residual_risks[] | select(.rule_id == "planned-solidity-classification"))
+' "$planned_mixed_spec_record" >/dev/null
+assert_no_removed_fields "$planned_mixed_spec_record"
+
+planned_mixed_non_spec_record="$(run_classify_with_changed_args plannedmixednonspec 0 --planned-files src/verse/MemeverseLauncher.sol docs/TRACEABILITY.md)"
+jq -e '
+  .changed_files == ["src/verse/MemeverseLauncher.sol", "docs/TRACEABILITY.md"] and
+  .file_input_mode == "planned-files" and
+  .change_class == "prod-semantic" and
+  .orchestration_profile == "full-review" and
+  .harness_writer_roles == ["process-implementer"] and
+  .doc_round_required == true and
+  .code_writer_roles == ["solidity-implementer"] and
+  (.code_review_roles | sort) == ["logic-reviewer", "refinement-reviewer", "security-reviewer"] and
+  .requires_spec_authorization_evidence == false and
+  (.residual_risks[] | select(.rule_id == "planned-solidity-classification"))
+' "$planned_mixed_non_spec_record" >/dev/null
+assert_no_removed_fields "$planned_mixed_non_spec_record"
+
 mixed_changed="$(write_changed_files mixed src/verse/MemeverseLauncher.sol docs/spec/verse/state-machines.md)"
 mixed_record="$(run_classify mixed "$mixed_changed" "$src_diff")"
 jq -e '
@@ -954,7 +1055,7 @@ jq -e '
   .code_writer_roles == ["solidity-implementer"] and
   (.code_review_roles | sort) == ["logic-reviewer", "refinement-reviewer", "security-reviewer"] and
   .doc_round_required == true and
-  .requires_human_confirmation == true
+  .requires_spec_authorization_evidence == true
 ' "$mixed_record" >/dev/null
 assert_no_removed_fields "$mixed_record"
 
@@ -968,7 +1069,7 @@ jq -e '
   .code_writer_roles == ["solidity-implementer"] and
   (.code_review_roles | sort) == ["logic-reviewer", "refinement-reviewer", "security-reviewer"] and
   .doc_round_required == true and
-  .requires_human_confirmation == false
+  .requires_spec_authorization_evidence == false
 ' "$mixed_non_spec_record" >/dev/null
 assert_no_removed_fields "$mixed_non_spec_record"
 
@@ -1036,6 +1137,7 @@ jq -e '
 assert_no_removed_fields "$default_record"
 
 assert_invalid_test_mapping_references_are_rejected
+assert_delegated_review_rules_are_rejected_and_removed
 assert_shared_facet_paths_map_to_consumers
 
 assert_pre_edit_check_ownership_guard

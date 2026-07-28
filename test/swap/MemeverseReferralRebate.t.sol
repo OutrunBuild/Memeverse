@@ -79,7 +79,9 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
     function testSwap_WithReferrer_AccruesRebateInEngine() external {
         uint256 treasuryBefore = _balanceOf(key.currency0, treasury);
 
+        hook.beginAccountSession();
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(REFERRER));
+        hook.endAccountSession();
 
         assertGt(engine.pendingRebateOf(REFERRER, key.currency0), 0, "rebate accrued");
         assertGt(_balanceOf(key.currency0, treasury), treasuryBefore, "treasury still funded");
@@ -90,7 +92,9 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
     function testSwap_NoReferrer_FullProtocolFeeToTreasury() external {
         uint256 treasuryBefore = _balanceOf(key.currency0, treasury);
 
+        hook.beginAccountSession();
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), bytes(""));
+        hook.endAccountSession();
 
         assertEq(engine.pendingRebateOf(REFERRER, key.currency0), 0, "no rebate without referrer");
         assertGt(_balanceOf(key.currency0, treasury), treasuryBefore, "treasury funded");
@@ -100,7 +104,9 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
     function testSwap_SelfReferral_IsAllowed() external {
         address self = address(this);
 
+        hook.beginAccountSession();
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(self));
+        hook.endAccountSession();
 
         assertGt(engine.pendingRebateOf(self, key.currency0), 0, "self-referral accrued");
     }
@@ -113,7 +119,9 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
     ///         pending amount and the ledger is zeroed.
     function testClaimRebate_TransfersAndZeroesBalance() external {
         address recipient = makeAddr("rebateRecipient");
+        hook.beginAccountSession();
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(REFERRER));
+        hook.endAccountSession();
         uint256 pending = engine.pendingRebateOf(REFERRER, key.currency0);
 
         uint256 recipientBefore = _balanceOf(key.currency0, recipient);
@@ -137,7 +145,9 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
 
     /// @notice Zero-address recipient is rejected to avoid burning rebates silently.
     function testClaimRebate_RevertsWhenRecipientZero() external {
+        hook.beginAccountSession();
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(REFERRER));
+        hook.endAccountSession();
         vm.prank(REFERRER);
         vm.expectRevert(IMemeverseUniswapHook.ZeroAddress.selector);
         engine.claimRebate(key.currency0, address(0));
@@ -165,7 +175,9 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
         uint256 expectedTreasuryDelta = protocolFeeAmount - expectedRebate;
 
         uint256 treasuryBefore = _balanceOf(key.currency0, treasury);
+        hook.beginAccountSession();
         integrator.swap(key, params, address(this), _packReferrer(REFERRER));
+        hook.endAccountSession();
 
         assertApproxEqAbs(engine.pendingRebateOf(REFERRER, key.currency0), expectedRebate, 2, "rebate ~= 10%");
         assertApproxEqAbs(
@@ -182,12 +194,16 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
     function testInvariant_EngineHoldsAtLeastAllPendingRebates() external {
         address r2 = address(0xBEEF);
 
+        hook.beginAccountSession();
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(REFERRER));
+        hook.endAccountSession();
 
         uint256 firstPending = engine.pendingRebateOf(REFERRER, key.currency0);
         assertGe(_balanceOf(key.currency0, address(engine)), firstPending, "first swap rebate solvency violated");
 
+        hook.beginAccountSession();
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(r2));
+        hook.endAccountSession();
 
         uint256 pending = engine.pendingRebateOf(REFERRER, key.currency0) + engine.pendingRebateOf(r2, key.currency0);
         assertGe(_balanceOf(key.currency0, address(engine)), pending, "second swap rebate solvency violated");
@@ -211,7 +227,9 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
         token0.approve(address(hook), type(uint256).max);
 
         // Sanity: a normal public swap with this referrer WOULD accrue rebate (the path this test guards).
+        hook.beginAccountSession();
         integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(REFERRER));
+        hook.endAccountSession();
         uint256 accruedFromPublicSwap = engine.pendingRebateOf(REFERRER, key.currency0);
         assertGt(accruedFromPublicSwap, 0, "public swap accrues rebate");
 

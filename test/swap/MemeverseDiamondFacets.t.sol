@@ -244,6 +244,8 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
             new DynamicFeeFacetReplacementMock(IPoolManager(address(mockManager)));
         _assertFacetReplacement(hook.DYNAMIC_FEE_FACET_ROLE(), hook.dynamicFeeFacet(), address(replacement));
 
+        // Open a session so the public swap passes the session gate and reaches the replacement facet.
+        hook.beginAccountSession();
         BalanceDelta delta = mockManager.swapAsUnlocked(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -10_000, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),

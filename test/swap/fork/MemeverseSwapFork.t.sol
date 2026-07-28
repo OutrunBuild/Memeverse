@@ -83,7 +83,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         // exact-output requires amountInMaximum > 0 (router AmountInMaximumRequired); use quoted
         // input. exact-input sets amountInMaximum to the specified input magnitude.
         uint256 amountInMaximum = exactOutput ? quote.estimatedUserInputAmount : 100 ether;
-        BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, amountInMaximum, "");
+        BalanceDelta delta = _swapInSession(key, params, 0, amountInMaximum, "");
 
         (, uint256 fee0After, uint256 fee1After) = _hook().poolInfo(poolId);
         // Hook credits LP fee-per-share on the INPUT currency side (it keys off ctx.currencyIn /
@@ -147,9 +147,11 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        // PublicSwapDisabled fires in hook beforeSwap. The deployed mainnet V4 (fork block) wraps hook
-        // reverts with a selector that differs from the lib v4-core build, so expectRevert() validates
-        // the protection fires (setUp isolates PublicSwapDisabled as the only revert cause here).
+        // PublicSwapDisabled fires in hook beforeSwap. Open a session so the swap reaches the public-swap
+        // gate, not the session gate. The deployed mainnet V4 (fork block) wraps hook reverts with a selector
+        // that differs from the lib v4-core build, so expectRevert() validates the protection fires (setUp
+        // isolates PublicSwapDisabled as the only revert cause here).
+        _hook().beginAccountSession();
         vm.expectRevert();
         router.swap(key, params, address(this), block.timestamp, 0, 10 ether, "");
     }
@@ -162,7 +164,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        router.swap(key, params, address(this), block.timestamp, 0, 10 ether, "");
+        _swapInSession(key, params, 0, 10 ether, "");
     }
 
     function test_RevertWhen_NativeCurrencyUnsupported() external {
@@ -199,6 +201,9 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
 
+        // Open the session BEFORE arming the emit expectation so beginAccountSession's hook call does not
+        // interleave with the ProtocolFeeCollected match.
+        _hook().beginAccountSession();
         // Expect the protocol fee to be collected on the input leg (currency0). Match indexed poolId
         // (topic1) and currency (topic2) only; amount/blockNumber are unchecked. The hook emits this
         // event directly (not V4-wrapped), so the selector is verbatim.
@@ -212,6 +217,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         uint256 treasury1Before = token1.balanceOf(treasury);
 
         BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, 10 ether, "");
+        _hook().endAccountSession();
 
         // Input leg is currency0 (zeroForOne=true); a successful swap moves it into the pool (delta0 < 0)
         // and pays out currency1 (delta1 > 0).
@@ -248,7 +254,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
 
         // Referrer is the first 20 bytes of hookData (`_decodeReferrer`). `abi.encodePacked` keeps the
         // address in the low 20 bytes; `abi.encode` would left-pad to address(0).
-        router.swap(key, params, address(this), block.timestamp, 0, 10 ether, abi.encodePacked(referrer));
+        _swapInSession(key, params, 0, 10 ether, abi.encodePacked(referrer));
 
         uint256 rebate = _hook().pendingRebateOf(referrer, key.currency0) - pendingBefore;
         uint256 toTreasury = token0.balanceOf(treasury) - treasury0Before;
@@ -281,6 +287,8 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         uint256 coreGrossOutput = quote.estimatedUserOutputAmount + quote.estimatedProtocolFeeAmount;
         assertGt(coreGrossOutput, amountOutMinimum, "core output clears minimum before output fee");
 
+        // Open a session so the swap reaches execution; the router's min-output check still reverts after.
+        _hook().beginAccountSession();
         vm.expectRevert(
             abi.encodeWithSelector(
                 IMemeverseSwapRouter.OutputAmountBelowMinimum.selector,
@@ -307,6 +315,8 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         uint256 amountInMaximum = quote.estimatedUserInputAmount - 1;
         assertTrue(token0.transfer(address(router), 1), "router prefund");
 
+        // Open a session so the swap reaches execution; the router's max-input check still reverts after.
+        _hook().beginAccountSession();
         vm.expectRevert(
             abi.encodeWithSelector(
                 IMemeverseSwapRouter.InputAmountExceedsMaximum.selector, quote.estimatedUserInputAmount, amountInMaximum

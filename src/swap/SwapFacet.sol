@@ -95,6 +95,12 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     {
         PoolId poolId = key.toId();
         address referrer = _decodeReferrer(hookData);
+        // Execution identity comes ONLY from the hook-captured active session principal; there is no
+        // transaction-origin, Router, or hookData fallback. A swap reaching this callback without an active session
+        // is rejected before any fee work runs. `principal` is the dynamic-fee address-batch key for this
+        // swap and is pushed into the matching swap context for the afterSwap principal check.
+        address principal = MemeverseTransientState.activePrincipal();
+        if (principal == address(0)) revert IMemeverseUniswapHook.AccountSessionNotActive();
         _revertIfPublicSwapBlocked(poolId);
         // Run the public-swap business gate before acquiring the per-pool lifecycle lock. The lock then
         // covers the complete beforeSwap → pool swap → afterSwap window, preventing callback tokens from
@@ -117,8 +123,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
                 poolId: poolId,
                 zeroForOne: params.zeroForOne,
                 amountSpecified: params.amountSpecified,
-                // solhint-disable-next-line avoid-tx-origin
-                trader: tx.origin,
+                trader: principal,
                 preSqrtPriceX96: preSqrtPriceX96,
                 liquidity: liquidity,
                 protocolFeeOnInput: ctx.protocolFeeOnInput,
@@ -136,7 +141,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
             params.amountSpecified < 0 ? settlementPlan.coreInputTarget : settlementPlan.coreOutputTarget;
         _revertIfBeforeSwapAmountsAreNotRepresentable(params.amountSpecified, coreTarget);
         MemeverseTransientState.pushSwapContext(
-            poolId, _encodeSwapContextFee(dynamicFeeBps, ctx.protocolFeeOnInput), preSqrtPriceX96, coreTarget
+            poolId, principal, _encodeSwapContextFee(dynamicFeeBps, ctx.protocolFeeOnInput), preSqrtPriceX96, coreTarget
         );
 
         uint256 specifiedDeltaAmount;
@@ -188,9 +193,14 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     ) internal returns (bytes4 selector, int128 unspecifiedDelta) {
         address referrer = _decodeReferrer(hookData);
 
+        // Execution identity is validated by `_loadAndValidateSwapContext`, which also consumes the matching
+        // beforeSwap context and returns it for the fee/settlement math below.
+        MemeverseTransientState.SwapContext memory context = _loadAndValidateSwapContext(poolId);
+
         (Currency currencyIn, Currency currencyOut) = SwapFeeMath.swapCurrencies(key, params.zeroForOne);
-        (uint256 encodedFeeBps, uint160 preSqrtPriceX96, uint256 storedCoreTarget) =
-            MemeverseTransientState.consumeCurrentSwapContext(poolId);
+        uint256 encodedFeeBps = context.encodedFeeBps;
+        uint160 preSqrtPriceX96 = context.preSqrtPriceX96;
+        uint256 storedCoreTarget = context.coreTarget;
         uint256 feeBps = _decodeSwapContextFee(encodedFeeBps);
         bool protocolFeeOnInput = _swapContextProtocolFeeOnInput(encodedFeeBps);
         (uint160 postSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
@@ -226,8 +236,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
             IDynamicFeeFacet.UpdateAfterSwapParams({
                 poolId: poolId,
                 delta: delta,
-                // solhint-disable-next-line avoid-tx-origin
-                trader: tx.origin,
+                trader: context.principal,
                 preSqrtPriceX96: preSqrtPriceX96,
                 postSqrtPriceX96: postSqrtPriceX96
             })
@@ -249,6 +258,25 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
             _collectProtocolFee(poolId, protocolFeeCurrency, finalSettlement.protocolFee, referrer);
         }
         return (IHooks.afterSwap.selector, callbackDelta);
+    }
+
+    /// @dev Loads and validates the beforeSwap context for this afterSwap. Requires an active session whose
+    ///      principal matches the consumed context's principal. A missing context (no matching beforeSwap,
+    ///      wrong pool, or a zero-principal push) reverts ContextMissing; a principal mismatch (session
+    ///      changed between beforeSwap and afterSwap — impossible inside one atomic account frame) reverts
+    ///      PrincipalMismatch. Returns the validated context for the caller's fee/settlement math.
+    function _loadAndValidateSwapContext(PoolId poolId)
+        internal
+        returns (MemeverseTransientState.SwapContext memory context)
+    {
+        address activePrincipal = MemeverseTransientState.activePrincipal();
+        if (activePrincipal == address(0)) revert IMemeverseUniswapHook.AccountSessionNotActive();
+
+        context = MemeverseTransientState.consumeCurrentSwapContext(poolId);
+        if (context.principal == address(0)) revert IMemeverseUniswapHook.AccountSessionContextMissing();
+        if (context.principal != activePrincipal) {
+            revert IMemeverseUniswapHook.AccountSessionPrincipalMismatch(context.principal, activePrincipal);
+        }
     }
 
     /// @inheritdoc ISwapFacet
@@ -319,6 +347,11 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     // -----------------------------------------------------------------
 
     /// @dev Exact-input fees known before the core swap keep the existing LP/rebate merged-take optimization.
+    // reentrancy-no-eth: poolManager.take (L368) does not invoke a v4 hook callback (PoolManager._accountDelta + transfer only); reachable only inside the per-pool acquireSwapLifecycleLock window (acquired at beforeSwapLogic L108), so a reentrant same-pool swap reverts SwapLifecycleReentrant. Effects (_accrueLpFee/_settleProtocolFee) precede the take (strict CEI).
+    // reentrancy-events: same window — within _settleProtocolFee, ReferralRebateAccrued is emitted before the _takeToTreasury take, while ProtocolFeeCollected is emitted after it (it needs the treasury_ return value). The take does not invoke a v4 hook callback and runs inside the per-pool acquireSwapLifecycleLock window, so the event-after-external-call ordering poses no reentrancy risk.
+    // Two stacked next-line directives are NOT honored by slither (only the last one before the line
+    // applies), so both detectors are suppressed in a single comma-separated directive below.
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function _collectKnownInputFees(
         PoolId poolId,
         SwapFeeMath.SwapFeeContext memory ctx,

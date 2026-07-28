@@ -104,12 +104,16 @@ contract SettlementTransferFromSamePoolReentrancyTest is Test, HookStorageHelper
         uint256 treasuryInputBefore = callbackToken.balanceOf(treasury);
         uint256 recipientOutputBefore = token1.balanceOf(address(this));
 
-        // The outer call succeeds because the reenterer's try/catch swallows the inner swap revert.
+        // The outer call succeeds because the reenterer's try/catch swallows the inner swap revert. Open a session
+        // so the reentrant transferFrom-fired public swap reaches the per-pool lifecycle lock (surfaced as the v4
+        // WrappedError asserted below), not the session gate. The settlement self-call skips v4 callbacks.
+        hook.beginAccountSession();
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: settlementPoolKey, params: _settlementSwapParams(), recipient: address(this)
             })
         );
+        hook.endAccountSession();
 
         // Inner reentrant swap was blocked.
         assertTrue(callbackToken.reentryFired(), "transferFrom callback fired");

@@ -40,7 +40,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
         uint256 hookBefore = token0.balanceOf(address(_hook()));
 
         // A successful real-v4 unlock proves no CurrencyNotSettled residual delta remains.
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, _packReferrer(referrer));
+        _swapInSession(key, params, 0, 100 ether, _packReferrer(referrer));
 
         // Rebate = protocolFee * referrerRebateBps / PROTOCOL_FEE_SHARE_BPS.
         uint256 expectedRebate =
@@ -61,7 +61,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
         });
         IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
         uint256 treasuryBefore = token0.balanceOf(treasury);
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, "");
+        _swapInSession(key, params, 0, 100 ether, "");
         assertEq(
             token0.balanceOf(treasury) - treasuryBefore,
             quote.estimatedProtocolFeeAmount,
@@ -75,7 +75,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
             zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
         IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, _packReferrer(address(this)));
+        _swapInSession(key, params, 0, 100 ether, _packReferrer(address(this)));
         uint256 expectedRebate =
             (quote.estimatedProtocolFeeAmount * _hook().referrerRebateBps()) / FeeMath.PROTOCOL_FEE_SHARE_BPS;
         assertEq(
@@ -91,7 +91,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, _packReferrer(referrer));
+        _swapInSession(key, params, 0, 100 ether, _packReferrer(referrer));
         uint256 pending = _hook().pendingRebateOf(referrer, key.currency0);
         assertGt(pending, 0, "rebate accrued");
 
@@ -114,7 +114,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, _packReferrer(referrer));
+        _swapInSession(key, params, 0, 100 ether, _packReferrer(referrer));
         uint256 pending = _hook().pendingRebateOf(referrer, key.currency0);
         assertGt(pending, 0, "rebate accrued");
 
@@ -126,7 +126,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
         assertEq(_hook().pendingRebateOf(referrer, key.currency0), 0, "pending reset");
         assertEq(token0.balanceOf(address(manager)) - managerBefore, pending, "manager received ERC20 transfer");
 
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, "");
+        _swapInSession(key, params, 0, 100 ether, "");
     }
 
     // ── Adversarial rebate delta-closure matrix ───────────────────────────────────────────────
@@ -167,7 +167,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
         uint256 hookBefore = feeToken.balanceOf(address(_hook()));
 
         // MUST succeed on real V4 — no CurrencyNotSettled. This is the delta-closure check.
-        router.swap(key, params, address(this), block.timestamp, 0, amountInMaximum, _packReferrer(referrer));
+        _swapInSession(key, params, 0, amountInMaximum, _packReferrer(referrer));
 
         uint256 expectedRebate =
             (quote.estimatedProtocolFeeAmount * _hook().referrerRebateBps()) / FeeMath.PROTOCOL_FEE_SHARE_BPS;
@@ -218,11 +218,11 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
         });
         uint256 hookBefore = token0.balanceOf(address(_hook()));
 
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, _packReferrer(referrer));
+        _swapInSession(key, params, 0, 100 ether, _packReferrer(referrer));
         uint256 pendingAfterOne = _hook().pendingRebateOf(referrer, key.currency0);
         assertGt(pendingAfterOne, 0, "first swap accrued");
 
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, _packReferrer(referrer));
+        _swapInSession(key, params, 0, 100 ether, _packReferrer(referrer));
         uint256 pendingAfterTwo = _hook().pendingRebateOf(referrer, key.currency0);
         assertGt(pendingAfterTwo, pendingAfterOne, "second swap grew the balance");
 
@@ -240,14 +240,14 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
             zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
 
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, _packReferrer(referrer));
+        _swapInSession(key, params, 0, 100 ether, _packReferrer(referrer));
         assertGt(_hook().pendingRebateOf(referrer, key.currency0), 0, "accrued before claim");
 
         vm.prank(referrer);
         _hook().claimRebate(key.currency0, referrer);
         assertEq(_hook().pendingRebateOf(referrer, key.currency0), 0, "zeroed after claim");
 
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, _packReferrer(referrer));
+        _swapInSession(key, params, 0, 100 ether, _packReferrer(referrer));
         assertGt(_hook().pendingRebateOf(referrer, key.currency0), 0, "re-accrued after claim");
     }
 
@@ -273,7 +273,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
         uint256 treasuryBefore = token0.balanceOf(treasury);
         uint256 hookBefore = token0.balanceOf(address(_hook()));
 
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, _packReferrer(referrer));
+        _swapInSession(key, params, 0, 100 ether, _packReferrer(referrer));
 
         assertEq(token0.balanceOf(treasury) - treasuryBefore, 0, "treasury zero (full rebate, skip take)");
         assertEq(

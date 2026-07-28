@@ -190,17 +190,20 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
         // WRITE-SIDE namespace round-trip: `afterSwap` -> `SwapFacet.afterSwapLogic` ->
         // `DynamicFeeFacet.updateAfterSwap` writes the per-trader batch state via facet delegatecall
         // into the shared hook namespace; the Router getter `addressBatchStateOf` reads the same
-        // namespace. The trader key is `tx.origin` (SwapFacet.afterSwapLogic keys the write by
-        // tx.origin, not the hookData referrer). This closes the read/write loop the read-side
-        // `vm.store` test in MemeverseAddressBatchStateOf.t.sol cannot express: a facet namespace
-        // drift (state written to a facet-local slot) would leave batchStartTs == 0 here.
-        // solhint-disable-next-line avoid-tx-origin
-        address trader = tx.origin;
+        // namespace. Task 2 made the hook-captured session principal the batch key (no tx.origin fallback),
+        // so the trader here is this contract (the principal set by `beginAccountSession`), not tx.origin.
+        // This closes the read/write loop the read-side `vm.store` test in MemeverseAddressBatchStateOf.t.sol
+        // cannot express: a facet namespace drift (state written to a facet-local slot) would leave
+        // batchStartTs == 0 here.
+        address trader = address(this);
         PoolId poolId = key.toId();
         assertEq(uint256(hook.addressBatchStateOf(trader, poolId).batchStartTs), 0, "pre-swap: fresh batch");
 
+        // The public swap callback requires an active session; open one so the integrator's swap runs.
+        hook.beginAccountSession();
         BalanceDelta delta =
             integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(REFERRER));
+        hook.endAccountSession();
 
         // zeroForOne exact-input: paid token0 (amount0 < 0), received token1 (amount1 > 0).
         assertLt(delta.amount0(), 0, "paid token0");
@@ -222,8 +225,11 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
         hook.setReferrerRebateBps(0);
         assertEq(engine.referrerRebateBps(), 0, "rebate disabled");
 
+        // The public swap callback requires an active session; open one so the integrator's swap runs.
+        hook.beginAccountSession();
         BalanceDelta delta =
             integrator.swap(key, _exactInputZeroForOne(1 ether), address(this), _packReferrer(REFERRER));
+        hook.endAccountSession();
 
         assertLt(delta.amount0(), 0, "paid token0");
         assertGt(delta.amount1(), 0, "received token1");

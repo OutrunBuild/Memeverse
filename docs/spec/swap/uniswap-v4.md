@@ -37,6 +37,11 @@
 
 `[代码已证]`
 
+### 2.2.1 Smart EOA account session `[代码已证]`
+
+- Hook ABI 增加 `beginAccountSession()` 与 `endAccountSession()`；Hook 自己持有 transient active session context，并在 begin 时从 `msg.sender` 捕获 principal。`msg.sender.code.length != 0` 只拒绝传统 EOA，不是认证或白名单；EIP-7702 delegated account 仍可被接受。
+- `beforeSwap` 与 `afterSwap` 只可读取 active session context 的 principal，并将其作为 `DynamicFeeFacet` 的执行 trader。Router、`hookData`、PoolManager callback caller、`tx.origin` 与 Universal Router `msgSender` 均不得充当 principal 来源。
+
 ### 2.3 Preorder settlement 显式结算通道
 
 - 启动结算调用链是 `MemeverseLauncher -> MemeverseUniswapHook.executePreorderSettlement(...)`。

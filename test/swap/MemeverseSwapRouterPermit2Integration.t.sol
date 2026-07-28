@@ -35,10 +35,13 @@ contract MemeverseSwapRouterPermit2IntegrationTest is RealisticSwapIntegrationBa
         uint256 alice0Before = token0.balanceOf(alice);
         uint256 alice1Before = token1.balanceOf(alice);
         RollbackSnapshot memory dynamicBefore = _rollbackSnapshot(alice);
+        // The session principal is the test contract, independent of the pranked swap caller.
+        hook.beginAccountSession();
         vm.prank(alice);
         BalanceDelta delta = router.swapWithPermit2(
             _singlePermit(address(token0), 100 ether), key, params, alice, block.timestamp, 0, 100 ether, ""
         );
+        hook.endAccountSession();
         RollbackSnapshot memory dynamicAfter = _rollbackSnapshot(alice);
         IMemeverseUniswapHook.SwapQuote memory followUpQuote = router.quoteSwap(key, params, address(this));
 
@@ -77,10 +80,12 @@ contract MemeverseSwapRouterPermit2IntegrationTest is RealisticSwapIntegrationBa
         uint256 inputBudget = quote.estimatedUserInputAmount + 1 ether;
         uint256 alice0Before = token0.balanceOf(alice);
 
+        hook.beginAccountSession();
         vm.prank(alice);
         BalanceDelta delta = router.swapWithPermit2(
             _singlePermit(address(token0), inputBudget), key, params, alice, block.timestamp, 0, inputBudget, ""
         );
+        hook.endAccountSession();
 
         uint256 finalUserInput = uint256(uint128(-delta.amount0()));
         assertEq(permit2.lastRequestedAmount(), inputBudget, "permit2 prepulls the signed budget");
@@ -93,6 +98,8 @@ contract MemeverseSwapRouterPermit2IntegrationTest is RealisticSwapIntegrationBa
     function testPermit2_ExactInput_OutputFee_PartialFill_RevertsAndRollsBack() external {
         hook.setProtocolFeeCurrency(key.currency1, true);
 
+        // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
+        hook.beginAccountSession();
         vm.prank(alice);
         router.swapWithPermit2(
             _singlePermit(address(token0), 10 ether),
@@ -127,5 +134,6 @@ contract MemeverseSwapRouterPermit2IntegrationTest is RealisticSwapIntegrationBa
         );
 
         _assertRollback(alice, before_);
+        hook.endAccountSession();
     }
 }

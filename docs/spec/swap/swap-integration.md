@@ -63,6 +63,12 @@ fee claim 需要单独区分两类能力：
 - `MemeverseSwapRouter` = **Recommended Public Entry Points**
 - `MemeverseUniswapHook` 的 Core 接口 = **Low-level Core APIs**
 
+### 1.1 Smart EOA transient session 集成契约 `[代码已证]`
+
+- 合约账户或其 SDK 必须自行编排 `A.beginAccountSession() -> 单一经济账户 Router -> A.endAccountSession()`；Hook 只从 active session context 取得 principal。
+- 第三方 Router（包括 Universal Router）无需改造、无需携带 trader，也不进入 Router allowlist 或 trust boundary。多跳可在这一次经济账户 Router 调用中完成；同一外层的多用户 batch 不受支持。
+- `quoteSwap(...)` 仍是无 session 的只读预览；其显式 `trader` 只作为 preview 输入，不认证或提供执行 principal。
+
 ---
 
 ## 2. 当前收费语义与目标普通动态规则

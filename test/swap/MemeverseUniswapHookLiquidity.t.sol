@@ -595,7 +595,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         _addLiquidity();
         hook.setProtocolFeeCurrency(key.currency0, true);
 
-        // Drive fee0 growth past the user's zero offsets (zeroForOne=true accrues fee0).
+        // Drive fee0 growth past the user's zero offsets (zeroForOne=true accrues fee0). Open a session so the
+        // direct beforeSwap entry passes the session gate.
+        hook.beginAccountSession();
         vm.prank(address(mockManager));
         hook.beforeSwap(
             address(this),
@@ -680,6 +682,8 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
             address(this)
         );
 
+        // Open a session so the direct beforeSwap entry passes the session gate (afterSwap is not driven here).
+        hook.beginAccountSession();
         vm.prank(address(mockManager));
         hook.beforeSwap(
             address(this),
@@ -713,6 +717,8 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         (address lpToken,,) = hook.poolInfo(poolId);
         vm.mockCallRevert(lpToken, abi.encodeWithSelector(TOTAL_SUPPLY_SELECTOR), bytes("unexpected totalSupply"));
 
+        // Open a session so the direct beforeSwap entry passes the session gate (afterSwap is not driven here).
+        hook.beginAccountSession();
         vm.prank(address(mockManager));
         hook.beforeSwap(
             address(this),
@@ -825,6 +831,8 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(key.currency0, true);
         (address lpToken,,) = hook.poolInfo(poolId);
 
+        // Open a session so the direct beforeSwap entry passes the session gate (afterSwap is not driven here).
+        hook.beginAccountSession();
         vm.prank(address(mockManager));
         hook.beforeSwap(
             address(this),
@@ -862,6 +870,8 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         );
         hook.setProtocolFeeCurrency(key.currency0, true);
 
+        // Open a session so the direct beforeSwap entry passes the session gate (afterSwap is not driven here).
+        hook.beginAccountSession();
         vm.prank(address(mockManager));
         hook.beforeSwap(
             address(this),
@@ -1047,6 +1057,8 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     function testDirectManagerSwapReverts_WhenExactInputPartialFills() external {
         _addLiquidity();
         hook.setProtocolFeeCurrency(key.currency1, true);
+        // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
+        hook.beginAccountSession();
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
             key,
@@ -1091,6 +1103,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         uint256 treasury0Before = token0.balanceOf(hook.treasury());
 
         mockManager.setNextExactInputPoolInputAmount(poolId, expectedPoolInput);
+        hook.beginAccountSession();
         BalanceDelta delta = mockManager.swapAsUnlocked(
             key,
             SwapParams({
@@ -1109,6 +1122,8 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     function testDirectManagerSwapReverts_WhenExactInputPartialFillsOnInputFeePool() external {
         _addLiquidity();
         hook.setProtocolFeeCurrency(key.currency0, true); // input-side fee for zeroForOne=true
+        // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
+        hook.beginAccountSession();
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
             key,
@@ -1139,6 +1154,8 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     function testDirectManagerSwapReverts_WhenOneForZeroExactInputPartialFillsOnOutputFeePool() external {
         _addLiquidity();
         hook.setProtocolFeeCurrency(key.currency0, true);
+        // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
+        hook.beginAccountSession();
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
             key,
@@ -1171,6 +1188,8 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(key.currency0, true);
         hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
+        // The seed is a public swap and needs a session; the settlement below is a hook self-call and does not.
+        hook.beginAccountSession();
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
             key,
@@ -1179,6 +1198,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
             }),
             bytes("")
         );
+        hook.endAccountSession();
         mockManager.setNextExactInputPoolInputAmount(poolId, 98 ether);
 
         RollbackSnapshot memory s = _snapshotRollback();
@@ -1407,8 +1427,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
     /// @notice A malicious ERC20 reentry must use the public callback path, not the hook self-call path.
     /// @dev The hook's own settlement swap is a PoolManager self-call, so v4 skips its swap callbacks. The token
-    ///      callback reenters with `msg.sender == token`, so v4 executes the normal public callback path and the
-    ///      configured public-swap block rejects it. The reenterer swallows that revert so settlement can finish.
+    ///      callback reenters with `msg.sender == token`, so v4 executes the normal public callback path. Settlement
+    ///      opens no account session, so the reentrant swap hits the account-session gate (activePrincipal() == 0)
+    ///      before the public-swap block. The reenterer swallows that revert so settlement can finish.
     function testExecutePreorderSettlement_ReentrantTokenSwapDoesNotBypassFees() external {
         // Evil token becomes the settlement input currency. Respect V4 pair ordering; keep it on the input side.
         PreorderSettlementReenterer evil = new PreorderSettlementReenterer();
@@ -1458,10 +1479,16 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
             })
         );
 
-        // The reentrant swap fired from inside settle and was rejected (it hit the public-swap block),
-        // proving the token caller used the public callback path rather than the hook self-call path.
+        // The reentrant swap fired from inside settle and was rejected. Settlement does not open an account
+        // session, so the reentrant public swap hits the session gate first (activePrincipal() == 0),
+        // before the configured public-swap block. Pin the selector so this test guards the session gate.
         assertTrue(evil.reentryFired(), "reentrant swap fired during hook settle");
-        assertTrue(evil.reentryBlocked(), "token reentry rejected by public-swap callbacks");
+        assertTrue(evil.reentryBlocked(), "reentrant swap was rejected");
+        assertEq(
+            evil.lastRevertSelector(),
+            uint32(IMemeverseUniswapHook.AccountSessionNotActive.selector),
+            "reentrant swap rejected by the account-session gate, not the public-swap block"
+        );
     }
 
     function testProxyInitializeSetsOwnerTreasuryAndLaunchFeeConfig() external {

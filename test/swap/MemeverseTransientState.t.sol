@@ -13,6 +13,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
+import {MemeverseTransientState} from "../../src/swap/libraries/MemeverseTransientState.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 import {TransientStateHarness} from "../mocks/swap/TransientStateHarness.sol";
@@ -30,6 +31,9 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
     PoolKey internal key;
     PoolId internal poolId;
     TransientStateHarness internal transientStateHarness;
+
+    address internal accountA = makeAddr("accountA");
+    address internal accountB = makeAddr("accountB");
 
     function setUp() public {
         mockManager = new MockPoolManagerForHookLiquidity();
@@ -73,6 +77,9 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
         uint256 expectedPoolInput =
             quote.estimatedUserInputAmount - quote.estimatedLpFeeAmount - quote.estimatedProtocolFeeAmount;
 
+        // The transient session principal must be established before the PoolManager fires beforeSwap; the
+        // hook's own transient store is keyed by hook proxy address, so begin via the hook entry here.
+        hook.beginAccountSession();
         vm.prank(address(mockManager));
         hook.beforeSwap(address(this), key, params, bytes(""));
 
@@ -85,62 +92,34 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
         (, int128 unspecifiedDelta) = hook.afterSwap(address(this), key, params, delta, bytes(""));
 
         assertEq(unspecifiedDelta, 0, "input-side exact-input swap should not emit output delta");
+        hook.endAccountSession();
     }
 
-    function test_SamePoolPopThenPushUsesOnlyReplacementContext() external {
-        (
-            uint256 firstFee,
-            uint160 firstPrice,
-            uint256 firstCoreTarget,
-            uint256 secondFee,
-            uint160 secondPrice,
-            uint256 secondCoreTarget
-        ) = transientStateHarness.samePoolPopThenPush(poolId, 65, 11, 101, 35, 22, 202);
+    // -----------------------------------------------------------------
+    // activePrincipal lifecycle
+    // -----------------------------------------------------------------
 
-        assertEq(firstFee, 65, "first context fee");
-        assertEq(firstPrice, 11, "first context price");
-        assertEq(firstCoreTarget, 101, "first context core target");
-        assertEq(secondFee, 35, "replacement context fee");
-        assertEq(secondPrice, 22, "replacement context price");
-        assertEq(secondCoreTarget, 202, "replacement context core target");
+    function test_activePrincipalStartsZeroAndClears() external {
+        assertEq(transientStateHarness.activePrincipal(), address(0), "starts at zero");
+        transientStateHarness.setActivePrincipal(accountA);
+        assertEq(transientStateHarness.activePrincipal(), accountA, "set to accountA");
+        transientStateHarness.clearActivePrincipal();
+        assertEq(transientStateHarness.activePrincipal(), address(0), "cleared back to zero");
     }
 
-    function test_NestedDifferentPoolsPopInStackOrder() external {
-        PoolId otherPoolId = PoolId.wrap(bytes32(uint256(123)));
-        (
-            uint256 innerFee,
-            uint160 innerPrice,
-            uint256 innerCoreTarget,
-            uint256 outerFee,
-            uint160 outerPrice,
-            uint256 outerCoreTarget
-        ) = transientStateHarness.nestedDifferentPools(poolId, otherPoolId, 65, 11, 101, 35, 22, 202);
+    // -----------------------------------------------------------------
+    // Per-pool swap-lifecycle lock still uses its own original key (the original four tests below are byte-for-byte).
+    // -----------------------------------------------------------------
 
-        assertEq(innerFee, 35, "inner context fee");
-        assertEq(innerPrice, 22, "inner context price");
-        assertEq(innerCoreTarget, 202, "inner context core target");
-        assertEq(outerFee, 65, "outer context fee");
-        assertEq(outerPrice, 11, "outer context price");
-        assertEq(outerCoreTarget, 101, "outer context core target");
-    }
-
-    function test_PopThenPushPreservesEncodedFeeMode() external {
-        uint256 inputModeFee = (uint256(65) | (uint256(1) << 255));
-        uint256 outputModeFee = 35;
-        (uint256 firstFee, uint256 secondFee) =
-            transientStateHarness.popThenPushMode(poolId, inputModeFee, outputModeFee);
-
-        assertEq(firstFee, inputModeFee, "input mode fee");
-        assertEq(secondFee, outputModeFee, "output mode fee");
-    }
-
-    function test_PoppedContextIsUnreachableAtDepthZero() external {
-        (uint256 emptyFee, uint160 emptyPrice, uint256 emptyCoreTarget) =
-            transientStateHarness.consumeAfterPop(poolId, 65, 11);
-
-        assertEq(emptyFee, 0, "empty context fee");
-        assertEq(emptyPrice, 0, "empty context price");
-        assertEq(emptyCoreTarget, 0, "empty context core target");
+    function test_existingPerPoolReentrancyLockStillUsesItsOriginalKey() external {
+        // Acquiring the lifecycle lock must NOT touch the swap-context depth or the active-principal slot:
+        // all three share the `mv.ts.*` namespace but use independent collision-domain tags.
+        assertEq(transientStateHarness.swapContextDepth(), 0, "depth zero before lock");
+        assertEq(transientStateHarness.activePrincipal(), address(0), "principal zero before lock");
+        bool alreadyLocked = transientStateHarness.acquireOnce(poolId);
+        assertFalse(alreadyLocked, "first acquire gets the lock");
+        assertEq(transientStateHarness.swapContextDepth(), 0, "lock does not touch context depth");
+        assertEq(transientStateHarness.activePrincipal(), address(0), "lock does not touch principal");
     }
 
     function test_FirstAcquireReturnsFalse() external {
@@ -168,6 +147,133 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
 
         assertFalse(firstAlreadyLocked, "pool A gets its lock");
         assertFalse(secondAlreadyLocked, "pool B has its own lock slot");
+    }
+
+    // -----------------------------------------------------------------
+    // consumeCurrentSwapContext depth / presence semantics
+    // -----------------------------------------------------------------
+
+    function test_consumeEmptyContextLeavesDepthUnchanged() external {
+        assertEq(transientStateHarness.swapContextDepth(), 0, "depth zero before");
+        MemeverseTransientState.SwapContext memory empty = transientStateHarness.consumeCurrentSwapContextDirect(poolId);
+        assertEq(empty.encodedFeeBps, 0, "empty context fee");
+        assertEq(empty.preSqrtPriceX96, 0, "empty context price");
+        assertEq(empty.coreTarget, 0, "empty context core target");
+        assertEq(empty.principal, address(0), "empty context principal");
+        assertEq(transientStateHarness.swapContextDepth(), 0, "depth unchanged after empty consume");
+    }
+
+    function test_consumeWrongPoolLeavesDepthUnchanged() external {
+        PoolId otherPoolId = PoolId.wrap(bytes32(uint256(123)));
+        transientStateHarness.pushSwapContextDirect(poolId, accountA, 65, 11, 101);
+        assertEq(transientStateHarness.swapContextDepth(), 1, "depth one after push");
+
+        // Consuming a DIFFERENT poolId sees no principal at the wrong tuple key and must NOT decrement depth.
+        MemeverseTransientState.SwapContext memory wrong =
+            transientStateHarness.consumeCurrentSwapContextDirect(otherPoolId);
+        assertEq(wrong.principal, address(0), "wrong pool has no principal");
+        assertEq(wrong.encodedFeeBps, 0, "wrong pool fee");
+        assertEq(transientStateHarness.swapContextDepth(), 1, "depth unchanged after wrong-pool consume");
+
+        // The pushed context at the original poolId is still consumable.
+        MemeverseTransientState.SwapContext memory right = transientStateHarness.consumeCurrentSwapContextDirect(poolId);
+        assertEq(right.principal, accountA, "right pool still has the pushed principal");
+        assertEq(right.encodedFeeBps, 65, "right pool fee");
+        assertEq(transientStateHarness.swapContextDepth(), 0, "depth zero after correct consume");
+    }
+
+    function test_consumeZeroPrincipalLeavesDepthUnchanged() external {
+        // A push with address(0) principal represents the missing-principal / unsupported path. The sole
+        // context-presence marker is `principal != address(0)`, so such a push must consume to a zero context
+        // WITHOUT decrementing depth (no false "context present" signal, no depth leak).
+        transientStateHarness.pushSwapContextDirect(poolId, address(0), 65, 11, 101);
+        assertEq(transientStateHarness.swapContextDepth(), 1, "depth one after zero-principal push");
+
+        MemeverseTransientState.SwapContext memory empty = transientStateHarness.consumeCurrentSwapContextDirect(poolId);
+        assertEq(empty.principal, address(0), "zero-principal push consumes to zero context");
+        assertEq(empty.encodedFeeBps, 0, "no fee surfaced for missing principal");
+        assertEq(transientStateHarness.swapContextDepth(), 1, "depth unchanged after missing-principal consume");
+    }
+
+    function test_contextStoresPrincipalAtEachDepthAndConsumesLifo() external {
+        // push A at accountA (depth 1), then push B at accountB (depth 2). LIFO consume returns B then A.
+        transientStateHarness.pushSwapContextDirect(poolId, accountA, 65, 11, 101);
+        transientStateHarness.pushSwapContextDirect(poolId, accountB, 35, 22, 202);
+        assertEq(transientStateHarness.swapContextDepth(), 2, "depth two after two pushes");
+
+        MemeverseTransientState.SwapContext memory inner = transientStateHarness.consumeCurrentSwapContextDirect(poolId);
+        assertEq(inner.principal, accountB, "inner context principal is accountB");
+        assertEq(inner.encodedFeeBps, 35, "inner context fee");
+        assertEq(inner.preSqrtPriceX96, 22, "inner context price");
+        assertEq(inner.coreTarget, 202, "inner context core target");
+        assertEq(transientStateHarness.swapContextDepth(), 1, "depth one after inner consume");
+
+        MemeverseTransientState.SwapContext memory outer = transientStateHarness.consumeCurrentSwapContextDirect(poolId);
+        assertEq(outer.principal, accountA, "outer context principal is accountA");
+        assertEq(outer.encodedFeeBps, 65, "outer context fee");
+        assertEq(outer.preSqrtPriceX96, 11, "outer context price");
+        assertEq(outer.coreTarget, 101, "outer context core target");
+        assertEq(transientStateHarness.swapContextDepth(), 0, "depth zero after outer consume");
+    }
+
+    // -----------------------------------------------------------------
+    // Adapted pop/push/context scenarios (new 5-arg signature + SwapContext return).
+    // -----------------------------------------------------------------
+
+    function test_SamePoolPopThenPushUsesOnlyReplacementContext() external {
+        (
+            uint256 firstFee,
+            uint160 firstPrice,
+            uint256 firstCoreTarget,
+            uint256 secondFee,
+            uint160 secondPrice,
+            uint256 secondCoreTarget
+        ) = transientStateHarness.samePoolPopThenPush(poolId, accountA, 65, 11, 101, 35, 22, 202);
+
+        assertEq(firstFee, 65, "first context fee");
+        assertEq(firstPrice, 11, "first context price");
+        assertEq(firstCoreTarget, 101, "first context core target");
+        assertEq(secondFee, 35, "replacement context fee");
+        assertEq(secondPrice, 22, "replacement context price");
+        assertEq(secondCoreTarget, 202, "replacement context core target");
+    }
+
+    function test_NestedDifferentPoolsPopInStackOrder() external {
+        PoolId otherPoolId = PoolId.wrap(bytes32(uint256(123)));
+        (
+            uint256 innerFee,
+            uint160 innerPrice,
+            uint256 innerCoreTarget,
+            uint256 outerFee,
+            uint160 outerPrice,
+            uint256 outerCoreTarget
+        ) = transientStateHarness.nestedDifferentPools(poolId, otherPoolId, accountA, 65, 11, 101, 35, 22, 202);
+
+        assertEq(innerFee, 35, "inner context fee");
+        assertEq(innerPrice, 22, "inner context price");
+        assertEq(innerCoreTarget, 202, "inner context core target");
+        assertEq(outerFee, 65, "outer context fee");
+        assertEq(outerPrice, 11, "outer context price");
+        assertEq(outerCoreTarget, 101, "outer context core target");
+    }
+
+    function test_PopThenPushPreservesEncodedFeeMode() external {
+        uint256 inputModeFee = (uint256(65) | (uint256(1) << 255));
+        uint256 outputModeFee = 35;
+        (uint256 firstFee, uint256 secondFee) =
+            transientStateHarness.popThenPushMode(poolId, accountA, inputModeFee, outputModeFee);
+
+        assertEq(firstFee, inputModeFee, "input mode fee");
+        assertEq(secondFee, outputModeFee, "output mode fee");
+    }
+
+    function test_PoppedContextIsUnreachableAtDepthZero() external {
+        (uint256 emptyFee, uint160 emptyPrice, uint256 emptyCoreTarget) =
+            transientStateHarness.consumeAfterPop(poolId, accountA, 65, 11);
+
+        assertEq(emptyFee, 0, "empty context fee");
+        assertEq(emptyPrice, 0, "empty context price");
+        assertEq(emptyCoreTarget, 0, "empty context core target");
     }
 
     function _deployHookProxy(address owner_, address treasury_) internal returns (MemeverseUniswapHook) {

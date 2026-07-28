@@ -38,7 +38,7 @@ contract MemeverseSwapForkFuzzLargeInputTest is MemeverseSwapForkBase {
         uint256 treasuryBefore = token0.balanceOf(treasury);
         (, uint256 fee0Before,) = _hook().poolInfo(poolId);
 
-        BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, amountIn, "");
+        BalanceDelta delta = _swapInSession(key, params, 0, amountIn, "");
 
         (, uint256 fee0After,) = _hook().poolInfo(poolId);
         uint256 actualInput = inputBefore - token0.balanceOf(address(this));
@@ -116,8 +116,7 @@ contract MemeverseSwapForkFuzzExactOutputTest is MemeverseSwapForkBase {
         (, uint256 fee0Before, uint256 fee1Before) = _hook().poolInfo(poolId);
 
         // Exact-output pulls the full quoted budget up front, so the quote is the tight maximum input.
-        BalanceDelta delta =
-            router.swap(key, params, address(this), block.timestamp, 0, quote.estimatedUserInputAmount, "");
+        BalanceDelta delta = _swapInSession(key, params, 0, quote.estimatedUserInputAmount, "");
 
         (, uint256 fee0After, uint256 fee1After) = _hook().poolInfo(poolId);
 

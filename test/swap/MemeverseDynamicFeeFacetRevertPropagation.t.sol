@@ -83,6 +83,8 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
             new RevertingDynamicFeeFacetMock(IPoolManager(address(manager)), PREPARE_SWAP_FEE_POINT);
         hook.setFacet(hook.DYNAMIC_FEE_FACET_ROLE(), address(replacement));
 
+        // Public swap path: open a session so the swap reaches the facet (session gate precedes facet dispatch).
+        hook.beginAccountSession();
         vm.expectRevert(
             abi.encodeWithSelector(
                 RevertingDynamicFeeFacetMock.ForcedDynamicFeeFacetRevert.selector, PREPARE_SWAP_FEE_POINT
@@ -97,6 +99,7 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
             100 ether,
             ""
         );
+        hook.endAccountSession();
     }
 
     function test_RevertWhen_DynamicFeeFacetUpdateAfterSwapFailsThroughPublicSwap() external {
@@ -110,6 +113,9 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
             new RevertingDynamicFeeFacetMock(IPoolManager(address(manager)), UPDATE_AFTER_SWAP_POINT);
         hook.setFacet(hook.DYNAMIC_FEE_FACET_ROLE(), address(replacement));
 
+        // Public swap path: one session covers both the reverting swap and the recovery swap. The revert
+        // rolls back its own transient context, leaving the session clean for the second swap.
+        hook.beginAccountSession();
         vm.expectRevert(
             abi.encodeWithSelector(
                 RevertingDynamicFeeFacetMock.ForcedDynamicFeeFacetRevert.selector, UPDATE_AFTER_SWAP_POINT
@@ -139,6 +145,7 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
             100 ether,
             ""
         );
+        hook.endAccountSession();
         assertTrue(delta.amount0() != 0 || delta.amount1() != 0, "public swap recovers");
     }
 

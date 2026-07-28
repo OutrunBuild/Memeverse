@@ -189,6 +189,10 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
 
         localLauncher.changeStage(verseId);
 
+        // Open a session on the guarded hook so all four public-swap entries reach the public-swap-blocked guard
+        // (and, post-warp, execute). The session gate precedes the public-swap gate, so without a session every
+        // entry would revert AccountSessionNotActive instead of the asserted PublicSwapDisabled / success.
+        guardedHook.beginAccountSession();
         vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
         guardedRouter.swap(
             key,

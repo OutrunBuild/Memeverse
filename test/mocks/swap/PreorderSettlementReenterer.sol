@@ -20,6 +20,7 @@ contract PreorderSettlementReenterer is MockERC20 {
     bool public armed;
     bool public reentryFired;
     bool public reentryBlocked;
+    uint32 public lastRevertSelector;
 
     constructor() MockERC20("PreorderReenterer", "PRR", 18) {}
 
@@ -31,18 +32,20 @@ contract PreorderSettlementReenterer is MockERC20 {
         armed = true;
     }
 
-    /// @dev Fires the armed reentrant swap once, recording whether it was rejected. The reentrant swap's
-    ///      revert is swallowed (try/catch) so the surrounding settlement can continue and the test can
-    ///      observe the outcome: `reentryBlocked == true` proves the non-hook reentry took the normal fee path
-    ///      and was rejected by the configured public-swap block. One-shot guard prevents recursion.
+    /// @dev Fires the armed reentrant swap once, recording whether it was rejected and WHICH gate rejected
+    ///      it. The reentrant swap's revert is swallowed (try/catch) so the surrounding settlement can
+    ///      continue and the test can observe the outcome: `reentryBlocked == true` plus `lastRevertSelector`
+    ///      lets the caller test verify the exact gate that rejected the reentry, not just that some gate did.
+    ///      One-shot guard prevents recursion.
     function transfer(address to, uint256 amount) public override returns (bool) {
         if (armed) {
             armed = false;
             reentryFired = true;
             try manager.swap(reenterKey, reenterParams, bytes("")) {
                 reentryBlocked = false;
-            } catch {
+            } catch (bytes memory reason) {
                 reentryBlocked = true;
+                lastRevertSelector = reason.length >= 4 ? uint32(bytes4(reason)) : 0;
             }
         }
         return super.transfer(to, amount);

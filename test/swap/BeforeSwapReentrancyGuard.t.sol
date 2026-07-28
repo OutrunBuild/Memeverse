@@ -95,10 +95,14 @@ contract BeforeSwapReentrancyGuardTest is Test, HookStorageHelper {
             zeroForOne: true, amountSpecified: -int256(1 ether), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
+        // Open a session so the reentrant inner swap passes the session gate and reaches the per-pool lifecycle
+        // lock (the asserted reentry revert), rather than aborting on `AccountSessionNotActive`.
+        hook.beginAccountSession();
         // The lock aborts the reentrant beforeSwap with `SwapLifecycleReentrant`, which propagates out through
         // the take and reverts the whole outer swap. v4 wraps the hook revert in its own WrappedError at the swap
         // boundary, so the selector is scanned anywhere in the captured revert bytes (not just the outermost word).
         bytes memory revertData = _swapViaUnlockCapturingRevert(callbackPoolKey, params, "");
+        hook.endAccountSession();
         assertGt(revertData.length, 0, "same-pool reentry must revert");
         assertTrue(
             _containsSelector(revertData, IMemeverseUniswapHook.SwapLifecycleReentrant.selector),
@@ -127,9 +131,13 @@ contract BeforeSwapReentrancyGuardTest is Test, HookStorageHelper {
             zeroForOne: true, amountSpecified: -int256(1 ether), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
+        // Open a session so the reentrant inner swap reaches the lifecycle guard under the same conditions as
+        // the same-pool case; the assertion here is that a different poolId does NOT trip the lock.
+        hook.beginAccountSession();
         // Capture the outer swap's revert bytes; whether it succeeds or fails, the lifecycle selector must be
         // absent (the per-pool lock did not trip for a different poolId).
         bytes memory revertData = _swapViaUnlockCapturingRevert(callbackPoolKey, params, "");
+        hook.endAccountSession();
         assertFalse(
             _containsSelector(revertData, IMemeverseUniswapHook.SwapLifecycleReentrant.selector),
             "lock must not trip for a different poolId"

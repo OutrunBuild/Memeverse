@@ -5,9 +5,10 @@ import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -204,5 +205,22 @@ abstract contract MemeverseSwapForkBase is Test, HookStorageHelper {
     function _blockPublicSwap(uint256 futureTimestamp) internal {
         _hook().setLauncher(address(this));
         _hook().setPublicSwapResumeTime(address(token0), address(token1), uint40(futureTimestamp));
+    }
+
+    /// @dev Wraps a public `router.swap` in a hook account session. The fork base owns no session helper
+    ///      upstream, so each fork test that drives a real public swap goes through here: the test contract
+    ///      (which has code) opens the session as its own principal, the swap passes the hook's session gate,
+    ///      and the session closes once the swap has consumed its transient context. Recipient and payer stay
+    ///      `address(this)`, matching the pre-session fork tests.
+    function _swapInSession(
+        PoolKey memory k,
+        SwapParams memory params,
+        uint256 amountOutMinimum,
+        uint256 amountInMaximum,
+        bytes memory hookData
+    ) internal returns (BalanceDelta delta) {
+        _hook().beginAccountSession();
+        delta = router.swap(k, params, address(this), block.timestamp, amountOutMinimum, amountInMaximum, hookData);
+        _hook().endAccountSession();
     }
 }

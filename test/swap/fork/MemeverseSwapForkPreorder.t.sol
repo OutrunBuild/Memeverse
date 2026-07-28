@@ -133,7 +133,7 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
         });
         uint256 treasuryBefore = token0.balanceOf(treasury);
 
-        router.swap(key, publicParams, address(this), block.timestamp, 0, 10 ether, "");
+        _swapInSession(key, publicParams, 0, 10 ether, "");
 
         assertGt(token0.balanceOf(treasury), treasuryBefore, "public swap charged treasury fee");
     }
@@ -150,7 +150,7 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
         });
 
         uint256 treasuryBeforeFirstPublic = token0.balanceOf(treasury);
-        router.swap(key, publicParams, address(this), block.timestamp, 0, 10 ether, "");
+        _swapInSession(key, publicParams, 0, 10 ether, "");
         uint256 treasuryAfterFirstPublic = token0.balanceOf(treasury);
         assertGt(treasuryAfterFirstPublic, treasuryBeforeFirstPublic, "first public swap charged fee");
 
@@ -161,7 +161,7 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
             })
             );
 
-        router.swap(key, publicParams, address(this), block.timestamp, 0, 10 ether, "");
+        _swapInSession(key, publicParams, 0, 10 ether, "");
         assertGt(token0.balanceOf(treasury), treasuryAfterFirstPublic, "second public swap charged fee");
     }
 

@@ -137,6 +137,7 @@ contract DynamicFeeFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
                 DynamicFeeMath.volatilityRefreshApply(params.preSqrtPriceX96, refreshedCarry);
         }
 
+        // slither-disable-next-line uninitialized-local // capacity is read only at calculateFinalQuoteCurve (L156), dominated by the early-return `if (params.amountSpecified == 0) return result;` at L151; when amountSpecified==0 capacity is never read.
         OrdinarySwapMath.CapacityResult memory capacity;
         if (params.amountSpecified != 0) {
             capacity = OrdinarySwapMath.calculateCapacity(
@@ -208,6 +209,7 @@ contract DynamicFeeFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
     }
 
     /// @dev PoolManager and hook callback deltas are int128. Reject known-unrepresentable quotes early.
+    // slither-disable-next-line timestamp // pure function with no block.timestamp read; slither mis-attributed (real reads are in updateAfterSwap L76/81/89).
     function _revertIfQuoteAmountsAreNotRepresentable(
         OrdinarySwapMath.CurveResult memory finalCurve,
         OrdinarySwapMath.FinalSettlement memory finalSettlement

@@ -194,8 +194,12 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
         vm.expectRevert(SwapGuardMath.NoActiveLiquidityShares.selector);
         lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
 
+        // The execution path enters beforeSwapLogic, where the session gate precedes the liquidity check. Open a
+        // session so the swap reaches `NoActiveLiquidityShares` (the original assertion), not `AccountSessionNotActive`.
+        hook.beginAccountSession();
         vm.expectRevert(SwapGuardMath.NoActiveLiquidityShares.selector);
         manager.swapAsUnlocked(key, params, "");
+        hook.endAccountSession();
     }
 
     /// @notice Zero direct quote skips liquidity and raw-limit validation and remains read-only.

@@ -30,7 +30,9 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
         (, uint256 fee0PerShareBefore,) = hook.poolInfo(poolId);
         RollbackSnapshot memory dynamicBefore = _rollbackSnapshot(address(this));
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, 100 ether, "");
+        hook.endAccountSession();
 
         (, uint256 fee0PerShareAfter,) = hook.poolInfo(poolId);
         RollbackSnapshot memory dynamicAfter = _rollbackSnapshot(address(this));
@@ -68,7 +70,9 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
         uint256 treasury1Before = token1.balanceOf(treasury);
         (, uint256 fee0PerShareBefore,) = hook.poolInfo(poolId);
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, 100 ether, "");
+        hook.endAccountSession();
 
         (, uint256 fee0PerShareAfter,) = hook.poolInfo(poolId);
         assertEq(payer0Before - token0.balanceOf(address(this)), quote.estimatedUserInputAmount, "exact user spend");
@@ -97,7 +101,9 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
         uint256 payer1Before = token1.balanceOf(address(this));
         uint256 treasury1Before = token1.balanceOf(treasury);
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, 100 ether, "");
+        hook.endAccountSession();
 
         assertEq(payer1Before - token1.balanceOf(address(this)), quote.estimatedUserInputAmount, "exact user spend");
         assertEq(
@@ -120,8 +126,10 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
         uint256 payer1Before = token1.balanceOf(address(this));
         uint256 treasury0Before = token0.balanceOf(treasury);
 
+        hook.beginAccountSession();
         BalanceDelta delta =
             router.swap(key, params, address(this), block.timestamp, 0, quote.estimatedUserInputAmount, "");
+        hook.endAccountSession();
 
         assertEq(payer1Before - token1.balanceOf(address(this)), quote.estimatedUserInputAmount, "exact user spend");
         assertEq(
@@ -143,6 +151,7 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
         assertGt(quote.estimatedProtocolFeeAmount, 0, "input protocol fee is non-zero");
         uint256 amountOutMinimum = quote.estimatedUserOutputAmount + 1;
 
+        hook.beginAccountSession();
         vm.expectRevert(
             abi.encodeWithSelector(
                 IMemeverseSwapRouter.OutputAmountBelowMinimum.selector,
@@ -151,6 +160,7 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
             )
         );
         router.swap(key, params, address(this), block.timestamp, amountOutMinimum, 100 ether, "");
+        hook.endAccountSession();
     }
 
     function testExactInput_OutputFee_RevertsWithNetOutputBelowCoreOutputMinimum() external {
@@ -167,6 +177,7 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
         uint256 coreGrossOutput = quote.estimatedUserOutputAmount + quote.estimatedProtocolFeeAmount;
         assertGt(coreGrossOutput, amountOutMinimum, "core output clears minimum before output fee");
 
+        hook.beginAccountSession();
         vm.expectRevert(
             abi.encodeWithSelector(
                 IMemeverseSwapRouter.OutputAmountBelowMinimum.selector,
@@ -175,6 +186,7 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
             )
         );
         router.swap(key, params, address(this), block.timestamp, amountOutMinimum, 100 ether, "");
+        hook.endAccountSession();
     }
 
     function testExactOutput_InputFee_RevertsWhenFinalInputExceedsCoreInputMaximum() external {
@@ -195,12 +207,14 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
 
         // The extra wei lets settlement complete so the test reaches the router's final-delta limit check.
         assertTrue(token0.transfer(address(router), 1), "router prefund");
+        hook.beginAccountSession();
         vm.expectRevert(
             abi.encodeWithSelector(
                 IMemeverseSwapRouter.InputAmountExceedsMaximum.selector, quote.estimatedUserInputAmount, amountInMaximum
             )
         );
         router.swap(key, params, address(this), block.timestamp, 0, amountInMaximum, "");
+        hook.endAccountSession();
     }
 
     function testExactOutput_OutputFee_RevertsWhenFinalInputExceedsCoreInputMaximum() external {
@@ -220,16 +234,20 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
 
         // Output-side protocol fees still leave the input-side LP fee in the final user delta.
         assertTrue(token0.transfer(address(router), 1), "router prefund");
+        hook.beginAccountSession();
         vm.expectRevert(
             abi.encodeWithSelector(
                 IMemeverseSwapRouter.InputAmountExceedsMaximum.selector, quote.estimatedUserInputAmount, amountInMaximum
             )
         );
         router.swap(key, params, address(this), block.timestamp, 0, amountInMaximum, "");
+        hook.endAccountSession();
     }
 
     function testExactInput_InputFee_PartialFill_RevertsAndRollsBack() external {
         hook.setProtocolFeeCurrency(key.currency0, true);
+        // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
+        hook.beginAccountSession();
         router.swap(
             key,
             SwapParams({
@@ -260,5 +278,6 @@ contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
         );
 
         _assertRollback(address(this), before_);
+        hook.endAccountSession();
     }
 }

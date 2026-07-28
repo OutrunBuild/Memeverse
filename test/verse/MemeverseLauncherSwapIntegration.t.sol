@@ -361,6 +361,11 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
         _approveRouter(BOB, verse.memecoin);
         _approveRouter(BOB, verse.uAsset);
 
+        // Open one smart-EOA session as the test contract (has code) to span all swaps below: the hook's
+        // beforeSwap session gate precedes the public-swap gate, so without a session every swap reverts
+        // AccountSessionNotActive. The pranked trader stays the router's msg.sender; only the session principal
+        // (address(this)) is read by the hook. Transient session state auto-clears at the test call's end.
+        hook.beginAccountSession();
         // Locked stage allows swaps — no protection window is set.
         _swapExactInput(BOB, verse.memecoin, verse.uAsset, 1 ether);
         _swapExactInput(ALICE, verse.pol, verse.uAsset, 1 ether);
@@ -390,6 +395,12 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
         _assertPublicSwapResumeTime(address(pt), verse.uAsset, resumeTime, "PT/uAsset resume time");
         _assertPublicSwapResumeTime(address(pt), verse.pol, resumeTime, "PT/POL resume time");
 
+        // Open one smart-EOA session as the test contract to span both the blocked-swap reverts and the
+        // post-resume successes below. Each `vm.expectRevert` only unwinds its own `router.swap` call frame
+        // (rolling back that swap's transient SwapContext), NOT the session principal written here; so one
+        // begin covers all four reverts and the four later successes. Without it, the session gate reverts
+        // AccountSessionNotActive before the asserted PublicSwapDisabled gate is reached.
+        hook.beginAccountSession();
         bytes4 selector = IMemeverseUniswapHook.PublicSwapDisabled.selector;
         _expectSwapExactInputRevert(BOB, verse.memecoin, verse.uAsset, 0.1 ether, selector);
         _expectSwapExactInputRevert(ALICE, verse.pol, verse.uAsset, 0.1 ether, selector);
@@ -415,6 +426,11 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
         _assertPublicSwapResumeTime(address(pt), verse.uAsset, resumeTime, "PT/uAsset resume time");
         _assertPublicSwapResumeTime(address(pt), verse.pol, resumeTime, "PT/POL resume time");
 
+        // Open one smart-EOA session as the test contract to span all four direct-swap reverts. The direct
+        // manager.swap path bypasses the router but still reaches the hook's beforeSwap, where the session
+        // gate precedes the public-swap gate. Each `vm.expectRevert` unwinds only its own swap frame's
+        // transient SwapContext, not this session principal, so one begin covers all four reverts.
+        hook.beginAccountSession();
         bytes4 selector = IMemeverseUniswapHook.PublicSwapDisabled.selector;
         _expectDirectSwapExactInputRevert(verse.memecoin, verse.uAsset, 0.1 ether, selector);
         _expectDirectSwapExactInputRevert(verse.pol, verse.uAsset, 0.1 ether, selector);

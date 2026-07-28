@@ -172,9 +172,12 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
             })
         );
 
-        // A non-hook swap on the same pool executes callbacks and observes the active block.
+        // A non-hook swap on the same pool executes callbacks and observes the active block. Open a session so
+        // the swap reaches the public-swap-blocked guard, not the session gate.
+        hook.beginAccountSession();
         vm.expectRevert(IMemeverseUniswapHook.PublicSwapDisabled.selector);
         mockManager.swapAsUnlocked(evilKey, _reentrySwapParams(), bytes(""));
+        hook.endAccountSession();
     }
 
     // -----------------------------------------------------------------
@@ -236,7 +239,9 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
         (, uint256 fee0PerShareBefore,) = hook.poolInfo(poolId);
 
         // The manager harness calls swap with a non-hook caller, so callbacks collect public fees.
+        hook.beginAccountSession();
         mockManager.swapAsUnlocked(key, _reentrySwapParams(), bytes(""));
+        hook.endAccountSession();
 
         (, uint256 fee0PerShareAfter,) = hook.poolInfo(poolId);
         assertGt(fee0PerShareAfter, fee0PerShareBefore, "public swap paid public LP fee");
@@ -261,7 +266,10 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
         // is no input-side protocol fee), before `poolManager.unlock` opens.
         evil.armTransferFrom(IPoolManager(address(mockManager)), key, _reentrySwapParams());
 
-        // Settlement completes while the token-initiated swap is rejected on the public callback path.
+        // Settlement completes while the token-initiated swap is rejected on the public callback path. Open a
+        // session so the reentrant transferFrom-fired public swap reaches the public-swap-blocked guard (the
+        // asserted selector) rather than aborting on the session gate. The settlement self-call skips callbacks.
+        hook.beginAccountSession();
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: evilKey,
@@ -273,6 +281,7 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
                 recipient: address(this)
             })
         );
+        hook.endAccountSession();
 
         assertTrue(evil.reentryFired(), "transferFrom reentry fired");
         assertFalse(evil.reentrySwapExecuted(), "token-initiated reentry was blocked on the public callback path");

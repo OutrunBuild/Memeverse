@@ -88,6 +88,14 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证（`leveragedGenesisWithCredit` 用
 
 v4 LP fee 的源码结构事实是：新池初始化为零、当前没有 `updateDynamicLPFee`、普通 `beforeSwap` 不返回 fee override。本任务不为这些事实增加 runtime、首次发布、持续治理或运维控制。PoolManager protocol fee 是外部 controller 的行为，不受 Memeverse 权限或保证，也不属于本任务的 protocol fee 模型。
 
+### 4.5 Smart EOA transient session 审阅边界 `[代码已证]`
+
+以下约束 Smart EOA session 实现与审阅边界，适用于当前普通 Swap 动态费与 v4 费用路径中已实现的 session lifecycle / ABI。
+
+- `DynamicFeeFacet.addressBatchState[trader][poolId]` 的执行 trader 必须是 Hook 捕获的 session principal，绝不得使用 `tx.origin` 或 outer submitter。审阅必须核验 principal 在 `beginAccountSession()` 时只由直接 `msg.sender` 确定；begin 写入前同时要求 `activePrincipal == address(0)` 与 `swapContextDepth() == 0`，任一不满足均拒绝，不能覆盖或继承残留 context。
+- 后续实现必须审阅整个 `begin -> Router -> end` frame 的不可 catch、全成全败边界，并逐项覆盖 missing session、nested session、missing end 与 unauthorized end 的拒绝或回滚。`beforeSwap` 验证 active session principal 并写入带 principal 的 context；`afterSwap` 验证 active session principal 和匹配的非零 `SwapContext.principal`，再消费 context；principal mismatch、wrong-pool 或 missing context 不能通过减小 depth 恢复。
+- Router identity、`hookData`、Universal Router `msgSender`、签名、EIP-712、ERC-1271 与 Router allowlist 都不是本方案的一部分，也不引入 persistent state 或 Event。多用户 batch Router 及漏掉 end 后的 bypass 调用不受支持。
+
 ## 5. 审阅输出格式建议
 
 审阅结论应尽量包含：

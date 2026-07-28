@@ -5,6 +5,7 @@
 本文只覆盖 `MemeverseSwapRouter` 中的 Permit2 并行入口。  
 标签：
 
+- `[目标规范]`
 - `[代码已证]`
 - `[未知]`
 
@@ -49,6 +50,11 @@ witness 绑定了关键业务参数（池子、方向、预算、截止时间等
 - 一致：`removeLiquidityWithPermit2(...)` 进入共享 Router remove-liquidity 出款路径；最终 `recipient` 不允许是 `address(0)`，否则在 Router payout helper fail-close。`[代码已证]`
 - 不一致：swap 栈对 native fail-close（V5 规则见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3），Permit2 不为 native 提供任何兜底路径。`[代码已证]`
 - pool creation 不是 Permit2 路径；仅允许 `Launcher -> Router.createPoolAndAddLiquidity(...)`，并由 Router 的 `onlyLauncher` 限制。`[代码已证]`
+
+### 5.1 Smart EOA session 边界 `[代码已证]`
+
+- Permit2 只负责资金授权与 ERC20 拉资；permit owner、签名和 `spender` 都不认证 trader 或 principal，也不是 Hook 的 principal 来源。
+- 任意 swap 路径（包括 `swapWithPermit2(...)`）都必须在合约账户 `A` 的 active Hook account session 内执行；Permit2 不替代 `A` 的 `beginAccountSession() -> Router -> endAccountSession()` 生命周期。
 
 ## 6. 安全边界
 

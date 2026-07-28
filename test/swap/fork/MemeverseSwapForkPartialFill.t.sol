@@ -28,6 +28,8 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: tightLimit});
 
         RollbackSnapshot memory before_ = _rollbackSnapshot(address(this));
+        // Open a session so the swap reaches the partial-fill guard, not the session gate.
+        _hook().beginAccountSession();
         vm.expectRevert();
         router.swap(key, params, address(this), block.timestamp, 0, 100 ether, "");
         _assertRollback(address(this), before_);
@@ -47,7 +49,7 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
         uint256 outputBefore = token1.balanceOf(address(this));
         (, uint256 fee0Before,) = _hook().poolInfo(poolId);
 
-        router.swap(key, params, address(this), block.timestamp, 0, 1 ether, "");
+        _swapInSession(key, params, 0, 1 ether, "");
 
         (, uint256 fee0After,) = _hook().poolInfo(poolId);
         assertEq(token1.balanceOf(address(this)) - outputBefore, quote.estimatedUserOutputAmount, "output received");
@@ -67,7 +69,7 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
 
         uint256 outputBefore = token1.balanceOf(address(this));
 
-        router.swap(key, params, address(this), block.timestamp, 0, quote.estimatedUserInputAmount, "");
+        _swapInSession(key, params, 0, quote.estimatedUserInputAmount, "");
 
         assertEq(quote.estimatedUserOutputAmount, 1 ether, "quoted requested output");
         assertEq(token1.balanceOf(address(this)) - outputBefore, quote.estimatedUserOutputAmount, "output received");
@@ -86,6 +88,8 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
 
         uint256 inputBudget = token0.balanceOf(address(this));
         RollbackSnapshot memory before_ = _rollbackSnapshot(address(this));
+        // Open a session so the swap reaches the partial-fill guard, not the session gate.
+        _hook().beginAccountSession();
         vm.expectRevert();
         router.swap(key, params, address(this), block.timestamp, 0, inputBudget, "");
         _assertRollback(address(this), before_);

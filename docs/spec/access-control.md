@@ -60,6 +60,12 @@
 | `POLend.leveragedGenesisWithCredit` `[代码已证]` | 用户入口，permissionless；受 Launcher verse `Genesis` 阶段、market state（`None / Genesis`）、该 `uAsset` 已完成全局 reserve 配置且 `GenesisCreditFactory` 已部署对应 GenesisCredit、pause 约束；`creditAmount > 0`；累计 `nextTotalLeveragedInterest -> previewDebt` 吃 debt cap（real + credit 合计） | [docs/spec/polend/genesis.md §4.1](polend/genesis.md); `src/polend/POLend.sol::leveragedGenesisWithCredit` |
 | `POLend.setCreditFactory` `[代码已证]` | owner-only，替换 `GenesisCreditFactory` 地址指针（用于按 `uAsset` 查 GenesisCredit 地址）；emit `CreditFactoryChanged(old, new)` | [docs/spec/polend/settlement-and-fees.md](polend/settlement-and-fees.md); `src/polend/POLend.sol::setCreditFactory` |
 
+### 3.1 Smart EOA transient session 权限边界 `[代码已证]`
+
+- 合约账户 `A` 直接调用 Hook 的 `beginAccountSession()` 时，Hook 仅从 `msg.sender` 捕获 active principal `A`。写入前必须同时满足 `activePrincipal == address(0)` 与 `swapContextDepth() == 0`；任一不满足都必须拒绝，不能覆盖或继承残留 context。`msg.sender.code.length != 0` 只排除传统 EOA，不是账户认证或白名单；具有 delegated code 的 EIP-7702 账户仍可满足该条件。
+- `A` 必须在同一不可捕获、全成全败的执行 frame 内经任意单一经济账户 Router 执行，再由 `A` 调用 Hook 的 `endAccountSession()`。`end` 只能由 active principal `A` 调用，且不得省略；`beforeSwap` / `afterSwap` 只可使用尚未结束的 active session context 中的 principal。
+- Router 地址、`hookData`、PoolManager callback caller、`tx.origin` 与 Universal Router 的 `msgSender` 都不是 principal 来源。该模型不增加 Router allowlist / trust、签名、EIP-712、ERC-1271、principal 参数、持久状态或 session begin/end event。
+
 ## 4. Governance Reward Path 边界
 
 - `Governor.sendTreasuryAssets(...)` 属于治理执行权限路径。

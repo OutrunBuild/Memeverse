@@ -101,7 +101,12 @@ contract SettlementSamePoolReentrancyTest is Test, HookStorageHelper {
     function test_SamePoolSettleReentryRevertsSwapLifecycleReentrant() public {
         callbackToken.arm(manager, settlementPoolKey, _reentrySwapParams());
 
+        // Open a session so the reentrant callback-token public swap passes the session gate and reaches the
+        // per-pool lifecycle lock (asserted `SwapLifecycleReentrant`), not the session gate. The settlement
+        // self-call itself skips v4 callbacks and is unaffected by the session.
+        hook.beginAccountSession();
         bytes memory reason = _captureSettlementRevert();
+        hook.endAccountSession();
 
         // v4 wraps the beforeSwap hook revert as WrappedError(target, beforeSwap.selector, reason, details).
         // Decode the inner reason (offset at WrappedError field index 2) and assert it is SwapLifecycleReentrant.

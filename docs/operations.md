@@ -272,6 +272,8 @@ cast send $HOOK_PROXY "upgradeToAndCall(address,bytes)" \
 
 Hook implementation 提供 UUPS 升级入口（`_authorizeUpgrade` `onlyOwner`）。`_authorizeUpgrade` 先对新 implementation 做无代码守卫：若 `newImplementation.code.length == 0`，revert `UpgradeTargetCodeNotReady(newImplementation)`（快速失败，给命名错误而非 ABI-decode 晦涩 revert）。随后内置 on-chain `poolManager` drift 检查：通过 `ImmutableState(newImplementation).poolManager()` 读取新 implementation 的 immutable PoolManager，与当前 `poolManager` 比较，不匹配 revert `UpgradePoolManagerMismatch`。这是运维护栏而非安全边界（恶意 owner 可伪造 getter 绕过）。off-chain pre-check 仍建议执行作为双保险。
 
+account-session feature 的 Hook implementation 与 SwapFacet 是同一兼容 release unit 的已落地配对。已上线环境不得将两个 artifact 的两笔顺序升级交易宣称为安全。此类上线变更必须另有明确批准的原子性、回滚与兼容性 runbook；该 feature 不需要 persistent state migration，也不新增 Event。
+
 **Pre-check：**
 
 ```bash

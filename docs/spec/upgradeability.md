@@ -57,6 +57,12 @@
 - 三个 facet 必须以同一个 `IPoolManager` 构造，并通过 `layout at erc7201("outrun.storage.MemeverseUniswapHook")` 和 `IMemeverseHookStorage` 使用同一 `MemeverseUniswapHookStorage`。字段顺序冻结，只能尾部追加。
 - facet 应保留 `FacetGuard.onlyViaRouter` 的 direct-`CALL` 拒绝。该 guard 只区分 direct `CALL` 与 `delegatecall`，不认证 delegatecall 的宿主一定是指定 Hook proxy。
 
+### 2.2 Smart EOA transient session 的 paired release `[代码已证]`
+
+- Hook implementation 与 `SwapFacet` 必须作为兼容的 paired release 发布；两者不得依赖彼此尚未生效的 session ABI 或 callback 语义。
+- session context 仅为 Hook-owned transient state：不引入持久 storage migration，不迁移历史 session，也不新增 session begin/end event。
+- Hook implementation 与 `SwapFacet` 是同一兼容 release unit 的已落地配对。对于已上线 Hook，不能把先升级 Hook implementation、再替换 `SwapFacet`（或反序）描述为安全；任何 live upgrade 都需要另行批准的 runbook、执行顺序与验证证据。
+
 ## 3. 初始化约束（当前代码实际支持）
 
 ### 3.1 最小代理初始化一次性

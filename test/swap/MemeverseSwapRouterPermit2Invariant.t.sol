@@ -77,9 +77,12 @@ contract Permit2AccountingHandler is Test {
         IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
         uint256 treasuryBefore = token0.balanceOf(treasury);
 
+        // Open an account session on the hook for this handler call so the routed swap passes the session gate.
+        hook.beginAccountSession();
         BalanceDelta delta = router.swapWithPermit2(
             permitParams, key, params, address(this), block.timestamp, 0, amount, bytes("regular")
         );
+        hook.endAccountSession();
 
         assertLt(delta.amount0(), 0, "regular delta0");
         assertGt(delta.amount1(), 0, "regular delta1");
@@ -104,9 +107,12 @@ contract Permit2AccountingHandler is Test {
         IMemeverseSwapRouter.Permit2SingleParams memory permitParams = _singlePermit(amount);
         uint256 treasuryBefore = token0.balanceOf(treasury);
 
+        // Open an account session on the hook for this handler call so the routed swap passes the session gate.
+        hook.beginAccountSession();
         BalanceDelta delta = router.swapWithPermit2(
             permitParams, key, params, address(this), block.timestamp, 0, amount, bytes("public-swap")
         );
+        hook.endAccountSession();
 
         assertLt(delta.amount0(), 0, "settlement delta0");
         assertGt(delta.amount1(), 0, "settlement delta1");
@@ -196,6 +202,9 @@ contract Permit2SpoofHandler is Test {
         IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
         uint256 treasuryBefore = token0.balanceOf(treasury);
 
+        // Open a session on the hook for this handler call so the routed swap passes the session gate. The
+        // session is closed after the try/catch whether or not the swap reverted.
+        hook.beginAccountSession();
         try router.swapWithPermit2(
             permitParams, key, params, address(this), block.timestamp, 0, amount, bytes("public-swap")
         ) returns (
@@ -207,6 +216,7 @@ contract Permit2SpoofHandler is Test {
             assertEq(treasuryDelta, quote.estimatedProtocolFeeAmount, "spoof fee");
             expectedSpoofTreasuryFee += treasuryDelta;
         } catch {}
+        hook.endAccountSession();
     }
 
     function _singlePermit(uint256 amount)

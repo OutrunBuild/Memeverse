@@ -69,7 +69,10 @@ contract RouterSettlementAccountingHandler is Test {
         IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
         uint256 treasuryBefore = token0.balanceOf(treasury);
 
+        // Open an account session on the hook for this handler call so the routed swap passes the session gate.
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, amount, bytes("regular"));
+        hook.endAccountSession();
 
         assertLt(delta.amount0(), 0, "regular delta0");
         assertGt(delta.amount1(), 0, "regular delta1");
@@ -93,7 +96,10 @@ contract RouterSettlementAccountingHandler is Test {
         IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
         uint256 treasuryBefore = token0.balanceOf(treasury);
 
+        // Open an account session on the hook for this handler call so the routed swap passes the session gate.
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, amount, bytes("public-swap"));
+        hook.endAccountSession();
 
         assertLt(delta.amount0(), 0, "settlement delta0");
         assertGt(delta.amount1(), 0, "settlement delta1");
@@ -155,6 +161,9 @@ contract RouterSettlementSpoofHandler is Test {
         IMemeverseUniswapHook.SwapQuote memory quote = router.quoteSwap(key, params, address(this));
         uint256 treasuryBefore = token0.balanceOf(treasury);
 
+        // Open a session on the hook for this handler call so the routed swap passes the session gate. The
+        // session is closed after the try/catch whether or not the swap reverted.
+        hook.beginAccountSession();
         try router.swap(key, params, address(this), block.timestamp, 0, amount, bytes("public-swap")) returns (
             BalanceDelta delta
         ) {
@@ -164,6 +173,7 @@ contract RouterSettlementSpoofHandler is Test {
             assertEq(treasuryDelta, quote.estimatedProtocolFeeAmount, "spoof protocol fee");
             expectedSpoofTreasuryFee += treasuryDelta;
         } catch {}
+        hook.endAccountSession();
     }
 
     function _min(uint256 a, uint256 b) internal pure returns (uint256) {

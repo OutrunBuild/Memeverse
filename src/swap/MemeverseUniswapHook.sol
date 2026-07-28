@@ -22,6 +22,7 @@ import {CurrencySettler} from "./libraries/CurrencySettler.sol";
 import {SwapGuardMath} from "./libraries/SwapGuardMath.sol";
 import {LiquidityQuote} from "./libraries/LiquidityQuote.sol";
 import {MemeversePoolKeyLib} from "./libraries/MemeversePoolKeyLib.sol";
+import {MemeverseTransientState} from "./libraries/MemeverseTransientState.sol";
 import {UniswapLP} from "./tokens/UniswapLP.sol";
 import {ReentrancyGuard} from "../common/access/ReentrancyGuard.sol";
 import {IDynamicFeeFacet} from "./interfaces/IDynamicFeeFacet.sol";
@@ -443,6 +444,39 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
+    }
+
+    // -----------------------------------------------------------------
+    // Smart-EOA transient account session (Hook owns the transient store)
+    // -----------------------------------------------------------------
+    // Identity root for the dynamic-fee address-batch key. There is NO principal parameter anywhere: the
+    // hook captures the direct caller of `beginAccountSession` as `activePrincipal`, and every swap callback
+    // in this transaction reads that value. `activePrincipal != address(0)` is the sole session-active
+    // marker; a non-zero `SwapContext.principal` is the sole swap-context presence marker. These entries run
+    // directly against this contract's own transient store (not via the Router `onlyViaRouter` facet path).
+
+    /// @inheritdoc IMemeverseUniswapHook
+    function beginAccountSession() external override {
+        address principal = msg.sender;
+        // Presence gate, not auth/allowlist: a no-code EOA cannot atomically run begin → Router → end, so it
+        // is rejected. This accepts EIP-7702-delegated EOAs (EXTCODESIZE == 23) and any deployed contract
+        // account; it does NOT authenticate the account implementation behind the caller.
+        if (principal.code.length == 0) revert AccountSessionCallerMustHaveCode(principal);
+        address active = MemeverseTransientState.activePrincipal();
+        if (active != address(0)) revert AccountSessionAlreadyActive(active);
+        uint256 depth = MemeverseTransientState.swapContextDepth();
+        if (depth != 0) revert AccountSessionHasPendingContext(depth);
+        MemeverseTransientState.setActivePrincipal(principal);
+    }
+
+    /// @inheritdoc IMemeverseUniswapHook
+    function endAccountSession() external override {
+        address active = MemeverseTransientState.activePrincipal();
+        if (active == address(0)) revert AccountSessionNotActive();
+        if (msg.sender != active) revert AccountSessionUnauthorized(msg.sender, active);
+        uint256 depth = MemeverseTransientState.swapContextDepth();
+        if (depth != 0) revert AccountSessionHasPendingContext(depth);
+        MemeverseTransientState.clearActivePrincipal();
     }
 
     modifier onlyLauncher() {

@@ -526,6 +526,62 @@ interface IMemeverseUniswapHook {
     /// @dev Reverts when a call targets a selector with no matching external function on this hook.
     error UnsupportedSelector(bytes4 selector);
 
+    // -----------------------------------------------------------------
+    // Smart-EOA transient account-session errors
+    // -----------------------------------------------------------------
+    // Execution identity comes ONLY from the hook-captured `activePrincipal` (set by `beginAccountSession`
+    // reading `msg.sender`); there is no principal parameter anywhere, and `tx.origin` is never read in the
+    // execution path. `activePrincipal != address(0)` is the sole session-active marker; a non-zero
+    // `SwapContext.principal` is the sole swap-context presence marker.
+
+    /// @notice Reverts when `beginAccountSession` is called by an address with no account code.
+    /// @dev This is a presence gate, NOT auth or an allowlist: it only separates conventional no-code EOAs
+    ///      (which cannot atomically run begin → Router → end) from any address that carries account code
+    ///      (deployed contract account, Safe, or an EIP-7702-delegated EOA whose EXTCODESIZE is 23). It does
+    ///      NOT authenticate the account implementation.
+    error AccountSessionCallerMustHaveCode(address caller);
+
+    /// @notice Reverts when `beginAccountSession` is called while a session is already active.
+    /// @dev The original `activePrincipal` is NOT overwritten; nested or repeated begin always reverts.
+    error AccountSessionAlreadyActive(address activePrincipal);
+
+    /// @notice Reverts when `endAccountSession` (or a swap callback) runs with no active session.
+    error AccountSessionNotActive();
+
+    /// @notice Reverts when `endAccountSession` is called by an address other than `activePrincipal`.
+    error AccountSessionUnauthorized(address caller, address activePrincipal);
+
+    /// @notice Reverts when `endAccountSession` (or `beginAccountSession`) runs with unconsumed swap context.
+    /// @dev A pending context means a `beforeSwap` push has no matching `afterSwap` consume; ending the
+    ///      session then would orphan that context's fee/principal state.
+    error AccountSessionHasPendingContext(uint256 depth);
+
+    /// @notice Reverts when `afterSwap` consumes a context with no principal (no matching beforeSwap push).
+    error AccountSessionContextMissing();
+
+    /// @notice Reverts when an `afterSwap` context principal differs from the current `activePrincipal`.
+    /// @dev A mismatch means the session principal changed between beforeSwap and afterSwap — impossible
+    ///      inside a single atomic account frame, so this is a hard integrity failure.
+    error AccountSessionPrincipalMismatch(address contextPrincipal, address activePrincipal);
+
+    /// @notice Opens a smart-EOA transient account session, recording `msg.sender` as `activePrincipal`.
+    /// @dev Identity root: there is NO principal parameter. The hook captures the direct caller's address;
+    ///      supported callers are deployed contract accounts (ERC-4337 smart account, Safe, or an
+    ///      EIP-7702-delegated EOA). The `code.length` gate only rejects conventional no-code EOAs — it is a
+    ///      presence check, NOT an auth/allowlist, and does NOT authenticate the account implementation.
+    ///      Reverts with `AccountSessionCallerMustHaveCode` if the caller has no code,
+    ///      `AccountSessionAlreadyActive` if a session is already active, or
+    ///      `AccountSessionHasPendingContext` if any swap context is still pending. Runs directly against
+    ///      the hook's own transient store (not via the Router/`onlyViaRouter` facet path).
+    function beginAccountSession() external;
+
+    /// @notice Closes the active smart-EOA transient account session.
+    /// @dev Callable only by the current `activePrincipal` (`msg.sender == activePrincipal`). Reverts with
+    ///      `AccountSessionNotActive` if no session is active, `AccountSessionUnauthorized` if the caller is
+    ///      not the principal, or `AccountSessionHasPendingContext` if any swap context is still pending.
+    ///      Clears `activePrincipal` (the sole session-active marker) on success.
+    function endAccountSession() external;
+
     /// @notice Updates the clone template used to deploy LP tokens for new pools.
     /// @dev Implementations are expected to restrict this to an admin or owner role.
     ///      Existing LP clones are unaffected — they are independent contracts.

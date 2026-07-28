@@ -37,7 +37,7 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -50 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        router.swap(key, params, address(this), block.timestamp, 0, 50 ether, "");
+        _swapInSession(key, params, 0, 50 ether, "");
 
         // Preview and claim LP fees for lp2.
         (uint256 fee0Preview, uint256 fee1Preview) = router.previewClaimableFees(address(token0), address(token1), lp2);
@@ -148,6 +148,15 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
     function _runSwapReverting(PoolKey memory swapKey, SwapParams memory params, address recipient, uint256 inputBudget)
         external
     {
+        // Open a session so the drained-pool swap reaches the active-liquidity guard, not the session gate.
+        // `beginAccountSession` and the reverting swap run in THIS external self-call frame, so when the
+        // swap reverts the frame rolls back the session's transient `activePrincipal` write (EIP-1153
+        // transient storage reverts with its frame). `_swapCapturingRevert` catches the revert in the
+        // parent frame, where `activePrincipal` is already `address(0)`: the session is discarded, not
+        // left open, so no `endAccountSession` is needed or valid (it would revert `AccountSessionNotActive`).
+        // Contrast `test/swap/BeforeSwapReentrancyGuard.t.sol`, where begin/end live in the test frame and
+        // the session survives the swap-revert catch.
+        _hook().beginAccountSession();
         router.swap(swapKey, params, recipient, block.timestamp, 0, inputBudget, "");
     }
 
@@ -230,7 +239,7 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -50 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        router.swap(key, params, address(this), block.timestamp, 0, 50 ether, "");
+        _swapInSession(key, params, 0, 50 ether, "");
 
         (uint256 thisFee0, uint256 thisFee1) =
             router.previewClaimableFees(address(token0), address(token1), address(this));

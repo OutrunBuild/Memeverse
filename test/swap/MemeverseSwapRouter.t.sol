@@ -17,6 +17,7 @@ import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {LiquidityAmounts} from "../../src/swap/libraries/LiquidityAmounts.sol";
 import {LiquidityQuote} from "../../src/swap/libraries/LiquidityQuote.sol";
 import {OrdinarySwapMath} from "../../src/swap/libraries/OrdinarySwapMath.sol";
+import {SwapFeeMath} from "../../src/swap/libraries/SwapFeeMath.sol";
 
 import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
@@ -304,6 +305,8 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _setProtocolFeeCurrency(key.currency0);
         _matureLaunchWindow();
 
+        // Open a session so the swap reaches the price-limit guard, which runs after the session check.
+        hook.beginAccountSession();
         vm.expectRevert(OrdinarySwapMath.InvalidRawSqrtPriceLimit.selector);
         router.swap(
             key,
@@ -314,6 +317,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
     }
 
     /// @notice Verifies exact-output swaps require a non-zero `amountInMaximum`.
@@ -367,6 +371,8 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 treasury0Before = token0.balanceOf(treasury);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
 
+        // Public swap callbacks now require an active account session; open one so the test contract is the principal.
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -376,6 +382,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertLt(token0.balanceOf(address(this)), balance0Before, "token0 spent");
         assertGt(token1.balanceOf(address(this)), balance1Before, "token1 received");
@@ -390,6 +397,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _setProtocolFeeCurrency(key.currency0);
         _matureLaunchWindow();
 
+        hook.beginAccountSession();
         router.swap(
             key,
             SwapParams({
@@ -401,6 +409,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertEq(manager.lastUnlockPayer(), address(router), "router should prefund regular swaps");
         assertEq(token0.balanceOf(address(router)), 0, "router should not retain input");
@@ -415,6 +424,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _matureLaunchWindow();
 
         uint256 gasBefore = gasleft();
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({
@@ -426,6 +436,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
         uint256 gasUsed = gasBefore - gasleft();
 
         assertLt(int256(delta.amount0()), 0, "delta0");
@@ -445,6 +456,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             address(manager), abi.encodeCall(MockPoolManagerForRouterTest.extsload, (poolStateSlot)), uint64(2)
         );
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -454,6 +466,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertLt(delta.amount0(), 0, "delta0");
         assertGt(delta.amount1(), 0, "delta1");
@@ -491,6 +504,8 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         token1.approve(address(guardedRouter), type(uint256).max);
 
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
+        // Open a session on the guarded hook so the swap reaches the public-swap-blocked guard, not the session gate.
+        guardedHook.beginAccountSession();
         vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
         guardedRouter.swap(
             guardedKey,
@@ -501,6 +516,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        guardedHook.endAccountSession();
     }
 
     /// @notice Verifies public-swap protection blocks swaps until resumeTime and allows them after.
@@ -514,6 +530,10 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             _setPublicSwapResumeTime(address(hook), address(token0), address(token1), resumeTime);
         assertTrue(setOk, string(setData));
 
+        // Open a session once so both swaps reach the public-swap gate; the session check precedes it. The blocked
+        // swap reverts inside beforeSwap, but its transient context rolls back, leaving the session intact for the
+        // post-resume swap.
+        hook.beginAccountSession();
         vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
         router.swap(
             key,
@@ -539,6 +559,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
         assertLt(delta.amount0(), 0, "post-resume swap input");
         assertGt(delta.amount1(), 0, "post-resume swap output");
     }
@@ -591,6 +612,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         token1.approve(address(guardedRouter), type(uint256).max);
         otherToken.approve(address(guardedRouter), type(uint256).max);
 
+        // Open a session on the guarded hook so both swaps reach the public-swap gate. The blocked swap reverts
+        // there; the open pool's swap then executes.
+        guardedHook.beginAccountSession();
         vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
         guardedRouter.swap(
             blockedKey,
@@ -615,6 +639,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        guardedHook.endAccountSession();
         assertLt(openDelta.amount0(), 0, "open pool should swap");
         assertGt(openDelta.amount1(), 0, "open pool output");
     }
@@ -813,10 +838,13 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         token1.mint(address(guardedManager), 1_000_000 ether);
 
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
+        // Open a session on the guarded hook so the direct swap reaches the public-swap-blocked guard.
+        guardedHook.beginAccountSession();
         vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
         directCaller.swapDirect(
             guardedKey, SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit})
         );
+        guardedHook.endAccountSession();
     }
 
     /// @notice Covers the basic one-for-zero exact-input routing branch under the local manager harness.
@@ -829,6 +857,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 treasury1Before = token1.balanceOf(treasury);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 101) / 100);
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -838,6 +867,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertGt(token0.balanceOf(address(this)), balance0Before, "token0 received");
         assertLt(token1.balanceOf(address(this)), balance1Before, "token1 spent");
@@ -854,6 +884,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 treasury1Before = token1.balanceOf(treasury);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -863,6 +894,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertGt(token1.balanceOf(address(this)), balance1Before, "token1 received");
         assertLt(delta.amount1(), int128(int256(50 ether)), "output reduced by output-side fee");
@@ -877,6 +909,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 treasury0Before = token0.balanceOf(treasury);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 101) / 100);
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -886,6 +919,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertGt(token0.balanceOf(address(this)), balance0Before, "token0 received");
         assertLt(delta.amount0(), int128(int256(50 ether)), "output reduced by output-side fee");
@@ -901,6 +935,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 treasury0Before = token0.balanceOf(treasury);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -910,6 +945,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             400 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertEq(token1.balanceOf(address(this)) - balance1Before, 100 ether, "exact output received");
         assertEq(balance0Before - token0.balanceOf(address(this)), 400 ether, "input includes fee");
@@ -925,6 +961,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 balance0Before = token0.balanceOf(address(this));
         uint256 amountInMaximum = 500 ether;
 
+        hook.beginAccountSession();
         router.swap(
             key,
             SwapParams({
@@ -936,6 +973,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             amountInMaximum,
             ""
         );
+        hook.endAccountSession();
 
         assertEq(manager.lastUnlockPayer(), address(router), "router should pay exact-output input");
         assertEq(balance0Before - token0.balanceOf(address(this)), 400 ether, "unused input refunded");
@@ -951,6 +989,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 treasury1Before = token1.balanceOf(treasury);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 101) / 100);
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({zeroForOne: false, amountSpecified: 100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -960,6 +999,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             400 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertEq(token0.balanceOf(address(this)) - balance0Before, 100 ether, "exact output received");
         assertEq(balance1Before - token1.balanceOf(address(this)), 400 ether, "input includes fee");
@@ -978,6 +1018,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 treasury1Before = token1.balanceOf(treasury);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -987,6 +1028,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             300 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertEq(token1.balanceOf(address(this)) - balance1Before, 100 ether, "exact net output");
         assertGt(balance0Before - token0.balanceOf(address(this)), 200 ether, "gross-up raises input");
@@ -1004,6 +1046,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 treasury0Before = token0.balanceOf(treasury);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 101) / 100);
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({zeroForOne: false, amountSpecified: 100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -1013,6 +1056,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             300 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertEq(token0.balanceOf(address(this)) - balance0Before, 100 ether, "exact net output");
         assertGt(balance1Before - token1.balanceOf(address(this)), 200 ether, "gross-up raises input");
@@ -1033,8 +1077,10 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 balance1Before = token1.balanceOf(address(this));
         uint256 treasury1Before = token1.balanceOf(treasury);
 
+        hook.beginAccountSession();
         BalanceDelta delta =
             router.swap(key, params, address(this), block.timestamp, 0, quote.estimatedUserInputAmount, "");
+        hook.endAccountSession();
 
         assertFalse(quote.protocolFeeOnInput, "protocolFeeOnInput");
         assertEq(quote.feeBps, 5000, "launch fee floor");
@@ -1054,6 +1100,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         uint256 balance0Before = token0.balanceOf(address(this));
         uint256 balance1Before = token1.balanceOf(address(this));
 
+        hook.beginAccountSession();
         BalanceDelta delta = router.swap(
             key,
             SwapParams({
@@ -1065,6 +1112,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertLt(token0.balanceOf(address(this)), balance0Before, "token0 spent");
         assertGt(token1.balanceOf(address(this)), balance1Before, "token1 received");
@@ -1073,21 +1121,45 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies exact-output swaps revert when the required input exceeds the maximum.
-    /// @dev Covers router slippage protection.
+    /// @dev Covers the router's post-unlock `InputAmountExceedsMaximum` slippage check. The router's
+    ///      max-input guard runs only after `poolManager.unlock` returns, so the swap must settle fully
+    ///      for this revert surface to be reachable.
+    ///
+    ///      The expected settled input is derived from the swap itself rather than hardcoded: a first swap
+    ///      completes (with a generous cap) and its returned delta yields the actual input amount, which is
+    ///      then reused as the revert's expected value. This keeps the assertion correct if the mock's fee
+    ///      math changes, instead of baking in a magic number that silently drifts.
     function testSwapReverts_WhenExactOutputExceedsAmountInMaximum() external {
         _setProtocolFeeCurrency(key.currency0);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
+        SwapParams memory params =
+            SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: priceLimit});
 
-        vm.expectRevert();
-        router.swap(
-            key,
-            SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: priceLimit}),
-            address(this),
-            block.timestamp,
-            0,
-            200 ether,
-            ""
+        // Run one completing swap to learn the actual settled input from its delta. The cap must clear the
+        // full settlement (pool input plus input-side fees) so the swap finishes instead of reverting early.
+        // The prefund is load-bearing for BOTH swaps: the router refunds only the pulled input budget, not
+        // this prefund, so it survives swap 1 as a residual and covers the 1-wei settlement shortfall on the
+        // capped swap 2 — forcing the revert to surface at the post-unlock max check rather than inside
+        // settlement. Do not remove the prefund line thinking swap 1 funds itself via the pull.
+        assertTrue(token0.transfer(address(router), 1000 ether), "router prefund");
+        hook.beginAccountSession();
+        BalanceDelta completedDelta = router.swap(key, params, address(this), block.timestamp, 0, 1000 ether, "");
+        uint256 actualInputAmount = SwapFeeMath.actualInputAmount(completedDelta, params.zeroForOne);
+        hook.endAccountSession();
+
+        // Both swaps settle the same input because this mock moves no price and time is fixed, so the
+        // launch fee dominates identically and `actualInputAmount` carries over to swap 2 unchanged.
+
+        // One wei below the actual input makes the router's post-unlock max-input check revert.
+        uint256 amountInMaximum = actualInputAmount - 1;
+        hook.beginAccountSession();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMemeverseSwapRouter.InputAmountExceedsMaximum.selector, actualInputAmount, amountInMaximum
+            )
         );
+        router.swap(key, params, address(this), block.timestamp, 0, amountInMaximum, "");
+        hook.endAccountSession();
     }
 
     /// @notice Covers the hook-level underfill revert surface when the mock execution path returns less than requested.
@@ -1097,6 +1169,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         manager.setNextExactOutputAmount(poolId, 80 ether);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
 
+        hook.beginAccountSession();
         vm.expectRevert(IMemeverseUniswapHook.ExactOutputPartialFill.selector);
         router.swap(
             key,
@@ -1107,6 +1180,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             300 ether,
             ""
         );
+        hook.endAccountSession();
     }
 
     /// @notice Verifies swaps reject expired deadlines.
@@ -1134,6 +1208,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _matureLaunchWindow();
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
 
+        hook.beginAccountSession();
         vm.expectRevert(
             abi.encodeWithSelector(IMemeverseSwapRouter.OutputAmountBelowMinimum.selector, 49.5 ether, 60 ether)
         );
@@ -1146,12 +1221,16 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
     }
 
     /// @notice Covers the local fail-closed branch for exact-input underfills on input-side fee pools.
     /// @dev Uses the mock harness to witness router-facing rollback of payer, treasury, and LP-fee state.
     function testSwapReverts_WhenExactInputPartialFillsOnInputFeePool() external {
         _setProtocolFeeCurrency(key.currency0);
+        // One session covers the seed swap and both rollback swaps; each reverted swap rolls back its own
+        // transient context, so depth returns to 0 before the next swap.
+        hook.beginAccountSession();
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         router.swap(
             key,
@@ -1197,15 +1276,16 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             assertEq(fee1After, fee1PerShareBefore, "fee1 per share unchanged");
         }
 
-        // Scope 2: EWVWAP state unchanged
+        // Scope 2: EWVWAP state unchanged. Reading the state struct directly from the hook avoids the 9-tuple
+        // destructure, which stack-overflows under `forge coverage`'s `--ir-minimum` mode (plain `via_ir`
+        // is unaffected). Only the asserted fields are read into named locals.
         {
-            (
-                uint256 wv0Before,,
-                uint256 ewVWAPBefore,
-                uint160 volAnchorBefore,,
-                uint24 volDevBefore,,
-                uint24 shortImpactBefore,
-            ) = lens.poolDynamicFeeState(IMemeverseUniswapHook(address(hook)), poolId);
+            IDynamicFeeFacet.DynamicFeeState memory stateBefore = hook.dynamicFeeStateOf(poolId);
+            uint256 wv0Before = stateBefore.weightedVolume0;
+            uint256 ewVWAPBefore = stateBefore.ewVWAPX18;
+            uint160 volAnchorBefore = stateBefore.volAnchorSqrtPriceX96;
+            uint24 volDevBefore = stateBefore.volDeviationAccumulator;
+            uint24 shortImpactBefore = stateBefore.shortImpactPpm;
 
             manager.setNextExactInputPoolInputAmount(poolId, 98 ether);
             vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
@@ -1221,25 +1301,21 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
                 ""
             );
 
-            (
-                uint256 wv0After,,
-                uint256 ewVWAPAfter,
-                uint160 volAnchorAfter,,
-                uint24 volDevAfter,,
-                uint24 shortImpactAfter,
-            ) = lens.poolDynamicFeeState(IMemeverseUniswapHook(address(hook)), poolId);
-            assertEq(wv0After, wv0Before, "ewvwap weightedVolume0 unchanged");
-            assertEq(ewVWAPAfter, ewVWAPBefore, "ewvwap unchanged");
-            assertEq(volAnchorAfter, volAnchorBefore, "vol anchor unchanged");
-            assertEq(volDevAfter, volDevBefore, "volatility unchanged");
-            assertEq(shortImpactAfter, shortImpactBefore, "short impact unchanged");
+            IDynamicFeeFacet.DynamicFeeState memory stateAfter = hook.dynamicFeeStateOf(poolId);
+            assertEq(stateAfter.weightedVolume0, wv0Before, "ewvwap weightedVolume0 unchanged");
+            assertEq(stateAfter.ewVWAPX18, ewVWAPBefore, "ewvwap unchanged");
+            assertEq(stateAfter.volAnchorSqrtPriceX96, volAnchorBefore, "vol anchor unchanged");
+            assertEq(stateAfter.volDeviationAccumulator, volDevBefore, "volatility unchanged");
+            assertEq(stateAfter.shortImpactPpm, shortImpactBefore, "short impact unchanged");
         }
+        hook.endAccountSession();
     }
 
     /// @notice Covers the mirrored local fail-closed branch for one-for-zero exact-input underfills on input-fee pools.
     /// @dev Uses the mock harness to witness routed rollback symmetry rather than proving full production partial-fill semantics.
     function testSwapReverts_WhenOneForZeroExactInputPartialFillsOnInputFeePool() external {
         _setProtocolFeeCurrency(key.currency1);
+        hook.beginAccountSession();
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         router.swap(
             key,
@@ -1285,15 +1361,15 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             assertEq(fee1After, fee1PerShareBefore, "fee1 per share unchanged");
         }
 
-        // Scope 2: EWVWAP state unchanged
+        // Scope 2: EWVWAP state unchanged. Read the state struct directly from the hook instead of the 9-tuple
+        // destructure so the coverage-mode compiler does not stack-overflow (same reason as the mirror test).
         {
-            (
-                uint256 wv0Before,,
-                uint256 ewVWAPBefore,
-                uint160 volAnchorBefore,,
-                uint24 volDevBefore,,
-                uint24 shortImpactBefore,
-            ) = lens.poolDynamicFeeState(IMemeverseUniswapHook(address(hook)), poolId);
+            IDynamicFeeFacet.DynamicFeeState memory stateBefore = hook.dynamicFeeStateOf(poolId);
+            uint256 wv0Before = stateBefore.weightedVolume0;
+            uint256 ewVWAPBefore = stateBefore.ewVWAPX18;
+            uint160 volAnchorBefore = stateBefore.volAnchorSqrtPriceX96;
+            uint24 volDevBefore = stateBefore.volDeviationAccumulator;
+            uint24 shortImpactBefore = stateBefore.shortImpactPpm;
 
             manager.setNextExactInputPoolInputAmount(poolId, 98 ether);
             vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
@@ -1309,19 +1385,14 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
                 ""
             );
 
-            (
-                uint256 wv0After,,
-                uint256 ewVWAPAfter,
-                uint160 volAnchorAfter,,
-                uint24 volDevAfter,,
-                uint24 shortImpactAfter,
-            ) = lens.poolDynamicFeeState(IMemeverseUniswapHook(address(hook)), poolId);
-            assertEq(wv0After, wv0Before, "ewvwap weightedVolume0 unchanged");
-            assertEq(ewVWAPAfter, ewVWAPBefore, "ewvwap unchanged");
-            assertEq(volAnchorAfter, volAnchorBefore, "vol anchor unchanged");
-            assertEq(volDevAfter, volDevBefore, "volatility unchanged");
-            assertEq(shortImpactAfter, shortImpactBefore, "short impact unchanged");
+            IDynamicFeeFacet.DynamicFeeState memory stateAfter = hook.dynamicFeeStateOf(poolId);
+            assertEq(stateAfter.weightedVolume0, wv0Before, "ewvwap weightedVolume0 unchanged");
+            assertEq(stateAfter.ewVWAPX18, ewVWAPBefore, "ewvwap unchanged");
+            assertEq(stateAfter.volAnchorSqrtPriceX96, volAnchorBefore, "vol anchor unchanged");
+            assertEq(stateAfter.volDeviationAccumulator, volDevBefore, "volatility unchanged");
+            assertEq(stateAfter.shortImpactPpm, shortImpactBefore, "short impact unchanged");
         }
+        hook.endAccountSession();
     }
 
     /// @notice Verifies exact-output quotes include input-side fees in the user input amount.
@@ -1440,6 +1511,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _matureLaunchWindow();
 
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
+        hook.beginAccountSession();
         router.swap(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -1449,6 +1521,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         address recipient = address(0xCAFE);
         uint256 balanceBefore = token0.balanceOf(recipient);
@@ -1474,6 +1547,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _matureLaunchWindow();
 
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
+        hook.beginAccountSession();
         router.swap(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -1483,6 +1557,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         (uint256 fee0OffsetBefore, uint256 fee1OffsetBefore, uint256 pendingFee0Before, uint256 pendingFee1Before) =
             hook.userFeeState(poolId, alice);
@@ -1539,6 +1614,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _matureLaunchWindow();
 
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
+        hook.beginAccountSession();
         router.swap(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
@@ -1548,6 +1624,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         PoolKey memory routerKey = router.getHookPoolKey(address(token0), address(token1));
         (uint256 hookFee0, uint256 hookFee1) =

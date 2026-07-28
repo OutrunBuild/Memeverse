@@ -84,6 +84,8 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
 
     function testDirectManager_ExactInput_InputFee_PartialFill_RevertsAndRollsBack() external {
         hook.setProtocolFeeCurrency(key.currency0, true);
+        // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
+        hook.beginAccountSession();
         integrator.swap(
             key,
             SwapParams({
@@ -92,11 +94,13 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             address(this),
             bytes("")
         );
+        hook.endAccountSession();
         _matureLaunchWindow();
         manager.setNextExactInputPoolInputAmount(poolId, 98 ether);
 
         RollbackSnapshot memory before_ = _rollbackSnapshot(address(this));
 
+        hook.beginAccountSession();
         vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
         integrator.swap(
             key,
@@ -106,6 +110,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             address(this),
             bytes("")
         );
+        hook.endAccountSession();
 
         _assertRollback(address(this), before_);
     }
@@ -124,7 +129,9 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         uint256 treasury1Before = token1.balanceOf(treasury);
         (, uint256 fee0PerShareBefore,) = hook.poolInfo(poolId);
 
+        hook.beginAccountSession();
         BalanceDelta delta = integrator.swap(key, params, address(this), bytes(""));
+        hook.endAccountSession();
 
         (, uint256 fee0PerShareAfter,) = hook.poolInfo(poolId);
         assertEq(payer0Before - token0.balanceOf(address(this)), quote.estimatedUserInputAmount, "exact user spend");
@@ -148,6 +155,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         manager.setNextExactOutputAmount(poolId, 9 ether);
         RollbackSnapshot memory before_ = _rollbackSnapshot(address(this));
 
+        hook.beginAccountSession();
         vm.expectRevert(IMemeverseUniswapHook.ExactOutputPartialFill.selector);
         integrator.swap(
             key,
@@ -157,6 +165,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             address(this),
             bytes("")
         );
+        hook.endAccountSession();
 
         _assertRollback(address(this), before_);
     }
@@ -173,8 +182,10 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         manager.setNextExactOutputAmount(poolId, quote.estimatedUserOutputAmount + quote.estimatedProtocolFeeAmount - 1);
         RollbackSnapshot memory before_ = _rollbackSnapshot(address(this));
 
+        hook.beginAccountSession();
         vm.expectRevert(IMemeverseUniswapHook.ExactOutputPartialFill.selector);
         integrator.swap(key, params, address(this), bytes(""));
+        hook.endAccountSession();
 
         _assertRollback(address(this), before_);
     }
@@ -195,7 +206,9 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         uint256 payer1Before = token1.balanceOf(address(this));
         uint256 treasury1Before = token1.balanceOf(treasury);
 
+        hook.beginAccountSession();
         integrator.swap(key, params, address(this), bytes(""));
+        hook.endAccountSession();
 
         assertEq(
             token1.balanceOf(address(this)) - payer1Before,
@@ -216,6 +229,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         manager.setNextExactOutputAmount(poolId, 0);
         RollbackSnapshot memory before_ = _rollbackSnapshot(address(this));
 
+        hook.beginAccountSession();
         vm.expectRevert(IMemeverseUniswapHook.ExactOutputPartialFill.selector);
         integrator.swap(
             key,
@@ -225,6 +239,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             address(this),
             bytes("")
         );
+        hook.endAccountSession();
 
         _assertRollback(address(this), before_);
     }
@@ -233,6 +248,8 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         hook.setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();
 
+        // Open a session so the swap passes the session gate and reaches the integrator's settle guard.
+        hook.beginAccountSession();
         vm.expectRevert(RealisticSwapManagerHarness.CurrencyNotSettled.selector);
         rawTransferIntegrator.swap(
             key,
@@ -242,6 +259,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             address(this),
             bytes("")
         );
+        hook.endAccountSession();
     }
 
     /// @notice Lens STATICCALL and direct ordinary CALL agree without mutating the first-anchor state.
@@ -266,7 +284,9 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
         manager.setNextSwapSqrtPriceX96(poolId, SQRT_PRICE_1_1 - SQRT_PRICE_1_1 / 100);
+        hook.beginAccountSession();
         integrator.swap(key, seedParams, address(this), bytes(""));
+        hook.endAccountSession();
 
         IDynamicFeeFacet.DynamicFeeState memory seeded = hook.dynamicFeeStateOf(poolId);
         assertGt(seeded.volLastMoveTs, 0, "price move starts refresh clock");
@@ -293,43 +313,45 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         _assertLensBridgeAndExecutionAgree(false, int256(1 ether), false);
     }
 
-    /// @notice An intermediary keeps payer, recipient, dynamic-fee trader, and callback caller roles separate.
+    /// @notice An intermediary keeps recipient and callback-caller roles separate from the dynamic-fee principal.
+    /// @dev Task 2 replaced the tx.origin identity root with the hook-captured session principal. The dynamic-fee
+    ///      trader is now `address(this)` (the session principal set by `beginAccountSession`), so this test
+    ///      proves the principal owns the batch while the recipient, the integrator (callback sender), and the
+    ///      manager (callback caller) do not. The payer here coincides with the principal (this contract calls
+    ///      `beginAccountSession` and is also the integrator's `msg.sender`), so payer/principal separation is no
+    ///      longer a distinct axis.
     function testIntermediarySeparatesTraderPayerRecipientAndCallbackCallerRoles() external {
         _matureLaunchWindow();
         hook.setProtocolFeeCurrency(key.currency0, true);
 
-        address traderOrigin = alice;
+        address principal = address(this);
         address recipient = makeAddr("recipient");
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
         IMemeverseUniswapHook.SwapQuote memory quote =
-            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, traderOrigin);
+            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, principal);
 
         uint256 payerInputBefore = token0.balanceOf(address(this));
         uint256 payerOutputBefore = token1.balanceOf(address(this));
         uint256 recipientOutputBefore = token1.balanceOf(recipient);
-        uint256 traderInputBefore = token0.balanceOf(traderOrigin);
-        uint256 traderOutputBefore = token1.balanceOf(traderOrigin);
 
         // The integrator records msg.sender as payer, PoolManager sees the integrator as swap/callback sender,
-        // and SwapFacet deliberately keys dynamic history by tx.origin instead of either intermediary.
-        vm.prank(address(this), traderOrigin);
+        // and SwapFacet keys dynamic history by the session principal (this contract).
+        hook.beginAccountSession();
         BalanceDelta delta = integrator.swap(key, params, recipient, bytes(""));
+        hook.endAccountSession();
 
         assertEq(payerInputBefore - token0.balanceOf(address(this)), quote.estimatedUserInputAmount, "payer input");
         assertEq(token1.balanceOf(address(this)), payerOutputBefore, "payer is not recipient");
         assertEq(
             token1.balanceOf(recipient) - recipientOutputBefore, quote.estimatedUserOutputAmount, "recipient output"
         );
-        assertEq(token0.balanceOf(traderOrigin), traderInputBefore, "trader origin is not payer");
-        assertEq(token1.balanceOf(traderOrigin), traderOutputBefore, "trader origin is not recipient");
         assertEq(delta.amount0(), -int128(int256(quote.estimatedUserInputAmount)), "final input delta");
         assertEq(delta.amount1(), int128(int256(quote.estimatedUserOutputAmount)), "final output delta");
 
-        IDynamicFeeFacet.AddressBatchState memory traderBatch = hook.addressBatchStateOf(traderOrigin, poolId);
-        assertGt(traderBatch.batchStartTs, 0, "tx.origin owns dynamic batch");
-        assertEq(hook.addressBatchStateOf(address(this), poolId).batchStartTs, 0, "payer has no trader batch");
+        IDynamicFeeFacet.AddressBatchState memory traderBatch = hook.addressBatchStateOf(principal, poolId);
+        assertGt(traderBatch.batchStartTs, 0, "session principal owns dynamic batch");
         assertEq(hook.addressBatchStateOf(recipient, poolId).batchStartTs, 0, "recipient has no trader batch");
         assertEq(
             hook.addressBatchStateOf(address(integrator), poolId).batchStartTs, 0, "callback sender has no trader batch"
@@ -352,8 +374,11 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         vm.expectRevert(OrdinarySwapMath.FinalTargetNotExecutable.selector);
         lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, tx.origin);
 
+        // Execution path: open a session so the swap reaches the capacity guard, not the session gate.
+        hook.beginAccountSession();
         vm.expectRevert(OrdinarySwapMath.FinalTargetNotExecutable.selector);
         integrator.swap(key, params, address(this), bytes(""));
+        hook.endAccountSession();
     }
 
     /// @notice Execution normalizes a full-range exact-output rounding endpoint to the shared capacity error.
@@ -375,8 +400,10 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             zeroForOne: true, amountSpecified: int256(capacity.outputCapacity - 1), sqrtPriceLimitX96: lowerEndpoint
         });
 
+        hook.beginAccountSession();
         vm.expectRevert(OrdinarySwapMath.FinalTargetNotExecutable.selector);
         integrator.swap(key, params, address(this), bytes(""));
+        hook.endAccountSession();
     }
 
     /// @notice The full negative int256 exact-input boundary reaches the shared capacity error without panic.
@@ -395,8 +422,11 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         vm.expectRevert(OrdinarySwapMath.FinalTargetNotExecutable.selector);
         lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, tx.origin);
 
+        // Execution path: open a session so the swap reaches the capacity guard, not the session gate.
+        hook.beginAccountSession();
         vm.expectRevert(OrdinarySwapMath.FinalTargetNotExecutable.selector);
         integrator.swap(key, params, address(this), bytes(""));
+        hook.endAccountSession();
     }
 
     function _assertLensAndBridgeQuotesAreReadOnly(SwapParams memory params, address trader, bool protocolFeeOnInput)
@@ -579,10 +609,13 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         });
         (uint160 preSqrtPriceX96,,,) = manager.getSlot0(poolId);
         uint128 liquidity = IPoolManager(address(manager)).getLiquidity(poolId);
+        // Task 2 made the hook-captured session principal (this contract) the dynamic-fee trader, with no
+        // tx.origin fallback. The quote must therefore use the same principal so lens/bridge/execution agree.
+        address trader = address(this);
         IDynamicFeeFacet.PreparedSwapFee memory bridgeQuote = IMemeverseUniswapHook(address(hook))
-            .quoteSwapFeeWithContext(poolId, params, tx.origin, preSqrtPriceX96, liquidity, protocolFeeOnInput);
+            .quoteSwapFeeWithContext(poolId, params, trader, preSqrtPriceX96, liquidity, protocolFeeOnInput);
         IMemeverseUniswapHook.SwapQuote memory lensQuote =
-            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, tx.origin);
+            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, trader);
 
         assertEq(lensQuote.feeBps, bridgeQuote.feeBps, "fee bps");
         assertEq(lensQuote.protocolFeeOnInput, protocolFeeOnInput, "fee leg");
@@ -602,7 +635,11 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         ExpectedOrdinarySwap memory expected
     ) internal {
         ExecutionAccountingSnapshot memory beforeSwap = _executionAccountingSnapshot(referrer);
+        // The execution swap enters beforeSwapLogic, which requires an active session. Open one so the eight
+        // direction/request/fee-leg cases all reach execution.
+        hook.beginAccountSession();
         BalanceDelta delta = integrator.swap(key, params, address(this), abi.encodePacked(referrer));
+        hook.endAccountSession();
         ExecutionAccountingSnapshot memory afterSwap = _executionAccountingSnapshot(referrer);
 
         _assertCallerDeltaAndLpFee(params.zeroForOne, delta, lensQuote, expected, beforeSwap, afterSwap);
@@ -824,6 +861,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         hook.setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         // First swap to build up volatility state so the dynamic fee is sensitive to liquidity.
+        hook.beginAccountSession();
         integrator.swap(
             key,
             SwapParams({
@@ -832,6 +870,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             address(this),
             bytes("")
         );
+        hook.endAccountSession();
 
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10_000 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
@@ -884,6 +923,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
 
         // Execute a swap to move the price.
+        hook.beginAccountSession();
         integrator.swap(
             key,
             SwapParams({
@@ -892,6 +932,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
             address(this),
             bytes("")
         );
+        hook.endAccountSession();
 
         IMemeverseUniswapHook.SwapQuote memory afterQuote =
             lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));

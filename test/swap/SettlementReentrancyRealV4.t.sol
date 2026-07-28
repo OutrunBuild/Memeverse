@@ -8,7 +8,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
@@ -25,6 +25,11 @@ contract SettlementReentrancyRealV4Test is Test, HookStorageHelper {
     using PoolIdLibrary for PoolKey;
 
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
+
+    // Selector of v4's CustomRevert.WrappedError(address,bytes4,bytes,bytes) — the ERC-7751 wrapper v4 emits
+    // when a hook beforeSwap revert bubbles back through PoolManager.swap. Mirrors the constant in the
+    // sibling SettlementTransferFromSamePoolReentrancy / SettlementSamePoolReentrancy tests.
+    bytes4 internal constant _WRAPPED_ERROR_SELECTOR = bytes4(0x90bfb865);
 
     IPoolManager internal manager;
     MemeverseUniswapHook internal hook;
@@ -170,6 +175,64 @@ contract SettlementReentrancyRealV4Test is Test, HookStorageHelper {
         assertGt(publicInputToken.balanceOf(treasury), treasuryPublicInputBefore, "reentrant public swap paid treasury");
     }
 
+    /// @notice A callback-token reentrant public swap during settlement, with NO account session active
+    ///         (the production configuration), is blocked at the session gate — v4 wraps the
+    ///         `AccountSessionNotActive` revert as `WrappedError` and the reenterer's transferFrom try/catch
+    ///         swallows it, so the outer settlement completes. This pins the production property documented
+    ///         in INV-04A: settlement never opens a session, so a reentrant public swap reverts
+    ///         `AccountSessionNotActive` before any fee/lock logic.
+    /// @dev Uses the transferFrom window (armTransferFrom) because that arm's nested-unlock try/catch
+    ///      swallows the inner revert, letting the outer settlement complete — matching
+    ///      SettlementTransferFromSamePoolReentrancy's proven shape, but WITHOUT injecting a session (so the
+    ///      inner swap cannot reach the lifecycle lock). `SwapFacet.beforeSwapLogic` gates in a fixed order:
+    ///      (1) `AccountSessionNotActive` at the first gate when `activePrincipal() == address(0)`, then
+    ///      (2) `_revertIfPublicSwapBlocked` (`PublicSwapDisabled`), then (3) `acquireSwapLifecycleLock`
+    ///      (`SwapLifecycleReentrant`). The mock only records the 4-byte wrapped selector, not the inner
+    ///      reason, so the inner `AccountSessionNotActive` is proven by elimination rather than by decoding:
+    ///        - Gates (2) and (3) are structurally unreachable here:
+    ///          * (3) requires `acquireSwapLifecycleLock` on the SAME poolId the outer swap holds. The inner
+    ///            swap targets `publicPoolKey`, a DIFFERENT pool from `settlementPoolKey` (asserted below), so
+    ///            no per-pool lock is held on the inner pool — `SwapLifecycleReentrant` cannot fire.
+    ///          * (2) requires a non-zero `publicSwapResumeTime[publicPoolKey]`. setUp builds these pools via
+    ///            `_dynamicPoolKey` + `_initializeAndFundPool` with NO verse/stage and never writes a public-swap
+    ///            protection window, so `publicSwapResumeTime(publicPoolKey.toId()) == 0` (asserted below) and
+    ///            `PublicSwapDisabled` cannot fire.
+    ///      With gates (2) and (3) ruled out and the session gate being the FIRST gate, the only remaining
+    ///      reachable selector is `AccountSessionNotActive` — proving the inner beforeSwap revert came from the
+    ///      session gate exactly as INV-04A specifies for the no-session production settlement path.
+    function test_SettlementTransferFromReentryBlockedByAccountSessionGateOnRealV4() public {
+        callbackToken.armTransferFrom(manager, publicPoolKey, _reentrySwapParams(true));
+
+        uint256 payerInputBefore = callbackToken.balanceOf(address(this));
+        uint256 treasuryInputBefore = callbackToken.balanceOf(treasury);
+        uint256 recipientOutputBefore = token1.balanceOf(address(this));
+
+        // NO beginAccountSession: production settlement opens no session (INV-04A). The outer settlement must
+        // still complete because the reenterer's transferFrom try/catch swallows the inner reentrant-swap revert.
+        _runSettlementWithoutSession();
+
+        // Inner reentrant swap fired from the transferFrom window and was blocked.
+        assertTrue(callbackToken.reentryFired(), "transferFrom callback fired");
+        assertFalse(callbackToken.reentrySwapExecuted(), "inner reentrant swap blocked by session gate");
+        // v4 wraps the inner beforeSwap revert (here `AccountSessionNotActive`) into WrappedError on the swap
+        // return path; the reenterer's try/catch on `poolManager.unlock("")` captures that wrapped selector.
+        assertEq(callbackToken.reentryRevertSelector(), _WRAPPED_ERROR_SELECTOR, "inner revert is v4 WrappedError");
+
+        // Structural elimination (see @dev): rule out the later gates so the wrapped inner reason must be the
+        // first gate — `AccountSessionNotActive`. `PoolId` is a `bytes32` user-defined value type, so it is
+        // unwrapped for the comparison.
+        assertTrue(
+            PoolId.unwrap(settlementPoolKey.toId()) != PoolId.unwrap(publicPoolKey.toId()),
+            "cross-pool: lifecycle lock not held on public pool"
+        );
+        assertEq(hook.publicSwapResumeTime(publicPoolKey.toId()), 0, "no public-swap protection window on public pool");
+
+        // Outer settlement completed normally despite the swallowed inner revert.
+        assertEq(payerInputBefore - callbackToken.balanceOf(address(this)), 10 ether, "payer funded settlement");
+        assertGt(callbackToken.balanceOf(treasury) - treasuryInputBefore, 0, "treasury received fee");
+        assertGt(token1.balanceOf(address(this)) - recipientOutputBefore, 0, "recipient received output");
+    }
+
     function _executeReentrantSettlement(bytes memory hookData, bool reentryZeroForOne) internal {
         callbackToken.armWithHookData(manager, publicPoolKey, _reentrySwapParams(reentryZeroForOne), hookData);
         _runSettlement();
@@ -182,6 +245,24 @@ contract SettlementReentrancyRealV4Test is Test, HookStorageHelper {
     }
 
     function _runSettlement() internal {
+        // Open a session so the reentrant callback-token public swap (fired from the settlement's transfer /
+        // transferFrom window) passes the session gate and runs the public fee path. The settlement self-call
+        // itself skips v4 callbacks and is unaffected; the session closes cleanly because the reentrant swap
+        // consumes its own context before returning.
+        hook.beginAccountSession();
+        hook.executePreorderSettlement(
+            IMemeverseUniswapHook.PreorderSettlementParams({
+                key: settlementPoolKey, params: _settlementSwapParams(), recipient: address(this)
+            })
+        );
+        hook.endAccountSession();
+    }
+
+    /// @dev Same settlement call shape as `_runSettlement` but WITHOUT `beginAccountSession`/`endAccountSession`,
+    ///      matching the production configuration: settlement never opens a session (INV-04A), so a callback-token
+    ///      reentrant public swap fired from the settlement's transferFrom window has no active session and reverts
+    ///      `AccountSessionNotActive` at the first gate of `SwapFacet.beforeSwapLogic`.
+    function _runSettlementWithoutSession() internal {
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
                 key: settlementPoolKey, params: _settlementSwapParams(), recipient: address(this)

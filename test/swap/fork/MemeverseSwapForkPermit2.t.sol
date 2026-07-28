@@ -78,6 +78,9 @@ contract MemeverseSwapForkPermit2Test is MemeverseSwapForkBase {
         bytes memory sig = abi.encodePacked(r, s, v);
 
         uint256 aliceBefore = token0.balanceOf(aliceSigner);
+        // Open a session (principal = this test contract, independent of the pranked Permit2 caller) so the
+        // swap passes the hook's session gate.
+        _hook().beginAccountSession();
         vm.prank(aliceSigner);
         router.swapWithPermit2(
             IMemeverseSwapRouter.Permit2SingleParams({permit: permit, transferDetails: details, signature: sig}),
@@ -89,6 +92,7 @@ contract MemeverseSwapForkPermit2Test is MemeverseSwapForkBase {
             amount,
             ""
         );
+        _hook().endAccountSession();
         assertEq(aliceBefore - token0.balanceOf(aliceSigner), amount, "permit2 pulled exact input");
         assertGt(token1.balanceOf(aliceSigner), 0, "alice received output");
     }

@@ -176,7 +176,7 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
             IDynamicFeeFacet.UpdateAfterSwapParams({
                 poolId: poolId,
                 delta: result.swapDelta,
-                // `trader: msg.sender` (== launcher via onlyLauncher) intentionally differs from SwapFacet's `tx.origin`:
+                // `trader: msg.sender` (== launcher via onlyLauncher) intentionally differs from SwapFacet's Hook-captured session principal:
                 // in SwapFacet `msg.sender` is the PoolManager (onlyPoolManager, preserved under delegatecall), not the trader.
                 // Do NOT "unify" — `addressBatchState` would silently re-key. The two contexts have different `msg.sender` values by design.
                 trader: msg.sender,

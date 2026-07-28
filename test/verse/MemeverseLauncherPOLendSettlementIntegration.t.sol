@@ -451,6 +451,10 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         bool zeroForOne = Currency.unwrap(key.currency0) == tokenIn;
         uint160 sqrtPriceLimitX96 = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
 
+        // Open the session as the test contract (which has code) before pranking the trader: beginAccountSession
+        // rejects bare EOAs, and `trader` here is a no-code address. The session principal is this contract,
+        // independent of the pranked swap caller; the router still pulls `tokenIn` from `trader`.
+        hook.beginAccountSession();
         vm.startPrank(trader);
         // UniversalAsset is a test asset with a 1:1 approve helper; ERC20 approve works for any token here.
         IERC20(tokenIn).approve(address(router), amountIn);
@@ -466,5 +470,6 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
             ""
         );
         vm.stopPrank();
+        hook.endAccountSession();
     }
 }

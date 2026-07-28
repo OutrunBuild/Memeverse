@@ -167,6 +167,8 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         uint256 balance1Before = token1.balanceOf(alice);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
 
+        // The session principal is this test contract; it is independent of the pranked swap caller.
+        hook.beginAccountSession();
         vm.prank(alice);
         BalanceDelta delta = router.swapWithPermit2(
             singlePermit,
@@ -178,6 +180,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
 
         assertEq(address(router.permit2()), address(mockPermit2), "permit2");
         assertEq(mockPermit2.lastOwner(), alice, "owner");
@@ -201,6 +204,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(token0), 100 ether);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
 
+        hook.beginAccountSession();
         vm.prank(alice);
         uint256 gasBefore = gasleft();
         BalanceDelta delta = router.swapWithPermit2(
@@ -213,6 +217,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
         uint256 gasUsed = gasBefore - gasleft();
 
         assertLt(int256(delta.amount0()), 0, "delta0");
@@ -261,6 +266,8 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         });
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
 
+        // Open a session on the guarded hook so the swap reaches the public-swap-blocked guard, not the session gate.
+        guardedHook.beginAccountSession();
         vm.prank(alice);
         vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
         guardedRouter.swapWithPermit2(
@@ -273,6 +280,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        guardedHook.endAccountSession();
     }
 
     /// @notice Covers the Hook entrypoint's upfront price-limit boundary for Permit2 execution swaps.
@@ -283,6 +291,8 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
 
         IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(token0), 100 ether);
 
+        // Open a session so the swap reaches the price-limit guard, which runs after the session check.
+        hook.beginAccountSession();
         vm.prank(alice);
         vm.expectRevert(OrdinarySwapMath.InvalidRawSqrtPriceLimit.selector);
         router.swapWithPermit2(
@@ -295,6 +305,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
             100 ether,
             ""
         );
+        hook.endAccountSession();
     }
 
     /// @notice Covers the Permit2 exact-output prefund-and-refund branch under the local router harness.
@@ -305,6 +316,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         uint256 amountInMaximum = 500 ether;
         IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(token0), amountInMaximum);
 
+        hook.beginAccountSession();
         vm.prank(alice);
         router.swapWithPermit2(
             singlePermit,
@@ -318,6 +330,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
             amountInMaximum,
             ""
         );
+        hook.endAccountSession();
 
         assertEq(mockPermit2.lastRequestedAmount(), amountInMaximum, "prefunded amountInMaximum");
         assertEq(manager.lastUnlockPayer(), address(router), "router should pay exact-output input");
@@ -331,6 +344,8 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(key.currency1, true);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         IMemeverseSwapRouter.Permit2SingleParams memory seedPermit = _singlePermit(address(token0), 10 ether);
+        // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
+        hook.beginAccountSession();
         vm.prank(alice);
         router.swapWithPermit2(
             seedPermit,
@@ -396,6 +411,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         assertEq(volAnchorAfter, volAnchorBefore, "vol anchor unchanged");
         assertEq(volDevAfter, volDevBefore, "volatility unchanged");
         assertEq(shortImpactAfter, shortImpactBefore, "short impact unchanged");
+        hook.endAccountSession();
     }
 
     /// @notice Covers the mirrored local fail-closed Permit2 branch for one-for-zero exact-input underfills on output-fee pools.
@@ -404,6 +420,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         hook.setProtocolFeeCurrency(key.currency0, true);
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         IMemeverseSwapRouter.Permit2SingleParams memory seedPermit = _singlePermit(address(token1), 10 ether);
+        hook.beginAccountSession();
         vm.prank(alice);
         router.swapWithPermit2(
             seedPermit,
@@ -469,6 +486,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         assertEq(volAnchorAfter, volAnchorBefore, "vol anchor unchanged");
         assertEq(volDevAfter, volDevBefore, "volatility unchanged");
         assertEq(shortImpactAfter, shortImpactBefore, "short impact unchanged");
+        hook.endAccountSession();
     }
 
     /// @notice Verifies the single Permit2 path surfaces Permit2's own amount check.
@@ -821,10 +839,12 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
             permit: permit, transferDetails: transferDetails, signature: signature
         });
 
+        hook.beginAccountSession();
         vm.prank(alice);
         BalanceDelta delta = realPermit2Router.swapWithPermit2(
             permitParams, key, params, alice, deadline, amountOutMinimum, amountIn, bytes("")
         );
+        hook.endAccountSession();
 
         assertLt(int256(delta.amount0()), 0, "delta0");
         assertGt(int256(delta.amount1()), 0, "delta1");

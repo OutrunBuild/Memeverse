@@ -14,4 +14,6 @@ Mixed `harness_control` + Solidity changed-file sets are legal. The gate reports
 
 For `prod-semantic` changes the gate additionally emits `doc_round_required` (and fills `harness_writer_roles` with `process-implementer`) so the main session runs the product-doc round before any code writer; the gate does not compute `affected_docs`.
 
+`requires_spec_authorization_evidence` is a path-based classification signal. `true` means the classified set contains a configured spec path, not that the gate has validated authority, approval, scope, or semantic coverage.
+
 For `prod-semantic` work, classification precedes dispatch. The main session dispatches each phase from those emitted fields.

@@ -47,3 +47,6 @@ Never inherit an upgradeable production contract (`Initializable`, proxy/storage
 - `-vvv`: traces for failing tests only (most common for debugging).
 - `-vvvv`: traces for all tests, including setup.
 - `-vvvvv`: traces plus storage changes.
+
+## Comments
+Comments and NatSpec MUST be written in English — same rule as `src/AGENTS.md` ("NatSpec"). Test files have previously needed full Chinese-to-English comment conversion; write English from the start.

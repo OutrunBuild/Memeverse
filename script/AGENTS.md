@@ -40,3 +40,6 @@ forge script script/Deploy.s.sol --rpc-url $RPC_URL --broadcast --account deploy
 | Mainnet | Hardware wallet (`--ledger`) |
 
 Keep `.env` out of VCS (`.gitignore` lists `.env` / `.env.*`); document required vars in `.env.example` with no real values.
+
+## Comments
+Comments and NatSpec MUST be written in English — same rule as `src/AGENTS.md` ("NatSpec").

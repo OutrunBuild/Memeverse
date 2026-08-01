@@ -26,7 +26,15 @@
       "Bash(git restore *)",
       "Bash(git checkout *)",
       "Bash(git clean *)",
+      "Bash(git stash)",
+      "Bash(git stash push*)",
+      "Bash(git stash pop*)",
+      "Bash(git stash apply*)",
       "Bash(git stash drop*)",
+      "Bash(git stash clear*)",
+      "Bash(git stash save*)",
+      "Bash(git stash branch*)",
+      "Bash(git stash store*)",
       "Read(.env)",
       "Read(.env.*)"
     ]
@@ -57,6 +65,15 @@
           {
             "type": "command",
             "command": "echo 'MemeverseV2 禁用 EnterWorktree（默认建到 .claude/worktrees/）。worktree 用: git worktree add .worktrees/<name>' >&2; exit 2"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ./script/harness/block-destructive-git-stash.sh"
           }
         ]
       }

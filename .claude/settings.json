@@ -42,15 +42,6 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ./script/harness/pre-edit-check.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Agent",
         "hooks": [
           {
@@ -73,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ./script/harness/block-destructive-git-stash.sh"
+            "command": "bash ./script/harness/block-destructive-git.sh"
           }
         ]
       }

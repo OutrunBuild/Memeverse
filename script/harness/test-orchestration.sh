@@ -477,259 +477,6 @@ assert run_gate_step["run"] == "bash script/harness/ci-gate-entrypoint.sh"
 PY
 }
 
-run_pre_edit_check() {
-    local file_path="$1"
-    printf '{"file_path":"%s"}' "$file_path" | bash script/harness/pre-edit-check.sh
-}
-
-assert_pre_edit_check_guidance() {
-    # The reminder hook prints a one-line ownership-awareness notice naming
-    # the edited file and pointing at AGENTS.md "Ownership And Concurrent-Write Guard".
-    local output="$1"
-
-    grep -Fq "[harness] Editing" <<<"$output"
-    grep -Fq "Ownership And Concurrent-Write Guard" <<<"$output"
-}
-
-# Run pre-edit-check with a JSON request payload; assert exit 0 and that
-# stdout is strict-JSON carrying additionalContext with the ownership reminder.
-# The hook only reads tool_input.file_path and interpolates it into one reminder
-# string, so Edit/Write/MultiEdit share identical execution and assertion logic;
-# each call still locks its own PreToolUse input schema against future regressions.
-# $1 = label for failure messages, $2 = request JSON.
-assert_pre_edit_reminder() {
-    local label="$1"
-    local request="$2"
-    local out
-    local status
-
-    set +e
-    out="$(printf '%s' "$request" | bash script/harness/pre-edit-check.sh 2>/dev/null)"
-    status=$?
-    set -e
-    [ "$status" -eq 0 ] || { echo "$label: expected exit 0, got $status" >&2; return 1; }
-    printf '%s' "$out" | jq -er '.additionalContext' >/dev/null 2>&1 \
-        || { echo "$label: stdout is not JSON with additionalContext: $out" >&2; return 1; }
-    printf '%s' "$out" | jq -r '.additionalContext' \
-        | grep -Fq "Ownership And Concurrent-Write Guard" \
-        || { echo "$label: reminder missing ownership section reference" >&2; return 1; }
-}
-
-assert_pre_edit_check_ownership_guard() {
-    # The pre-edit-check hook is a REMINDER, not an enforcer: it must always
-    # exit 0 and never block an edit. It emits a strict-JSON object on stdout
-    # (so ZCode/Claude Code accept it and inject the reminder via
-    # additionalContext) — never bare text, which would break the PreToolUse
-    # JSON stdout contract (hook.run.failed) and silently drop the reminder.
-    local scratch_repo="$tmp_dir/pre-edit-check.repo"
-    local target="$scratch_repo/target.txt"
-    local out
-    local status
-
-    mkdir -p "$scratch_repo/.harness"
-    printf '{}\n' >"$scratch_repo/.harness/policy.json"
-    printf 'alpha line\nbeta line\n' >"$target"
-
-    assert_pre_edit_reminder "Edit request" \
-        "$(jq -nc --arg file "$target" --arg old 'alpha line' \
-            '{tool_name:"Edit",tool_input:{file_path:$file,old_string:$old}}')"
-    assert_pre_edit_reminder "Write request" \
-        "$(jq -nc --arg file "$target" \
-            '{tool_name:"Write",tool_input:{file_path:$file,content:"x"}}')"
-    assert_pre_edit_reminder "MultiEdit request" \
-        "$(jq -nc --arg file "$target" --arg old 'alpha line' \
-            '{tool_name:"MultiEdit",tool_input:{file_path:$file,edits:[{old_string:$old,new_string:"x"}]}}')"
-
-    # Covers the camelCase nested toolInput.file_path fallback branch.
-    assert_pre_edit_reminder "Edit camelCase request" \
-        "$(jq -nc --arg file "$target" --arg old 'alpha line' \
-            '{tool_name:"Edit",toolInput:{file_path:$file,old_string:$old}}')"
-
-    # Covers the top-level file_path fallback branch.
-    assert_pre_edit_reminder "top-level file_path request" \
-        "$(jq -nc --arg file "$target" '{file_path:$file}')"
-
-    # Request with no file_path -> hook exit 0 and stdout must be empty.
-    set +e
-    out="$(printf '{"tool_name":"Edit","tool_input":{}}' \
-        | bash script/harness/pre-edit-check.sh 2>/dev/null)"
-    status=$?
-    set -e
-    [ "$status" -eq 0 ] || { echo "no-file_path request: expected exit 0, got $status" >&2; return 1; }
-    [ -z "$out" ] || { echo "no-file_path request: expected empty stdout, got: $out" >&2; return 1; }
-}
-
-if [ "${ORCHESTRATION_TEST_FOCUS-}" = "pre-edit-check" ]; then
-    assert_pre_edit_check_ownership_guard
-    echo "pre-edit-check regression tests passed"
-    exit 0
-fi
-
-# Ownership reconciliation snapshots both the tracked worktree base and every
-# requested untracked/ignored file. The writer reports a deterministic complete
-# baseline-to-current diff; reconciliation succeeds only when its bytes exactly
-# match a freshly rendered current diff.
-assert_ownership_reconcile() {
-    local capture="$repo_root/script/harness/capture-ownership-baseline.sh"
-    local render="$repo_root/script/harness/render-ownership-diff.sh"
-    local reconcile="$repo_root/script/harness/ownership-reconcile.sh"
-    local scratch="$tmp_dir/ownership-reconcile.repo"
-    local snapshot="$tmp_dir/ownership-reconcile.snapshot"
-    local duplicate_snapshot="$tmp_dir/ownership-reconcile.duplicate.snapshot"
-    local reported="$tmp_dir/ownership-reconcile.reported.diff"
-    local out
-    local status
-    local -a files=(
-        src/tracked.txt
-        src/deleted-before-dispatch.txt
-        notes/present.txt
-        new/absent.txt
-        ignored/artifact.bin
-        src/empty.txt
-        script/run.sh
-        notes/present.link
-    )
-
-    rm -rf "$scratch"
-    mkdir -p "$scratch/src" "$scratch/script"
-    (
-        cd "$scratch"
-        git init -q
-        git config user.email test@example.invalid
-        git config user.name "Harness Test"
-        printf 'ignored/\n' >.gitignore
-        printf 'tracked baseline\n' >src/tracked.txt
-        printf 'deleted tracked baseline\n' >src/deleted-before-dispatch.txt
-        : >src/empty.txt
-        printf '#!/usr/bin/env bash\nexit 0\n' >script/run.sh
-        chmod 0644 script/run.sh
-        git add .
-        git commit -q -m baseline
-        git config diff.noprefix true
-        git config diff.mnemonicPrefix true
-
-        # The snapshot must retain pre-dispatch tracked work as its baseline,
-        # rather than comparing the writer's work against HEAD.
-        printf 'pre-dispatch tracked edit\n' >src/tracked.txt
-        rm src/deleted-before-dispatch.txt
-
-        # Both a normal untracked file and an ignored binary file must be
-        # privately copied into the snapshot. An absent path and an empty
-        # tracked file cover additions and deletions without special casing.
-        mkdir -p notes ignored
-        printf 'untracked baseline\n' >notes/present.txt
-        ln -s present.txt notes/present.link
-        printf 'ignored baseline\0bytes\n' >ignored/artifact.bin
-        mkdir "$snapshot"
-        bash "$capture" "$snapshot" --files "${files[@]}" >/dev/null
-
-        [ "$(tr -d '\n' <"$snapshot/tracked-base")" != "$(git rev-parse HEAD)" ]
-        jq -e '
-          [.files[].path] == [
-            "ignored/artifact.bin",
-            "new/absent.txt",
-            "notes/present.link",
-            "notes/present.txt",
-            "script/run.sh",
-            "src/deleted-before-dispatch.txt",
-            "src/empty.txt",
-            "src/tracked.txt"
-          ] and
-          (.files[] | select(.path == "notes/present.txt") |
-            .state == "untracked-present" and .type == "regular" and
-            (.mode | type == "string") and
-            (.content_hash | test("^[0-9a-f]{64}$"))) and
-          (.files[] | select(.path == "notes/present.link") |
-            .state == "untracked-present" and .type == "symlink") and
-          (.files[] | select(.path == "ignored/artifact.bin") |
-            .state == "untracked-present" and .type == "regular") and
-          (.files[] | select(.path == "new/absent.txt") | .state == "absent") and
-          (.files[] | select(.path == "src/deleted-before-dispatch.txt") | .state == "absent") and
-          (.files[] | select(.path == "src/tracked.txt") | .state == "tracked")
-        ' "$snapshot/manifest.json" >/dev/null
-        cmp "$snapshot/untracked/notes/present.txt" notes/present.txt
-        cmp "$snapshot/untracked/ignored/artifact.bin" ignored/artifact.bin
-        [ -L "$snapshot/untracked/notes/present.link" ]
-        [ "$(readlink "$snapshot/untracked/notes/present.link")" = "present.txt" ]
-
-        # A no-change report is valid and must reconcile cleanly even though it
-        # is empty. This pins the reported-diff empty-file contract.
-        bash "$render" "$snapshot" --files "${files[@]}" >"$reported"
-        [ ! -s "$reported" ]
-        out="$(bash "$reconcile" "$snapshot" --reported-diff "$reported" --files "${files[@]}")"
-        jq -e '
-          .verdict == "clean" and
-          .reported_sha256 == .actual_sha256 and
-          (.reported_sha256 | test("^[0-9a-f]{64}$")) and
-          .files == [
-            "ignored/artifact.bin",
-            "new/absent.txt",
-            "notes/present.link",
-            "notes/present.txt",
-            "script/run.sh",
-            "src/deleted-before-dispatch.txt",
-            "src/empty.txt",
-            "src/tracked.txt"
-          ]
-        ' <<<"$out" >/dev/null
-
-        # Report the complete writer-owned change set. It spans tracked,
-        # untracked, ignored, absent, deleted-empty, mode-only, and symlink
-        # entries, so the helper APIs cannot rely on Git's tracked diff alone.
-        printf 'tracked writer edit\n' >src/tracked.txt
-        printf 'untracked writer edit\n' >notes/present.txt
-        ln -sfn ../ignored/artifact.bin notes/present.link
-        printf 'ignored writer\0artifact\n' >ignored/artifact.bin
-        mkdir -p new
-        printf 'created after capture\n' >new/absent.txt
-        printf 'recreated after capture\n' >src/deleted-before-dispatch.txt
-        rm src/empty.txt
-        chmod 0755 script/run.sh
-        bash "$render" "$snapshot" --files "${files[@]}" >"$reported"
-        grep -Fq 'diff --git a/src/tracked.txt b/src/tracked.txt' "$reported"
-        grep -Fq -- '-pre-dispatch tracked edit' "$reported"
-        ! grep -Fq -- '-tracked baseline' "$reported"
-        grep -Fq 'diff --git a/src/deleted-before-dispatch.txt b/src/deleted-before-dispatch.txt' "$reported"
-        grep -Fq 'diff --git a/ignored/artifact.bin b/ignored/artifact.bin' "$reported"
-        grep -Fq 'diff --git a/new/absent.txt b/new/absent.txt' "$reported"
-        grep -Fq 'deleted file mode 100644' "$reported"
-        grep -Fq 'old mode 100644' "$reported"
-        grep -Fq 'new mode 100755' "$reported"
-        grep -Fq 'GIT binary patch' "$reported"
-
-        out="$(bash "$reconcile" "$snapshot" --reported-diff "$reported" --files "${files[@]}")"
-        jq -e '
-          .verdict == "clean" and
-          .reported_sha256 == .actual_sha256
-        ' <<<"$out" >/dev/null
-
-        # Rewriting the same hunk after the report must be foreign. The former
-        # hunk-set scheme incorrectly called this clean because its line range
-        # did not change; byte-for-byte complete-diff comparison must reject it.
-        printf 'same hunk rewritten after report\n' >src/tracked.txt
-        out="$(bash "$reconcile" "$snapshot" --reported-diff "$reported" --files "${files[@]}")"
-        jq -e '
-          .verdict == "foreign-detected" and
-          .reported_sha256 != .actual_sha256 and
-          (.actual_sha256 | test("^[0-9a-f]{64}$"))
-        ' <<<"$out" >/dev/null
-
-        # Canonical duplicate paths are rejected before snapshot capture.
-        mkdir "$duplicate_snapshot"
-        set +e
-        bash "$capture" "$duplicate_snapshot" --files src/tracked.txt ./src/tracked.txt >/dev/null 2>/dev/null
-        status=$?
-        set -e
-        [ "$status" -eq 2 ] || { echo "canonical duplicate: expected exit 2, got $status" >&2; return 1; }
-    )
-}
-
-if [ "${ORCHESTRATION_TEST_FOCUS-}" = "ownership-reconcile" ]; then
-    assert_ownership_reconcile
-    echo "ownership-reconcile regression tests passed"
-    exit 0
-fi
-
 run_gate_full_capture() {
     local name="$1"
     local changed_files="$2"
@@ -900,6 +647,159 @@ assert_no_removed_fields() {
       (has("post_code_review_roles_source") | not)
     ' "$record" >/dev/null
 }
+
+# The destructive-Git PreToolUse hook must deny when it cannot inspect a
+# request. Each case gives the hook a fresh PATH containing only the tools it
+# needs, so missing-reader/parser/splitter behavior cannot inherit host tools.
+make_destructive_git_guard_path() {
+    local case_name="$1"
+    local bin="$tmp_dir/destructive-git-guard-$case_name.bin"
+
+    mkdir -p "$bin"
+    printf '%s\n' "$bin"
+}
+
+link_destructive_git_guard_tool() {
+    local bin="$1"
+    local tool="$2"
+    local tool_path
+
+    tool_path="$(command -v "$tool")"
+    [ -n "$tool_path" ] || {
+        echo "destructive-git guard test requires $tool" >&2
+        return 1
+    }
+    ln -s "$tool_path" "$bin/$tool"
+}
+
+run_destructive_git_guard() {
+    local guard="$1"
+    local bash_bin="$2"
+    local bin="$3"
+    local case_name="$4"
+    local payload="$5"
+    local status
+
+    set +e
+    PATH="$bin" "$bash_bin" "$guard" <<<"$payload" \
+        >"$tmp_dir/destructive-git-guard-$case_name.stdout" \
+        2>"$tmp_dir/destructive-git-guard-$case_name.stderr"
+    status=$?
+    set -e
+
+    printf '%s\n' "$status"
+}
+
+assert_destructive_git_guard_fails_closed() {
+    local guard="$repo_root/script/harness/block-destructive-git.sh"
+    local bash_bin
+    local ordinary_bin
+    local stash_create_bin
+    local no_jq_bin
+    local malformed_json_bin
+    local reader_failure_bin
+    local no_sed_bin
+    local emit_block_jq_failure_bin
+    local status
+    local payload='{"tool_input":{"command":"git reset --hard"}}'
+    local non_string_case
+    local non_string_label
+    local non_string_payload
+
+    bash_bin="$(command -v bash)"
+    [ -x "$bash_bin" ] || {
+        echo "destructive-git guard test requires bash" >&2
+        return 1
+    }
+
+    ordinary_bin="$(make_destructive_git_guard_path ordinary)"
+    link_destructive_git_guard_tool "$ordinary_bin" cat
+    link_destructive_git_guard_tool "$ordinary_bin" jq
+    link_destructive_git_guard_tool "$ordinary_bin" sed
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" ordinary "$payload")"
+    [ "$status" -eq 2 ] || { echo "ordinary destructive git: expected exit 2, got $status" >&2; return 1; }
+    grep -Eq '"continue"[[:space:]]*:[[:space:]]*false' "$tmp_dir/destructive-git-guard-ordinary.stdout" \
+        || { echo "ordinary destructive git: missing block result" >&2; return 1; }
+
+    for non_string_case in \
+        'missing command:{"tool_input":{}}' \
+        'null command:{"tool_input":{"command":null}}' \
+        'boolean command:{"tool_input":{"command":true}}' \
+        'numeric command:{"tool_input":{"command":0}}' \
+        'array command:{"tool_input":{"command":[]}}' \
+        'object command:{"tool_input":{"command":{}}}'; do
+        non_string_label="${non_string_case%%:*}"
+        non_string_payload="${non_string_case#*:}"
+        status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" "$non_string_label" "$non_string_payload")"
+        [ "$status" -eq 2 ] || { echo "$non_string_label: expected exit 2, got $status" >&2; return 1; }
+        grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-$non_string_label.stderr" \
+            || { echo "$non_string_label: missing fail-closed diagnostic" >&2; return 1; }
+    done
+
+    stash_create_bin="$(make_destructive_git_guard_path stash-create)"
+    link_destructive_git_guard_tool "$stash_create_bin" cat
+    link_destructive_git_guard_tool "$stash_create_bin" jq
+    link_destructive_git_guard_tool "$stash_create_bin" sed
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$stash_create_bin" stash-create \
+        '{"tool_input":{"command":"git stash create"}}')"
+    [ "$status" -eq 0 ] || { echo "git stash create: expected exit 0, got $status" >&2; return 1; }
+
+    no_jq_bin="$(make_destructive_git_guard_path no-jq)"
+    link_destructive_git_guard_tool "$no_jq_bin" cat
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$no_jq_bin" no-jq "$payload")"
+    [ "$status" -eq 2 ] || { echo "missing jq: expected exit 2, got $status" >&2; return 1; }
+    grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-no-jq.stderr" \
+        || { echo "missing jq: missing fail-closed diagnostic" >&2; return 1; }
+
+    malformed_json_bin="$(make_destructive_git_guard_path malformed-json)"
+    link_destructive_git_guard_tool "$malformed_json_bin" cat
+    link_destructive_git_guard_tool "$malformed_json_bin" jq
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$malformed_json_bin" malformed-json \
+        '{"tool_input":{"command":')"
+    [ "$status" -eq 2 ] || { echo "malformed JSON: expected exit 2, got $status" >&2; return 1; }
+    grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-malformed-json.stderr" \
+        || { echo "malformed JSON: missing fail-closed diagnostic" >&2; return 1; }
+
+    reader_failure_bin="$(make_destructive_git_guard_path reader-failure)"
+    printf '%s\n' '#!/bin/sh' 'exit 1' >"$reader_failure_bin/cat"
+    chmod +x "$reader_failure_bin/cat"
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$reader_failure_bin" reader-failure "$payload")"
+    [ "$status" -eq 2 ] || { echo "stdin reader failure: expected exit 2, got $status" >&2; return 1; }
+    grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-reader-failure.stderr" \
+        || { echo "stdin reader failure: missing fail-closed diagnostic" >&2; return 1; }
+
+    no_sed_bin="$(make_destructive_git_guard_path no-sed)"
+    link_destructive_git_guard_tool "$no_sed_bin" cat
+    link_destructive_git_guard_tool "$no_sed_bin" jq
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$no_sed_bin" no-sed "$payload")"
+    [ "$status" -eq 2 ] || { echo "missing sed: expected exit 2, got $status" >&2; return 1; }
+    grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-no-sed.stderr" \
+        || { echo "missing sed: missing fail-closed diagnostic" >&2; return 1; }
+
+    # Simulate a parser that succeeds for extraction but fails for `jq -n` in
+    # emit_block. The hook must still produce a hard block with status 2.
+    emit_block_jq_failure_bin="$(make_destructive_git_guard_path emit-block-jq-failure)"
+    link_destructive_git_guard_tool "$emit_block_jq_failure_bin" cat
+    link_destructive_git_guard_tool "$emit_block_jq_failure_bin" sed
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'if [ "${1-}" = "-r" ]; then' \
+        '    printf "%s\\n" "git reset --hard"' \
+        '    exit 0' \
+        'fi' \
+        'exit 1' >"$emit_block_jq_failure_bin/jq"
+    chmod +x "$emit_block_jq_failure_bin/jq"
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$emit_block_jq_failure_bin" emit-block-jq-failure "$payload")"
+    [ "$status" -eq 2 ] || { echo "emit_block jq failure: expected exit 2, got $status" >&2; return 1; }
+    grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-emit-block-jq-failure.stderr" \
+        || { echo "emit_block jq failure: missing fail-closed diagnostic" >&2; return 1; }
+}
+
+if [ "${ORCHESTRATION_TEST_FOCUS-}" = "destructive-git-guard" ]; then
+    assert_destructive_git_guard_fails_closed
+    echo "destructive-git guard regression tests passed"
+    exit 0
+fi
 
 docs_changed="$(write_changed_files docs docs/foo.md)"
 docs_record="$(run_classify docs "$docs_changed")"
@@ -1139,9 +1039,8 @@ assert_no_removed_fields "$default_record"
 assert_invalid_test_mapping_references_are_rejected
 assert_delegated_review_rules_are_rejected_and_removed
 assert_shared_facet_paths_map_to_consumers
+assert_destructive_git_guard_fails_closed
 
-assert_pre_edit_check_ownership_guard
-assert_ownership_reconcile
 assert_ci_workflow_expressions
 
 zero_base_capture="$(run_ci_entrypoint_capture zero-base workflow_dispatch)"
@@ -1166,13 +1065,6 @@ if grep -qx -- "--changed-files" "$diff_capture/argv"; then
     exit 1
 fi
 [ ! -s "$diff_capture/diff_path" ]
-
-pre_edit_output="$(run_pre_edit_check "$repo_root/script/harness/test-orchestration.sh")"
-assert_pre_edit_check_guidance "$pre_edit_output"
-if grep -Fq "Do NOT edit files directly in the main session" <<<"$pre_edit_output"; then
-    echo "pre-edit-check still forbids main session direct/direct-review edits" >&2
-    exit 1
-fi
 
 slither_changed="$(write_changed_files slither src/verse/MemeverseLauncher.sol)"
 slither_diff="$(write_diff slither src/verse/MemeverseLauncher.sol 'uint256 oldAmount = amount;' 'uint256 newAmount = amount + 1;')"

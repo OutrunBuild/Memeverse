@@ -2,7 +2,7 @@
 
 ## Goal
 
-Route repository work through the harness without violating policy, ownership, review, or verification rules.
+Route repository work through the harness without violating policy, review, or verification rules.
 
 ## Success Criteria
 
@@ -84,36 +84,9 @@ Do not override policy or gate evidence with natural-language guesses.
 - Mock contracts reuse interfaces from `src/`. Define test-only interfaces only when src/ interfaces are insufficient.
 - **Exception:** Test contracts may inherit an upgradeable `src/` contract only when it is declared `abstract contract` — either to implement its abstract functions for unit testing, or to expose its internal `pure`/`view` functions. Such harnesses must live in `test/mocks/`.
 
-## Ownership And Concurrent-Write Guard
+## Uncommitted Changes
 
-Multiple sessions (possibly across ZCode, Claude Code, and Codex) may work in the same worktree in parallel. The hard problem is preventing one session from silently reverting or deleting another session's uncommitted changes. This most often happens when a session (or a subagent it dispatched) reads the working tree, mistakes another session's foreign changes for "an unauthorized edit I must undo", and reverts them — which can deadlock (each session reverts the other's work in a loop).
-
-**Why ownership is judged by the session, not by a hook.** A session's own context already records everything that session and its dispatched subagents have read and written. Only the session (the model) can answer "is this `old_string` something my session produced, or is it a foreign change I never authored?". A PreToolUse hook cannot access session context, and the working tree mixes every session's uncommitted changes into one text blob that git does not attribute by author. Therefore a reliable ownership decision cannot live in the hook — it lives in the session.
-
-- Before editing any dirty target file, run an ownership check with `git status --short` plus a path-scoped `git diff --name-only` or equivalent, so you know which files already carry uncommitted changes.
-- Before each `Edit`/`MultiEdit`, verify that every part of `old_string` originates from your own session: either it is committed content (present in `git show HEAD:<path>`), or it is content your session or your dispatched subagents wrote (it appears in your context as something you read or authored). If any part of `old_string` is working-tree content your session never produced and that is not in `HEAD`, treat it as another session's foreign change.
-- Never delete, revert, or overwrite another session's uncommitted changes. If you encounter foreign changes mixed into a file you are editing, edit around them, or stop and surface the situation to the human — do not "clean up" content you did not author.
-- If concurrent or foreign edits affect the same target files, compare the foreign content with the intended patch. Continue when they do not overlap and the patch can be applied around it; stop and establish a merge strategy only when they overlap or the relationship cannot be determined.
-- Treat out-of-scope existing changes as foreign-owned by default: report them or request direction. Only remove out-of-scope changes introduced by the current session or assigned writer.
-- Maintain one active writer per file set. Reviewers stay read-only; if review requires changes, route back to the assigned writer or explicitly transfer ownership before editing.
-- Gate or review failures do not authorize overwriting foreign edits. First determine whether the failure comes from owned changes or foreign changes.
-- If you have already violated these rules (accidentally modified foreign content), do not attempt to revert/restore/repair from diff records — you cannot reliably reconstruct foreign content, and any further write stacks a second violation on top of the first. Stop immediately, surface to the human with the diff evidence, and let the owning session or the human decide.
-
-### Ownership Reconciliation (Post-Dispatch)
-
-When a dispatched writer subagent returns, the main session reconciles the writer's complete snapshot-to-current diff against a fresh rendering, including tracked, untracked, and ignored requested paths:
-
-1. Before dispatching a writer, the caller creates a private `OWNERSHIP_SNAPSHOT_DIR` with `mktemp -d` and runs `bash script/harness/capture-ownership-baseline.sh "$OWNERSHIP_SNAPSHOT_DIR" --files <paths...>`. The bundle records one non-destructive `git stash create` tracked base (falling back to `HEAD` only when that command succeeds with empty output) and private copies of requested untracked or ignored regular files and symlinks.
-2. The writer's output contract includes `bash script/harness/render-ownership-diff.sh "$OWNERSHIP_SNAPSHOT_DIR" --files <paths...> > <subagent.diff>`. This is the byte-sorted, complete baseline-to-current diff; it may validly be empty.
-3. After the writer returns, run `bash script/harness/ownership-reconcile.sh "$OWNERSHIP_SNAPSHOT_DIR" --reported-diff <subagent.diff> --files <paths...>`. It freshly renders the same complete diff and compares it byte-for-byte with the report, so a same-line rewrite or binary, mode, symlink, deletion, or untracked/ignored change that occurs after the writer renders its report cannot still receive `clean`. After recording the verdict, delete exactly that private `mktemp -d` directory.
-4. A dirty requested target is not itself a conflict. Stop only when the writer's intended patch overlaps foreign working-tree content or the exact reconciliation verdict is `foreign-detected`; preserve and report that foreign content without reverting it.
-5. If the verdict is `clean`: proceed to the review/gate step.
-
-The reconciliation is advisory evidence — it does not make the ownership judgment for the session. A `foreign-detected` result is a signal to stop and surface, never a license to revert.
-
-### Pre-Edit Reminder Hook
-
-`script/harness/pre-edit-check.sh` runs as a PreToolUse hook on `Edit`/`Write`/`MultiEdit`. It is a **reminder, not an enforcer**: it prints a one-line notice before each edit so the session keeps ownership awareness, then always exits `0`. It does not block, because a hook cannot reliably decide ownership from the working tree alone (see "Why ownership is judged by the session" above). The ownership decision is the session's responsibility per the rules in this section.
+- Do not overwrite, delete, or revert uncommitted changes you did not create. If a required edit overlaps them, stop and report it.
 
 ## Context Scope
 
@@ -158,9 +131,8 @@ For `prod-semantic` work, use this sequence:
 4. once the doc round is ready, dispatch `spec-reviewer` before any code writer
 5. if other harness-control changes are required, dispatch `harness_writer_roles`
 6. dispatch `code_writer_roles`
-7. reconcile owned vs foreign hunks (run `ownership-reconcile.sh` with the BASE captured before dispatch); if `foreign-detected`, stop and report — do not revert
-8. run `code_review_roles`
-9. run the selected gate profile and report the result
+7. run `code_review_roles`
+8. run the selected gate profile and report the result
 
 `spec-reviewer` is a main-session orchestration hook, not a `gate.sh` routing field. A `requires_spec_authorization_evidence=true` result requires the recorded authorization source and coverage before spec edits; see `.harness/runtime/main-session-contract.md`. The gate does not validate that natural-language evidence.
 
@@ -185,7 +157,7 @@ README.md editorial-only direct changes require a Doc Editorial Attestation. REA
 
 ## Repository Truth
 
-- .harness/policy.json is the machine truth for ownership, classification, review routing, verification profiles, and hard blocks.
+- .harness/policy.json is the machine truth for classification, review routing, verification profiles, and hard blocks.
 - docs/TRACEABILITY.md lists control files and artifact locations.
 - Other repository docs are context only unless policy or gate evidence explicitly points to them.
 
@@ -195,7 +167,6 @@ Before final response, check:
 
 - all requested files or items are handled, or marked blocked
 - no edited path is outside the classified surface
-- every dispatched writer has a captured ownership snapshot, rendered report, and fresh `clean` exact reconciliation result, or a `foreign-detected` result is surfaced as blocked
 - validation command and result are fresh
 - final answer reports only completed work, validation, and blockers
 

@@ -40,7 +40,7 @@ A direct human task or human-approved plan is sufficient when the selected specs
 
 Pause only when no authorization source exists, the authorization source does not cover the exact behavior to be recorded in the selected spec files, the requested documentation expands scope, or it introduces new product semantics, permissions, invariants, or acceptance criteria.
 
-This evidence protocol does not alter sequencing: complete the product-doc round first where required, then run spec review before code writing. Every writer still receives gate classification for its exact planned files, and every dispatched writer still receives fresh ownership reconciliation.
+This evidence protocol does not alter sequencing: complete the product-doc round first where required, then run spec review before code writing. Every writer still receives gate classification for its exact planned files.
 - Main session may directly modify files only for `direct` and `direct-review`.
 - Main session must not author `delegated`, `full-review`, or `full-subagent` changes except to integrate approved subagent output.
 - Do not dispatch writer or reviewer agents for `direct`.
@@ -52,10 +52,6 @@ This evidence protocol does not alter sequencing: complete the product-doc round
 - `direct-review` reviewer roles come from `orchestration_review_roles`, not `full_review_matrix`.
 - Dispatch consumes resolved `harness_writer_roles`, `code_writer_roles`, and `code_review_roles`.
 - For pre-edit routing, invoke `gate.sh --classify-only` with exact planned-file input through `--planned-files`. Planned Solidity files are conservatively classified as semantic because no diff exists yet.
-- Ownership of working-tree content is decided by the session (the model), not by a hook. The session's context records what it and its dispatched subagents read and wrote; a PreToolUse hook cannot access that context and cannot attribute working-tree lines to sessions. The `pre-edit-check.sh` hook is a reminder only (always exits 0); it does not block.
-- Before each `Edit`/`MultiEdit`, the session must verify that every part of `old_string` is its own content (authored by the session or its subagents) or committed (`HEAD`) content. A dirty target alone is not a conflict: stop only when the intended patch overlaps foreign working-tree content, which must never be reverted or deleted. See AGENTS.md "Ownership And Concurrent-Write Guard".
-- Before dispatching a writer subagent, the caller creates a private `OWNERSHIP_SNAPSHOT_DIR=$(mktemp -d)` and runs `bash script/harness/capture-ownership-baseline.sh "$OWNERSHIP_SNAPSHOT_DIR" --files <paths...>`. The bundle uses one non-destructive `git stash create` only for its tracked base (falling back to `HEAD` after successful empty output) and saves private copies for requested untracked or ignored regular files and symlinks. Use it only for ownership reconciliation.
-- Require the writer to render `bash script/harness/render-ownership-diff.sh "$OWNERSHIP_SNAPSHOT_DIR" --files <paths...> > <subagent.diff>`. After the writer returns, run `bash script/harness/ownership-reconcile.sh "$OWNERSHIP_SNAPSHOT_DIR" --reported-diff <subagent.diff> --files <paths...>`. It freshly renders and byte-compares the complete diff; an empty report is valid. If the verdict is `foreign-detected`, stop and report to the human — never revert foreign content. After recording the verdict, delete exactly that private `mktemp -d` directory. See AGENTS.md "Ownership Reconciliation (Post-Dispatch)".
 - For local current-work verification on tracked or intended-to-commit repository changes, invoke `gate.sh` with exact changed-file input through `--changed-files`. If any Solidity file is involved, provide diff evidence without creating persistent repository files:
   - Prefer `GATE_DIFF_BASE=<git-ref>` when a stable base ref exists.
   - If a patch file is required, create it with `mktemp` outside the repository, pass its path through `CHANGE_CLASSIFIER_DIFF_FILE`, and remove it after `gate.sh` exits.
@@ -75,8 +71,7 @@ When dispatching a reviewer, choose the diff handoff by size:
 - **refinement-reviewer**: write the exact byte-sorted canonical `changed_files` paths to a temporary changed-files file, then generate its package with `script/harness/review-package.sh BASE [HEAD] [OUTFILE] --files <each changed_files path>`. `--files` is mandatory. The changed-files file and readable package are this reviewer's only inputs; retain the same file for response validation.
 - **Single-file small change, already read by the main session**: the diff snippet may be passed inline to save the reviewer a Read.
 - **REVIEW_BASE**: capture `REVIEW_BASE=$(git rev-parse HEAD)` immediately before dispatching the implementer. Use it only with `review-package.sh`; it must remain a `HEAD` ancestor.
-- **OWNERSHIP_SNAPSHOT_DIR**: after `REVIEW_BASE`, create a private `mktemp -d` snapshot directory and run `capture-ownership-baseline.sh` with the exact writer file set immediately before dispatch. The writer renders its report with `render-ownership-diff.sh`; use the bundle only for post-dispatch `ownership-reconcile.sh`, then delete exactly that directory after recording the verdict.
-- Never pass `OWNERSHIP_SNAPSHOT_DIR` to `review-package.sh` and never use `HEAD~1` — it silently truncates a multi-commit task.
+- Never use `HEAD~1` with `review-package.sh`; it silently truncates a multi-commit task.
 
 Never paste accumulated prior-round summaries into later dispatches — hand the reviewer its diff as a file path and the current findings list only.
 

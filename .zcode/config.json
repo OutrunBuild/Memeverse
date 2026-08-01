@@ -4,16 +4,6 @@
     "events": {
       "PreToolUse": [
         {
-          "matcher": "Edit|Write|MultiEdit",
-          "hooks": [
-            {
-              "type": "process",
-              "command": "bash",
-              "args": ["script/harness/pre-edit-check.sh"]
-            }
-          ]
-        },
-        {
           "matcher": "Agent",
           "hooks": [
             {

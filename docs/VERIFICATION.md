@@ -19,8 +19,6 @@ Gate output controls:
 
 `--planned-files` accepts one or more repo-relative paths and can only be used with `--classify-only`. Use it before edits to classify the intended file set for routing. Planned Solidity files do not require diff evidence and are conservatively classified as semantic.
 
-Ownership of working-tree content is decided by the session (the model), not by a hook: the session's context records what it and its dispatched subagents read and wrote, and a PreToolUse hook cannot access that context. `script/harness/pre-edit-check.sh` is a reminder only — it emits a strict-JSON `additionalContext` notice on stdout and always exits 0; it never blocks. Before each `Edit`/`MultiEdit`, the session must verify that every part of `old_string` is its own content (authored by the session or its subagents) or committed (`HEAD`) content; working-tree content the session never produced and that is not in `HEAD` is another session's foreign change and must not be reverted. See AGENTS.md "Ownership And Concurrent-Write Guard".
-
 `--changed-files` accepts one or more repo-relative paths. Use it after edits or in CI for real changed-file verification. Every positional argument after `--changed-files` is treated as a changed file until the next option.
 
 Local current-work verification must use exact changed-file input. Solidity changed-files mode requires diff evidence via `CHANGE_CLASSIFIER_DIFF_FILE` or `GATE_DIFF_BASE`; without it, semantic classification is blocked.

@@ -16,10 +16,16 @@
 # block-destructive-git-stash.sh + block-destructive-git-checkout.sh.
 #
 # This does NOT affect the same commands run by harness subprocesses (e.g.
-# script/harness/capture-ownership-baseline.sh, review-package.sh): those run as
-# children of the harness scripts and never traverse this hook, so non-destructive
-# ownership snapshots (which use `git stash create`) keep working.
+# review-package.sh): those run as children of the harness scripts and never
+# traverse this hook, so non-destructive `git stash create` operations keep working.
 set -euo pipefail
+
+# Emit a jq-independent hard block when the hook cannot safely inspect input.
+fail_closed() {
+  printf '%s\n' '{"continue":false,"stopReason":"[harness] destructive-git guard failed closed"}'
+  printf '%s\n' '[harness] destructive-git guard failed closed: unable to inspect command safely' >&2
+  exit 2
+}
 
 # Emit a hard block: {continue:false} on stdout (Claude Code / ZCode block
 # contract), the human reason on stderr, then exit 2 (ZCode deny contract;
@@ -27,8 +33,8 @@ set -euo pipefail
 emit_block() {
   local segment="$1"
   local reason
-  reason="[harness] 禁止直接执行破坏性 git 命令(${segment})。它们会丢弃工作树未暂存改动（无法通过 reflog 找回），破坏 ownership 追踪并可能覆盖并发会话改动。被禁:\`git stash\`/\`push\`/\`pop\`/\`apply\`/\`drop\`/\`clear\`/\`save\`/\`branch\`/\`store\`(改写工作树或 stash 栈)、\`git checkout -- <path>\`/\`git checkout <commit> -- <path>\`(用 index/历史覆盖工作区文件)、\`git checkout -p\`/\`--patch\`(交互式选择丢弃)、\`git restore\`(设计目的即覆盖工作区文件)、\`git reset --hard\`/\`--keep\`/\`--merge\`(强制重置工作区+index)、\`git clean -fd\`/\`-x\`/\`-d\`(删除未跟踪文件)、\`git rm <path>\`(删工作区文件,除 \`--cached\`/\`-n\`)、\`git switch -C\`/\`--force-create\`(强制重建分支丢 commits)。放行只读/安全形式:\`git stash list\`/\`show\`/\`create\`(create 不动工作区与 stash 栈,仅输出 commit hash)、\`git checkout <branch>\`/\`-b\`/\`-B\`/\`<tag>\`/\`<commit>\`(切分支/分离 HEAD)、\`git reset --soft\`/\`--mixed\`/裸 \`git reset\`(不动工作区)、\`git clean -n\`(dry-run)/\`-h\`、\`git rm --cached\`/\`-n\`(不删工作区文件)、\`git switch <branch>\`/\`-c\`(切/建分支不丢 commits)。注:\`git checkout <path>\`(无 \`--\`)因与分支名歧义被保守放行。harness 内部脚本若需这些操作应在子进程执行(不经此 hook)。见 AGENTS.md \"Ownership And Concurrent-Write Guard\"。"
-  jq -n --arg stopReason "$reason" '{continue: false, stopReason: $stopReason}'
+  reason="[harness] 禁止直接执行破坏性 git 命令(${segment})。它们会丢弃工作树未暂存改动（无法通过 reflog 找回）。被禁:\`git stash\`/\`push\`/\`pop\`/\`apply\`/\`drop\`/\`clear\`/\`save\`/\`branch\`/\`store\`(改写工作树或 stash 栈)、\`git checkout -- <path>\`/\`git checkout <commit> -- <path>\`(用 index/历史覆盖工作区文件)、\`git checkout -p\`/\`--patch\`(交互式选择丢弃)、\`git restore\`(设计目的即覆盖工作区文件)、\`git reset --hard\`/\`--keep\`/\`--merge\`(强制重置工作区+index)、\`git clean -fd\`/\`-x\`/\`-d\`(删除未跟踪文件)、\`git rm <path>\`(删工作区文件,除 \`--cached\`/\`-n\`)、\`git switch -C\`/\`--force-create\`(强制重建分支丢 commits)。放行只读/安全形式:\`git stash list\`/\`show\`/\`create\`(create 不动工作区与 stash 栈,仅输出 commit hash)、\`git checkout <branch>\`/\`-b\`/\`-B\`/\`<tag>\`/\`<commit>\`(切分支/分离 HEAD)、\`git reset --soft\`/\`--mixed\`/裸 \`git reset\`(不动工作区)、\`git clean -n\`(dry-run)/\`-h\`、\`git rm --cached\`/\`-n\`(不删工作区文件)、\`git switch <branch>\`/\`-c\`(切/建分支不丢 commits)。注:\`git checkout <path>\`(无 \`--\`)因与分支名歧义被保守放行。harness 内部脚本若需这些操作应在子进程执行(不经此 hook)。"
+  jq -n --arg stopReason "$reason" '{continue: false, stopReason: $stopReason}' || fail_closed
   printf '%s\n' "$reason" >&2
   exit 2
 }
@@ -48,13 +54,13 @@ tokenize() {
   eval "$_out=(\"\${_arr[@]}\")"
 }
 
-# 1. Read the PreToolUse payload from stdin. Any read/parse failure -> allow.
-hook_json=$(cat) || exit 0
+# 1. Read the PreToolUse payload from stdin.
+hook_json=$(cat) || fail_closed
 
 # 2. Extract the command string. Try both key spellings: ZCode uses
 #    .tool_input.command, Claude Code may use .toolInput.command.
-command_str=$(jq -r '.tool_input.command // .toolInput.command // empty' <<<"$hook_json" 2>/dev/null) || exit 0
-[[ -n "$command_str" ]] || exit 0
+command_str=$(jq -r '(.tool_input.command // .toolInput.command // null) | if type == "string" then . else error("command must be a string") end' <<<"$hook_json" 2>/dev/null) || fail_closed
+[[ -n "$command_str" ]] || fail_closed
 
 # 3. Split compound commands on shell operators so a destructive command
 #    cannot hide behind `echo hi && git reset --hard`. This is best-effort
@@ -64,7 +70,7 @@ command_str=$(jq -r '.tool_input.command // .toolInput.command // empty' <<<"$ho
 #    covered. Order matters: strip two-char operators (&&, ||) before the
 #    single-char | so || is not split into two stray pipes.
 segments=$(printf '%s' "$command_str" \
-  | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g') || exit 0
+  | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g') || fail_closed
 
 while IFS= read -r raw_seg; do
   # Trim leading/trailing whitespace (POSIX parameter-expansion idiom).
@@ -141,8 +147,8 @@ while IFS= read -r raw_seg; do
   #     ref and leaves both the worktree and the stash stack untouched (verified
   #     empirically: working-tree changes remain, `git stash list` stays empty).
   #     The optional <message> arg only labels that commit; it does not land the
-  #     object onto the ref stack. harness scripts use `create` exactly as this
-  #     non-destructive snapshot primitive.
+  #     object onto the ref stack. Harness scripts use `create` as a
+  #     non-destructive primitive.
   if [[ "$sub" == "stash" ]]; then
     # The stash subcommand is the token AFTER `sub` (toks[i] == "stash"); peek
     # at the next token for the actual stash sub-subcommand (push/pop/...).

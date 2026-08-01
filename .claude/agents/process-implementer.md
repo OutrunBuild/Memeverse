@@ -75,7 +75,4 @@ Modified files:
 
 Validation:
 - command: result or blocker
-
-Owned diff (ground truth):
-- run `git diff $BASE -- <files you edited>` and paste the full output; this is the honest record of exactly which hunks you authored, used to reconcile owned vs foreign (parallel-session) changes
 ```

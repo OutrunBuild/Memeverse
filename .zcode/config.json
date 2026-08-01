@@ -22,6 +22,16 @@
               "args": ["script/harness/block-agent-worktree-isolation.sh"]
             }
           ]
+        },
+        {
+          "matcher": "Bash",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "bash",
+              "args": ["script/harness/block-destructive-git.sh"]
+            }
+          ]
         }
       ]
     }

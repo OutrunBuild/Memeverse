@@ -1640,16 +1640,19 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         vm.prank(account);
         vm.expectRevert(abi.encodeWithSelector(IMemeverseYTFlashSwapRouter.SplitterAllowanceResidual.selector, 1 ether));
         router.swapPOLForExactYT(VERSE_ID, BUY_Y, BUY_Y - BUY_R, BUY_PRICE_LIMIT, recipient, block.timestamp, referrer);
-        // Atomic rollback: no take-minted POL on the router, payer balance/allowance restored, split never committed.
+        // Atomic rollback: the take-minted POL never persists on the router, payer balance/allowance are restored.
+        // `splitCount` is a mock-internal storage counter that EVM rollback restores regardless of whether `split`
+        // ran inside the frame, so asserting it here would not distinguish "split never committed" from "split
+        // committed then rolled back" — it is not asserted. The external balance/allowance checks below carry the
+        // real rollback evidence.
         assertEq(pol.balanceOf(address(router)), routerPolBefore);
         assertEq(pol.balanceOf(account), accountPolBefore);
         assertEq(pol.allowance(account, address(router)), accountAllowanceBefore);
-        assertEq(splitter.splitCount(), 0);
     }
 
     /// @dev The router's buy-side POL pull fails inside `safeTransferFrom` right after `take`; the entire unlock rolls
-    ///      back so the take-minted POL never persists, the payer balance/allowance are restored, no split commits, and
-    ///      the manager holds no open delta. Mirrors `test_RevertWhen_SellYTAllowanceFails` on the symmetric buy path.
+    ///      back so the take-minted POL never persists and the payer balance/allowance are restored. Mirrors
+    ///      `test_RevertWhen_SellYTAllowanceFails` on the symmetric buy path.
     function test_RevertWhen_BuyPOLTransferFromFails() public {
         _scriptBuyDelta(BUY_Y, BUY_R);
         _startSessionAndFund(BUY_Y);
@@ -1661,13 +1664,13 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         vm.prank(account);
         vm.expectRevert(abi.encodeWithSelector(OutrunSafeERC20.SafeERC20FailedOperation.selector, address(pol)));
         router.swapPOLForExactYT(VERSE_ID, BUY_Y, BUY_Y - BUY_R, BUY_PRICE_LIMIT, recipient, block.timestamp, referrer);
-        // Atomic rollback: no take-minted POL on the router, payer balance/allowance restored, split never committed,
-        // and the manager closes every delta with the reverted unlock frame.
+        // Atomic rollback: no take-minted POL on the router, payer balance/allowance restored.
+        // The `revert` itself is already asserted by the `expectRevert` above; the balance/allowance assertions below
+        // confirm the rollback restored external state, not that any delta-closing logic ran (EVM rollback restores
+        // everything, including mock-internal delta bookkeeping, so delta state is not informative).
         assertEq(pol.balanceOf(address(router)), routerPolBefore);
         assertEq(pol.balanceOf(account), accountPolBefore);
         assertEq(pol.allowance(account, address(router)), accountAllowanceBefore);
-        assertEq(splitter.splitCount(), 0);
-        assertEq(manager.openDeltaCount(address(router)), 0);
     }
 
     /// @dev The buy pulls only the actual cost, never `maxPOLIn`. The payer funds and approves exactly `cost` while

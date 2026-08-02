@@ -479,6 +479,11 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
         MemeverseTransientState.clearActivePrincipal();
     }
 
+    /// @inheritdoc IMemeverseUniswapHook
+    function activeAccountSessionPrincipal() external view override returns (address principal) {
+        principal = MemeverseTransientState.activePrincipal();
+    }
+
     modifier onlyLauncher() {
         _checkLauncher();
         _;

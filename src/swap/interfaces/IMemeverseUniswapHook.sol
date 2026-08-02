@@ -6,6 +6,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IImmutableState} from "@uniswap/v4-periphery/src/interfaces/IImmutableState.sol";
 import {IDynamicFeeFacet} from "./IDynamicFeeFacet.sol";
 
 /**
@@ -15,8 +16,11 @@ import {IDynamicFeeFacet} from "./IDynamicFeeFacet.sol";
  *      The storage structs `PoolInfo` / `UserFeeState` / `PoolInitializationAuth` and the
  *      hook ERC-7201 storage struct live in `IMemeverseHookStorage`; the hook implementation
  *      imports both, and the structs are referenced unqualified via interface inheritance.
+ *      Inherits {IImmutableState} so consumers (e.g. the MemeverseYTFlashSwapRouter constructor) can read
+ *      `poolManager()` through this interface, aligning the static type with the runtime selector the hook already
+ *      exposes via ImmutableState.
  */
-interface IMemeverseUniswapHook {
+interface IMemeverseUniswapHook is IImmutableState {
     /// @notice Identifies the typed payload carried through `PoolManager.unlock`.
     enum UnlockCallbackKind {
         ModifyLiquidity,
@@ -581,6 +585,12 @@ interface IMemeverseUniswapHook {
     ///      not the principal, or `AccountSessionHasPendingContext` if any swap context is still pending.
     ///      Clears `activePrincipal` (the sole session-active marker) on success.
     function endAccountSession() external;
+
+    /// @notice Returns the active smart-EOA account-session principal, or address(0) when no session is active.
+    /// @dev Read-only view over the hook's transient `activePrincipal` slot; does not alter session lifecycle.
+    ///      Used by the YT Flash Swap Router to bind the payer to msg.sender before any fund action.
+    /// @return principal Active session principal captured by `beginAccountSession`, or address(0).
+    function activeAccountSessionPrincipal() external view returns (address principal);
 
     /// @notice Updates the clone template used to deploy LP tokens for new pools.
     /// @dev Implementations are expected to restrict this to an admin or owner role.

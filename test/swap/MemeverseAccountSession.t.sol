@@ -166,6 +166,22 @@ contract MemeverseAccountSessionTest is Test, HookStorageHelper {
     }
 
     // -----------------------------------------------------------------
+    // Read-only session-principal getter (YT Flash Swap Plan Task 2)
+    // -----------------------------------------------------------------
+
+    /// @notice The read-only getter tracks begin/end without touching session lifecycle.
+    function test_ActiveAccountSessionPrincipal_TracksBeginAndEnd() external {
+        address principal = address(account);
+        assertEq(hook.activeAccountSessionPrincipal(), address(0));
+        vm.prank(principal);
+        hook.beginAccountSession();
+        assertEq(hook.activeAccountSessionPrincipal(), principal);
+        vm.prank(principal);
+        hook.endAccountSession();
+        assertEq(hook.activeAccountSessionPrincipal(), address(0));
+    }
+
+    // -----------------------------------------------------------------
     // beforeSwap / afterSwap session + context guards (Task 2.C)
     // -----------------------------------------------------------------
 
@@ -906,5 +922,66 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
         assertGt(accumSingle, rotP0, "CF-005 char: single principal accumulates 3 slices, rotator p0 only its own");
         assertGt(accumSingle, rotP1, "CF-005 char: single principal accumulates 3 slices, rotator p1 only its own");
         assertGt(accumSingle, rotP2, "CF-005 char: single principal accumulates 3 slices, rotator p2 only its own");
+    }
+
+    // -----------------------------------------------------------------
+    // R4-F06 characterization: end is a voluntary release, not a mandatory close
+    // -----------------------------------------------------------------
+
+    /// @notice R4-F06 characterization: omitting `endAccountSession` on a single-account frame does NOT revert.
+    ///         The swap still succeeds and is attributed to the caller; `activePrincipal` remains set for the
+    ///         remainder of this test frame (the outer transaction), and EIP-1153 transient storage auto-clears
+    ///         it when the frame ends. This locks the code's actual behavior: the spec treats `end` as a
+    ///         voluntary release rather than a mandatory close, so a lone account that forgets `end` loses no
+    ///         funds and leaves no cross-transaction residue.
+    /// @dev The swap is dispatched with begin + a direct Integrator.swap (no end), matching the fragment style
+    ///      of `test_multiUserBatchRouterAttributesCallbacksToAAndIsUnsupported`. Within the same Foundry test
+    ///      frame `activeAccountSessionPrincipal()` still reads A because transient auto-clear only happens at
+    ///      frame (tx) end, not mid-frame.
+    function test_omittedEndOnSingleAccountStillSucceeds_r4f06Characterization() external {
+        vm.prank(address(accountA));
+        hook.beginAccountSession();
+        vm.prank(address(accountA));
+        integrator.swap(key, _exactInZeroForOne(0.5 ether), address(accountA), bytes(""));
+        // end deliberately omitted.
+
+        // The swap succeeded and was attributed to A even though end was never called.
+        assertGt(
+            uint256(hook.addressBatchStateOf(address(accountA), poolId).batchStartTs),
+            0,
+            "R4-F06 char: swap succeeds even when end is omitted"
+        );
+
+        // Within this test frame the session is still active; transient auto-clear happens at frame (tx) end.
+        assertEq(
+            hook.activeAccountSessionPrincipal(),
+            address(accountA),
+            "R4-F06 char: activePrincipal still set within tx when end omitted"
+        );
+    }
+
+    /// @notice R4-F06 characterization: when `end` is omitted, a later `begin` from another account in the SAME
+    ///         transaction reverts with `AccountSessionAlreadyActive`. This is the executable evidence that end
+    ///         remains the only clearing entry point within a transaction, so a multi-account serial frame still
+    ///         requires the prior account to end before the next can begin.
+    /// @dev Overlaps with `test_missingEndMakesVCompliantFrameRevertBeforeRouterOrCallback` in subject but not
+    ///      in lens: that test drives V's full frame through the catching entry and asserts the target never
+    ///      runs; this test asserts the exact `beginAccountSession` revert selector directly, without depending
+    ///      on entryPoint/spy plumbing, for a precise and self-contained regression signal.
+    function test_omittedEndBlocksLaterBeginInSameTx_r4f06Characterization() external {
+        // A opens a session and omits end.
+        vm.prank(address(accountA));
+        hook.beginAccountSession();
+
+        // V's begin in the same transaction reverts because A is still active.
+        vm.prank(address(accountV));
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemeverseUniswapHook.AccountSessionAlreadyActive.selector, address(accountA))
+        );
+        hook.beginAccountSession();
+
+        // Cleanup so the transient store does not bleed into other tests in this file.
+        vm.prank(address(accountA));
+        hook.endAccountSession();
     }
 }

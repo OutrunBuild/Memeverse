@@ -308,3 +308,26 @@ Hook 仍保留（LP 与池操作低层入口）：
 - `preorder settlement`：`Launcher -> Hook` 的受限专用结算通道（SettlementFacet 执行 unlock/swap/settle/take）
 
 其中普通交易、启动期费率、LP 记账和结算专用通道都在同一套 Router + Hook（diamond）语义下协同完成。
+
+---
+
+## 8. YT Flash Swap Router 集成边界
+
+YT Flash Swap 是与 `MemeverseSwapRouter` **相互独立**的公开入口，由单独的 `MemeverseYTFlashSwapRouter` 承载，不属于本节前面描述的 `MemeverseSwapRouter` ABI 面。完整产品规则以 [yt-flash-swap.md](yt-flash-swap.md) 为唯一 canonical；本节仅给出集成方需要知道的边界差异。`[代码已证]`
+
+- **两个用户入口**：`swapPOLForExactYT(verseId, exactYTOut, maxPOLIn, sqrtPriceLimitX96, recipient, deadline, referrer)` 与 `swapExactYTForPOL(verseId, exactYTIn, minPOLOut, sqrtPriceLimitX96, recipient, deadline, referrer)`。两者都是 PoolManager 的正常 swap 调用者，底层 PT/POL 腿与普通 swap 走同一条 v4 + Hook 路径，只在外层用 split/merge 把 POL 与 YT 互换。
+
+- **无 Permit2**：YT Flash Swap Router 明确不提供 `*WithPermit2(...)` 入口，也不复用 `MemeverseSwapRouter` 的 Permit2 拉资路径。付款只用 allowance + `transferFrom`：买入只从 payer 拉取 `actualPOLIn`（不预拉 `maxPOLIn`，无退款分支），卖出从 payer 拉取 `exactYTIn` YT。这是与 `MemeverseSwapRouter`（§3.3）刻意不同的边界。
+
+- **不接收 quote / Lens / 搜索参数**：Router 入参里没有 quote、`R`、搜索边界或 Lens 结果。SDK 用 `MemeverseUniswapHookLens` 在固定 EIP-1898 `blockHash` 上报价并保留 headroom，但 Router 只按执行时真实 `BalanceDelta` 结算，不与历史 quote 比较，也不要求两者相等。Lens trader 必须等于建立 session 的执行 principal；Router 看不到也不验证历史 Lens 参数。
+
+- **入口前置（任何资金动作前）**：
+
+  1. `deadline` 未过期、exact amount 与 `int128`/`uint256` 边界合法、`recipient` 非零且非 Router。
+  2. `hook.activeAccountSessionPrincipal() == msg.sender`（无 session 或不匹配回滚 `AccountSessionPrincipalMismatch`，该 error 由 Router 自身接口定义，区别于 Hook 既有同名 error，详见 yt-flash-swap.md §11）。
+  3. 动态验证 canonical dependency：`hook.launcher().getLauncherContracts()` 的 `memeverseUniswapHook`/`polSplitter` 与 Router immutable 一致（否则 `CanonicalDependencyMismatch`）。外调前若 launcher 为零地址或无 deployed code，先回滚 `LauncherCodeNotReady`。
+  4. 构造期 PoolManager 对角（不可变，非运行时）：零地址检查后、读取 `hook_.poolManager()` 并进行 manager 对角比较前，Router 构造器要求 `manager_`、`hook_`、`splitter_` 三个 immutable executable dependency 均有 deployed code；分别无 code 时回滚 `PoolManagerCodeNotReady`、`HookCodeNotReady`、`SplitterCodeNotReady`。随后 fail-closed 校验 `manager_ == hook_.poolManager()`，失配回滚 `RouterPoolManagerMismatch`。`SafeCallback(manager_)` 在构造器 body 前已绑定 manager immutable，因此 code-ready 检查的正确语义是部署成功前、读取 getter 与对角比较前完成，而不是发生在该绑定之前。集成方/部署方无需运行时处理这些错误——它们都是部署期不可变约束，运行时不会触发（详见 yt-flash-swap.md §2 与 INV-24）。
+
+- **session 复用**：Router 不自行 `beginAccountSession`/`endAccountSession`；它复用 smart-account/Safe/EIP-7702 原子 frame 内同一 active session principal（session 边界见 §1.1）。报价与执行必须使用同一 principal。
+
+普通 PT/POL swap 的费率、容量、价格限制、execute-or-revert 与 fee/referral 规则全部复用，以 [uniswap-v4.md §3.1–§3.2](uniswap-v4.md) 与本文 §2 为准。资金流详见 [swap-flow.md §8](swap-flow.md)；结算不变量见 [invariants.md INV-24](../invariants.md)；访问控制见 [access-control.md §3](../access-control.md)。

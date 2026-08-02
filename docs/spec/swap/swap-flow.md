@@ -250,3 +250,91 @@ flowchart TD
 
 - 普通 swap：execute-or-revert，启动期靠费率衰减保护
 - 特殊启动结算：显式 `Launcher -> Hook -> SettlementFacet`（Router entry `delegatecall`），固定费率（数值见 [docs/spec/verse/accounting.md §7.4](../verse/accounting.md)）
+
+---
+
+## 8. YT Flash Swap 资金流
+
+YT Flash Swap 由独立的 `MemeverseYTFlashSwapRouter` 承载，与 `MemeverseSwapRouter` 相互独立。它复用同一 PT/POL v4 池与 Hook 费率/referral/account-session，但不复用普通 Router 的 Permit2/quote/退款分支。完整 canonical 以 [yt-flash-swap.md](yt-flash-swap.md) 为准；本节给出两条路径的资金流摘要。`[代码已证]`
+
+**核心约束**：真实 `BalanceDelta` 是唯一结算依据，不预拉 `maxPOLIn`，无退款分支；`FlashDeltaMismatch` 只校验真实 delta 的币种/符号/完整成交结构，绝不比较历史 quote。
+
+### 8.1 买入：POL → 精确 YT（一次普通 exact-input PT→POL swap）
+
+设 \(y=exactYTOut\)。底层是普通 exact-input `y PT -> R_actual POL`，真实 delta 必须恰好 `PT=-y, POL=+R_actual`，再 split 补 PT 债务。
+
+```mermaid
+sequenceDiagram
+    participant U as Payer(msg.sender)
+    participant R as YTFlashSwapRouter
+    participant PM as PoolManager
+    participant H as Hook
+    participant S as POLSplitter
+    participant RC as Recipient
+
+    U->>R: swapPOLForExactYT(verseId, y, maxPOLIn, ...)
+    R->>R: 前置：deadline/int128/recipient + activePrincipal==msg.sender + canonical dependency
+    R->>PM: unlock(contextHash)
+    PM->>R: unlockCallback
+    R->>PM: swap(y PT -> POL, exact-input)
+    PM->>H: beforeSwap/afterSwap（普通费率/referral）
+    Note over R,PM: 校验真实 delta: PT=-y, POL=+R_actual（否则 FlashDeltaMismatch）
+    R->>R: 验证 0<R_actual<y, actualPOLIn=y-R_actual<=maxPOLIn
+    R->>PM: take R_actual POL（清正 POL delta）
+    R->>U: transferFrom actualPOLIn POL（只拉实际成本）
+    Note over R: Router 本次 POL 增量 = R_actual+actualPOLIn = y
+    R->>S: approve(y) + split(y)
+    R->>R: 校验 Router->Splitter POL allowance == 0
+    Note over S: 产出 y PT + y YT
+    R->>PM: settle y PT（清 -y PT delta）
+    R->>RC: transfer y YT
+    PM-->>R: unlock 返回 + decode actualPOLIn
+    R->>R: post: contextHash 清零 + PT/YT/POL baseline 精确恢复
+    R-->>U: emit YTFlashSwapPOLForYT + return polInUsed
+```
+
+要点：
+
+- 只拉 `actualPOLIn`，不预拉 `maxPOLIn`，无退款分支。
+- `R_actual == y`（零成本）或 `R_actual > y`（负成本）都 fail closed，不让 unsigned 减法下溢。
+- Router→Splitter 的 POL allowance 成功后必须为 0（split 恰好消耗 y，成功路径不调 `approve(0)`）。
+- PT/POL 腿的费率、referral、动态状态与对应普通 swap 完全一致且只发生一次。
+
+### 8.2 卖出：精确 YT → POL（一次普通 exact-output POL→PT swap + flash merge）
+
+设 \(y=exactYTIn\)。底层是普通 exact-output `Q_actual POL -> y PT`，真实 delta 必须恰好 `PT=+y, POL=-Q_actual`，再 merge 消掉 PT 并结清 POL 债务。
+
+```mermaid
+sequenceDiagram
+    participant U as Payer(msg.sender)
+    participant R as YTFlashSwapRouter
+    participant PM as PoolManager
+    participant H as Hook
+    participant S as POLSplitter
+    participant RC as Recipient
+
+    U->>R: swapExactYTForPOL(verseId, y, minPOLOut, ...)
+    R->>R: 前置：deadline/int128/recipient + activePrincipal==msg.sender + canonical dependency
+    R->>PM: unlock(contextHash)
+    PM->>R: unlockCallback
+    R->>PM: swap(POL -> y PT, exact-output)
+    PM->>H: beforeSwap/afterSwap（普通费率/referral）
+    Note over R,PM: 校验真实 delta: PT=+y, POL=-Q_actual（否则 FlashDeltaMismatch）
+    R->>R: 验证 0<Q_actual<y, polOut=y-Q_actual>=minPOLOut（否则在 take/pull/merge 前回滚）
+    R->>PM: take y PT（清正 PT delta）
+    R->>U: transferFrom y YT
+    Note over R,S: POLSplitter.merge 直接 burn Router 持有的 PT/YT，不走 ERC20 approval/transferFrom
+    R->>S: merge(y)（产出 y POL）
+    R->>PM: settle Q_actual POL（清 -Q_actual POL delta）
+    R->>RC: transfer polOut POL
+    PM-->>R: unlock 返回 + decode polOut
+    R->>R: post: contextHash 清零 + PT/YT/POL baseline 精确恢复
+    R-->>U: emit YTFlashSwapYTForPOL + return polOut
+```
+
+要点：
+
+- `Q_actual == 0` 或 `Q_actual >= y` 都回滚（避免零债务/负输出/算术下溢）。
+- `polOut < minPOLOut` 必须在 take、pull、merge 前原子回滚。
+- `merge` 直接 burn Router 持有的 PT/YT，不经 ERC20 approval/transferFrom；不产生第二次 swap。
+- PT/POL 腿的费率、referral、动态状态与对应普通 swap 完全一致且只发生一次。

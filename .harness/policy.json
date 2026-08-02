@@ -615,6 +615,23 @@
         },
         {
           "change_tests": [
+            "test/swap/MemeverseYTFlashSwapRouter.t.sol",
+            "test/swap/MemeverseYTFlashSwapRouterIntegration.t.sol",
+            "test/swap/MemeverseYTFlashSwapRouterInvariant.t.sol"
+          ],
+          "evidence_tests": [
+            "test/swap/MemeverseYTFlashSwapRouter.t.sol",
+            "test/swap/MemeverseYTFlashSwapRouterIntegration.t.sol",
+            "test/swap/MemeverseYTFlashSwapRouterInvariant.t.sol"
+          ],
+          "id": "swap-yt-flash-swap-router",
+          "paths": [
+            "src/swap/MemeverseYTFlashSwapRouter.sol",
+            "src/swap/interfaces/IMemeverseYTFlashSwapRouter.sol"
+          ]
+        },
+        {
+          "change_tests": [
             "test/swap/MemeverseDiamondFacets.t.sol",
             "test/swap/SettlementReentrancy.t.sol",
             "test/swap/SettlementSamePoolReentrancy.t.sol",
@@ -675,12 +692,14 @@
         },
         {
           "change_tests": [
+            "test/swap/MemeverseAccountSession.t.sol",
             "test/swap/MemeverseReferralRebate.t.sol",
             "test/swap/MemeverseReferralRebateRealV4.t.sol",
             "test/swap/MemeverseAddressBatchStateOf.t.sol",
             "test/swap/MemeverseQuoteReadOnlyInvariant.t.sol"
           ],
           "evidence_tests": [
+            "test/swap/MemeverseAccountSession.t.sol",
             "test/swap/MemeverseReferralRebate.t.sol",
             "test/swap/MemeverseReferralRebateRealV4.t.sol",
             "test/swap/MemeverseAddressBatchStateOf.t.sol",

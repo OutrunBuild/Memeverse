@@ -10,62 +10,63 @@
 
 ### 跨模块（`docs/spec/` 根）
 
-| 文件 | 行数 | 职责 |
-| --- | --- | --- |
-| [protocol.md](protocol.md) | 100 | 协议总览、组件清单、文档分层 |
-| [access-control.md](access-control.md) | 81 | 访问控制边界（authority / evidence） |
-| [events.md](events.md) | 114 | 事件面（用户 / 索引器 / 运维） |
-| [invariants.md](invariants.md) | 147 | 跨模块不变量 |
-| [upgradeability.md](upgradeability.md) | 118 | 升级性与初始化约束 |
+| 文件 | 职责 |
+| --- | --- |
+| [protocol.md](protocol.md) | 协议总览、组件清单、文档分层 |
+| [access-control.md](access-control.md) | 访问控制边界（authority / evidence） |
+| [events.md](events.md) | 事件面（用户 / 索引器 / 运维） |
+| [invariants.md](invariants.md) | 跨模块不变量 |
+| [upgradeability.md](upgradeability.md) | 升级性与初始化约束 |
 
 ### 公共基础（`common/`）
 
-| 文件 | 行数 | 职责 |
-| --- | --- | --- |
-| [common/common-foundations.md](common/common-foundations.md) | 104 | 公共基础层说明 |
+| 文件 | 职责 |
+| --- | --- |
+| [common/common-foundations.md](common/common-foundations.md) | 公共基础层说明 |
 
 ### Verse 生命周期（`verse/`）
 
-| 文件 | 行数 | 职责 |
-| --- | --- | --- |
-| [verse/accounting.md](verse/accounting.md) | 246 | 记账与资金语义 |
-| [verse/state-machines.md](verse/state-machines.md) | 111 | 状态机 |
-| [verse/lifecycle-details.md](verse/lifecycle-details.md) | 272 | 生命周期细化说明 |
-| [verse/registration-details.md](verse/registration-details.md) | 178 | 注册链路细化说明 |
-| [verse/deployment.md](verse/deployment.md) | 144 | 部署拓扑与初始化事实 |
-| [verse/config-matrix.md](verse/config-matrix.md) | 99 | 配置矩阵（可配置面 / 常量面） |
+| 文件 | 职责 |
+| --- | --- |
+| [verse/accounting.md](verse/accounting.md) | 记账与资金语义 |
+| [verse/state-machines.md](verse/state-machines.md) | 状态机 |
+| [verse/lifecycle-details.md](verse/lifecycle-details.md) | 生命周期细化说明 |
+| [verse/registration-details.md](verse/registration-details.md) | 注册链路细化说明 |
+| [verse/deployment.md](verse/deployment.md) | 部署拓扑与初始化事实 |
+| [verse/config-matrix.md](verse/config-matrix.md) | 配置矩阵（可配置面 / 常量面） |
 
 ### Swap（`swap/`）
 
-| 文件 | 行数 | 职责 |
-| --- | --- | --- |
-| [swap/swap-flow.md](swap/swap-flow.md) | 172 | Swap 流程图 |
-| [swap/swap-integration.md](swap/swap-integration.md) | 279 | Swap 集成说明 |
-| [swap/uniswap-v4.md](swap/uniswap-v4.md) | 101 | Uniswap v4 集成边界 |
-| [swap/permit2.md](swap/permit2.md) | 60 | Permit2 集成边界 |
+| 文件 | 职责 |
+| --- | --- |
+| [swap/swap-flow.md](swap/swap-flow.md) | Swap 流程图 |
+| [swap/swap-integration.md](swap/swap-integration.md) | Swap 集成说明 |
+| [swap/uniswap-v4.md](swap/uniswap-v4.md) | Uniswap v4 集成边界 |
+| [swap/permit2.md](swap/permit2.md) | Permit2 集成边界 |
+| [swap/yt-flash-swap.md](swap/yt-flash-swap.md) | YT Flash Swap canonical（POL↔YT 复用 PT/POL 池） |
 
 ### 跨链互操作（`interoperation/`）
 
-| 文件 | 行数 | 职责 |
-| --- | --- | --- |
-| [interoperation/interoperation-details.md](interoperation/interoperation-details.md) | 109 | 跨链互操作细化说明 |
-| [interoperation/layerzero-oapp-oft.md](interoperation/layerzero-oapp-oft.md) | 73 | LayerZero OApp / OFT 集成边界 |
+| 文件 | 职责 |
+| --- | --- |
+| [interoperation/interoperation-details.md](interoperation/interoperation-details.md) | 跨链互操作细化说明 |
+| [interoperation/layerzero-oapp-oft.md](interoperation/layerzero-oapp-oft.md) | LayerZero OApp / OFT 集成边界 |
 
 ### 治理与收益（`governance/`）
 
-| 文件 | 行数 | 职责 |
-| --- | --- | --- |
-| [governance/governance-yield-details.md](governance/governance-yield-details.md) | 176 | 治理与收益细化说明 |
+| 文件 | 职责 |
+| --- | --- |
+| [governance/governance-yield-details.md](governance/governance-yield-details.md) | 治理与收益细化说明 |
 
 ### POLend（`polend/`）
 
-| 文件 | 行数 | 职责 |
-| --- | --- | --- |
-| [polend/README.md](polend/README.md) | 30 | POLend 规格（四池模型 + PT/YT + settlement + 杠杆创世）聚合入口，下含 core/genesis/pt-yt-splitter/settlement-and-fees |
-| [polend/core.md](polend/core.md) | 474 | POLend 模块边界 / 状态 / 债务推导 / 错误语义 / 互斥关系（§1-9） |
-| [polend/genesis.md](polend/genesis.md) | 421 | POLend 创世流程（§1-7） |
-| [polend/pt-yt-splitter.md](polend/pt-yt-splitter.md) | 234 | POLend PT/YT 生命周期 / POLSplitter settle / PT-YT 兑付（§1-3） |
-| [polend/settlement-and-fees.md](polend/settlement-and-fees.md) | 855 | POLend fee 归集 / 结算编排 / 收益分发 / 权限配置 / Target ABI（§1-11） |
+| 文件 | 职责 |
+| --- | --- |
+| [polend/README.md](polend/README.md) | POLend 规格（四池模型 + PT/YT + settlement + 杠杆创世）聚合入口，下含 core/genesis/pt-yt-splitter/settlement-and-fees |
+| [polend/core.md](polend/core.md) | POLend 模块边界 / 状态 / 债务推导 / 错误语义 / 互斥关系（§1-9） |
+| [polend/genesis.md](polend/genesis.md) | POLend 创世流程（§1-7） |
+| [polend/pt-yt-splitter.md](polend/pt-yt-splitter.md) | POLend PT/YT 生命周期 / POLSplitter settle / PT-YT 兑付（§1-3） |
+| [polend/settlement-and-fees.md](polend/settlement-and-fees.md) | POLend fee 归集 / 结算编排 / 收益分发 / 权限配置 / Target ABI（§1-11） |
 
 ## 2. OCLPAR canonical-home 表
 
@@ -130,6 +131,7 @@
 | 普通动态 Swap 的一次选费、四路径、价格限制、容量、核心/最终用户 delta | [uniswap-v4.md §3.1–§3.2](swap/uniswap-v4.md) | 普通动态 Swap 的唯一 canonical |
 | execute-or-revert | [uniswap-v4.md §4](swap/uniswap-v4.md) | 普通 swap 的执行边界 |
 | Permit2 入口 | [permit2.md](swap/permit2.md) | Permit2 token 入口边界 |
+| YT Flash Swap POL↔YT 复用 PT/POL 池 | [yt-flash-swap.md](swap/yt-flash-swap.md) | 无 YT AMM 的 POL↔YT flash swap 唯一 canonical（两入口、真实 BalanceDelta 结算、split/merge baseline、无 Permit2/quote 入参） |
 
 ### 2.6 跨链/interop
 

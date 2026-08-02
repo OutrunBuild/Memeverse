@@ -96,6 +96,18 @@ v4 LP fee 的源码结构事实是：新池初始化为零、当前没有 `updat
 - 后续实现必须审阅整个 `begin -> Router -> end` frame 的不可 catch、全成全败边界，并逐项覆盖 missing session、nested session、missing end 与 unauthorized end 的拒绝或回滚。`beforeSwap` 验证 active session principal 并写入带 principal 的 context；`afterSwap` 验证 active session principal 和匹配的非零 `SwapContext.principal`，再消费 context；principal mismatch、wrong-pool 或 missing context 不能通过减小 depth 恢复。
 - Router identity、`hookData`、Universal Router `msgSender`、签名、EIP-712、ERC-1271 与 Router allowlist 都不是本方案的一部分，也不引入 persistent state 或 Event。多用户 batch Router 及漏掉 end 后的 bypass 调用不受支持。
 
+### 4.6 YT Flash Swap 审阅边界 `[目标规范]`
+
+以下约束 YT Flash Swap（POL↔YT 复用 PT/POL 池，详见 [docs/spec/swap/yt-flash-swap.md](spec/swap/yt-flash-swap.md)）的审阅边界。这些是**已批准的产品规则**，审阅不得改写：
+
+- **产品规则（不是审阅可改写的）**：无 Permit2、无 quote 入参、无 Lens/搜索参数、无管理员、无退款循环；付款只用 allowance + transferFrom，买入只拉 `actualPOLIn`、不预拉 `maxPOLIn`；SDK 负责固定 EIP-1898 `blockHash` 报价与 headroom，Router 不接收也不信任历史 quote。审阅不得把「为了更安全，让 Router 接收并校验 quote」「引入 Permit2」「预拉 maxPOLIn 再退款」「加管理员审批 flash」「把求根/二分搬上链」作为安全修复重新提出——这些都属于产品规则变化（§3），必须先经人工确认。
+- **真实 BalanceDelta 是唯一结算依据**：`FlashDeltaMismatch` 只校验真实 delta 的币种、符号与完整成交结构，绝不比较历史 quote。审阅不得要求 Router 与离线 quote 相等、或把「真实结果偏离历史报价」当作 revert 条件。
+- **principal 绑定与 canonical dependency 在资金动作前**：每个用户入口在任何转账、take、settle、split、merge 前，必须同时通过 `hook.activeAccountSessionPrincipal() == msg.sender` 与当前 launcher 的 `getLauncherContracts()` 一致性校验。principal 失配回滚 Router 自身接口 `src/swap/interfaces/IMemeverseYTFlashSwapRouter.sol` 定义的 `AccountSessionPrincipalMismatch`（与 Hook 同名 afterSwap error 的区分见 [yt-flash-swap.md §11](spec/swap/yt-flash-swap.md)）。审阅不得把它们后置到 callback 内或移除。
+- **dust 不可消费、baseline 必须恢复**：PT/YT/POL 三个 baseline 在 `unlock` 返回后必须精确恢复；预存 dust 不可消费；`recipient` 为 Router 被禁止。审阅不得把「用 Router 自有余额补差」或「消费 dust 容忍误差」作为修复建议。
+- **买入 Splitter POL allowance residual 必须为 0**：买入成功路径 split 后 Router→Splitter 的 POL allowance 必须归零（split 恰好消耗 `y`，成功路径不调 `approve(0)`）；卖出的 `merge` 直接 burn PT/YT 不经 ERC20 approval。审阅不得引入残留 allowance 或第二次 approve。
+- **失败原子回滚**：capacity 不足、价格限制、partial fill、恶意 callback、token/Splitter 重入、int128/uint256 边界、过期 deadline、principal/dependency 失配、非法成本（`R_actual` 零或负）/非法债务（`Q_actual` 零或 ≥ y）、`minPOLOut`/`maxPOLIn` 违反、baseline/allowance 未恢复都必须原子回滚，用户不会因失败交易被保留预拉资产。审阅可以补充具体失败路径的测试，但不得放宽这些 fail-closed 语义。
+- **与普通 swap 共享费率规则**：YT Flash Swap 底层 PT/POL 腿就是一次普通动态 swap，§4.4 的费率/容量/价格限制/referral 审阅边界完全适用；审阅不得要求 Router 重复收费、二次「修正 swap」或第二套 fee/referral 状态机。
+
 ## 5. 审阅输出格式建议
 
 审阅结论应尽量包含：

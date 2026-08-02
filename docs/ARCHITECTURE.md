@@ -21,6 +21,7 @@
 ### 1.3 交易与流动性
 
 - `src/swap/MemeverseSwapRouter.sol`
+- `src/swap/MemeverseYTFlashSwapRouter.sol`：无独立 YT AMM 的 POL↔YT flash swap Router，复用既有 PT/POL v4 池 + Hook fee/referral/account-session + POLSplitter split/merge，独立于 `MemeverseSwapRouter`（两个入口、真实 BalanceDelta 结算、无 Permit2/quote 入参）。`[代码已证]`
 - `src/swap/MemeverseUniswapHook.sol`（diamond Router）
 - `src/swap/SwapFacet.sol` / `src/swap/DynamicFeeFacet.sol` / `src/swap/SettlementFacet.sol`（共享 hook storage 的 DELEGATECALL facet）
 - 负责 swap、加减流动性、LP fee claim、启动期费用语义与 preorder settlement 通道。
@@ -171,6 +172,7 @@ preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，
    - [docs/spec/swap/swap-integration.md](spec/swap/swap-integration.md)
    - [docs/spec/swap/uniswap-v4.md](spec/swap/uniswap-v4.md)
    - [docs/spec/swap/permit2.md](spec/swap/permit2.md)
+   - [docs/spec/swap/yt-flash-swap.md](spec/swap/yt-flash-swap.md)
    - [docs/implementation-map.md](implementation-map.md)
    - [docs/ARCHITECTURE.md](ARCHITECTURE.md)
    - [docs/GLOSSARY.md](GLOSSARY.md)
@@ -265,7 +267,7 @@ Preorder settlement 的当前实现不使用 transient state 路由。`Settlemen
 - Hook ABI 由合约账户直接调用：`beginAccountSession()` 只从直接 `msg.sender` 捕获 principal。写入前必须同时满足 `msg.sender.code.length != 0`、`activePrincipal == address(0)` 与 `swapContextDepth() == 0`；任一不满足都拒绝，不能覆盖或继承残留 context。code-length 只排除传统 EOA，不是账户认证或 allowlist，EIP-7702 delegated account 仍可被接受。
 - 布局另设 Hook-owned transient `activePrincipal` 槽位，并为每层 `SwapContext.principal` 设按 `(poolId, depth)` 定位的独立槽位。context 共传递 principal、编码费率/协议费币腿、`preSqrtPriceX96` 与 `coreTarget` 四项；principal 非零是其唯一 presence marker。
 - `beforeSwap` / `afterSwap` 只使用 active session context 的 principal 作为 `DynamicFeeFacet` 执行 trader。Router、`hookData`、PoolManager callback caller、Universal Router `msgSender` 与 `tx.origin` 都不得提供或替代它；quote 的显式 `trader` 仍只是 preview 输入，Settlement runtime trader 保持 launcher-scoped `msg.sender`。
-- `afterSwap` 只消费 pool 与 principal 均匹配的非零 context，匹配时减少 depth（不清字段，由下次 push 无条件覆盖与 transient storage 在交易结束自动清除保证无残留）；zero context 与 principal mismatch 分别回退 `AccountSessionContextMissing` 与 `AccountSessionPrincipalMismatch`，不能借由减小 depth 恢复。`endAccountSession()` 仅允许 active principal 在 `swapContextDepth() == 0` 时调用并清除 principal；missing、unauthorized 或未消费 context 均拒绝。`begin -> Router -> end` 必须处于同一不可 catch、全成全败 frame，不能省略 `end`。
+- `afterSwap` 只消费 pool 与 principal 均匹配的非零 context，匹配时减少 depth（不清字段，由下次 push 无条件覆盖与 transient storage 在交易结束自动清除保证无残留）；zero context 与 principal mismatch 分别回退 `AccountSessionContextMissing` 与 `AccountSessionPrincipalMismatch`，不能借由减小 depth 恢复。`endAccountSession()` 仅允许 active principal 在 `swapContextDepth() == 0` 时调用并清除 principal；missing、unauthorized 或未消费 context 均拒绝。`begin -> Router -> end` 必须处于同一不可 catch、全成全败 frame。`end` 的语义是主动让出 session：显式 `end` 清除 `activePrincipal`，使同一外层交易内的下一个 `begin` 能通过；省略 `end` 不会让该笔交易失败（交易结束时 EIP-1153 transient storage 自动清零 `activePrincipal`），但会让本笔交易后续的 `beginAccountSession()` 回退 `AccountSessionAlreadyActive`，因此多账户串行场景（如 ERC-4337 bundler 一笔 `handleOps([A, V])`）A 必须显式 `end`。
 - 该实现不增加 Router trust / allowlist、签名、EIP-712、ERC-1271、principal 参数、持久状态或 session begin/end event；Permit2、quote 与 Settlement 既有语义不因 session 改变。
 
 ## 5. 当前已知边界提醒

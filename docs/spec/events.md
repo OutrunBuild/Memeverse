@@ -86,6 +86,8 @@
 | `ReferralRebateAccrued(address indexed referrer, Currency indexed currency, uint256 amount)` | `MemeverseUniswapHook`(Router，经 `SwapFacet::_settleProtocolFee` 内联 emit；`_collectProtocolFee` 与 beforeSwap 主路径均调它) | 普通 swap 携带非零 referrer 且 `amount > 0` 时 | 返佣累计。可按 referrer/currency 直接 filter |
 | `ReferralRebateClaimed(address indexed referrer, address indexed recipient, Currency indexed currency, uint256 amount)` | `MemeverseUniswapHook`(Router 直接实现) | referrer 调 `MemeverseUniswapHook::claimRebate` 领取 accrued rebate 并 transfer 成功后 | 返佣领取流水。可按 referrer/recipient/currency 直接 filter |
 | `ReferrerRebateBpsUpdated(uint256 oldBps, uint256 newBps)` | `MemeverseUniswapHook`(Router 直接实现) | `setReferrerRebateBps` 成功后（hook `onlyOwner` 直接写 storage） | 全局返佣率变更审计；hook `initialize` 时以 `(0, 1000)` 触发一次 |
+| `YTFlashSwapPOLForYT(uint256 indexed verseId, address indexed payer, address indexed recipient, uint256 exactYTOut, uint256 polInUsed, address referrer)` | `MemeverseYTFlashSwapRouter` | `swapPOLForExactYT` 全部 delta/余额/allowance 结清并 baseline 恢复后 | POL→精确 YT flash swap 成交流水；`payer` 恒为 `msg.sender`。`[代码已证]` |
+| `YTFlashSwapYTForPOL(uint256 indexed verseId, address indexed payer, address indexed recipient, uint256 exactYTIn, uint256 polOut, address referrer)` | `MemeverseYTFlashSwapRouter` | `swapExactYTForPOL` 全部 delta/余额结清并 baseline 恢复后 | 精确 YT→POL flash swap 成交流水；`payer` 恒为 `msg.sender`。`[代码已证]` |
 
 以上均为 `[代码已证]`。
 
@@ -132,6 +134,7 @@
 
 - `burnPreRedeemedBacking` 不要求专用事件。
 - `MemeverseSwapRouter` 不发业务事件；swap、流动性与资金变动的链上索引依赖 Hook 事件和 token `Transfer`。
+- `MemeverseYTFlashSwapRouter` 与 `MemeverseSwapRouter` 不同：它直接 emit `YTFlashSwapPOLForYT` / `YTFlashSwapYTForPOL` 业务事件（见 §2.4，`[代码已证]`），因为它的两入口资金流不被普通 Hook 的 swap/LP 事件完整覆盖（涉及 split/merge 与 baseline 恢复）。
 - `changeStage` 在 `Locked` 且未到 `unlockTime` 时也会发 `ChangeStage(..., Locked)`；索引器不能仅凭事件判断“是否真的迁移”。`[已知缺口]`
 - 当前实现没有“保护窗口开始/结束”的专用阶段或专用事件，也没有 dedicated event 单独标记 `publicSwapResumeTime` 的激活或到期；索引器需要结合 stage、实际 `Locked -> Unlocked` 迁移交易时间、固定保护窗口（`UNLOCK_PROTECTION_WINDOW`，数值见 [docs/spec/verse/config-matrix.md §3](verse/config-matrix.md)）与 swap 成败联合判断“unlock 后保护中”与“完全开放交易”的状态。`[已知缺口]`
 - `SetExternalInfo` 事件携带的是本次传入数组；合约内 `communitiesMap` 为按索引覆盖，旧尾部数据可能保留，事件本身无法单独重建完整当前快照。`[已知缺口]`

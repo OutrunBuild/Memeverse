@@ -83,7 +83,7 @@ interface IMemeverseYTFlashSwapRouter {
     // One-shot callback context guards
     // =====================================================================================
 
-    /// @notice Reverts when a callback payload's hash does not match the context committed by `_open`, or when no
+    /// @notice Reverts when a callback payload's hash does not match the context committed by `_runFlashSwap`, or when no
     ///         one-shot context is pending.
     error UnexpectedOrTamperedCallback(bytes32 expected, bytes32 actual);
 

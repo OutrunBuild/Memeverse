@@ -125,7 +125,7 @@ contract MockYTManager {
         _swapsInWindow = 0;
         bytes memory result;
         if (mode == Mode.NoCallback) {
-            // Intentionally do not invoke the callback; the router's `_open` detects the unconsumed pending hash.
+            // Intentionally do not invoke the callback; the router's `_runFlashSwap` detects the unconsumed pending hash.
             result = "";
         } else {
             bytes memory payload;

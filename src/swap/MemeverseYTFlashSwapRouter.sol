@@ -44,7 +44,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         uint256 pol;
     }
 
-    /// @notice Execution-only payload committed by `_open` and verified inside `_unlockCallback`.
+    /// @notice Execution-only payload committed by `_runFlashSwap` and verified inside `_unlockCallback`.
     /// @dev Excludes `RouterBalances` so the consumed hash is independent of router-held dust.
     struct FlashContext {
         FlashAction action;
@@ -67,7 +67,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
     IMemeverseUniswapHook public immutable hook;
     IPOLSplitter public immutable splitter;
 
-    /// @dev Pending one-shot context hash. Written in `_open`, verified and cleared at the top of `_unlockCallback`
+    /// @dev Pending one-shot context hash. Written in `_runFlashSwap`, verified and cleared at the top of `_unlockCallback`
     ///      before decode/external calls. Transient so it never persists across transactions.
     bytes32 private transient _pendingContextHash;
 
@@ -132,7 +132,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
             yt: yt,
             pol: pol
         });
-        polInUsed = _open(c);
+        polInUsed = _runFlashSwap(c);
         _assertBalancesRestored(baseline, pt, yt, pol);
         emit YTFlashSwapPOLForYT(verseId, msg.sender, recipient, exactYTOut, polInUsed, referrer);
     }
@@ -162,14 +162,14 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
             yt: yt,
             pol: pol
         });
-        polOut = _open(c);
+        polOut = _runFlashSwap(c);
         _assertBalancesRestored(baseline, pt, yt, pol);
         emit YTFlashSwapYTForPOL(verseId, msg.sender, recipient, exactYTIn, polOut, referrer);
     }
 
     /// @dev Commits the one-shot context hash to transient storage, opens the PoolManager unlock, then requires the
     ///      callback to have consumed (cleared) the hash and decodes its uint256 result.
-    function _open(FlashContext memory c) internal returns (uint256 result) {
+    function _runFlashSwap(FlashContext memory c) internal returns (uint256 result) {
         bytes memory data = abi.encode(c);
         _pendingContextHash = keccak256(data);
         bytes memory callbackResult = poolManager.unlock(data);

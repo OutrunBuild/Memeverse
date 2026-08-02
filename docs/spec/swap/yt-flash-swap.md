@@ -292,7 +292,7 @@ Router 不把 baseline 中的余额视为可用流动性。正常部署后 basel
    abi.encode(actualPOLIn)
    ```
 
-公共入口在 `_open` / `PoolManager.unlock` 返回、pending context hash 已消费且 callback result 已 decode 后，按 §7 使用本地保存的 PT、YT、POL baseline 检查余额。全部 postcondition 通过后，公共入口才 emit 并返回 `polInUsed`。
+公共入口在 `_runFlashSwap` / `PoolManager.unlock` 返回、pending context hash 已消费且 callback result 已 decode 后，按 §7 使用本地保存的 PT、YT、POL baseline 检查余额。全部 postcondition 通过后，公共入口才 emit 并返回 `polInUsed`。
 
 callback 资金步骤或 unlock 后公共入口 postcondition 任一步失败，整个 unlock 和所有 token 转账原子回滚。用户不会因失败交易被保留预拉资产。
 
@@ -337,7 +337,7 @@ callback 资金步骤或 unlock 后公共入口 postcondition 任一步失败，
 
 7. 把恰好 `polOut` POL 转给 recipient，并返回 `abi.encode(polOut)`。
 
-公共入口在 `_open` / `PoolManager.unlock` 返回、pending context hash 已消费且 callback result 已 decode 后，按 §7 使用本地保存的 PT、YT、POL baseline 检查余额。全部 postcondition 通过后，公共入口才 emit 并返回 `polOut`。
+公共入口在 `_runFlashSwap` / `PoolManager.unlock` 返回、pending context hash 已消费且 callback result 已 decode 后，按 §7 使用本地保存的 PT、YT、POL baseline 检查余额。全部 postcondition 通过后，公共入口才 emit 并返回 `polOut`。
 
 这条路径同样不使用 Router 自有 PT/POL/YT，也不产生第二次 swap。
 
@@ -388,7 +388,7 @@ Router 不复制 fee 数学，不在 Splitter 前后收取额外交易费，也�
 | canonical dependency 不匹配 | `CanonicalDependencyMismatch` | Hook 当前 launcher 的 `memeverseUniswapHook` 或 `polSplitter` 不等于 Router immutable |
 | 运行时 launcher 无 code | `LauncherCodeNotReady` | `hook.launcher()` 返回零地址或无 deployed code 的地址；在 `getLauncherContracts()` 外调前先拒绝，避免 STATICCALL 命中非合约返回空 returndata 触发 opaque ABI-decode 回滚；命名镜像构造期 `HookCodeNotReady` 与 `InvalidCanonicalVerseAssets` 的 code-length-first 模式（**新增行**） |
 | canonical verse 资产零、重复或无 deployed code | `InvalidCanonicalVerseAssets` | canonical Splitter 对 `verseId` 返回零、重复、或无 deployed code 的 PT/YT/POL 地址；在 `_snapshotBalances` 读取 `balanceOf` 前先拒绝，避免 STATICCALL 命中非合约返回空 returndata 触发 opaque ABI-decode 回滚；与构造器 `HookCodeNotReady` 的 code-length-first 风格一致（**新增行**） |
-| 非法 callback / unlock context | `UnexpectedOrTamperedCallback` / `CallbackNotConsumed` | 无 pending one-shot context，或 callback payload hash 与 `_open` 提交的 context 不匹配（被篡改/重放/伪造）；`UnexpectedOrTamperedCallback` 在 `_unlockCallback` 顶部触发；`PoolManager.unlock` 返回后 pending hash 未被清零则触发 `CallbackNotConsumed`（"调用者必须是 PoolManager"由基类 `SafeCallback` 的独立守卫负责，不归入此行） |
+| 非法 callback / unlock context | `UnexpectedOrTamperedCallback` / `CallbackNotConsumed` | 无 pending one-shot context，或 callback payload hash 与 `_runFlashSwap` 提交的 context 不匹配（被篡改/重放/伪造）；`UnexpectedOrTamperedCallback` 在 `_unlockCallback` 顶部触发；`PoolManager.unlock` 返回后 pending hash 未被清零则触发 `CallbackNotConsumed`（"调用者必须是 PoolManager"由基类 `SafeCallback` 的独立守卫负责，不归入此行） |
 | 真实 delta 结构不符 | `FlashDeltaMismatch` | 真实 delta 不符合固定 \(y\) 所要求的币种、符号或完整成交结构；不比较任何历史 quote |
 | 非法买入成本 | `InvalidBuyCost` | `R_actual` 为零、等于或大于 \(y\)（`R_actual == 0 || R_actual >= y`），三种情形都 fail closed，保证 unsigned 减法 `y - R_actual` 不下溢（与 §8 item 2 `0 < R_actual < y` 一致） |
 | 超过 `maxPOLIn` | `MaxPOLInExceeded` | `actualPOLIn` 大于 `maxPOLIn` |

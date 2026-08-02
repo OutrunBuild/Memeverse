@@ -265,7 +265,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         router.swapPOLForExactYT(VERSE_ID, EXACT_YT, EXACT_YT, PRICE_LIMIT, recipient, block.timestamp, referrer);
     }
 
-    /// @dev Manager in NoCallback mode returns without invoking the callback; the pending hash stays set and `_open`
+    /// @dev Manager in NoCallback mode returns without invoking the callback; the pending hash stays set and `_runFlashSwap`
     ///      reverts before decoding any result.
     function test_RevertWhen_CallbackIsNotConsumed() public {
         uint256 maxPOLIn = EXACT_YT + 1;
@@ -338,11 +338,11 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         // Zero-address launcher: hook.launcher() returns address(0).
         address zeroLauncher = address(0);
         hook.setLauncher(zeroLauncher);
-        // Buy path: guard fires before `_open`/swap and before the cost `transferFrom`.
+        // Buy path: guard fires before `_runFlashSwap`/swap and before the cost `transferFrom`.
         vm.prank(account);
         vm.expectRevert(abi.encodeWithSelector(IMemeverseYTFlashSwapRouter.LauncherCodeNotReady.selector, zeroLauncher));
         router.swapPOLForExactYT(VERSE_ID, EXACT_YT, EXACT_YT, PRICE_LIMIT, recipient, block.timestamp, referrer);
-        // Sell path: guard fires before `_open`/swap and before the payer YT `transferFrom`.
+        // Sell path: guard fires before `_runFlashSwap`/swap and before the payer YT `transferFrom`.
         vm.prank(account);
         vm.expectRevert(abi.encodeWithSelector(IMemeverseYTFlashSwapRouter.LauncherCodeNotReady.selector, zeroLauncher));
         router.swapExactYTForPOL(VERSE_ID, EXACT_YT, 0, PRICE_LIMIT, recipient, block.timestamp, referrer);
@@ -386,12 +386,12 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         MockLauncherMissingSelector missingSelectorLauncher = new MockLauncherMissingSelector();
         hook.setLauncher(address(missingSelectorLauncher));
 
-        // Buy path: the STATICCALL reverts before `_open`/swap and before the cost `transferFrom`.
+        // Buy path: the STATICCALL reverts before `_runFlashSwap`/swap and before the cost `transferFrom`.
         vm.prank(account);
         vm.expectRevert();
         router.swapPOLForExactYT(VERSE_ID, EXACT_YT, EXACT_YT, PRICE_LIMIT, recipient, block.timestamp, referrer);
 
-        // Sell path: the STATICCALL reverts before `_open`/swap and before the payer YT `transferFrom`.
+        // Sell path: the STATICCALL reverts before `_runFlashSwap`/swap and before the payer YT `transferFrom`.
         vm.prank(account);
         vm.expectRevert();
         router.swapExactYTForPOL(VERSE_ID, EXACT_YT, 0, PRICE_LIMIT, recipient, block.timestamp, referrer);
@@ -414,7 +414,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IMemeverseYTFlashSwapRouter.InvalidRecipient.selector, address(0)));
         router.swapPOLForExactYT(VERSE_ID, EXACT_YT, 100 ether, BUY_PRICE_LIMIT, address(0), block.timestamp, referrer);
 
-        // Entry guard fires before `_open`/swap and before the cost `transferFrom`.
+        // Entry guard fires before `_runFlashSwap`/swap and before the cost `transferFrom`.
         assertEq(manager.swapCount(), 0);
         assertEq(pol.transferFromAsFrom(account), 0);
     }
@@ -430,7 +430,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
             VERSE_ID, EXACT_YT, 100 ether, BUY_PRICE_LIMIT, address(router), block.timestamp, referrer
         );
 
-        // Entry guard fires before `_open`/swap and before the cost `transferFrom`.
+        // Entry guard fires before `_runFlashSwap`/swap and before the cost `transferFrom`.
         assertEq(manager.swapCount(), 0);
         assertEq(pol.transferFromAsFrom(account), 0);
     }
@@ -444,7 +444,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IMemeverseYTFlashSwapRouter.InvalidRecipient.selector, address(0)));
         router.swapExactYTForPOL(VERSE_ID, EXACT_YT, 0, SELL_PRICE_LIMIT, address(0), block.timestamp, referrer);
 
-        // Entry guard fires before `_open`/swap and before the payer YT `transferFrom`.
+        // Entry guard fires before `_runFlashSwap`/swap and before the payer YT `transferFrom`.
         assertEq(manager.swapCount(), 0);
         assertEq(yt.transferFromAsFrom(account), 0);
     }
@@ -458,7 +458,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IMemeverseYTFlashSwapRouter.InvalidRecipient.selector, address(router)));
         router.swapExactYTForPOL(VERSE_ID, EXACT_YT, 0, SELL_PRICE_LIMIT, address(router), block.timestamp, referrer);
 
-        // Entry guard fires before `_open`/swap and before the payer YT `transferFrom`.
+        // Entry guard fires before `_runFlashSwap`/swap and before the payer YT `transferFrom`.
         assertEq(manager.swapCount(), 0);
         assertEq(yt.transferFromAsFrom(account), 0);
     }

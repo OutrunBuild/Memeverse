@@ -321,6 +321,30 @@ YT Flash Swap 是与 `MemeverseSwapRouter` **相互独立**的公开入口，由
 
 - **不接收 quote / Lens / 搜索参数**：Router 入参里没有 quote、`R`、搜索边界或 Lens 结果。SDK 用 `MemeverseUniswapHookLens` 在固定 EIP-1898 `blockHash` 上报价并保留 headroom，但 Router 只按执行时真实 `BalanceDelta` 结算，不与历史 quote 比较，也不要求两者相等。Lens trader 必须等于建立 session 的执行 principal；Router 看不到也不验证历史 Lens 参数。
 
+- **SDK 报价操作序列**：Router 不接收 quote，因此 SDK 必须自行驱动报价。下列步骤与 Router 执行逻辑同构，并与 yt-flash-swap.md §5 互补——§5 定义数学语义（公式 C=y-R、O=y-Q），本节给出落地操作序列。
+
+  - **Step 1 — 解析 verse 三件套**：调用 `IPOLSplitter.getPTAndYTAndPOL(verseId)` view，得到 `(pt, yt, pol)`。splitter 地址从 `hook.launcher().getLauncherContracts().polSplitter` 读取，与 Router 运行时使用的同一 canonical 来源对齐。
+
+  - **Step 2 — 离线构建 PT/POL `PoolKey`**：复现 `MemeversePoolKeyLib.hookPoolKey` 语义——`currency0 = min(pt, pol)`、`currency1 = max(pt, pol)`；`fee` 取 v4-core `LPFeeLibrary.DYNAMIC_FEE_FLAG`（`hookPoolKey` 内部引用的就是它），`tickSpacing` 取 `MemeversePoolKeyLib.DEFAULT_TICK_SPACING`，`hooks` 取 Router 的 hook 地址。**常量值不写字面数值，按上述出处引用**，避免漂移。
+
+  - **Step 3 — 构建 `SwapParams`**：direction/sign 推导与 Router 执行逻辑一致。下文 `y` 统一指用户指定的 exact YT 数量（买入即 `exactYTOut`，卖出即 `exactYTIn`，与 yt-flash-swap.md §4 的 `y` 同义）——
+    - 买入（对应 `swapPOLForExactYT`）：`zeroForOne = pt < pol`，`amountSpecified = -int256(y)`（负值，exact-input）。
+    - 卖出（对应 `swapExactYTForPOL`）：`zeroForOne = !(pt < pol)`（源码字面表达式；在 `pt != pol` 时等价于 `pt > pol`，而 `pt == pol` 已被 Router 的 canonical-asset 检查 `InvalidCanonicalVerseAssets` 排除），`amountSpecified = +int256(y)`（正值，exact-output）。
+
+  - **Step 4 — 调用 Lens 报价**：调用 `MemeverseUniswapHookLens.quoteSwap(hook, key, params, trader)` view，返回 `SwapQuote` 结构体。
+
+  - **Step 5 — 推导用户实际金额**：用 `y` 与 `SwapQuote` 字段做减法（公式来源 yt-flash-swap.md §5）——
+    - 买入的 POL 成本：`estimatedPOLIn = y - quote.estimatedUserOutputAmount`（`estimatedUserOutputAmount` 即底层 PT→POL exact-input 的 POL 输出 R）。
+    - 卖出的 POL 输出：`estimatedPOLOut = y - quote.estimatedUserInputAmount`（`estimatedUserInputAmount` 即底层 POL→PT exact-output 的 POL 输入 Q）。
+
+  - **字段映射（消除方向混用 footgun）**：买入读 `SwapQuote.estimatedUserOutputAmount`（= R）；卖出读 `SwapQuote.estimatedUserInputAmount`（= Q）。两个方向不可混用——混用会得到语义相反的错误值，且无显式回滚保护。
+
+  - **工程约束（必须遵守）**：
+    - **全程整数 / BigInt**：所有代币金额必须使用大整数（viem `bigint` / ethers v6 `bigint`），禁止 IEEE-754 浮点或 JS `Number`——1e18 量级会精度溢出。
+    - **blockHash 一致性**：Step 1（`getPTAndYTAndPOL`）与 Step 4（`quoteSwap`）应绑定同一 EIP-1898 `blockHash`（§5.1 明确要求 Lens 报价固定 blockHash；此处将其延伸到地址解析，以防 verse 资产解析与报价跨 verse 启动边界），否则两次 view 可能跨 block，导致 `PoolKey`/余额与 quote 失配。
+    - **trader 一致性**：Lens quote 的 `trader` 必须等于执行 session principal（已在本节「不接收 quote」与「session 复用」覆盖，此处仅引用，不展开）。
+    - **费用展示**：`SwapQuote` 的 `feeBps` / `estimatedProtocolFeeAmount` / `estimatedLpFeeAmount` 可直接用于前端费率分项展示；这些字段与底层普通 PT/POL swap 同源（经同一 `DynamicFeeFacet.quote` 路径）。
+
 - **入口前置（任何资金动作前）**：
 
   1. `deadline` 未过期、exact amount 与 `int128`/`uint256` 边界合法、`recipient` 非零且非 Router。

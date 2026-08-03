@@ -420,7 +420,16 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
     /// @notice The read-only Lens quote for the underlying swap matches the realized Router settlement exactly: for a
     ///         buy, `polInUsed == y - R_quote`; for a sell, `polOut == y - Q_quote`.
     function test_RealV4_UnchangedStateLensQuoteMatchesSettlement() external {
-        // BUY: underlying exact-input PT swap. Lens returns R as the POL output; Router cost is y - R.
+        // Each leg keeps several memory variables and two external-call return values live at once, which under
+        // `forge coverage --ir-minimum` (viaIR with minimum optimization) overflows the EVM stack. Extracting each
+        // leg into its own function call forces the compiler to release one leg's locals before analysing the next.
+        _assertBuyLensQuoteMatchesSettlement();
+        _assertSellLensQuoteMatchesSettlement();
+    }
+
+    /// @dev BUY leg of `test_RealV4_UnchangedStateLensQuoteMatchesSettlement`: underlying exact-input PT swap.
+    ///      Lens returns R as the POL output; Router cost is y - R.
+    function _assertBuyLensQuoteMatchesSettlement() internal {
         SwapParams memory buyParams = SwapParams({
             zeroForOne: ptIsCurrency0,
             amountSpecified: -int256(YT_AMOUNT),
@@ -452,8 +461,11 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
         // delta and returns lpFeeBps=0, so v4's internal SwapMath runs on identical inputs to the Lens curve call).
         // On this unchanged state the quote and the realized settlement are therefore bit-identical — assertEq.
         assertEq(polInUsed, YT_AMOUNT - buyQuote.estimatedUserOutputAmount, "buy: polInUsed == y - R_quote");
+    }
 
-        // SELL: underlying exact-output PT swap. Lens returns Q as the POL input; Router output is y - Q.
+    /// @dev SELL leg of `test_RealV4_UnchangedStateLensQuoteMatchesSettlement`: underlying exact-output PT swap.
+    ///      Lens returns Q as the POL input; Router output is y - Q.
+    function _assertSellLensQuoteMatchesSettlement() internal {
         SwapParams memory sellParams = SwapParams({
             zeroForOne: !ptIsCurrency0,
             amountSpecified: int256(YT_AMOUNT),

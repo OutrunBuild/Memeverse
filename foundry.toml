@@ -13,7 +13,12 @@ evm_version = "prague"
 eth_rpc_timeout = 120
 extra_output = ["storageLayout"]
 gas_reports = ["*"]
-ignored_error_codes = [6335, 2424]
+# 6335/2424: pre-existing. 2018 (view/pure suggestion): noise — most hits are
+# v4 IHooks / forge invariant interface impls that cannot add view/pure.
+# 8429 (virtual modifier deprecation): emitted by lib/ dependencies.
+# 3860 (initcode size) is intentionally NOT ignored: it must stay visible for src/
+# production contracts even though current hits are test contracts.
+ignored_error_codes = [6335, 2424, 2018, 8429]
 
 [rpc_endpoints]
 bsc_testnet = "${BSC_TESTNET_RPC}"

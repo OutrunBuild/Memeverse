@@ -222,6 +222,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         uint256 cost = c.ytAmount - r;
         if (cost > c.polLimit) revert MaxPOLInExceeded(cost, c.polLimit);
         Currency.wrap(c.pol).take(poolManager, address(this), r, false);
+        // slither-disable-next-line arbitrary-send-erc20
         IERC20(c.pol).safeTransferFrom(c.payer, address(this), cost);
         _approveExactly(IERC20(c.pol), address(splitter), c.ytAmount);
         (uint256 ptMinted, uint256 ytMinted) = splitter.split(c.verseId, c.ytAmount);
@@ -296,6 +297,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         // never moves funds.
         if (out < c.polLimit) revert MinPOLOutNotMet(out, c.polLimit);
         Currency.wrap(c.pt).take(poolManager, address(this), c.ytAmount, false);
+        // slither-disable-next-line arbitrary-send-erc20
         IERC20(c.yt).safeTransferFrom(c.payer, address(this), c.ytAmount);
         uint256 merged = splitter.merge(c.verseId, c.ytAmount);
         if (merged != c.ytAmount) revert MergeResultMismatch(merged, c.ytAmount);
@@ -312,6 +314,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         view
         returns (address pt, address yt, address pol)
     {
+        // slither-disable-next-line timestamp
         if (block.timestamp > deadline) revert ExpiredPastDeadline();
         if (recipient == address(0) || recipient == address(this)) revert InvalidRecipient(recipient);
         if (ytAmount == 0 || ytAmount > INT128_MAX_VALUE) revert AmountOutOfRange(ytAmount);

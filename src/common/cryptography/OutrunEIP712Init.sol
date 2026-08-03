@@ -35,11 +35,6 @@ import {Initializable} from "../access/Initializable.sol";
 abstract contract OutrunEIP712Init is Initializable, IERC5267 {
     /// @custom:storage-location erc7201:outrun.storage.EIP712
     struct EIP712Storage {
-        /// @custom:oz-renamed-from _HASHED_NAME
-        bytes32 _hashedName;
-        /// @custom:oz-renamed-from _HASHED_VERSION
-        bytes32 _hashedVersion;
-
         string _name;
         string _version;
     }
@@ -74,10 +69,6 @@ abstract contract OutrunEIP712Init is Initializable, IERC5267 {
         EIP712Storage storage $ = _getEIP712Storage();
         $._name = name;
         $._version = version;
-
-        // Reset prior values in storage if upgrading
-        $._hashedName = 0;
-        $._hashedVersion = 0;
     }
 
     /**
@@ -121,7 +112,6 @@ abstract contract OutrunEIP712Init is Initializable, IERC5267 {
     }
 
     /// @notice Exposes the full IERC5267 EIP-712 domain metadata.
-    /// @dev Reverts when the storage layout indicates EIP-712 was not initialized.
     /// @return fields Bitmask describing which domain fields are populated.
     /// @return name Human-readable domain name.
     /// @return version Domain version string.
@@ -143,22 +133,15 @@ abstract contract OutrunEIP712Init is Initializable, IERC5267 {
             uint256[] memory extensions
         )
     {
-        EIP712Storage storage $ = _getEIP712Storage();
-        // If the hashed name and version in storage are non-zero, the contract hasn't been properly initialized
-        // and the EIP712 domain is not reliable, as it will be missing name and version.
-        // solhint-disable-next-line gas-custom-errors
-        require($._hashedName == 0 && $._hashedVersion == 0, "EIP712: Uninitialized");
-
-        return
-            (
-                hex"0f", // 01111
-                _EIP712Name(),
-                _EIP712Version(),
-                block.chainid,
-                address(this),
-                bytes32(0),
-                new uint256[](0)
-            );
+        return (
+            hex"0f", // 01111
+            _EIP712Name(),
+            _EIP712Version(),
+            block.chainid,
+            address(this),
+            bytes32(0),
+            new uint256[](0)
+        );
     }
 
     /**
@@ -183,47 +166,13 @@ abstract contract OutrunEIP712Init is Initializable, IERC5267 {
         return $._version;
     }
 
-    /**
-     * @dev The hash of the name parameter for the EIP712 domain.
-     *
-     * NOTE: In previous versions this function was virtual. In this version you should override `_EIP712Name` instead.
-     */
+    /// @dev The hash of the name parameter for the EIP712 domain.
     function _EIP712NameHash() internal view returns (bytes32) {
-        EIP712Storage storage $ = _getEIP712Storage();
-        string memory name = _EIP712Name();
-        if (bytes(name).length > 0) {
-            return keccak256(bytes(name));
-        } else {
-            // If the name is empty, the contract may have been upgraded without initializing the new storage.
-            // We return the name hash in storage if non-zero, otherwise we assume the name is empty by design.
-            bytes32 hashedName = $._hashedName;
-            if (hashedName != 0) {
-                return hashedName;
-            } else {
-                return keccak256("");
-            }
-        }
+        return keccak256(bytes(_EIP712Name()));
     }
 
-    /**
-     * @dev The hash of the version parameter for the EIP712 domain.
-     *
-     * NOTE: In previous versions this function was virtual. In this version you should override `_EIP712Version` instead.
-     */
+    /// @dev The hash of the version parameter for the EIP712 domain.
     function _EIP712VersionHash() internal view returns (bytes32) {
-        EIP712Storage storage $ = _getEIP712Storage();
-        string memory version = _EIP712Version();
-        if (bytes(version).length > 0) {
-            return keccak256(bytes(version));
-        } else {
-            // If the version is empty, the contract may have been upgraded without initializing the new storage.
-            // We return the version hash in storage if non-zero, otherwise we assume the version is empty by design.
-            bytes32 hashedVersion = $._hashedVersion;
-            if (hashedVersion != 0) {
-                return hashedVersion;
-            } else {
-                return keccak256("");
-            }
-        }
+        return keccak256(bytes(_EIP712Version()));
     }
 }

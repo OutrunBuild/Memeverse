@@ -14,7 +14,8 @@ contract LzEndpointRegistry is ILzEndpointRegistry, Ownable {
     constructor(address _owner) Ownable(_owner) {}
 
     /// @notice Batch-updates chain-to-endpoint mappings.
-    /// @dev Entries with `chainId == 0` or `endpointId == 0` are ignored.
+    /// @dev Reverts with `InvalidEndpointIdPair` if any pair has `chainId == 0`
+    ///      or `endpointId == 0`; otherwise stores and emits all pairs.
     /// @param pairs List of `(chainId, endpointId)` pairs to store.
     function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external override onlyOwner {
         uint256 pairsLength = pairs.length;
@@ -23,7 +24,8 @@ contract LzEndpointRegistry is ILzEndpointRegistry, Ownable {
             unchecked {
                 ++i;
             }
-            if (pair.chainId == 0 || pair.endpointId == 0) continue;
+
+            if (pair.chainId == 0 || pair.endpointId == 0) revert InvalidEndpointIdPair();
 
             lzEndpointIdOfChain[pair.chainId] = pair.endpointId;
         }

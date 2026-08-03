@@ -10,6 +10,9 @@ interface ILzEndpointRegistry {
         uint32 endpointId;
     }
 
+    /// @dev Reverted when a pair has a zero chainId or endpointId.
+    error InvalidEndpointIdPair();
+
     /// @notice Looks up the LayerZero endpoint ID configured for an EVM chain.
     /// @dev Returns zero when the chain has not been configured yet.
     /// @param chainId EVM chain ID.

@@ -26,10 +26,6 @@ import {Initializable} from "../access/Initializable.sol";
  * NOTE: This contract implements the version of the encoding known as "v4", as implemented by the JSON RPC method
  * https://docs.metamask.io/guide/signing-data.html[`eth_signTypedDataV4` in MetaMask].
  *
- * NOTE: In the upgradeable version of this contract, the cached values will correspond to the address, and the domain
- * separator of the implementation contract. This will cause the {_domainSeparatorV4} function to always rebuild the
- * separator from the immutable values, which is cheaper than accessing a cached version in cold storage.
- *
  * @custom:oz-upgrades-unsafe-allow state-variable-immutable
  */
 abstract contract OutrunEIP712Init is Initializable, IERC5267 {

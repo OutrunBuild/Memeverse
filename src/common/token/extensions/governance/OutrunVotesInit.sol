@@ -29,6 +29,30 @@ import {OutrunEIP712Init} from "../../../cryptography/OutrunEIP712Init.sol";
  * When using this module the derived contract must implement {_getVotingUnits} (for example, make it return
  * {ERC721-balanceOf}), and can use {_transferVotingUnits} to track a change in the distribution of those units (in the
  * previous example, it would be included in {ERC721-_update}).
+ *
+ * @dev ---- Asset-denomination extension (yield-bearing share tokens) ----
+ * The upstream Votes module records voting power in the token's own units (shares). For a yield-bearing share token
+ * (e.g. an ERC-4626 vault) the share count alone is misleading: as yield accrues each share is worth more underlying
+ * asset, so raw share votes would under-represent holders and drift whenever the exchange rate moves. To make votes
+ * reflect the underlying asset value of holdings, this contract lets a subclass denominate votes in assets via three
+ * conversion hooks plus an asset-side checkpoint:
+ *
+ *   - {_convertVotes}            converts `getVotes`          (latest  snapshot of shares).
+ *   - {_convertPastVotes}        converts `getPastVotes`      (past   snapshot of shares + past totalAssets).
+ *   - {_convertPastTotalSupply}  converts `getPastTotalSupply`(past   snapshot of shares + past totalAssets).
+ *   - {_writeTotalAssetCheckpoint} records the managed `totalAssets` at the same clock timepoint as the share
+ *     checkpoints, so past conversions can be replayed against the asset value that was in effect back then.
+ *
+ * Pairing-consistency invariant (load-bearing): every *past* conversion reads `_totalCheckpoints`,
+ * `_delegateCheckpoints[account]`, and `_totalAssetsCheckpoint` at the SAME validated past timepoint (see
+ * {getPastVotes} / {getPastTotalSupply}). A subclass that writes share checkpoints MUST also call
+ * {_writeTotalAssetCheckpoint} on the same mutation (deposit, redeem, yield accrual, burn) so the three traces never
+ * diverge in time. {getVotes} is the only view that intentionally uses the CURRENT exchange rate and therefore takes no
+ * checkpoint argument; this is by design because a current vote must reflect the current share price.
+ *
+ * The default implementations here are identity (return the raw value unchanged), so a plain non-yield subclass is
+ * unaffected. Asset denomination is only active when a subclass (currently `MemecoinYieldVault`) overrides the
+ * conversion hooks and feeds totalAssets into the checkpoint.
  */
 abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit, IERC5805 {
     using Checkpoints for Checkpoints.Trace208;

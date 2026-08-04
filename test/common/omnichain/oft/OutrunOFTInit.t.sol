@@ -9,7 +9,7 @@ import {
 } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppReceiver.sol";
 import {OFTMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
-import {SendParam} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import {SendParam, IOFT} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {IOFTCompose} from "../../../../src/common/omnichain/oft/IOFTCompose.sol";
 import {MockOFTEndpoint} from "../../../mocks/common/CommonMocks.sol";
 import {OFTHarness} from "../../../mocks/infrastructure/OFTHarness.sol";
@@ -150,5 +150,45 @@ contract OutrunOFTInitTest is Test {
         vm.prank(address(0x1234));
         oft.notifyComposeExecuted(bytes32("compose-guid"));
         assertTrue(oft.getComposeTxExecutedStatus(bytes32("compose-guid")));
+    }
+
+    /// @notice Test send reverts when min amount exceeds received.
+    function testSendRevertsWhenMinAmountExceedsReceived() external {
+        endpoint.setQuoteNativeFee(0.2 ether);
+        oft.mintTest(address(this), 5 ether);
+
+        SendParam memory sendParam = SendParam({
+            dstEid: DST_EID,
+            to: bytes32(uint256(uint160(address(0xBEEF)))),
+            amountLD: 5 ether,
+            minAmountLD: 6 ether,
+            extraOptions: bytes("opts"),
+            composeMsg: bytes(""),
+            oftCmd: bytes("")
+        });
+
+        // quoteSend itself calls _debitView and would revert before send, masking which path failed.
+        vm.expectRevert(abi.encodeWithSelector(IOFT.SlippageExceeded.selector, 5 ether, 6 ether));
+        oft.send{value: 0.2 ether}(sendParam, MessagingFee({nativeFee: 0.2 ether, lzTokenFee: 0}), address(this));
+
+        // The slippage check in _debitView runs before _burn, so the sender balance is untouched after the revert.
+        assertEq(oft.balanceOf(address(this)), 5 ether);
+    }
+
+    /// @notice Test lz receive with a zero recipient remaps to the burn address and routes compose to the raw zero address.
+    function testLzReceiveRemapsZeroRecipientToBurnAddress() external {
+        Origin memory origin = Origin({srcEid: DST_EID, sender: bytes32(uint256(uint160(address(0xBEEF)))), nonce: 2});
+        bytes memory message;
+        bool hasCompose;
+        (message, hasCompose) = OFTMsgCodec.encode(bytes32(0), 2_000_000, abi.encode(UBO));
+        assertTrue(hasCompose);
+
+        vm.prank(address(endpoint));
+        oft.lzReceive(origin, bytes32("zero-guid"), message, address(0), "");
+
+        assertEq(oft.balanceOf(address(0xdead)), 2 ether);
+        assertEq(oft.balanceOf(address(0)), 0);
+        // Compose routing uses the pre-remap recipient; this asserts current (pre-COMMON-001-fix) behavior.
+        assertEq(endpoint.lastComposeTo(), address(0));
     }
 }

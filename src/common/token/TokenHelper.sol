@@ -29,7 +29,12 @@ abstract contract TokenHelper is ReentrancyGuard {
     /// @notice Single exit point for all outbound token transfers.
     /// @dev `nonReentrant` here is the centralized reentrancy defense for contracts using TokenHelper.
     ///      Entry-point functions in these contracts intentionally omit `nonReentrant` to avoid double-locking
-    ///      with the boolean-based ReentrancyGuard (see R3-S-002 analysis).
+    ///      with the boolean-based ReentrancyGuard: a transient `bool` flag (not a counter) cannot be acquired
+    ///      twice in the same transaction, so a caller-level `nonReentrant` would set `locked = true` for the
+    ///      whole outer call and make every nested `_transferOut` revert with `ReentrancyGuardReentrantCall`.
+    ///      Note the flag is released when `_transferOut` returns (`_nonReentrantAfter` resets it), so the
+    ///      inter-call window between two `_transferOut`s is NOT covered by this lock — defense across that
+    ///      gap relies on the caller's own CEI ordering, not on this modifier.
     function _transferOut(address token, address to, uint256 amount) internal nonReentrant {
         if (amount == 0) return;
         if (token == NATIVE) {

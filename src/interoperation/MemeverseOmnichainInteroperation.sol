@@ -17,7 +17,7 @@ import {IMemeverseOmnichainInteroperation} from "./interfaces/IMemeverseOmnichai
 contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, TokenHelper, Ownable {
     using OptionsBuilder for bytes;
 
-    address public immutable MEMEVERSE_COMMON_INFO;
+    address public immutable LZ_ENDPOINT_REGISTRY;
     address public immutable MEMEVERSE_LAUNCHER;
     address public immutable OMNICHAIN_MEMECOIN_STAKER;
 
@@ -27,7 +27,7 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     /**
      * @dev Constructor
      * @param _owner - The owner of the contract
-     * @param _memeverseCommonInfo - Address of LzEndpointRegistry
+     * @param _lzEndpointRegistry - Address of LzEndpointRegistry
      * @param _memeverseLauncher - Address of MemeverseLauncher
      * @param _omnichainMemecoinStaker - Address of OmnichainMemecoinStaker
      * @param _oftReceiveGasLimit - Gas limit for OFT receive
@@ -35,13 +35,13 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
      */
     constructor(
         address _owner,
-        address _memeverseCommonInfo,
+        address _lzEndpointRegistry,
         address _memeverseLauncher,
         address _omnichainMemecoinStaker,
         uint128 _oftReceiveGasLimit,
         uint128 _omnichainStakingGasLimit
     ) Ownable(_owner) {
-        MEMEVERSE_COMMON_INFO = _memeverseCommonInfo;
+        LZ_ENDPOINT_REGISTRY = _lzEndpointRegistry;
         MEMEVERSE_LAUNCHER = _memeverseLauncher;
         OMNICHAIN_MEMECOIN_STAKER = _omnichainMemecoinStaker;
         oftReceiveGasLimit = _oftReceiveGasLimit;
@@ -69,18 +69,7 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         if (govChainId == block.chainid) return 0;
 
         address yieldVault = verse.yieldVault;
-        bytes memory omnichainStakingOptions = OptionsBuilder.newOptions()
-            .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
-            .addExecutorLzComposeOption(0, omnichainStakingGasLimit, 0);
-        SendParam memory sendParam = SendParam({
-            dstEid: ILzEndpointRegistry(MEMEVERSE_COMMON_INFO).lzEndpointIdOfChain(govChainId),
-            to: bytes32(uint256(uint160(OMNICHAIN_MEMECOIN_STAKER))),
-            amountLD: amount,
-            minAmountLD: 0,
-            extraOptions: omnichainStakingOptions,
-            composeMsg: abi.encode(receiver, yieldVault),
-            oftCmd: abi.encode()
-        });
+        SendParam memory sendParam = _buildStakingSendParam(govChainId, receiver, yieldVault, amount);
         lzFee = IOFT(memecoin).quoteSend(sendParam, false).nativeFee;
     }
 
@@ -107,18 +96,7 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
             return;
         }
 
-        bytes memory omnichainStakingOptions = OptionsBuilder.newOptions()
-            .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
-            .addExecutorLzComposeOption(0, omnichainStakingGasLimit, 0);
-        SendParam memory sendParam = SendParam({
-            dstEid: ILzEndpointRegistry(MEMEVERSE_COMMON_INFO).lzEndpointIdOfChain(govChainId),
-            to: bytes32(uint256(uint160(OMNICHAIN_MEMECOIN_STAKER))),
-            amountLD: amount,
-            minAmountLD: 0,
-            extraOptions: omnichainStakingOptions,
-            composeMsg: abi.encode(receiver, yieldVault),
-            oftCmd: abi.encode()
-        });
+        SendParam memory sendParam = _buildStakingSendParam(govChainId, receiver, yieldVault, amount);
         MessagingFee memory messagingFee = IOFT(memecoin).quoteSend(sendParam, false);
         if (msg.value != messagingFee.nativeFee) revert InvalidLzFee(messagingFee.nativeFee, msg.value);
 
@@ -141,5 +119,30 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         omnichainStakingGasLimit = _omnichainStakingGasLimit;
 
         emit SetGasLimits(_oftReceiveGasLimit, _omnichainStakingGasLimit);
+    }
+
+    /// @dev Builds the LayerZero send parameters shared by quote and remote staking paths.
+    /// @param govChainId Governance chain ID.
+    /// @param receiver Final staking beneficiary.
+    /// @param yieldVault Yield vault on the governance chain.
+    /// @param amount Token amount to stake.
+    /// @return sendParam LayerZero OFT send parameters.
+    function _buildStakingSendParam(uint32 govChainId, address receiver, address yieldVault, uint256 amount)
+        internal
+        view
+        returns (SendParam memory sendParam)
+    {
+        bytes memory omnichainStakingOptions = OptionsBuilder.newOptions()
+            .addExecutorLzReceiveOption(oftReceiveGasLimit, 0)
+            .addExecutorLzComposeOption(0, omnichainStakingGasLimit, 0);
+        sendParam = SendParam({
+            dstEid: ILzEndpointRegistry(LZ_ENDPOINT_REGISTRY).lzEndpointIdOfChain(govChainId),
+            to: bytes32(uint256(uint160(OMNICHAIN_MEMECOIN_STAKER))),
+            amountLD: amount,
+            minAmountLD: 0,
+            extraOptions: omnichainStakingOptions,
+            composeMsg: abi.encode(receiver, yieldVault),
+            oftCmd: abi.encode()
+        });
     }
 }

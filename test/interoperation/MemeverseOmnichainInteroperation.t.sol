@@ -66,6 +66,11 @@ contract MemeverseOmnichainInteroperationTest is Test {
         assertEq(fee, 0);
     }
 
+    /// @notice Test the endpoint registry dependency getter uses its concrete name.
+    function testEndpointRegistryGetterReturnsRegistry() external {
+        assertEq(interoperation.LZ_ENDPOINT_REGISTRY(), address(registry));
+    }
+
     /// @notice Test quote memecoin staking builds remote send param.
     function testQuoteMemecoinStakingBuildsRemoteSendParam() external {
         _setRemoteVerse(address(yieldVault));
@@ -200,10 +205,24 @@ contract MemeverseOmnichainInteroperationTest is Test {
         vm.expectRevert(IMemeverseOmnichainInteroperation.ZeroInput.selector);
         interoperation.setGasLimits(0, 1);
 
+        vm.expectEmit(false, false, false, true);
+        emit IMemeverseOmnichainInteroperation.SetGasLimits(1, 2);
         vm.prank(OWNER);
         interoperation.setGasLimits(1, 2);
         assertEq(interoperation.oftReceiveGasLimit(), 1);
         assertEq(interoperation.omnichainStakingGasLimit(), 2);
+    }
+
+    /// @notice Fuzzes that every valid gas-limit update persists both configured values.
+    function testFuzz_SetGasLimitsStoresPositiveValues(uint128 oftReceiveGasLimit, uint128 stakingGasLimit) external {
+        oftReceiveGasLimit = uint128(bound(oftReceiveGasLimit, 1, type(uint128).max));
+        stakingGasLimit = uint128(bound(stakingGasLimit, 1, type(uint128).max));
+
+        vm.prank(OWNER);
+        interoperation.setGasLimits(oftReceiveGasLimit, stakingGasLimit);
+
+        assertEq(interoperation.oftReceiveGasLimit(), oftReceiveGasLimit);
+        assertEq(interoperation.omnichainStakingGasLimit(), stakingGasLimit);
     }
 
     function _setLocalVerse(address yieldVaultAddress) internal {

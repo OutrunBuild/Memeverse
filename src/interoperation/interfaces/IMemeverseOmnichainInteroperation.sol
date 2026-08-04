@@ -39,7 +39,5 @@ interface IMemeverseOmnichainInteroperation {
 
     error EmptyYieldVault();
 
-    error InsufficientLzFee();
-
     error InvalidLzFee(uint256 expected, uint256 actual);
 }

@@ -57,6 +57,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
 
         for (uint256 i = 0; i < length;) {
             address token = initTreasuryTokens[i];
+            // Initialization has no Governor execution context, so only governance-time registration notifies it.
             _registerTreasuryToken(token);
             unchecked {
                 ++i;
@@ -528,6 +529,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         require(governanceCycleIncentivizerStorage._treasuryTokenList.length < MAX_TOKENS_LIMIT, OutOfMaxTokensLimit());
 
         _registerTreasuryToken(token);
+        IMemecoinDaoGovernor(governanceCycleIncentivizerStorage._governor).recordTreasuryTokenRegistration(token);
     }
 
     /**

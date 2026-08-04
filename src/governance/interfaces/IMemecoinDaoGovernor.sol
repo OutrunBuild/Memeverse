@@ -64,6 +64,13 @@ interface IMemecoinDaoGovernor {
     function receiveTreasuryIncome(address token, uint256 amount) external;
 
     /**
+     * @notice Confirms that the paired incentivizer registered a treasury token during the current execution.
+     * @dev This callback validates execution-time registration context; the Governor does not persist the registration.
+     * @param token Treasury token address that was registered.
+     */
+    function recordTreasuryTokenRegistration(address token) external;
+
+    /**
      * @notice Sends treasury assets and records the corresponding spend.
      * @param token Treasury token address spent.
      * @param to Recipient address.
@@ -82,5 +89,9 @@ interface IMemecoinDaoGovernor {
     error GovernanceNotStarted();
     error InvalidGovernanceParams();
     error TreasurySpendExceedsLimit(address token, uint256 spent, uint256 limit);
+    error UnauthorizedTreasuryTokenRegistration();
+    error RegistrationOutsideExecution();
+    error RegistrationMustBeStandalone();
+    error NestedExecution();
     error UpgradeSupermajorityRequired(uint256 forVotes, uint256 totalVotes, uint256 requiredRatio);
 }

@@ -4,6 +4,8 @@ pragma solidity ^0.8.35;
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
+import {IMemecoinDaoGovernor} from "../../../src/governance/interfaces/IMemecoinDaoGovernor.sol";
+
 /// @title MockIncentivizerGovernor
 /// @notice Stand-in governor that receives reward disburseals from the cycle incentivizer for tests.
 contract MockIncentivizerGovernor {
@@ -29,6 +31,12 @@ contract MockIncentivizerGovernor {
         lastRewardAmount = amount;
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         MockERC20(token).transfer(to, amount);
+    }
+
+    /// @notice Accepts treasury-token registration callbacks from the incentivizer.
+    /// @param token Registered treasury token.
+    function recordTreasuryTokenRegistration(address token) external {
+        token;
     }
 }
 
@@ -126,7 +134,14 @@ contract MockGovernorIncentivizer {
     uint256 public lastSentGovernorBalance;
     address public lastVoteAccount;
     uint256 public lastVoteAmount;
+    address public pairedGovernor;
     address[] public treasuryTokens;
+
+    /// @notice Set the paired governor used by registration callbacks.
+    /// @param _governor Governor address.
+    function setGovernor(address _governor) external {
+        pairedGovernor = _governor;
+    }
 
     /// @notice Set treasury tokens.
     /// @param tokens See implementation.
@@ -134,10 +149,18 @@ contract MockGovernorIncentivizer {
         treasuryTokens = tokens;
     }
 
+    /// @notice Register a treasury token and notify the paired governor.
+    /// @param token Treasury token address.
+    function registerTreasuryToken(address token) external {
+        require(msg.sender == pairedGovernor, "not paired governor");
+        treasuryTokens.push(token);
+        IMemecoinDaoGovernor(pairedGovernor).recordTreasuryTokenRegistration(token);
+    }
+
     /// @notice Meta data.
     /// @return currentCycleId See implementation.
     /// @return rewardRatio See implementation.
-    /// @return governor See implementation.
+    /// @return pairedGovernorAddress See implementation.
     /// @return treasuryTokenList See implementation.
     /// @return rewardTokenList See implementation.
     function metaData()
@@ -146,12 +169,12 @@ contract MockGovernorIncentivizer {
         returns (
             uint128 currentCycleId,
             uint128 rewardRatio,
-            address governor,
+            address pairedGovernorAddress,
             address[] memory treasuryTokenList,
             address[] memory rewardTokenList
         )
     {
-        return (0, 0, address(0), treasuryTokens, new address[](0));
+        return (0, 0, pairedGovernor, treasuryTokens, new address[](0));
     }
 
     /// @notice Record treasury income.

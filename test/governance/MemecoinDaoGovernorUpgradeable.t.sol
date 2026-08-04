@@ -55,6 +55,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
             )
         );
         governor = MemecoinDaoGovernorUpgradeable(payable(address(proxy)));
+        incentivizer.setGovernor(address(governor));
     }
 
     /// @notice Test initialize exposes incentivizer and governor metadata.
@@ -291,6 +292,21 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         governor.execute(targets, values, calldatas, keccak256(bytes(description)));
     }
 
+    function _proposeAndPassForExpectedRevert(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description,
+        address voter
+    ) internal {
+        vm.prank(voter);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+        vm.roll(block.number + 1);
+        vm.prank(voter);
+        governor.castVote(proposalId, 1);
+        vm.roll(block.number + governor.votingPeriod() + 1);
+    }
+
     function _transferPayload(address token, address to, uint256 amount)
         internal
         pure
@@ -330,6 +346,161 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
 
         assertEq(treasuryToken.balanceOf(BOB), 50 ether);
         assertEq(treasuryToken.balanceOf(address(governor)), 950 ether);
+    }
+
+    /// @notice Treasury-token registration cannot share an execution with a treasury spend.
+    function testTreasuryTokenRegistrationMustBeStandaloneBeforeTreasurySpend() external {
+        MockERC20 newToken = new MockERC20("New Treasury", "NTRY", 18);
+        newToken.mint(address(governor), 100 ether);
+
+        address[] memory targets = new address[](2);
+        uint256[] memory values = new uint256[](2);
+        bytes[] memory calldatas = new bytes[](2);
+        targets[0] = address(incentivizer);
+        calldatas[0] = abi.encodeCall(MockGovernorIncentivizer.registerTreasuryToken, (address(newToken)));
+        targets[1] = address(governor);
+        calldatas[1] = abi.encodeCall(IMemecoinDaoGovernor.sendTreasuryAssets, (address(newToken), BOB, 10 ether));
+
+        _proposeAndPassForExpectedRevert(targets, values, calldatas, "register-and-spend", ALICE);
+
+        vm.expectRevert(IMemecoinDaoGovernor.RegistrationMustBeStandalone.selector);
+        governor.execute(targets, values, calldatas, keccak256("register-and-spend"));
+
+        (,,, address[] memory treasuryTokens,) = incentivizer.metaData();
+        assertEq(treasuryTokens.length, 0);
+        assertEq(newToken.balanceOf(address(governor)), 100 ether);
+        assertEq(newToken.balanceOf(address(incentivizer)), 0);
+        assertEq(newToken.balanceOf(BOB), 0);
+        assertEq(incentivizer.lastSentToken(), address(0));
+        assertEq(incentivizer.lastSentTo(), address(0));
+        assertEq(incentivizer.lastSentAmount(), 0);
+    }
+
+    /// @notice Treasury-token registration cannot share an execution with a direct transfer.
+    function testTreasuryTokenRegistrationMustBeStandaloneBeforeDirectTransfer() external {
+        MockERC20 newToken = new MockERC20("New Treasury", "NTRY", 18);
+        newToken.mint(address(governor), 100 ether);
+
+        address[] memory targets = new address[](2);
+        uint256[] memory values = new uint256[](2);
+        bytes[] memory calldatas = new bytes[](2);
+        targets[0] = address(incentivizer);
+        calldatas[0] = abi.encodeCall(MockGovernorIncentivizer.registerTreasuryToken, (address(newToken)));
+        targets[1] = address(newToken);
+        calldatas[1] = abi.encodeCall(IERC20.transfer, (BOB, 10 ether));
+
+        _proposeAndPassForExpectedRevert(targets, values, calldatas, "register-and-direct-transfer", ALICE);
+
+        vm.expectRevert(IMemecoinDaoGovernor.RegistrationMustBeStandalone.selector);
+        governor.execute(targets, values, calldatas, keccak256("register-and-direct-transfer"));
+
+        (,,, address[] memory treasuryTokens,) = incentivizer.metaData();
+        assertEq(treasuryTokens.length, 0);
+        assertEq(newToken.balanceOf(address(governor)), 100 ether);
+        assertEq(newToken.balanceOf(BOB), 0);
+
+        address[] memory registerTargets = new address[](1);
+        uint256[] memory registerValues = new uint256[](1);
+        bytes[] memory registerCalldatas = new bytes[](1);
+        registerTargets[0] = address(incentivizer);
+        registerCalldatas[0] = abi.encodeCall(MockGovernorIncentivizer.registerTreasuryToken, (address(newToken)));
+        _proposePassAndExecute(registerTargets, registerValues, registerCalldatas, "register-after-revert", ALICE);
+
+        (,,, address[] memory registeredTreasuryTokens,) = incentivizer.metaData();
+        assertEq(registeredTreasuryTokens.length, 1);
+        assertEq(registeredTreasuryTokens[0], address(newToken));
+    }
+
+    /// @notice A direct transfer before registration is also rejected and fully rolled back.
+    function testDirectTransferBeforeTreasuryTokenRegistrationReverts() external {
+        MockERC20 newToken = new MockERC20("New Treasury", "NTRY", 18);
+        newToken.mint(address(governor), 100 ether);
+
+        address[] memory targets = new address[](2);
+        uint256[] memory values = new uint256[](2);
+        bytes[] memory calldatas = new bytes[](2);
+        targets[0] = address(newToken);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (BOB, 10 ether));
+        targets[1] = address(incentivizer);
+        calldatas[1] = abi.encodeCall(MockGovernorIncentivizer.registerTreasuryToken, (address(newToken)));
+
+        _proposeAndPassForExpectedRevert(targets, values, calldatas, "direct-transfer-and-register", ALICE);
+
+        vm.expectRevert(IMemecoinDaoGovernor.RegistrationMustBeStandalone.selector);
+        governor.execute(targets, values, calldatas, keccak256("direct-transfer-and-register"));
+
+        (,,, address[] memory treasuryTokens,) = incentivizer.metaData();
+        assertEq(treasuryTokens.length, 0);
+        assertEq(newToken.balanceOf(address(governor)), 100 ether);
+        assertEq(newToken.balanceOf(address(incentivizer)), 0);
+        assertEq(newToken.balanceOf(BOB), 0);
+    }
+
+    /// @notice A token registered by a prior proposal can be spent within the Governor execution ratio.
+    function testTreasuryTokenRegisteredInPriorProposalCanBeSpentWithinExecutionRatio() external {
+        MockERC20 newToken = new MockERC20("New Treasury", "NTRY", 18);
+
+        address[] memory registerTargets = new address[](1);
+        uint256[] memory registerValues = new uint256[](1);
+        bytes[] memory registerCalldatas = new bytes[](1);
+        registerTargets[0] = address(incentivizer);
+        registerCalldatas[0] = abi.encodeCall(MockGovernorIncentivizer.registerTreasuryToken, (address(newToken)));
+        _proposePassAndExecute(registerTargets, registerValues, registerCalldatas, "register-token", ALICE);
+
+        // This mock path isolates Governor's balance-ratio check; it does not prove Incentivizer ledger accounting.
+        newToken.mint(address(governor), 1000 ether);
+        (address[] memory spendTargets, uint256[] memory spendValues, bytes[] memory spendCalldatas) = _selfCallPayload(
+            abi.encodeCall(IMemecoinDaoGovernor.sendTreasuryAssets, (address(newToken), BOB, 50 ether))
+        );
+        _proposePassAndExecute(spendTargets, spendValues, spendCalldatas, "spend-token", ALICE);
+
+        assertEq(newToken.balanceOf(BOB), 50 ether);
+        assertEq(newToken.balanceOf(address(governor)), 950 ether);
+    }
+
+    /// @notice A Governor self-call cannot invoke a nested Governor execution.
+    function testNestedGovernorExecuteReverts() external {
+        MockERC20 nestedToken = new MockERC20("Nested Treasury", "NTRY", 18);
+        nestedToken.mint(address(governor), 100 ether);
+
+        address[] memory innerTargets = new address[](1);
+        uint256[] memory innerValues = new uint256[](1);
+        bytes[] memory innerCalldatas = new bytes[](1);
+        innerTargets[0] = address(incentivizer);
+        innerCalldatas[0] = abi.encodeCall(MockGovernorIncentivizer.registerTreasuryToken, (address(nestedToken)));
+        string memory innerDescription = "nested-register";
+
+        vm.prank(ALICE);
+        uint256 innerProposalId = governor.propose(innerTargets, innerValues, innerCalldatas, innerDescription);
+        vm.roll(vm.getBlockNumber() + 1);
+        vm.prank(ALICE);
+        governor.castVote(innerProposalId, 1);
+        vm.roll(vm.getBlockNumber() + governor.votingPeriod() + 1);
+
+        address[] memory outerTargets = new address[](1);
+        uint256[] memory outerValues = new uint256[](1);
+        bytes[] memory outerCalldatas = new bytes[](1);
+        outerTargets[0] = address(governor);
+        outerCalldatas[0] = abi.encodeCall(
+            MemecoinDaoGovernorUpgradeable.execute,
+            (innerTargets, innerValues, innerCalldatas, keccak256(bytes(innerDescription)))
+        );
+        string memory outerDescription = "nested-execution";
+
+        vm.prank(ALICE);
+        uint256 outerProposalId = governor.propose(outerTargets, outerValues, outerCalldatas, outerDescription);
+        vm.roll(vm.getBlockNumber() + 1);
+        vm.prank(ALICE);
+        governor.castVote(outerProposalId, 1);
+        vm.roll(vm.getBlockNumber() + governor.votingPeriod() + 1);
+
+        vm.expectRevert(IMemecoinDaoGovernor.NestedExecution.selector);
+        governor.execute(outerTargets, outerValues, outerCalldatas, keccak256(bytes(outerDescription)));
+
+        (,,, address[] memory treasuryTokens,) = incentivizer.metaData();
+        assertEq(treasuryTokens.length, 0);
+        assertEq(nestedToken.balanceOf(address(governor)), 100 ether);
+        assertEq(nestedToken.balanceOf(address(incentivizer)), 0);
     }
 
     function testTreasurySpendExceedingLimitReverts() external {

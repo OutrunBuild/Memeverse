@@ -55,6 +55,8 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         uint256 _governanceStartTime;
         uint256 _maxTreasurySpendRatio;
         uint256 _upgradeSupermajorityRatio;
+        bool _executionActive;
+        uint256 _executionOperationCount;
     }
 
     MemecoinDaoGovernorStorage private memecoinDaoGovernorStorage;
@@ -266,6 +268,19 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     }
 
     /**
+     * @notice Confirms a treasury token registration during a standalone execution.
+     * @dev The paired incentivizer calls this after it has registered the token. No registration state is stored here;
+     * the execution shape is the security boundary.
+     */
+    function recordTreasuryTokenRegistration(address) external override {
+        if (msg.sender != address(memecoinDaoGovernorStorage._governanceCycleIncentivizer)) {
+            revert UnauthorizedTreasuryTokenRegistration();
+        }
+        if (!memecoinDaoGovernorStorage._executionActive) revert RegistrationOutsideExecution();
+        if (memecoinDaoGovernorStorage._executionOperationCount != 1) revert RegistrationMustBeStandalone();
+    }
+
+    /**
      * @notice Transfer treasury assets to another address through governance.
      * @dev Notifies the incentivizer before sending the tokens from the governor treasury. All treasury transfers must use this entrypoint.
      * @param _token Token being transferred.
@@ -302,9 +317,14 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override {
+        if (memecoinDaoGovernorStorage._executionActive) revert NestedExecution();
+
+        memecoinDaoGovernorStorage._executionActive = true;
+        uint256 targetsLength = targets.length;
+        memecoinDaoGovernorStorage._executionOperationCount = targetsLength;
+
         // Layer 4: self-call requires supermajority
         bool isSelfCall = false;
-        uint256 targetsLength = targets.length;
         for (uint256 i = 0; i < targetsLength; ++i) {
             if (targets[i] == address(this)) {
                 isSelfCall = true;
@@ -322,18 +342,18 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
             );
         }
 
-        // Layer 3: snapshot treasury balances
+        // Snapshot registered treasury balances before any proposal action can move them.
         (,,, address[] memory treasuryTokens,) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData();
-        uint256 len = treasuryTokens.length;
-        uint256[] memory preBalances = new uint256[](len);
-        for (uint256 i = 0; i < len; ++i) {
+        uint256 treasuryTokenLength = treasuryTokens.length;
+        uint256[] memory preBalances = new uint256[](treasuryTokenLength);
+        for (uint256 i = 0; i < treasuryTokenLength; ++i) {
             preBalances[i] = IERC20(treasuryTokens[i]).balanceOf(address(this));
         }
 
         super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
 
         // Check balance diff for each treasury token
-        for (uint256 i = 0; i < len; ++i) {
+        for (uint256 i = 0; i < treasuryTokenLength; ++i) {
             if (preBalances[i] == 0) continue;
             uint256 postBalance = IERC20(treasuryTokens[i]).balanceOf(address(this));
             if (postBalance >= preBalances[i]) continue;
@@ -341,6 +361,9 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
             uint256 limit = preBalances[i] * memecoinDaoGovernorStorage._maxTreasurySpendRatio / 10000;
             require(spent <= limit, TreasurySpendExceedsLimit(treasuryTokens[i], spent, limit));
         }
+
+        memecoinDaoGovernorStorage._executionActive = false;
+        memecoinDaoGovernorStorage._executionOperationCount = 0;
     }
 
     function _propose(

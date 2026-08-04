@@ -8,6 +8,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {IGovernanceCycleIncentivizer} from "../../src/governance/interfaces/IGovernanceCycleIncentivizer.sol";
 import {GovernanceCycleIncentivizerUpgradeable} from "../../src/governance/GovernanceCycleIncentivizerUpgradeable.sol";
 import {MockIncentivizerGovernor} from "../mocks/governance/GovernanceMocks.sol";
+import {ReentrantRewardToken} from "../mocks/governance/ReentrantRewardToken.sol";
 import {GovernanceCycleIncentivizerUpgradeableV2} from "../mocks/upgrade/GovernanceCycleIncentivizerUpgradeableV2.sol";
 
 contract GovernanceCycleIncentivizerUpgradeableTest is Test {
@@ -371,6 +372,92 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         assertEq(incentivizer.getClaimableReward(address(this), address(tokenA)), 0);
     }
 
+    /// @notice Test claim reward distributes every registered reward token pro rata.
+    function testClaimRewardDistributesMultipleRewardTokensProRata() external {
+        tokenA.mint(address(governor), 100 ether);
+        tokenB.mint(address(governor), 200 ether);
+
+        vm.startPrank(address(governor));
+        incentivizer.registerRewardToken(address(tokenA));
+        incentivizer.registerTreasuryToken(address(tokenB));
+        incentivizer.registerRewardToken(address(tokenB));
+        incentivizer.recordTreasuryIncome(address(tokenA), 100 ether);
+        incentivizer.recordTreasuryIncome(address(tokenB), 200 ether);
+        incentivizer.accumCycleVotes(address(this), 40);
+        incentivizer.accumCycleVotes(OTHER, 60);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + incentivizer.CYCLE_DURATION());
+        incentivizer.finalizeCurrentCycle();
+
+        (address[] memory tokens, uint256[] memory rewards) = incentivizer.getClaimableReward(address(this));
+        assertEq(tokens.length, 2);
+        assertEq(rewards.length, 2);
+        assertEq(rewards[0], 20 ether);
+        assertEq(rewards[1], 40 ether);
+
+        uint256 tokenABefore = tokenA.balanceOf(address(this));
+        uint256 tokenBBefore = tokenB.balanceOf(address(this));
+        incentivizer.claimReward();
+
+        assertEq(tokenA.balanceOf(address(this)) - tokenABefore, 20 ether);
+        assertEq(tokenB.balanceOf(address(this)) - tokenBBefore, 40 ether);
+        assertEq(incentivizer.getRemainingClaimableRewards(address(tokenA)), 30 ether);
+        assertEq(incentivizer.getRemainingClaimableRewards(address(tokenB)), 60 ether);
+    }
+
+    /// @notice Test claim reward clears state before a reward token callback can reenter.
+    function testClaimRewardHandlesReentrantRewardTokenCallback() external {
+        ReentrantRewardToken reentrantToken = new ReentrantRewardToken();
+        reentrantToken.mint(address(governor), 100 ether);
+
+        vm.startPrank(address(governor));
+        incentivizer.registerTreasuryToken(address(reentrantToken));
+        incentivizer.registerRewardToken(address(reentrantToken));
+        incentivizer.recordTreasuryIncome(address(reentrantToken), 100 ether);
+        incentivizer.accumCycleVotes(address(reentrantToken), 100);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + incentivizer.CYCLE_DURATION());
+        incentivizer.finalizeCurrentCycle();
+
+        reentrantToken.setClaimTarget(address(incentivizer));
+        reentrantToken.setReenter(true);
+        vm.prank(address(reentrantToken));
+        incentivizer.claimReward();
+
+        assertTrue(reentrantToken.callbackAttempted());
+        assertFalse(reentrantToken.callbackSucceeded());
+        assertEq(reentrantToken.balanceOf(address(reentrantToken)), 50 ether);
+        assertEq(reentrantToken.balanceOf(address(governor)), 50 ether);
+        assertEq(incentivizer.getUserVotesCount(address(reentrantToken), 1), 0);
+        assertEq(incentivizer.getRemainingClaimableRewards(address(reentrantToken)), 0);
+    }
+
+    /// @notice Fuzzes the single-token claimable reward formula after cycle finalization.
+    function testFuzz_ClaimableRewardMatchesProRata(uint96 income, uint96 userVotes, uint96 otherVotes) external {
+        income = uint96(bound(income, 1 ether, 1_000 ether));
+        userVotes = uint96(bound(userVotes, 1, 1_000 ether));
+        otherVotes = uint96(bound(otherVotes, 1, 1_000 ether));
+
+        tokenA.mint(address(governor), income);
+        vm.startPrank(address(governor));
+        incentivizer.registerRewardToken(address(tokenA));
+        incentivizer.recordTreasuryIncome(address(tokenA), income);
+        incentivizer.accumCycleVotes(address(this), userVotes);
+        incentivizer.accumCycleVotes(OTHER, otherVotes);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + incentivizer.CYCLE_DURATION());
+        incentivizer.finalizeCurrentCycle();
+
+        uint256 rewardPool = income * 5000 / incentivizer.RATIO();
+        assertEq(
+            incentivizer.getClaimableReward(address(this), address(tokenA)),
+            rewardPool * userVotes / (userVotes + otherVotes)
+        );
+    }
+
     /// @notice Test claim reward transfers previous cycle rewards.
     function testClaimRewardTransfersPreviousCycleRewards() external {
         tokenA.mint(address(governor), 100 ether);
@@ -464,4 +551,3 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         assertEq(rewardRatio, 2500);
     }
 }
-

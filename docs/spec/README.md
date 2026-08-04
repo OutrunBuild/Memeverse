@@ -146,7 +146,7 @@
 | 规则/概念 | canonical home | 说明 |
 | --- | --- | --- |
 | vault burn | [governance-yield-details.md §5](governance/governance-yield-details.md) | vault 销毁路径 |
-| Governor custody + ledger | [governance-yield-details.md §5](governance/governance-yield-details.md) | Governor 托管与账本 |
+| Governor custody + ledger | [governance-yield-details.md §7](governance/governance-yield-details.md) | Governor 托管与账本 |
 | token 准入 | [governance-yield-details.md §7](governance/governance-yield-details.md) | 治理 token 准入规则 |
 
 ### 2.8 POLend 规则

@@ -638,13 +638,13 @@ Launcher 调 IOFT.send
 最小接口：
 
 ```solidity
-interface IOutrunUniversalAssets {
+interface IUniversalAssets {
     function mint(address to, uint256 amount) external;
     function repay(address account, uint256 amount) external;
 }
 ```
 
-`uAsset` 偿还统一使用 `OutrunUniversalAssets.repay(account, amount)` 语义：
+`uAsset` 偿还统一使用 `IUniversalAssets.repay(account, amount)` 语义：
 
 ```text
 msg.sender 是债务 owner
@@ -675,7 +675,7 @@ Splitter approve POLend exact converted uAssetBacking amount
 POLend calls uAsset.repay(address(splitter), amount)
 ```
 
-Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金额，用完后不为兼容未知 token 做额外 approve-to-zero。`uAsset` 由 `OutrunUniversalAssets` 发行，支持非零到非零的 approve 变更。
+Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金额，用完后不为兼容未知 token 做额外 approve-to-zero。`uAsset` 由实现了 `IUniversalAssets` 的合约发行，支持非零到非零的 approve 变更。
 
 ### 10. 权限与配置
 
@@ -850,6 +850,9 @@ function getPTAndYT(uint256 verseId) external view returns (address pt, address 
 function getPTSettlementState(uint256 verseId) external view returns (address pt, bool settled);
 function getPOLAndMemecoin(uint256 verseId) external view returns (address pol, address memecoin);
 function splitInfos(uint256 verseId) external view returns (address pt, address yt, address pol, address memecoin, address uAsset, uint256 totalPOLCollateral, uint256 settlementUAsset, uint256 settlementMemecoin, uint256 ptBackingNumerator, uint256 ptBackingDenominator, bool settled);
+function getPTAndYTAndPOL(uint256 verseId) external view returns (address pt, address yt, address pol);
+function launcher() external view returns (address);
+function polend() external view returns (address);
 ```
 
 `POLSplitter.initialize` 是 proxy 初始化入口，不是 per-verse 产品动作：

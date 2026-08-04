@@ -40,6 +40,31 @@
 
 `[代码已证]`
 
+### 3.2.1 COMMON-001 跨链通胀对 token 模块的适用性
+
+- `Memecoin`（`src/token/Memecoin.sol:10` `is OutrunOFTInit`）与 `MemePol`（`src/token/MemePol.sol:10` `is OutrunOFTInit`）均直接继承 `OutrunOFTInit`，且二者均 **未 override** `_credit`/`_debit`/`send`/`_lzReceive`/`withdrawIfNotExecuted`/`_update`（二者额外 override `burn`，但均未 override 上述 OFT compose 路径函数）。故 common OFT 的全部行为（含 COMMON-001）对二者直接成立。
+- COMMON-001：源链上攻击者持 ≥1 个 `Memecoin`/`MemePol` 即可调用公开 `send({to: bytes32(0), composeMsg: ...})` →
+  - 源端 `_debit` burn（`OutrunOFTInit.sol:80`）；
+  - 目的端 `_lzReceive` → `_credit(0, ...)`，`OutrunOFTInit.sol:102,112` 把 `_to == address(0x0)` 重映射到 `0xdead` 并 mint 该数量；
+  - 进入 compose 分支后，攻击者调用 `withdrawIfNotExecuted`（`OutrunOFTInit.sol:57`）→ `_update(composer, receiver, amount)`（`:66`）二次 mint。
+  - 净效果：源端 burn 1X，目的端 mint 2X，绕过 token 层 launcher-only mint 约束，造成跨链通胀。
+- 根因修复在 common 层（见 [2026-08-03-oft-compose-refund-redesign-design.md](2026-08-03-oft-compose-refund-redesign-design.md)）；token 层可独立做防御性 override。
+
+`[代码已证]`
+
+### 3.2.2 OApp owner == delegate 的 endpoint 配置权
+
+- token 合约（`Memecoin`/`MemePol`）继承以下 5 个 `onlyOwner` endpoint 配置 setter，部署后由 owner 直接持有该配置权：
+  - `setPeer`（`src/common/omnichain/oapp/OutrunOAppCoreInit.sol:68` onlyOwner）
+  - `setDelegate`（`OutrunOAppCoreInit.sol:90` onlyOwner）
+  - `setMsgInspector`（`src/common/omnichain/oft/OutrunOFTCoreInit.sol:143` onlyOwner）
+  - `setEnforcedOptions`（`src/common/omnichain/oapp/OutrunOAppOptionsType3Init.sol:54` onlyOwner）
+  - `setPreCrime`（`src/common/omnichain/oapp/OutrunOAppPreCrimeSimulatorInit.sol:59` onlyOwner）
+- `initialize` 时 owner 与 delegate 均设为 launcher（`Memecoin.sol:24-32` / `MemePol.sol:33-44`），故部署后 launcher 作为 owner == delegate 持有上述 endpoint 配置权。
+- 与 §3.1（`launcher.registerMemeverse` 时调 `setPeer`）相区分：§3.1 是 launcher 注册流程的即时调用，本节是 token 自身 owner == delegate 的常态配置面。
+
+`[代码已证]`
+
 ### 3.3 收益分发与 staking 边界
 
 - Launcher fee 分发：

@@ -91,6 +91,13 @@
 - 价值：保证发行与 LP 凭证配置只通过 launcher 生命周期执行。
 - 主要锚点：`src/token/Memecoin.sol::mint`，`src/token/MemePol.sol::onlyMemeverseLauncher (modifier)`，`src/token/MemePol.sol::setPoolId`，`src/token/MemePol.sol::mint`
 
+### INV-09A token burn 守恒与 OFT 公开 send 例外
+
+- 约束（单通道供给）：`OutrunERC20Init._update`（`src/common/token/OutrunERC20Init.sol:164-193`）对 `from == address(0)` 增 `_totalSupply`（`:166-168`）、对 `to == address(0)` 减 `_totalSupply`（`:180-183`），mint/burn 经此单一通道维护供给；token 层无独立供给字段，故各链 `totalSupply` 恒等于 Σmint − Σburn。`[代码已证]`
+- 约束（OFT 公开 send 例外）：OFT 公开 `send`（`OutrunOFTCoreInit.sol:211`）经 `_debit`→`_burn`（`OutrunOFTInit.sol:80`）在源端减供给、`_credit`→`_mint`（`OutrunOFTInit.sol:102`）在目的端增供给，跨链两端的 `_totalSupply` 各自变化。但 COMMON-001（见 [docs/spec/interoperation/layerzero-oapp-oft.md §3.2.1](interoperation/layerzero-oapp-oft.md)）在 `to = bytes32(0)` 的 compose 路径下破坏该守恒——目的端经 `_credit` + compose 二次 mint 造成净通胀（源端 burn 1X、目的端 mint 2X），即 INV-09 的 launcher-only mint 约束被 OFT 公开 send 绕过。故该守恒成立的**例外条件**是「无 COMMON-001 触发路径」（`to` 非 `bytes32(0)` 或未触发 compose 二次 mint）。`[代码已证]`
+- 价值：在无 COMMON-001 路径下，保证 token 单通道供给守恒；明确标注 COMMON-001 是该守恒与 INV-09 mint 权限约束的共同例外。
+- 主要锚点：`src/common/token/OutrunERC20Init.sol::_update`，`src/common/omnichain/oft/OutrunOFTInit.sol::_debit`、`::_credit`、`::withdrawIfNotExecuted`，`src/common/omnichain/oft/OutrunOFTCoreInit.sol::send`
+
 ### INV-10 OFT compose 回调具备 replay 防护
 
 - 约束：`YieldDispatcher` 与 `OmnichainMemecoinStaker` 都在 endpoint 路径下检查 `guid` 未执行，再标记执行。`[代码已证]`
@@ -101,7 +108,7 @@
 
 - 约束：launcher 不自行重算 `endTime/unlockTime`，以 registrar 传入值为准；本地报价读取注册中心 `DAY`，中心写入为最终来源，并写入固定 `unlockTime = endTime + FIXED_LOCKUP_DURATION`。`[代码已证]`
 - 价值：链上最终时间语义由中心写入决定，报价仅供参考。
-- 主要锚点：`src/verse/MemeverseLaunchImpl.sol::_storeRegisteredMemeverse`，`src/verse/registration/MemeverseRegistrarAtLocal.sol::FIXED_LOCKUP_DURATION (constant)`，`src/verse/registration/MemeverseRegistrarAtLocal.sol::quoteRegister`，`src/verse/registration/MemeverseRegistrationCenter.sol::DAY (constant)`，`src/verse/registration/MemeverseRegistrationCenter.sol::registration`
+- 主要锚点：`src/verse/MemeverseLaunchImpl.sol::_storeRegisteredMemeverse`，`src/verse/libraries/MemeverseRegistrationLib.sol::FIXED_LOCKUP_DURATION (constant)`（`RegistrarAtLocal` 与 `RegistrationCenter` 共享的单一来源），`src/verse/registration/MemeverseRegistrarAtLocal.sol::quoteRegister`，`src/verse/registration/MemeverseRegistrationCenter.sol::DAY (constant)`，`src/verse/registration/MemeverseRegistrationCenter.sol::registration`
 
 ### INV-12 解锁后必须先经过保护窗口，再恢复公开 swap
 

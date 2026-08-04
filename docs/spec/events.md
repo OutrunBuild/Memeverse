@@ -97,6 +97,18 @@
 
 **`ReferralRebateClaimed` 的 CEI**：`pendingRebate` 清零先于 external transfer（CEI）。
 
+### 2.4.1 Token 模块（Memecoin / MemePol）
+
+| 事件 | 触发模块 | 触发时机 | 用途 |
+| --- | --- | --- | --- |
+| `Transfer(address indexed from, address indexed to, uint256 value)` | `Memecoin` / `MemePol`（经 `OutrunERC20Init._update`，`src/common/token/OutrunERC20Init.sol:192`） | mint 为 `Transfer(0x0, account)`、burn 为 `Transfer(account, 0x0)`、转账为 `Transfer(from, to)` | token 供给变更的见证事件；mint/burn 由零地址方向标识。可按 from/to 直接 filter |
+| `OFTSent(bytes32 guid, uint32 dstEid, address indexed sender, uint256 amountSentLD, uint256 amountReceivedLD)` | `Memecoin` / `MemePol`（经 `OutrunOFTCoreInit.sol:231`） | 源端跨链发出成功 | 源端跨链转出流水；可按 `sender` 直接 filter |
+| `OFTReceived(bytes32 guid, uint32 srcEid, address indexed recipient, uint256 amountReceivedLD)` | `Memecoin` / `MemePol`（经 `OutrunOFTCoreInit.sol:323`） | 目的端到账成功 | 目的端跨链到账流水；可按 `recipient` 直接 filter |
+
+以上均为 `[代码已证]`。
+
+**`Transfer` 与供给守恒**：mint（`from = address(0)`）与 burn（`to = address(0)`）是 token 单通道供给变更的见证；守恒语义与 OFT 公开 send 的 COMMON-001 例外见 [docs/spec/invariants.md INV-09A](invariants.md)。
+
 ### 2.5 Yield / Governance / Cross-chain
 
 | 事件 | 触发模块 | 触发时机 | 用途 |
@@ -143,4 +155,4 @@
 ## 5. 确定性边界
 
 - 除明确标注为目标事件规格或 target-only 的条目外，本文只覆盖仓库 `src/**` 明确 `emit` 的事件。
-- 继承自 OpenZeppelin 的通用事件（如 `Paused/Unpaused`、`OwnershipTransferred`）存在，但未作为 Memeverse 业务主索引面展开。
+- 继承自 OpenZeppelin 的通用事件（如 `Paused/Unpaused`、`OwnershipTransferred`）存在，但未作为 Memeverse 业务主索引面展开（其中 `OwnershipTransferred` 由 `OutrunOwnableInit.sol:35,44,70` emit，覆盖使用 `OutrunOwnableInit` 的合约（如 OApp/OFT 等可升级合约）的 owner 迁移面；`SplitterToken` / `PrincipalToken` / `YieldToken` 不继承 `OutrunOwnableInit`，不 emit 该事件，不降级为业务主索引）。

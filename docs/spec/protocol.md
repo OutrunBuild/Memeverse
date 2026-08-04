@@ -32,6 +32,11 @@
 | `YieldDispatcher` / `MemeverseOmnichainInteroperation` / `OmnichainMemecoinStaker` | 跨链收益与跨链 staking 路径 | 异链 fee 要求、到帐目标（Governor / Vault） | 当前规则（代码已证） |
 | `POLend` / `POLSplitter` | 杠杆创世、PT/YT、辅助池、settlement、残值领取 | 杠杆 YT、PT/YT 兑付、辅助池退出、杠杆残值 | 当前规则（代码已证） |
 
+**`MemePol` 双 burn 重载区分**（当前规则，代码已证）：
+- `burn(address,uint256)`（`src/token/MemePol.sol:68`）：第三方可调用，`msg.sender != account` 时先 `_spendAllowance`（需 allowance）再 `_burn`；自烧（`msg.sender == account`）跳过 allowance 分支。
+- `burn(uint256)`（`src/token/MemePol.sol:77`）：仅自烧，无 allowance 分支。
+- `Memecoin.burn(uint256)`（`src/token/Memecoin.sol:48`）：仅自烧。
+
 ## 4. 用户可见主流程
 
 ### 4.1 注册流程

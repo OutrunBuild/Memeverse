@@ -48,6 +48,8 @@
 
 `redeemPT / redeemYT` 由 `Splitter` burn `msg.sender` 持有的 token，不需要 approve。
 
+`PT / YT` 合约是 `SplitterToken`（`PrincipalToken` / `YieldToken` 继承它）。`SplitterToken.initialize(name, symbol, splitter)` 把 `splitter` 设为 `mint / burn` 的唯一授权地址（`onlySplitter` 修饰符）；`POLSplitter.initializeVerse` 为每个 verse 部署 PT/YT 实例时把自身设为该 `splitter`，因此只有 `POLSplitter` 能 mint/burn 用户持有的 PT/YT。`SplitterToken` 不继承 `OutrunOwnableInit`，PT/YT 无 owner 角色、无 `transferOwnership`、不可升级；访问控制仅由 `splitter` 字段 + `onlySplitter` 修饰符承担。
+
 `Splitter.preRedeemPTFee` 只用于固定 burn `Launcher` 持有的杠杆侧 PT fee，不接受任意 account 作为 burn 来源，也不需要 `Launcher` approve。
 
 `Splitter` 必须暴露并使用 PT raw -> uAsset backing raw 的 preview：
@@ -81,7 +83,7 @@ burn POL collateral
 
 `preRedeemedPT` 逻辑上是 `{ ptAmount, uAssetBacking }` 结构，包含 `Locked` 阶段主动分发时已经预兑付给 Memeverse DAO governor 路径的杠杆侧 PT fee raw 数量及其固定 ratio 转换后的 backing。不得用两个互不关联的 mapping 表达该状态。
 
-> **代码实现说明：** 代码中 `preRedeemedPT(verseId)` 是便利 getter，仅返回 `ptAmount`（`uint256`）；完整的 `{ ptAmount, uAssetBacking }` 结构体通过 `preRedeemedStates(verseId)` 访问，返回 `PreRedeemedState`。
+> **代码实现说明：** `preRedeemedPT` 是逻辑状态名（`{ ptAmount, uAssetBacking }` 结构）；代码通过 `preRedeemedStates(verseId)` 访问完整 `PreRedeemedState` 结构体，标量 `ptAmount` 经 `.ptAmount` 字段读取。
 
 `preRedeemedPT` 不包含：
 

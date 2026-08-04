@@ -17,7 +17,9 @@
 - `GovernanceCycleIncentivizerUpgradeable`
   - 记录 treasury / reward 周期账本
   - 结算 reward
-  - 按上一周期投票份额分发奖励
+  - 按上一周期的 `asset-denominated votes`（资产计价投票权）分发奖励
+
+`asset-denominated votes`（资产计价投票权）指把 YieldVault 委托的 share 投票单位，按对应时点的 underlying 资产价值换算后得到的投票权，而不是直接使用 share 数量。当前 `MemecoinYieldVault` 使用 exchange rate 与固定虚拟缓冲 V 进行当前值和历史值换算，因此治理计票与 reward 分账使用的是该资产计价后的 votes。
 
 ## 3. fee 到治理与收益的分流
 
@@ -129,6 +131,44 @@ V2 当前没有即时赎回 underlying，而是：
 
 ## 7. Governor Treasury 语义
 
+`registerTreasuryToken` 必须在不可嵌套的 Governor `_executeOperations` 中作为唯一 operation 执行（`registration-only`，即只完成 token 注册/确认）；同一次 execution 不得再包含该 token 的支出、direct ERC20 target 或其他 operation。Incentivizer 完成注册后会回调 Governor 的 registration confirmation；该回调要求 execution 正在进行且 operation count 为 1，所以注册必须是 standalone operation。
+
+受支持的 treasury spend path 只有 `Governor.sendTreasuryAssets(token, to, amount)`：该路径先调用 `Incentivizer.recordTreasuryAssetSpend` 更新 treasury ledger，再从 Governor 真实转账。该路径同时受到 Governor 的 execution-time balance-ratio 检查。
+
+将 ERC20 合约直接作为 generic Governor execution target 的 direct ERC20 path 不属于受支持的 treasury spend path。若当前 generic execution 仍允许该 target，它不调用 `Incentivizer.recordTreasuryAssetSpend`，也不更新 Incentivizer ledger；只有 token 已注册且 execution 前 `Governor` 余额为正时，才进入现有 ratio loop。未注册 token 和 execution 前零余额按当前实现不进入 ratio/ledger 保护，治理不得将 direct target 当作 treasury spend 保护。
+
+### 7.1 提案人 outstanding 标记
+
+`proposer outstanding`（提案人未完成提案标记）是 Governor 按 proposer 保存的最近 proposal id。`propose` 成功后写入该 id；当该 id 的状态既不是 `Defeated` 也不是 `Succeeded` 时，同一 proposer 再次 `propose` 会回滚。因此 one-outstanding rule 约束的是每个 proposer 同时只能有一个未完成 proposal。
+
+当 proposal 成功执行 `execute` 或被 `cancel` 时，标记被清零。若旧 proposal 已进入 `Defeated` 或 `Succeeded`，即使标记尚未因 `execute`/`cancel` 清零，proposer 也可以创建新 proposal，新 id 会覆盖旧标记。
+
+### 7.2 Treasury spend cap 与执行快照
+
+`maxTreasurySpendRatio` 是 `treasury spend cap`（国库支出上限），单位为 basis points（基点），分母固定为 `10000`；例如 `500` 表示 `5%`。它只约束一次 Governor execution 中已注册 treasury token 的实际余额减少。
+
+Governor 在 `_executeOperations` 开始执行 proposal actions 前，从 Incentivizer 读取执行开始时的 registered treasury token list，并为列表中的每个 token 快照 `pre = IERC20(token).balanceOf(Governor)`。所有 operation 执行完成后，按同一列表逐 token 检查：
+
+- `pre == 0` 时跳过该 token；
+- `post >= pre` 时没有支出，跳过该 token；
+- 仅当 `post < pre` 时，计算 `spent = pre - post`；
+- 计算 `limit = pre * maxTreasurySpendRatio / 10000`，并要求 `spent <= limit`，否则整次 execution 回滚。
+
+该循环使用执行开始时取得的已注册列表；registration-only operation 新注册的 token 不会加入本次执行已经建立的余额快照。余额 delta 检查也不替代 `sendTreasuryAssets` 的 ledger hook。
+
+### 7.3 Self-call 的 supermajority
+
+`supermajority`（超级多数）指赞成票占全部计入该 proposal 的赞成、反对和弃权票的最低比例。只要 proposal 的 targets 中有任一项是 Governor 自身的 self-call，就适用 `upgradeSupermajorityRatio`，不只适用于升级操作。
+
+其判定为：
+
+```text
+forVotes / (forVotes + againstVotes + abstainVotes)
+    >= upgradeSupermajorityRatio / 10000
+```
+
+其中分母包含 `forVotes`、`againstVotes` 和 `abstainVotes`，不是只取赞成票与反对票，也不是 quorum 或总供应量。实现使用等价的整数比较 `forVotes * 10000 >= totalVotes * upgradeSupermajorityRatio`。
+
 Governor 在 V2 中不只是投票入口，也是 DAO treasury 与 governance reward payout 的唯一资产托管者。
 
 治理与奖励路径采用以下固定语义：
@@ -152,7 +192,7 @@ Governor 在 V2 中不只是投票入口，也是 DAO treasury 与 governance re
 - fee-on-transfer、rebasing、或其他会使名义 `amount` 与实际余额变化不一致的 token 不在支持范围内
 - treasury / reward 资产准入责任由治理承担，不由运行时 delta 检查兜底
 
-Treasury income 与 treasury spend 的调用链为：
+Treasury income 与通过 `Governor.sendTreasuryAssets` 发起的 treasury spend 调用链为：
 
 - `Governor.receiveTreasuryIncome(token, amount)`
   - 表示真实资产进入 DAO treasury
@@ -175,7 +215,7 @@ Incentivizer 负责把 treasury ledger 的一部分，按周期转成 reward led
 关键要点：
 
 - 周期长度固定
-- `rewardRatio` 决定从 treasury ledger 划拨多少到 reward ledger
+- `rewardRatio`（奖励比例）是以 basis points 表示的 treasury-to-reward 划拨比例；`finalizeCurrentCycle()` 按 `rewardAmount = treasuryBalance * rewardRatio / 10000` 把满足条件的 treasury ledger 余额划入 reward ledger
 - 用户最终按“上一周期 userVotes / totalVotes”获取奖励
 - `finalizeCurrentCycle()` 的核心语义是账本切换与结算，不要求把 token 从 `Governor` 转入 `Incentivizer`
 - 上一周期未领完的 `rewardBalances` 会在后续 `finalizeCurrentCycle()` 时回卷到 treasury ledger

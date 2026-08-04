@@ -118,6 +118,16 @@ library DynamicFeeMath {
         ) {
             effectivePifPpm = uint256(senderBatchState.batchAccumPpm) + quote.pifPpm;
         }
+        // Adverse-impact fee curve (three steps, all in PPM = 1e6 base):
+        //   1) satPpm — Michaelis-Menten saturation `x·1e6/(x + PIF_CAP_PPM)`: maps unbounded PIF into [0, PPM_BASE),
+        //      bounding the saturated input to the PPM range (note: this bounds `satPpm`, NOT the final fee).
+        //   2) dffPpm (dynamic-fee ppm ceiling) — scales the saturated value up to the max dynamic-fee range
+        //      `FEE_DFF_MAX_PPM` (800_000 ppm = 80% of the PPM base).
+        //   3) dynamicPpm — re-multiplies by `effectivePifPpm` to give the curve its convex (impact-proportional)
+        //      shape, so larger moves cost proportionally more even after saturation.
+        // The final `feeBps` is bounded by `FEE_MAX_BPS` at the end of this function (the `satPpm` ceiling alone is
+        // NOT what bounds the fee, because this step-3 re-multiply makes `dynamicPpm` grow unboundedly with
+        // `effectivePifPpm`).
         uint256 satPpm = FullMath.mulDiv(effectivePifPpm, FeeMath.PPM_BASE, effectivePifPpm + FeeMath.PIF_CAP_PPM);
         uint256 dffPpm = FullMath.mulDiv(FEE_DFF_MAX_PPM, satPpm, FeeMath.PPM_BASE);
         uint256 dynamicPpm = FullMath.mulDiv(dffPpm, effectivePifPpm, FeeMath.PPM_BASE);

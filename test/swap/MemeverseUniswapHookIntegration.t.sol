@@ -244,6 +244,36 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         _assertRollback(address(this), before_);
     }
 
+    /// @notice The `ExactOutputPartialFill` guard executes the same line in both swap directions, but the
+    ///         existing exact-output tests only drive `zeroForOne`. This mirrors the simplest zeroForOne
+    ///         exact-output revert (the zero-fill case) with the direction flipped to `oneForZero`, covering
+    ///         the guard's reverse-direction execution path.
+    /// @dev Direction-only change vs. `testDirectManager_ExactOutput_ZeroFill_RevertsAndRollsBack`:
+    ///      `zeroForOne` flipped to `false`, `sqrtPriceLimitX96` to the oneForZero boundary, and the protocol
+    ///      fee set on `currency1` (the input leg for a oneForZero swap) so the guard runs on the same
+    ///      input-fee path as its zeroForOne twin.
+    function testDirectManager_ExactOutput_ZeroFill_RevertsAndRollsBack_OneForZero() external {
+        hook.setProtocolFeeCurrency(key.currency1, true); // currency1 is the input leg for oneForZero
+        _matureLaunchWindow();
+
+        manager.setNextExactOutputAmount(poolId, 0);
+        RollbackSnapshot memory before_ = _rollbackSnapshot(address(this));
+
+        hook.beginAccountSession();
+        vm.expectRevert(IMemeverseUniswapHook.ExactOutputPartialFill.selector);
+        integrator.swap(
+            key,
+            SwapParams({
+                zeroForOne: false, amountSpecified: 10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
+            }),
+            address(this),
+            bytes("")
+        );
+        hook.endAccountSession();
+
+        _assertRollback(address(this), before_);
+    }
+
     function testDirectManager_RawTransferBypass_RevertsAtUnlock() external {
         hook.setProtocolFeeCurrency(key.currency1, true);
         _matureLaunchWindow();

@@ -63,6 +63,19 @@ library OrdinarySwapMath {
         feeSplit = FeeSplit({totalFeeBps: totalFeeBps, lpFeeBps: lpFeeBps, protocolFeeBps: protocolFeeBps});
     }
 
+    /// @notice Derives the transformed core swap target (the amount v4 actually moves) and, when the fee leg is on
+    ///         the input side, the known LP/protocol input fees. One call feeds all later capacity/final-curve math.
+    /// @dev Settlement conservativeness by path (rounding invariant: the fee leg is never under-funded):
+    ///      - exact-input (amountSpecified < 0): the user's gross input is known, so the fee is charged on input.
+    ///        `coreInputTarget` rounds DOWN (`mulDiv`) so the core swap never moves more than the post-fee residual;
+    ///        the surplus (gross - coreInputTarget) always covers the input fee.
+    ///      - exact-output, fee-on-input (amountSpecified > 0, protocolFeeOnInput=true): the protocol fee is taken
+    ///        on the input side later, so v4 is asked for the user's net output verbatim — `coreOutputTarget` is
+    ///        passed through unchanged.
+    ///      - exact-output, fee-on-output (amountSpecified > 0, protocolFeeOnInput=false): the fee is charged on
+    ///        output, so v4 must over-deliver to leave room for the fee; `coreOutputTarget` rounds UP
+    ///        (`mulDivRoundingUp`) on the lp-survival ratio so the requested net output is always achievable.
+    ///      Full-fee exact-output (`totalFeeBps == BPS_BASE`, survival ratio 0) is unreachable and reverts early.
     function deriveSettlementPlan(int256 amountSpecified, bool protocolFeeOnInput, FeeSplit memory feeSplit)
         internal
         pure
@@ -72,6 +85,8 @@ library OrdinarySwapMath {
         if (amountSpecified == 0) return settlementPlan;
 
         if (amountSpecified < 0) {
+            // Exact-input: fee charged on the known gross input. coreInputTarget rounds DOWN so the post-fee
+            // residual never exceeds what the user actually pays in; the kept difference fully funds the input fee.
             uint256 requestedGrossInput = _absoluteExactInput(amountSpecified);
             uint256 inputFeeBps = protocolFeeOnInput ? feeSplit.totalFeeBps : feeSplit.lpFeeBps;
             settlementPlan.coreInputTarget =
@@ -91,10 +106,14 @@ library OrdinarySwapMath {
         if (feeSplit.totalFeeBps == FeeMath.BPS_BASE) revert ExactOutputAtFullFee();
         uint256 requestedNetOutput = uint256(amountSpecified);
         if (protocolFeeOnInput) {
+            // Exact-output, fee-on-input: protocol fee is settled on the input side later, so v4 is asked for the
+            // user's net output verbatim — no rounding needed.
             settlementPlan.coreOutputTarget = requestedNetOutput;
             return settlementPlan;
         }
 
+        // Exact-output, fee-on-output: v4 must over-deliver so the output-side fee has room. coreOutputTarget
+        // rounds UP on the lp-survival ratio so the requested net output is always reachable after the fee.
         uint256 lpSurvivalBps = FeeMath.BPS_BASE - feeSplit.lpFeeBps;
         uint256 totalSurvivalBps = FeeMath.BPS_BASE - feeSplit.totalFeeBps;
         uint256 largestRepresentableRequest =
@@ -301,7 +320,7 @@ library OrdinarySwapMath {
         lpFee = totalInputFee - protocolFee;
     }
 
-    function _absoluteExactInput(int256 amountSpecified) private pure returns (uint256 absoluteAmount) {
+    function _absoluteExactInput(int256 amountSpecified) internal pure returns (uint256 absoluteAmount) {
         unchecked {
             // Exact-input uses the negative int256 range, whose minimum magnitude is one larger than int256.max.
             absoluteAmount = uint256(-amountSpecified);

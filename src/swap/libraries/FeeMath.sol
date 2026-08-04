@@ -19,6 +19,8 @@ library FeeMath {
 
     // Constants used by the dynamic-fee pure math primitives below. They live here as the single source of truth so
     // both the engine and any importer (tests) reference the same value.
+    // EWVWAP = Exponentially-Weighted Volume-weighted Average Price: the dynamic-fee reference spot price that
+    // adverse/decay logic compares against. X18 fixed-point, so its precision base is 1e18.
     uint256 internal constant EWVWAP_PRECISION = 1e18;
     uint256 internal constant Q192 = uint256(1) << 192;
     uint256 internal constant Q192_MASK = Q192 - 1;
@@ -26,6 +28,10 @@ library FeeMath {
     uint24 internal constant PIF_CAP_PPM = 150_000;
     uint24 internal constant VOL_MAX_FEE_BPS = 50;
     uint24 internal constant VOL_MAX_DEVIATION_ACCUMULATOR = 1_500_000;
+    // Sqrt-price ratio (X18) at which an up/down move saturates exactly at `PIF_CAP_PPM` (150_000 ppm = 15%):
+    // `UP_SHORT_BUCKET = sqrt(1 + 15%) * 1e18 ≈ 1.0723...e18`, `DOWN_SHORT_BUCKET = sqrt(1 - 15%) * 1e18 ≈ 0.9219...e18`.
+    // Beyond these thresholds `priceMovePpmCapped` short-circuits to `PIF_CAP_PPM`, so the linear-ppm branch only
+    // runs inside the ±15% window where the wide-int rounding correction is valid.
     uint256 internal constant UP_SHORT_BUCKET = 1072380529476360830;
     uint256 internal constant DOWN_SHORT_BUCKET = 921954445729288731;
 
@@ -35,18 +41,6 @@ library FeeMath {
     /// @return protocolFeeBps_ Protocol fee in basis points.
     function protocolFeeBps(uint256 feeBps) internal pure returns (uint256 protocolFeeBps_) {
         return FullMath.mulDiv(feeBps, PROTOCOL_FEE_SHARE_BPS, BPS_BASE);
-    }
-
-    /// @notice Returns the LP-owned portion of a total fee value.
-    /// @dev The protocol share is subtracted after rounding down so protocol and LP shares always sum to `feeBps`.
-    /// @param feeBps Total fee in basis points.
-    /// @return lpFeeBps_ LP fee in basis points.
-    function lpFeeBps(uint256 feeBps) internal pure returns (uint256 lpFeeBps_) {
-        uint256 protocolFeeBps_ = protocolFeeBps(feeBps);
-        unchecked {
-            // Safe: protocol share is below BPS_BASE, so protocol fee bps cannot exceed total fee bps.
-            return feeBps - protocolFeeBps_;
-        }
     }
 
     /// @notice Returns both LP and protocol portions of a total fee value.
@@ -78,6 +72,10 @@ library FeeMath {
     /// @return Spot price in X18 fixed-point.
     function spotX18FromSqrtPrice(uint160 sqrtPriceX96) internal pure returns (uint256) {
         (uint256 squareHi, uint256 squareLo) = squareWide(sqrtPriceX96);
+        // Squaring X96 yields X192: the 320-bit `squareHi||squareLo` has its binary point at bit 192 of the low
+        // word. The integer part is the top 128 bits above that point — `squareHi` (64 bits) concatenated with the
+        // top 64 bits of `squareLo` (`squareLo >> 192`), reassembled as `(squareHi << 64) | (squareLo >> 192)`.
+        // The fractional part is the low 192 bits below the point (`squareLo & Q192_MASK`).
         uint256 integerPart = (squareHi << 64) | (squareLo >> 192);
         uint256 fractionalPart = squareLo & Q192_MASK;
         return integerPart * EWVWAP_PRECISION + FullMath.mulDiv(fractionalPart, EWVWAP_PRECISION, Q192);

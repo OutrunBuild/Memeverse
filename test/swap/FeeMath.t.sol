@@ -36,7 +36,7 @@ contract FeeMathTest is Test {
         uint256[5] memory fees = [uint256(0), 100, 215, 5_000, 10_000];
         for (uint256 i; i < fees.length; ++i) {
             uint256 protocolFeeBps = FeeMath.protocolFeeBps(fees[i]);
-            uint256 lpFeeBps = FeeMath.lpFeeBps(fees[i]);
+            (uint256 lpFeeBps,) = FeeMath.splitFeeBps(fees[i]);
             (uint256 splitLpFeeBps, uint256 splitProtocolFeeBps) = FeeMath.splitFeeBps(fees[i]);
             assertEq(protocolFeeBps, FullMath.mulDiv(fees[i], 3_500, 10_000), "protocol split");
             assertEq(lpFeeBps, fees[i] - protocolFeeBps, "lp split");
@@ -50,7 +50,7 @@ contract FeeMathTest is Test {
     function testFuzzSplitSumInvariant(uint256 feeBps) external pure {
         vm.assume(feeBps <= 10_000);
         uint256 protocolFeeBps = FeeMath.protocolFeeBps(feeBps);
-        uint256 lpFeeBps = FeeMath.lpFeeBps(feeBps);
+        (uint256 lpFeeBps,) = FeeMath.splitFeeBps(feeBps);
         assertEq(lpFeeBps + protocolFeeBps, feeBps, "split must sum to total fee");
     }
 
@@ -64,19 +64,22 @@ contract FeeMathTest is Test {
     /// @notice Boundary: feeBps=1 gives protocol 0 and LP 1.
     function testFeeBpsOneProtocolGetsZero() external pure {
         assertEq(FeeMath.protocolFeeBps(1), 0, "feeBps=1: protocol rounds to 0");
-        assertEq(FeeMath.lpFeeBps(1), 1, "feeBps=1: LP gets full fee");
+        (uint256 lpFeeBpsOne,) = FeeMath.splitFeeBps(1);
+        assertEq(lpFeeBpsOne, 1, "feeBps=1: LP gets full fee");
     }
 
     /// @notice Boundary: feeBps=2 gives protocol 0 (floor(0.7)=0) and LP 2.
     function testFeeBpsTwoProtocolGetsZero() external pure {
         assertEq(FeeMath.protocolFeeBps(2), 0, "feeBps=2: protocol rounds to 0");
-        assertEq(FeeMath.lpFeeBps(2), 2, "feeBps=2: LP gets full fee");
+        (uint256 lpFeeBpsTwo,) = FeeMath.splitFeeBps(2);
+        assertEq(lpFeeBpsTwo, 2, "feeBps=2: LP gets full fee");
     }
 
     /// @notice Boundary: feeBps=7 gives protocol 2 (floor(2.45)=2) and LP 5. Note: feeBps=3 is the first value where protocol is non-zero.
     function testFeeBpsSevenProtocolGetsTwo() external pure {
         assertEq(FeeMath.protocolFeeBps(7), 2, "feeBps=7: protocol gets floor(2.45)=2");
-        assertEq(FeeMath.lpFeeBps(7), 5, "feeBps=7: LP gets 5");
+        (uint256 lpFeeBpsSeven,) = FeeMath.splitFeeBps(7);
+        assertEq(lpFeeBpsSeven, 5, "feeBps=7: LP gets 5");
     }
 
     // ── Pure dynamic-fee math boundary cases ──

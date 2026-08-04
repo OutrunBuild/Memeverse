@@ -226,8 +226,10 @@ contract UniswapLP is Owned, Initializable {
     }
 
     function _beforeTokenTransfer(address from, address to) internal {
+        // Self-transfer (from == to, non-zero) only needs one snapshot: `updateUserSnapshot` is idempotent per
+        // address within a single transaction (SwapFacet zero-growth fast path), so the second call would be a pure no-op.
         if (from != address(0)) IMemeverseUniswapHook(memeverseUniswapHook).updateUserSnapshot(poolId, from);
-        if (to != address(0)) IMemeverseUniswapHook(memeverseUniswapHook).updateUserSnapshot(poolId, to);
+        if (from != to && to != address(0)) IMemeverseUniswapHook(memeverseUniswapHook).updateUserSnapshot(poolId, to);
     }
 
     event Transfer(address indexed from, address indexed to, uint256 amount);

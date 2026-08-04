@@ -8,6 +8,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 import {UniswapLP} from "../../src/swap/tokens/UniswapLP.sol";
+import {CountingSnapshotHook} from "../mocks/swap/CountingSnapshotHook.sol";
 
 contract UniswapLPTest is Test {
     bytes32 internal constant PERMIT_TYPEHASH =
@@ -121,5 +122,61 @@ contract UniswapLPTest is Test {
         bytes32 structHash =
             keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, token.nonces(owner), deadline));
         return keccak256(abi.encodePacked("\x19\x01", token.DOMAIN_SEPARATOR(), structHash));
+    }
+}
+
+/// @dev Dedicated coverage for the `_beforeTokenTransfer` snapshot callback, which `UniswapLPTest` cannot exercise
+///      because it wires the hook to `address(this)` (no `updateUserSnapshot`). This harness binds a real
+///      `CountingSnapshotHook` so it can mint (hook is owner) and assert callback call counts.
+contract UniswapLPSnapshotTransferTest is Test {
+    PoolId internal constant TEST_POOL_ID = PoolId.wrap(bytes32(uint256(1)));
+
+    CountingSnapshotHook internal hook;
+    UniswapLP internal token;
+    address internal holder = address(0xCAFE);
+
+    function setUp() external {
+        hook = new CountingSnapshotHook();
+
+        UniswapLP implementation = new UniswapLP();
+        token = UniswapLP(Clones.clone(address(implementation)));
+        token.initialize("Memeverse LP", "MLP", 18, TEST_POOL_ID, address(hook));
+
+        // mint is onlyOwner (== hook); prank as the hook to seed a balance for transfer tests.
+        vm.prank(address(hook));
+        token.mint(holder, 10 ether);
+    }
+
+    /// @dev Self-transfer must update the snapshot exactly once, not twice (SWAP-002a redundancy removal).
+    function testSelfTransferUpdatesSnapshotOnce() external {
+        vm.prank(holder);
+        token.transfer(holder, 1 ether);
+
+        assertEq(hook.snapshotCallCount(TEST_POOL_ID, holder), 1, "snapshot calls");
+        assertEq(token.balanceOf(holder), 10 ether, "balance unchanged");
+    }
+
+    /// @dev Distinct-party transfer must update both snapshots once each (behavior preserved).
+    function testDistinctTransferUpdatesBothSnapshotsOnce() external {
+        address recipient = address(0xB0B);
+
+        vm.prank(holder);
+        token.transfer(recipient, 1 ether);
+
+        assertEq(hook.snapshotCallCount(TEST_POOL_ID, holder), 1, "from snapshot calls");
+        assertEq(hook.snapshotCallCount(TEST_POOL_ID, recipient), 1, "to snapshot calls");
+    }
+
+    /// @dev `transferFrom` is a separate entry point into `_beforeTokenTransfer`; a self-transferFrom must
+    ///      also update the snapshot exactly once (locks in LR-001 entry-point coverage).
+    function testSelfTransferFromUpdatesSnapshotOnce() external {
+        vm.startPrank(holder);
+        // Infinite self-allowance skips the finite-allowance decrement; only the snapshot path is under test.
+        token.approve(holder, type(uint256).max);
+        token.transferFrom(holder, holder, 1 ether);
+        vm.stopPrank();
+
+        assertEq(hook.snapshotCallCount(TEST_POOL_ID, holder), 1, "snapshot calls");
+        assertEq(token.balanceOf(holder), 10 ether, "balance unchanged");
     }
 }

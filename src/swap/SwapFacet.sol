@@ -147,7 +147,8 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         uint256 specifiedDeltaAmount;
         if (params.amountSpecified < 0) {
             _collectKnownInputFees(poolId, ctx, settlementPlan, effectiveSupply, referrer);
-            specifiedDeltaAmount = _absoluteExactInput(params.amountSpecified) - settlementPlan.coreInputTarget;
+            specifiedDeltaAmount =
+                OrdinarySwapMath._absoluteExactInput(params.amountSpecified) - settlementPlan.coreInputTarget;
         } else {
             specifiedDeltaAmount = settlementPlan.coreOutputTarget - uint256(params.amountSpecified);
         }
@@ -575,7 +576,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     function _revertIfBeforeSwapAmountsAreNotRepresentable(int256 amountSpecified, uint256 coreTarget) internal pure {
         uint256 largestDelta = uint256(uint128(type(int128).max));
         if (coreTarget > largestDelta) revert OrdinarySwapMath.AmountNotRepresentable();
-        if (amountSpecified < 0 && _absoluteExactInput(amountSpecified) > largestDelta) {
+        if (amountSpecified < 0 && OrdinarySwapMath._absoluteExactInput(amountSpecified) > largestDelta) {
             revert OrdinarySwapMath.AmountNotRepresentable();
         }
     }
@@ -587,12 +588,6 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         uint256 largestDelta = uint256(uint128(type(int128).max));
         if (finalSettlement.userInput > largestDelta || finalSettlement.userNetOutput > largestDelta) {
             revert OrdinarySwapMath.AmountNotRepresentable();
-        }
-    }
-
-    function _absoluteExactInput(int256 amountSpecified) internal pure returns (uint256 absoluteAmount) {
-        unchecked {
-            absoluteAmount = uint256(-amountSpecified);
         }
     }
 

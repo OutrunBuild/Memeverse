@@ -242,6 +242,51 @@ contract DynamicFeeMathTest is Test {
         assertEq(revertingQuote.feeBps, DynamicFeeMath.FEE_BASE_BPS, "reverting fee");
     }
 
+    /// @notice When the projected short impact is at or below `SHORT_FLOOR_PPM`, the short-impact fee part
+    ///         is zeroed out — the floor's else branch (`projectedShortPpm <= SHORT_FLOOR_PPM ? 0 : ...`).
+    /// @dev The short part is `mulDiv(chargeableShortPpm, SHORT_COEFF_BPS, PPM_BASE)`, and
+    ///      `chargeableShortPpm = projectedShortPpm <= SHORT_FLOOR_PPM ? 0 : projectedShortPpm - SHORT_FLOOR_PPM`.
+    ///      Here `projectedShortPpm = preDecayedShortPpm(0) + pifPpm(10_000) = 10_000 <= SHORT_FLOOR_PPM(20_000)`,
+    ///      so `chargeableShortPpm == 0` and the short part collapses to 0. The trade still runs the full adverse
+    ///      path (spot 1.0 → 1.2 away from EWVWAP 1.0), so `feeBps` stays above `FEE_BASE_BPS` — proving the
+    ///      zeroed short part came from the floor branch, not the non-adverse early return.
+    function testPopulateShortImpact_ZeroWhenProjectedShortAtOrBelowFloor() external {
+        vm.warp(1_000);
+        IDynamicFeeFacet.DynamicFeeState memory state = _emptyState();
+        state.weightedVolume0 = 1;
+        state.ewVWAPX18 = 1.0 ether; // spot 1.0 → 1.2 moves away from EWVWAP → adverse
+
+        // pifPpm = 10_000 keeps projectedShortPpm below the floor; preDecayedShortPpm = 0 (5th arg).
+        DynamicFeeMath.DynamicFeeQuote memory quote = _quoteWithSpots(1.0 ether, 1.2 ether, 10_000);
+        DynamicFeeMath.populateDynamicFeeQuoteFromState(quote, state, _emptyBatch(), 0, 0);
+
+        assertTrue(quote.isAdverse, "adverse path taken");
+        assertEq(quote.shortImpactPartBps, 0, "short floor else-branch zeroes short part");
+        assertGt(quote.feeBps, DynamicFeeMath.FEE_BASE_BPS, "adverse path still ran");
+    }
+
+    /// @notice A composed fee above `FEE_MAX_BPS` is truncated to `FEE_MAX_BPS` by the
+    ///         `feeBps > FEE_MAX_BPS ? FEE_MAX_BPS : feeBps` ceiling ternary.
+    /// @dev `preVolatilityPartBps` is an external input (assigned straight to `quote.volatilityPartBps`), which
+    ///      makes it the only clean lever for crossing the ceiling: under normal inputs the real composition
+    ///      tops out near 100 (base) + 600 (adverse, pif at the PIF cap) + 50 (vol max) + 200 (short max) = 950,
+    ///      well below 10_000. Feeding a deliberately oversized `preVolatilityPartBps` forces the composition
+    ///      (100 base + 100 adverse + 10_001 vol + 75 short = 10_276) past the ceiling to exercise this
+    ///      defensive (otherwise unreachable) branch.
+    function testPopulateFeeBps_TruncatesToCeilingWhenCompositionExceedsMax() external {
+        vm.warp(1_000);
+        IDynamicFeeFacet.DynamicFeeState memory state = _emptyState();
+        state.weightedVolume0 = 1;
+        state.ewVWAPX18 = 1.0 ether; // adverse, mirroring the pif=50_000 case above
+
+        // pif=50_000 yields adverseImpactPartBps=100 and shortImpactPartBps=75 (pinned by the adverse test
+        // above); the oversized volatility input then drives the sum past FEE_MAX_BPS.
+        DynamicFeeMath.DynamicFeeQuote memory quote = _quoteWithSpots(1.0 ether, 1.2 ether, 50_000);
+        DynamicFeeMath.populateDynamicFeeQuoteFromState(quote, state, _emptyBatch(), 10_001, 0);
+
+        assertEq(quote.feeBps, DynamicFeeMath.FEE_MAX_BPS, "composed fee above ceiling truncates to FEE_MAX_BPS");
+    }
+
     // ===========================================================================
     // quoteLaunchFeeBps — exponential decay
     // ===========================================================================

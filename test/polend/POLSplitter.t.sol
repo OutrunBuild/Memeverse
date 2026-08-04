@@ -105,6 +105,16 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
     address internal constant ALICE = address(0xA11CE);
     address internal constant BOB = address(0xB0B);
 
+    event RedeemPT(uint256 indexed verseId, address indexed from, address indexed to, uint256 ptAmount);
+    event RedeemYT(
+        uint256 indexed verseId,
+        address indexed from,
+        address indexed to,
+        uint256 ytAmount,
+        uint256 uAssetAmount,
+        uint256 memecoinAmount
+    );
+
     MockERC20 internal memecoin;
     MockERC20 internal uAsset;
     MockERC20 internal otherUAsset;
@@ -675,6 +685,38 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
         assertEq(memecoin.balanceOf(BOB), 150 ether, "memecoin received");
     }
 
+    /// @notice redeemPT emits RedeemPT with verseId/from/to indexed plus the redeemed ptAmount.
+    /// @dev Mirrors testRedeemPT_UsesFixedBackingRatio: 7:14 ratio => 14e18 PT converts to 7e18 uAsset.
+    function testRedeemPT_EmitsRedeemPTEvent() external {
+        vm.prank(address(launcher));
+        splitter.recordPTBackingRatio(VERSE_ID, 7 ether, 14 ether);
+        mockSettledForTest(address(splitter), VERSE_ID, 7 ether, 0);
+        uAsset.mint(address(splitter), 7 ether);
+        mintPTForTest(address(splitter), VERSE_ID, ALICE, 14 ether);
+
+        vm.expectEmit(true, true, true, true);
+        emit RedeemPT(VERSE_ID, ALICE, ALICE, 14 ether);
+        vm.prank(ALICE);
+        splitter.redeemPT(VERSE_ID, 14 ether, ALICE);
+    }
+
+    /// @notice redeemYT emits RedeemYT with verseId/from/to indexed plus yt/uAsset/memecoin amounts.
+    /// @dev Mirrors testRedeemYT_ReservesConvertedPTBacking: 150e18 YT => 250e18 uAsset, 150e18 memecoin.
+    function testRedeemYT_EmitsRedeemYTEvent() external {
+        vm.prank(address(launcher));
+        splitter.recordPTBackingRatio(VERSE_ID, 7 ether, 14 ether);
+        mockSettledForTest(address(splitter), VERSE_ID, 600 ether, 300 ether);
+        uAsset.mint(address(splitter), 600 ether);
+        memecoin.mint(address(splitter), 300 ether);
+        mintPTForTest(address(splitter), VERSE_ID, ALICE, 200 ether);
+        mintYTForTest(address(splitter), VERSE_ID, BOB, 300 ether);
+
+        vm.expectEmit(true, true, true, true);
+        emit RedeemYT(VERSE_ID, BOB, BOB, 150 ether, 250 ether, 150 ether);
+        vm.prank(BOB);
+        splitter.redeemYT(VERSE_ID, 150 ether, BOB);
+    }
+
     function testRedeemYT_RevertsOnZeroRecipientBeforeBurn() external {
         vm.prank(address(launcher));
         splitter.recordPTBackingRatio(VERSE_ID, 1 ether, 1 ether);
@@ -739,10 +781,8 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
 
         assertTrue(success, "preRedeemPTFee");
         assertEq(pt.balanceOf(address(launcher)), 0, "launcher pt burned");
-        (bool getterSuccess, bytes memory data) =
-            address(splitter).staticcall(abi.encodeWithSignature("preRedeemedPT(uint256)", VERSE_ID));
-        assertTrue(getterSuccess, "preRedeemedPT getter");
-        assertEq(abi.decode(data, (uint256)), 120 ether, "preRedeemedPT");
+        (uint256 ptAmount,) = splitter.preRedeemedStates(VERSE_ID);
+        assertEq(ptAmount, 120 ether, "preRedeemedPT");
     }
 
     function testPreRedeemPTFee_RecordsRawPTAndConvertedBacking() external {
@@ -798,10 +838,8 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
         assertEq(polend.lastBurnPreRedeemedBackingVerseId(), VERSE_ID, "verse id");
         assertEq(polend.lastBurnPreRedeemedBackingAmount(), 120 ether, "backing amount");
         assertEq(settlementUAsset, 780 ether, "net settlement uAsset");
-        (bool getterSuccess, bytes memory data) =
-            address(splitter).staticcall(abi.encodeWithSignature("preRedeemedPT(uint256)", VERSE_ID));
-        assertTrue(getterSuccess, "preRedeemedPT getter");
-        assertEq(abi.decode(data, (uint256)), 0, "preRedeemedPT cleared");
+        (uint256 ptAmount,) = splitter.preRedeemedStates(VERSE_ID);
+        assertEq(ptAmount, 0, "preRedeemedPT cleared");
     }
 
     function testSettle_BurnsPreRedeemedBackingAndDeductsConvertedBacking() external {

@@ -234,6 +234,10 @@ contract POLendTest is Test, POLendStorageHelper {
     event CreditBurned(uint256 indexed verseId, address indexed uAsset, uint256 totalCreditInterest);
     event ClaimRefund(uint256 indexed verseId, address indexed user, address indexed to, uint256 refundedAmount);
     event CreditRefunded(uint256 indexed verseId, address indexed user, address indexed to, uint256 amount);
+    event ClaimLeveragedYT(uint256 indexed verseId, address indexed user, address indexed to, uint256 amount);
+    event ClaimResidual(
+        uint256 indexed verseId, address indexed user, address indexed to, uint256 uAssetAmount, uint256 memecoinAmount
+    );
 
     BurnableMockERC20 internal uAsset;
     BurnableMockERC20 internal otherUAsset;
@@ -2033,7 +2037,7 @@ contract POLendTest is Test, POLendStorageHelper {
         assertEq(uAsset.repaidAmount(), 100 ether, "debt repaid");
         assertEq(uAsset.lastRepayAccount(), address(polend), "repay account");
         assertEq(uAsset.burnedAmount(), 0, "burn not used");
-        assertEq(polend.globalDebtByUAsset(address(uAsset)), 0, "global debt cleared");
+        assertEq(polend.getTotalDebtByUAsset(address(uAsset)), 0, "global debt cleared");
         assertEq(residualUAsset, 50 ether, "residual uasset");
         assertEq(residualMemecoin, 0, "residual memecoin");
         assertEq(uAsset.balanceOf(address(polend)), 50 ether, "only recovered residual kept");
@@ -2052,7 +2056,7 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.expectRevert(bytes("repay failed"));
         polend.executeGlobalSettlement(VERSE_ID);
 
-        assertEq(polend.globalDebtByUAsset(address(uAsset)), 100 ether, "global debt unchanged");
+        assertEq(polend.getTotalDebtByUAsset(address(uAsset)), 100 ether, "global debt unchanged");
         assertEq(uAsset.repaidAmount(), 0, "repay reverted");
         assertEq(uAsset.burnedAmount(), 0, "burn not used");
         assertEq(uint256(polend.getLendMarket(VERSE_ID).state), uint256(IPOLend.MarketState.Locked), "state unchanged");
@@ -2069,11 +2073,6 @@ contract POLendTest is Test, POLendStorageHelper {
         );
         uint256 treasuryBefore = uAsset.balanceOf(address(this));
 
-        uint256 consumedSettlementDustReserve = 1;
-        uint256 settlementDustReserveBeforeSettlement = MAX_SETTLEMENT_DUST;
-        assertLe(consumedSettlementDustReserve, MAX_SETTLEMENT_DUST, "dust cap");
-        assertLe(consumedSettlementDustReserve, settlementDustReserveBeforeSettlement, "reserve cap");
-
         vm.expectEmit(true, true, false, true);
         emit SettlementDustReserveConsumed(VERSE_ID, address(uAsset), 1, MAX_SETTLEMENT_DUST - 1);
         vm.expectEmit(true, true, false, true);
@@ -2085,12 +2084,45 @@ contract POLendTest is Test, POLendStorageHelper {
 
         (uint256 residualUAsset, uint256 residualMemecoin) = polend.residualStates(VERSE_ID);
         (uint128 reserve,) = polend.settlementDustStates(address(uAsset));
-        assertEq(polend.globalDebtByUAsset(address(uAsset)), 0, "global debt");
+        assertEq(polend.getTotalDebtByUAsset(address(uAsset)), 0, "global debt");
         assertEq(reserve, uint128(MAX_SETTLEMENT_DUST - 1), "remaining reserve");
         assertEq(uAsset.repaidAmount(), 100 ether, "full debt repaid");
         assertEq(residualUAsset, 0, "no uasset residual");
         assertEq(residualMemecoin, 0, "memecoin residual");
         assertEq(uAsset.balanceOf(address(this)), treasuryBefore, "unused reserve not swept");
+    }
+
+    /// @notice Exercises the `ptAmount != 0` branch of executeGlobalSettlement that invokes the
+    ///         splitter `redeemPT` callback, folding the redeemed PT uAsset into the recovered total.
+    /// @dev `polAmount` is set to 0 so `_burnSettledPol` takes its zero-POL early-return path; this
+    ///      avoids the mock launcher's `redeemMemecoinLiquidity`, which deliberately reverts ("unused").
+    ///      The non-zero POL recovery path through `_burnSettledPol` is therefore integration-only by
+    ///      mock design (see MockLauncherForPOLend.redeemMemecoinLiquidity).
+    function testExecuteGlobalSettlement_RedeemsPTWhenPtAmountNonZero() external {
+        seedMarketForTest(address(polend), VERSE_ID, address(yt), 10 ether);
+        setLockedStateForTest(address(polend), VERSE_ID, 0);
+        seedGlobalDebtForTest(address(polend), address(uAsset), 100 ether);
+
+        // recoveredUAsset = lpUAsset + burnedPolUAsset(0) + redeemedPtUAsset.
+        uint256 lpUAsset = 70 ether;
+        uint256 redeemedPtUAsset = 40 ether;
+        uint256 totalRecovered = lpUAsset + redeemedPtUAsset;
+        // polAmount = 0 avoids the POL-burn path; ptAmount > 0 exercises the redeemPT callback.
+        launcher.setSettlementResult(VERSE_ID, 0, 30 ether, lpUAsset);
+        splitter.setRedeemPTAmount(redeemedPtUAsset);
+        uAsset.mint(address(polend), totalRecovered);
+
+        vm.expectEmit(true, true, false, true);
+        emit GlobalSettlementExecuted(
+            VERSE_ID, address(uAsset), 100 ether, totalRecovered, 0, 0, totalRecovered - 100 ether, 0
+        );
+        vm.prank(address(launcher));
+        polend.executeGlobalSettlement(VERSE_ID);
+
+        // Debt (100) fully covered by recovered (110) => 10 residual, no dust consumed.
+        (uint256 residualUAsset,) = polend.residualStates(VERSE_ID);
+        assertEq(residualUAsset, totalRecovered - 100 ether, "residual = recovered - debt");
+        assertEq(uAsset.repaidAmount(), 100 ether, "full debt repaid");
     }
 
     function testExecuteGlobalSettlement_ConsumesPubliclyFundedDustReserve() external {
@@ -2113,7 +2145,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         (uint256 residualUAsset, uint256 residualMemecoin) = polend.residualStates(VERSE_ID);
         (uint128 reserve,) = polend.settlementDustStates(address(uAsset));
-        assertEq(polend.globalDebtByUAsset(address(uAsset)), 0, "global debt");
+        assertEq(polend.getTotalDebtByUAsset(address(uAsset)), 0, "global debt");
         assertEq(reserve, 0, "reserve consumed");
         assertEq(uAsset.repaidAmount(), 100 ether, "full debt repaid");
         assertEq(residualUAsset, 0, "no uasset residual");
@@ -2179,7 +2211,7 @@ contract POLendTest is Test, POLendStorageHelper {
         assertEq(splitter.lastPreRedeemVerseId(), VERSE_ID, "verse id");
         assertEq(splitter.lastPreRedeemPTAmount(), 25 ether, "pt amount");
         assertEq(uAsset.balanceOf(BOB), 10 ether, "minted uAsset");
-        assertEq(polend.globalDebtByUAsset(address(uAsset)), 10 ether, "global debt increased");
+        assertEq(polend.getTotalDebtByUAsset(address(uAsset)), 10 ether, "global debt increased");
     }
 
     function testPreRedeemPTFee_EmitsPreRedeemPTFee() external {
@@ -2217,7 +2249,7 @@ contract POLendTest is Test, POLendStorageHelper {
         assertTrue(success, "burnPreRedeemedBacking");
         assertEq(uAsset.repaidAmount(), 40 ether, "backing repaid");
         assertEq(uAsset.lastRepayAccount(), address(splitter), "repay account");
-        assertEq(polend.globalDebtByUAsset(address(uAsset)), 0, "global debt reduced");
+        assertEq(polend.getTotalDebtByUAsset(address(uAsset)), 0, "global debt reduced");
     }
 
     function testBurnPreRedeemedBacking_RepayHookObservesDebtAlreadyDecreased() external {
@@ -2375,6 +2407,129 @@ contract POLendTest is Test, POLendStorageHelper {
         _expectLowLevelRevert(
             abi.encodeWithSignature("claimResidual(uint256,address)", VERSE_ID, BOB), IPOLend.InvalidClaim.selector
         );
+    }
+
+    /// @notice Non-launcher callers must be rejected by the `onlyLauncher` guard on all four
+    ///         launcher-only entry points. The modifier fires before any body logic, so state does
+    ///         not matter; a fresh unregistered verse is used for `registerLendMarket` to avoid any
+    ///         future body change masking the revert.
+    function testOnlyLauncher_GuardsRejectNonLauncherCallers() external {
+        uint256 freshVerseId = OTHER_VERSE_ID + 100;
+
+        // registerLendMarket: use a fresh, unregistered verse so the PermissionDenied modifier is
+        // the only guard that can fire.
+        vm.startPrank(ALICE);
+        vm.expectRevert(IPOLend.PermissionDenied.selector);
+        polend.registerLendMarket(freshVerseId);
+
+        // markRefundable: modifier fires before the Genesis-state check.
+        vm.expectRevert(IPOLend.PermissionDenied.selector);
+        polend.markRefundable(VERSE_ID);
+
+        // recordLeveragedYT: modifier fires before the Locked-state / yt-zero check.
+        vm.expectRevert(IPOLend.PermissionDenied.selector);
+        polend.recordLeveragedYT(VERSE_ID, address(yt), 100 ether);
+
+        // finalizeLeveragedGenesis: modifier fires before the Genesis-state / debt check.
+        vm.expectRevert(IPOLend.PermissionDenied.selector);
+        polend.finalizeLeveragedGenesis(VERSE_ID);
+        vm.stopPrank();
+    }
+
+    /// @notice markRefundable is only valid for markets still in Genesis; a market left in the
+    ///         None state (default setUp) must revert with InvalidState when called by the launcher.
+    function testMarkRefundable_RevertsWhenMarketNotInGenesisState() external {
+        IPOLend.LendMarket memory market = polend.getLendMarket(VERSE_ID);
+        assertEq(uint256(market.state), uint256(IPOLend.MarketState.None), "precondition: none state");
+
+        vm.prank(address(launcher));
+        vm.expectRevert(IPOLend.InvalidState.selector);
+        polend.markRefundable(VERSE_ID);
+    }
+
+    /// @notice finalizeLeveragedGenesis is only valid for markets still in Genesis; a market left
+    ///         in the None state (default setUp) must revert with InvalidState when called by the launcher.
+    function testFinalizeLeveragedGenesis_RevertsWhenMarketNotInGenesisState() external {
+        IPOLend.LendMarket memory market = polend.getLendMarket(VERSE_ID);
+        assertEq(uint256(market.state), uint256(IPOLend.MarketState.None), "precondition: none state");
+
+        vm.prank(address(launcher));
+        vm.expectRevert(IPOLend.InvalidState.selector);
+        polend.finalizeLeveragedGenesis(VERSE_ID);
+    }
+
+    /// @notice claimLeveragedYT emits ClaimLeveragedYT with all three address/verseId fields indexed.
+    /// @dev Mirrors testClaimLeveragedYT_MarksCallerAndTransfersToRecipient amounts: ALICE holds
+    ///      10/40 of total interest against 400 totalLeveragedYT => 100e18 YT.
+    function testClaimLeveragedYT_EmitsClaimLeveragedYTEvent() external {
+        seedLeveragedPositionForTest(address(polend), VERSE_ID, ALICE, 10 ether);
+        seedLeveragedPositionForTest(address(polend), VERSE_ID, BOB, 30 ether);
+        seedMarketForTest(address(polend), VERSE_ID, address(yt), 40 ether);
+        setLockedStateForTest(address(polend), VERSE_ID, 400 ether);
+        yt.mint(address(polend), 400 ether);
+
+        vm.expectEmit(true, true, true, true);
+        emit ClaimLeveragedYT(VERSE_ID, ALICE, CAROL, 100 ether);
+        vm.prank(ALICE);
+        _claimLeveragedYT(VERSE_ID, CAROL);
+    }
+
+    /// @notice claimResidual emits ClaimResidual with verseId/user/to indexed plus both payout fields.
+    /// @dev Mirrors testClaimResidual_MarksCallerAndTransfersToRecipient amounts: ALICE holds
+    ///      10/40 of total interest against (200 uAsset, 100 memecoin) => 50e18 / 25e18.
+    function testClaimResidual_EmitsClaimResidualEvent() external {
+        seedLeveragedPositionForTest(address(polend), VERSE_ID, ALICE, 10 ether);
+        seedLeveragedPositionForTest(address(polend), VERSE_ID, BOB, 30 ether);
+        seedResidualForTest(address(polend), VERSE_ID, 200 ether, 100 ether, 40 ether);
+        uAsset.mint(address(polend), 200 ether);
+        memecoin.mint(address(polend), 100 ether);
+
+        vm.expectEmit(true, true, true, true);
+        emit ClaimResidual(VERSE_ID, ALICE, CAROL, 50 ether, 25 ether);
+        vm.prank(ALICE);
+        _claimResidual(VERSE_ID, CAROL);
+    }
+
+    /// @notice The credit-funded genesis path is also gated by whenNotPaused.
+    /// @dev Mirrors testLeveragedGenesis_RevertsWhenPaused but routes through the credit factory.
+    function testLeveragedGenesisWithCredit_RevertsWhenPaused() external {
+        _setupCreditPath(ALICE, 10 ether);
+
+        polend.pause();
+
+        vm.prank(ALICE);
+        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+    }
+
+    /// @notice When the launcher over-funds a reserve already at capacity, `capacity == 0` so
+    ///         `credited == 0` and the skip-SSTORE branch leaves `reserve` unchanged; the full
+    ///         `amount` spills to the treasury as excess. Only the launcher may over-fund.
+    function testFundSettlementDustReserve_LauncherExcessSpillsFullyWhenReserveAtCap() external {
+        // Precondition: reserve already saturated at the cap => capacity == 0.
+        seedSettlementDustStateForTest(
+            address(polend), address(uAsset), uint128(MAX_SETTLEMENT_DUST), uint128(MAX_SETTLEMENT_DUST)
+        );
+
+        uint256 amount = MAX_SETTLEMENT_DUST + 5;
+        uAsset.mint(address(launcher), amount);
+        vm.prank(address(launcher));
+        uAsset.approve(address(polend), amount);
+        // Treasury is address(this); record it before the excess spill to assert the delta.
+        uint256 treasuryBefore = uAsset.balanceOf(address(this));
+
+        // capacity = 0 => credited = min(amount, 0) = 0, excess = amount - 0 = amount.
+        vm.expectEmit(true, true, false, true);
+        emit SettlementDustReserveFunded(address(uAsset), address(launcher), amount, 0, amount);
+        vm.prank(address(launcher));
+        polend.fundSettlementDustReserve(address(uAsset), amount);
+
+        // Skip-SSTORE branch: reserve must stay at the cap (unchanged).
+        (uint128 reserve,) = polend.settlementDustStates(address(uAsset));
+        assertEq(reserve, uint128(MAX_SETTLEMENT_DUST), "reserve unchanged at cap");
+        // Full amount spilled to the treasury.
+        assertEq(uAsset.balanceOf(address(this)) - treasuryBefore, amount, "full excess to treasury");
+        assertEq(uAsset.balanceOf(address(launcher)), 0, "launcher fully debited");
     }
 
     function _claimLeveragedYT(uint256 verseId, address to) internal returns (uint256 amount) {

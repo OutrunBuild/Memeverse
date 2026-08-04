@@ -90,7 +90,7 @@ contract HookedBurnableMockERC20 is BurnableMockERC20 {
 
     function mint(address to, uint256 value) public override {
         if (hookMode == HookMode.MintDebt) {
-            require(POLend(hookPOLend).globalDebtByUAsset(address(this)) == expectedDebt, "hook debt");
+            require(POLend(hookPOLend).getTotalDebtByUAsset(address(this)) == expectedDebt, "hook debt");
             hookMode = HookMode.None;
         }
         super.mint(to, value);
@@ -98,7 +98,7 @@ contract HookedBurnableMockERC20 is BurnableMockERC20 {
 
     function repay(address account, uint256 amount) public override {
         if (hookMode == HookMode.RepayDebt) {
-            require(POLend(hookPOLend).globalDebtByUAsset(address(this)) == expectedDebt, "hook debt");
+            require(POLend(hookPOLend).getTotalDebtByUAsset(address(this)) == expectedDebt, "hook debt");
             hookMode = HookMode.None;
         }
         super.repay(account, amount);

@@ -76,10 +76,6 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         return (state.ptAmount, state.uAssetBacking);
     }
 
-    function preRedeemedPT(uint256 verseId) external view returns (uint256) {
-        return polSplitterStorage.preRedeemedStates[verseId].ptAmount;
-    }
-
     function ptBackingRatios(uint256 verseId) external view returns (uint256 numerator, uint256 denominator) {
         SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
         return (info.ptBackingNumerator, info.ptBackingDenominator);
@@ -243,11 +239,18 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
 
         // Interactions
         (settlementUAsset, settlementMemecoin) = _settlePOLCollateral(verseId, info);
+        // `preRedeemPTFee` (called earlier from the launcher) already minted uAsset backing for a
+        // PT-fee portion and recorded it here; that backing is not part of the PT-holder redemption
+        // pool, so deduct it before checking PT coverage and burn it back to POLend below.
         PreRedeemedState storage state = polSplitterStorage.preRedeemedStates[verseId];
         uint256 preRedeemedUAssetBacking = state.uAssetBacking;
         if (settlementUAsset < preRedeemedUAssetBacking) revert InvalidClaim();
         settlementUAsset -= preRedeemedUAssetBacking;
+        // PT-solvency invariant: the remaining settlement uAsset must cover every outstanding PT
+        // (total supply) at the recorded backing ratio, so all PT holders can always redeem in full.
         if (settlementUAsset < _ptToUAsset(info, IERC20(info.pt).totalSupply())) revert InvalidClaim();
+        // Reverse the earlier `preRedeemPTFee` accrual: repay the pre-redeemed uAsset to POLend so
+        // its global debt ledger stays consistent, then clear the pre-redeemed record.
         if (preRedeemedUAssetBacking != 0) {
             address _polend = polSplitterStorage.polend;
             IERC20(info.uAsset).approve(_polend, preRedeemedUAssetBacking);

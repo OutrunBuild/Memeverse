@@ -35,7 +35,13 @@ contract POLend layout at erc7201("outrun.storage.POLend")
     uint8 internal constant CLAIM_REFUND = 1 << 0;
     uint8 internal constant CLAIM_LEVERAGED_YT = 1 << 1;
     uint8 internal constant CLAIM_RESIDUAL = 1 << 2;
+    // Lower bound on the product `leveragedDebtFactor * interestRate` (both 1e18-scaled),
+    // i.e. (1e18)^2. Enforced in `_validateLeverageConfig` via `debtFactor >= ceil(1e36 / interestRate)`,
+    // so a market always carries a non-trivial minimum leveraged-debt notional. Spec:
+    // docs/spec/polend/genesis.md § "fullPrecisionMulDiv(leveragedDebtFactor, interestRate, 1) >= 1e36".
     uint256 internal constant MIN_LEVERAGED_DEBT_PRODUCT = 1e36;
+    // Aggregate cap on normal + leveraged genesis funds (uAsset notional), bounding `_debtCapacity`'s
+    // aggregate clamp below uint256.max and keeping settlement debt accounting within uint128 headroom.
     uint256 internal constant MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = type(uint128).max;
     uint256 internal constant MAX_LEVERAGED_DEBT_FACTOR = uint256(type(uint128).max) * 1e18;
 
@@ -366,6 +372,8 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         if (market.state != MarketState.Locked) revert InvalidState();
         address marketUAsset = market.uAsset;
 
+        // Stage 1 — recover auxiliary liquidity: pull POL/PT/LP backing the leveraged position from
+        // the launcher, burn settled POL into uAsset (+memecoin), and redeem any PT into uAsset.
         (uint256 polAmount, uint256 ptAmount, uint256 lpUAsset) =
             IMemeverseLauncher(polendStorage.launcher).settleLeveragedAuxiliaryLiquidity(verseId);
         (uint256 burnedPolUAsset, uint256 burnedPolMemecoin) = _burnSettledPol(verseId, polAmount);
@@ -374,6 +382,10 @@ contract POLend layout at erc7201("outrun.storage.POLend")
             redeemedPtUAsset = IPOLSplitter(polendStorage.splitter).redeemPT(verseId, ptAmount, address(this));
         }
 
+        // Stage 2 — compare total recovered uAsset against the leveraged debt. A surplus becomes the
+        // claimable residual; a deficit is covered by the per-uAsset settlement-dust reserve (revert
+        // if the reserve cannot cover it). The reserve SSTORE happens here so the ledger is consistent
+        // before any external repay below.
         uint256 totalRecoveredUAsset = lpUAsset + burnedPolUAsset + redeemedPtUAsset;
         uint256 debt = _totalLeveragedDebt(market);
         SettlementDustState storage dustState = polendStorage.settlementDustStates[marketUAsset];
@@ -393,11 +405,15 @@ contract POLend layout at erc7201("outrun.storage.POLend")
             emit SettlementDustReserveConsumed(verseId, marketUAsset, deficit, reserveAfterSettlement);
         }
 
+        // Stage 3 — persist residual claim state, mark the market settled, and clear the leveraged
+        // debt from the per-uAsset global ledger BEFORE the external repay, so the ledger decrement
+        // cannot be skipped or observed mid-repay.
         polendStorage.residualStates[verseId] =
             ResidualState({residualUAsset: residualUAsset, residualMemecoin: burnedPolMemecoin});
         market.state = MarketState.Settled;
         if (debt != 0) polendStorage.globalDebtByUAsset[marketUAsset] -= debt;
 
+        // Stage 4 — repay the debt in uAsset to this contract's own balance via the universal asset.
         if (debt != 0) IUniversalAssets(marketUAsset).repay(address(this), debt);
 
         emit GlobalSettlementExecuted(
@@ -623,13 +639,6 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         return polendStorage.creditFactory;
     }
 
-    /// @notice Full lend-market snapshot for a verse (uAsset, YT, interest rate, accumulators, state).
-    /// @param verseId Verse identifier whose market to read.
-    /// @return LendMarket struct copy for the verse.
-    function lendMarkets(uint256 verseId) external view returns (LendMarket memory) {
-        return polendStorage.lendMarkets[verseId];
-    }
-
     /// @notice Aggregate interest (real uAsset + GenesisCredit) a user paid into a verse's leveraged genesis.
     /// @param verseId Verse identifier.
     /// @param user Participant address.
@@ -649,13 +658,6 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         ResidualState storage r = polendStorage.residualStates[verseId];
         residualUAsset = r.residualUAsset;
         residualMemecoin = r.residualMemecoin;
-    }
-
-    /// @notice Aggregate outstanding uAsset debt across all settled/live verses for one uAsset.
-    /// @param uAsset Universal-asset address.
-    /// @return Total uAsset debt currently accounted under this uAsset.
-    function globalDebtByUAsset(address uAsset) external view returns (uint256) {
-        return polendStorage.globalDebtByUAsset[uAsset];
     }
 
     /// @notice Settlement-dust reserve configuration for a uAsset.
@@ -757,8 +759,22 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         if (actualNormalFunds >= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS) return (0, 0);
         uint256 aggregateDebtCap = MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds;
         if (debtCap > aggregateDebtCap) debtCap = aggregateDebtCap;
+        // Derive the max total interest whose implied debt (totalInterest * 1e18 / interestRate,
+        // floored) still fits under `debtCap`. Equivalent to ceil((debtCap+1)*rate/1e18) - 1, which
+        // is the smallest `maxTotalInterest` whose floored debt exceeds debtCap. Spec:
+        // docs/spec/polend/core.md § "maxTotalLeveragedInterest = ((debtCap + 1) * rate - 1) / 1e18".
         uint256 maxTotalInterest;
         if (debtCap == type(uint256).max) {
+            // Overflow-safe ceil for the saturated cap: split uint256.max into q*1e18 + r and ceil
+            // each part independently, since (debtCap+1) would overflow. NOTE: this branch is
+            // currently unreachable — the aggregate clamp above bounds debtCap <= aggregateDebtCap
+            // <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = uint128.max < uint256.max. Kept as a defensive
+            // ceiling for the saturating `_debtCap` path should the clamp ever widen.
+            // Math caveat: the split identity `ceil((MAX+1)*rate/1e18) - 1` holds exactly for
+            // rate < 1e18. At rate == 1e18 the intermediate sum `q*rate + ceil((r+1)*rate/1e18)`
+            // evaluates to MAX+1 and would overflow-revert under checked arithmetic; moot because
+            // the branch is unreachable, but documented so a future clamp widening does not
+            // silently inherit this edge.
             uint256 q = type(uint256).max / 1e18;
             uint256 r = type(uint256).max % 1e18;
             maxTotalInterest =

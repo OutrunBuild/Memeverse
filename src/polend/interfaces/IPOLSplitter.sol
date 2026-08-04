@@ -77,6 +77,8 @@ interface IPOLSplitter {
 
     function polend() external view returns (address);
 
+    function launcher() external view returns (address);
+
     function initializeVerse(
         uint256 verseId,
         address pol,

@@ -12,6 +12,8 @@ contract OutrunERC20PermitInitTest is Test {
 
     uint256 internal constant OWNER_PK = 0xA11CE;
     address internal immutable OWNER = vm.addr(OWNER_PK);
+    uint256 internal constant OTHER_PK = 0xB0B;
+    address internal immutable OTHER = vm.addr(OTHER_PK);
     address internal constant SPENDER = address(0xBEEF);
 
     PermitHarness internal implementation;
@@ -51,16 +53,41 @@ contract OutrunERC20PermitInitTest is Test {
 
     /// @notice Test permit rejects expired or invalid signer.
     function testPermitRejectsExpiredOrInvalidSigner() external {
-        bytes32 digest = token.permitDigest(OWNER, SPENDER, 7 ether, block.timestamp + 1 days);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_PK, digest);
+        // 1. Boundary inclusive: deadline == block.timestamp is now ACCEPTED by permit
+        //    (EIP-2612 treats deadline as inclusive). Regression guard for the fixed boundary bug.
+        {
+            uint256 deadline = block.timestamp;
+            bytes32 digest = token.permitDigest(OWNER, SPENDER, 7 ether, deadline);
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_PK, digest);
 
-        vm.expectRevert(abi.encodeWithSelector(OutrunERC20PermitInit.ERC2612ExpiredSignature.selector, block.timestamp));
-        token.permit(OWNER, SPENDER, 7 ether, block.timestamp, v, r, s);
+            token.permit(OWNER, SPENDER, 7 ether, deadline, v, r, s);
 
-        bytes32 wrongDigest = token.permitDigest(OWNER, SPENDER, 8 ether, block.timestamp + 1 days);
-        (v, r, s) = vm.sign(OWNER_PK, wrongDigest);
-        vm.expectRevert();
-        token.permit(OWNER, SPENDER, 7 ether, block.timestamp + 1 days, v, r, s);
+            assertEq(token.allowance(OWNER, SPENDER), 7 ether);
+            assertEq(token.nonces(OWNER), 1);
+        }
+
+        // 2. Truly expired: sign and call with deadline == block.timestamp - 1 (digest matches the call arg).
+        {
+            uint256 expiredDeadline = block.timestamp - 1;
+            bytes32 digest = token.permitDigest(OWNER, SPENDER, 7 ether, expiredDeadline);
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_PK, digest);
+
+            vm.expectRevert(
+                abi.encodeWithSelector(OutrunERC20PermitInit.ERC2612ExpiredSignature.selector, expiredDeadline)
+            );
+            token.permit(OWNER, SPENDER, 7 ether, expiredDeadline, v, r, s);
+        }
+
+        // 3. Invalid signer: signature is produced by a different key (OTHER), so recovery
+        //    mismatches `owner`. Precise selector assertion matches test/swap/UniswapLP.t.sol pattern.
+        {
+            uint256 deadline = block.timestamp + 1 days;
+            bytes32 digest = token.permitDigest(OWNER, SPENDER, 7 ether, deadline);
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(OTHER_PK, digest);
+
+            vm.expectRevert(abi.encodeWithSelector(OutrunERC20PermitInit.ERC2612InvalidSigner.selector, OTHER, OWNER));
+            token.permit(OWNER, SPENDER, 7 ether, deadline, v, r, s);
+        }
     }
 
     /// @notice Test permit rejects replay of the same signature.

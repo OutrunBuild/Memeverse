@@ -57,7 +57,9 @@ abstract contract OutrunERC20PermitInit is OutrunERC20Init, IERC20Permit, Outrun
         public
         virtual
     {
-        require(block.timestamp < deadline, ERC2612ExpiredSignature(deadline));
+        // EIP-2612: deadline is inclusive — a signature stays valid through `deadline`,
+        // not strictly before it. Matches OpenZeppelin and the sibling delegateBySig path.
+        require(block.timestamp <= deadline, ERC2612ExpiredSignature(deadline));
 
         bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, _useNonce(owner), deadline));
         bytes32 hash = _hashTypedDataV4(structHash);

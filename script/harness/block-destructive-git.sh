@@ -54,6 +54,25 @@ tokenize() {
   eval "$_out=(\"\${_arr[@]}\")"
 }
 
+# Operator-split $1 (a command string) on shell control operators
+# (&&, ||, ;, |) into the array named by $2, one segment per line. sed does
+# the split. MUST fail closed if sed is unavailable or errors: a missing
+# parser must never degrade the guard to allow-all (the process-substitution
+# form `mapfile < <(...|sed...)` silently drops sed's exit code, so the guard
+# would see an empty segment list, skip every family check, and exit 0).
+# Capture sed output via command substitution so its exit code propagates,
+# then load the captured text into the array with mapfile.
+split_into_segments() {
+  local _in="$1" _out="$2"
+  local _split
+  _split="$(printf '%s' "$_in" | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')" || fail_closed
+  # shellcheck disable=SC2229  # intentional: caller names the target array
+  printf -v "$_out" '%s' ""
+  local _arr=()
+  mapfile -t _arr <<<"$_split"
+  eval "$_out=(\"\${_arr[@]}\")"
+}
+
 # 1. Read the PreToolUse payload from stdin.
 hook_json=$(cat) || fail_closed
 
@@ -69,10 +88,15 @@ command_str=$(jq -r '(.tool_input.command // .toolInput.command // null) | if ty
 #    residual risk; the common chaining cases (&&, ||, ;, |, newline) are
 #    covered. Order matters: strip two-char operators (&&, ||) before the
 #    single-char | so || is not split into two stray pipes.
-segments=$(printf '%s' "$command_str" \
-  | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g') || fail_closed
+#
+#    Segments are stored in a growable array (not a piped `while read` stream)
+#    so step 4b can append unwrapped inner scripts when a shell wrapper is
+#    detected; an append mid-iteration is how `bash -c "git restore x"` is
+#    made to reach the family checks below.
+split_into_segments "$command_str" segments
 
-while IFS= read -r raw_seg; do
+for ((seg_idx=0; seg_idx<${#segments[@]}; seg_idx++)); do
+  raw_seg="${segments[$seg_idx]}"
   # Trim leading/trailing whitespace (POSIX parameter-expansion idiom).
   lead="${raw_seg%%[![:space:]]*}"
   seg="${raw_seg#"$lead"}"
@@ -88,6 +112,30 @@ while IFS= read -r raw_seg; do
     esac
     lead="${seg%%[![:space:]]*}"; seg="${seg#"$lead"}"
   done
+
+  # 4b. Unwrap shell wrappers so a destructive git command cannot hide behind
+  #     `bash -c "git restore ..."` / `sh -c '...'` / `eval "..."`. Without this,
+  #     tokenize below sees toks[0]="bash" (not "git") and every family check is
+  #     skipped — the exact bypass used by `rtk bash -c "git restore -- x"`.
+  #     We detect a leading `<shell> -c <arg>` or `eval <arg>` form, read `<arg>`
+  #     with `read -ra` (which strips one quote layer the shell already parsed),
+  #     operator-split the inner script, and append each piece to `segments` so
+  #     the outer for-loop reaches it on a later iteration. The current segment
+  #     (the wrapper itself) is then skipped — it carries no git command.
+  case "$seg" in
+    bash\ -c\ *|sh\ -c\ *|dash\ -c\ *|zsh\ -c\ *|ksh\ -c\ *|eval\ *)
+      # Drop the "<shell> -c " / "eval " prefix, leaving the script argument.
+      inner="${seg#* -c }"; [[ "$seg" == eval\ * ]] && inner="${seg#eval }"
+      # Strip ONE surrounding quote layer: "..." or '...' (the shell would have
+      # consumed it when executing; we replay that one layer here).
+      if   [[ "$inner" == \"*\" ]]; then inner="${inner#\"}"; inner="${inner%\"}";
+      elif [[ "$inner" == \'*\' ]]; then inner="${inner#\'}"; inner="${inner%\'}"; fi
+      # Re-split the inner script on the same operators and append to the queue.
+      split_into_segments "$inner" _inner_parts
+      segments+=("${_inner_parts[@]}")
+      continue   # the wrapper segment itself holds no git command; move on
+      ;;
+  esac
 
   # 5. Tokenize the whole segment on IFS (spaces/tabs/newlines) so that
   #    multi-space / tab separators between `git` and its subcommand cannot
@@ -152,7 +200,20 @@ while IFS= read -r raw_seg; do
   if [[ "$sub" == "stash" ]]; then
     # The stash subcommand is the token AFTER `sub` (toks[i] == "stash"); peek
     # at the next token for the actual stash sub-subcommand (push/pop/...).
+    # P3 fix: a shell redirection token (2>&1, >/dev/null, &>/path, >>log,
+    # 1>&2, ...) right after `stash` means this is bare `git stash` with its
+    # stdout/stderr redirected — semantically still `git stash push` and must
+    # be blocked. Without this, `git stash 2>&1` set stashsub="2>&1", which
+    # matched no known sub-subcommand and fell through to unknown->allow,
+    # letting a bare stash slip past the guard. Treat any redirection token
+    # as if it were absent (stashsub=""), so the ""|push|pop|... block branch
+    # fires. A real sub-subcommand (push/pop/list/...) is never a redirect.
+    # Redirect token: optional leading fd digit, optional &, then > or <;
+    # or a token beginning with & followed by > or < (bash &>/&>> forms).
     stashsub="${toks[$((i+1))]:-}"
+    if [[ "$stashsub" =~ ^[0-9]*\&?[\<\>] ]] || [[ "$stashsub" =~ ^\&[\<\>] ]]; then
+      stashsub=""
+    fi
     case "$stashsub" in
       ""|push|pop|apply|drop|clear|save|branch|store)
         emit_block "$seg"
@@ -289,7 +350,7 @@ while IFS= read -r raw_seg; do
     [[ "$destructive" -eq 0 ]] || emit_block "$seg"
     continue
   fi
-done <<<"$segments"
+done
 
 # 7. No destructive segment matched -> allow.
 exit 0

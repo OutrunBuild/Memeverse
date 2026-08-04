@@ -43,13 +43,6 @@ import {IMemeverseSettlementImpl} from "./interfaces/IMemeverseSettlementImpl.so
 contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher") is TokenHelper, DelegatecallOnly {
     using Address for address;
 
-    /// @dev Numerator of the fixed 0.7% factor used to size the yield-vault virtual buffer V:
-    ///      `V = minTotalFund * fundBasedAmount * 7 / 1000`. This launch sibling is the canonical source for
-    ///      the factor; the vault stores the computed V permanently at initialization.
-    uint256 internal constant YIELD_VAULT_VIRTUAL_ASSET_FACTOR = 7;
-    /// @dev Denominator paired with `YIELD_VAULT_VIRTUAL_ASSET_FACTOR` to express 0.7%.
-    uint256 internal constant YIELD_VAULT_VIRTUAL_ASSET_DIVISOR = 1000;
-
     /// @dev Same ERC-7201 namespace as the launcher facade; under delegatecall this reads/writes the proxy's
     ///      MemeverseLauncherStorage. Do NOT add an initializer, owner, or any setter.
     MemeverseLauncherStorage private memeverseLauncherStorage;
@@ -320,6 +313,9 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         emit IMemeverseLauncher.ChangeStage(verseId, currentStage);
     }
 
+    /// @notice Resolves a verse out of the Genesis stage: into `Locked` (successful launch) or `Refund` (missed min).
+    /// @dev Launch readiness is judged against actual uAsset paid (interest), while post-launch fund sizing uses the
+    /// derived debt principal — see genesis.md §launch gate for the full rationale.
     function _handleGenesisStage(uint256 verseId, uint256 currentTime, IMemeverseLauncher.Memeverse storage verse)
         internal
         returns (IMemeverseLauncher.Stage currentStage)
@@ -330,6 +326,8 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         uint256 minTotalFund = memeverseLauncherStorage.fundMetaDatas[uAsset].minTotalFund;
         uint256 totalLeveragedInterest = IPOLend(_polend).getTotalLeveragedInterest(verseId);
         uint256 totalLeveragedDebt = IPOLend(_polend).getTotalLeveragedDebt(verseId);
+        // The launch gate measures paid interest (real uAsset users committed), not the derived debt principal;
+        // `totalLeveragedDebt` is only used downstream to size the four deployment pools.
         bool leveragedLaunchReady = totalLeveragedInterest >= minTotalFund;
         bool meetMinTotalFund =
             memeverseLauncherStorage.totalNormalFunds[verseId] >= minTotalFund || leveragedLaunchReady;
@@ -394,8 +392,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
             // Size the permanent virtual buffer V from the per-uAsset fund metadata: 0.7% of the minimum
             // main-pool memecoin provision (spec §4). registerMemeverse already enforces both fields are non-zero.
             IMemeverseLauncher.FundMetaData storage _meta = memeverseLauncherStorage.fundMetaDatas[uAsset];
-            uint256 _virtualAssets = _meta.minTotalFund * _meta.fundBasedAmount * YIELD_VAULT_VIRTUAL_ASSET_FACTOR
-                / YIELD_VAULT_VIRTUAL_ASSET_DIVISOR;
+            uint256 _virtualAssets = MemeverseLauncherLib.virtualAssetsBuffer(_meta.minTotalFund, _meta.fundBasedAmount);
             IMemecoinYieldVault(yieldVault)
                 .initialize(
                     string(abi.encodePacked("Staked ", name)),

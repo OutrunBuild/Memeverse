@@ -563,6 +563,7 @@ contract MockPOLSplitterForPOLendIntegration is IPOLSplitter {
     address internal immutable yt;
     address internal pol;
     address internal polendAddr;
+    address internal launcherAddr;
     uint256 internal previewPTToUAssetResult;
     uint256 public lastCallIndex;
     uint256 public initializeVerseCallCount;
@@ -584,6 +585,10 @@ contract MockPOLSplitterForPOLendIntegration is IPOLSplitter {
 
     function setPolendForTest(address polend_) external {
         polendAddr = polend_;
+    }
+
+    function setLauncherForTest(address launcher_) external {
+        launcherAddr = launcher_;
     }
 
     function splitInfos(uint256)
@@ -690,5 +695,9 @@ contract MockPOLSplitterForPOLendIntegration is IPOLSplitter {
 
     function polend() external view returns (address) {
         return polendAddr;
+    }
+
+    function launcher() external view returns (address) {
+        return launcherAddr;
     }
 }

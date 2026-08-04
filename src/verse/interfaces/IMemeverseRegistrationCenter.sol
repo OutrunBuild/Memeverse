@@ -25,16 +25,6 @@ interface IMemeverseRegistrationCenter {
         uint192 nonce; // Number of replication
     }
 
-    struct LzEndpointIdPair {
-        uint32 chainId;
-        uint32 endpointId;
-    }
-
-    struct RegisterGasLimitPair {
-        uint32 chainId;
-        uint128 gasLimit;
-    }
-
     /**
      * @notice Checks whether a symbol is currently eligible for registration.
      * @dev Returns false while symbol lock window is active.
@@ -137,8 +127,6 @@ interface IMemeverseRegistrationCenter {
     error InvalidLength();
 
     error PermissionDenied();
-
-    error EmptyOmnichainIds();
 
     error InsufficientLzFee();
 

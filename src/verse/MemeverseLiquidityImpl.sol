@@ -75,9 +75,11 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
 
         MemeverseLauncherLib.validateSettlementWiring(swapRouter, hookAddress);
         _safeApprove(uAsset, swapRouter, totalGenesisFunds);
-        _safeApprove(
-            memecoin, swapRouter, mainPoolUAssetBudget * memeverseLauncherStorage.fundMetaDatas[uAsset].fundBasedAmount
-        );
+        // Compute the memecoin bootstrap budget once here and forward it; the main-pool helper used to re-derive
+        // it via the same MUL on the (warm) fundBasedAmount slot, so computing once saves one redundant product.
+        uint256 mainPoolMemecoinBudget =
+            mainPoolUAssetBudget * memeverseLauncherStorage.fundMetaDatas[uAsset].fundBasedAmount;
+        _safeApprove(memecoin, swapRouter, mainPoolMemecoinBudget);
         _safeApproveInf(uAsset, hookAddress);
 
         (uint256 mainPoolUAssetUsed, uint256 polUAssetUsed, uint256 ptUAssetUsed, uint256 burnedMemecoin) = _createBootstrapPools(
@@ -88,6 +90,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             normalFunds,
             totalLeveragedDebt,
             mainPoolUAssetBudget,
+            mainPoolMemecoinBudget,
             swapRouter,
             _polSplitter,
             _polend
@@ -106,6 +109,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 normalFunds,
         uint256 totalLeveragedDebt,
         uint256 mainPoolUAssetBudget,
+        uint256 mainPoolMemecoinBudget,
         address swapRouter,
         address _polSplitter,
         address _polend
@@ -116,7 +120,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint128 mainPoolPOLRawAmount;
         PoolKey memory poolKey;
         (mainPoolPOLRawAmount, poolKey, mainPoolUAssetUsed, burnedMemecoin) =
-            _createMainBootstrapPool(memecoin, uAsset, mainPoolUAssetBudget, swapRouter);
+            _createMainBootstrapPool(memecoin, uAsset, mainPoolUAssetBudget, mainPoolMemecoinBudget, swapRouter);
 
         _settlePreorder(verseId, poolKey, uAsset, memecoin);
         IMemeverseLauncher.BootstrapPolPlan memory plan =
@@ -146,6 +150,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         address memecoin,
         address uAsset,
         uint256 mainPoolUAssetBudget,
+        uint256 mainPoolMemecoinBudget,
         address swapRouter
     )
         internal
@@ -156,8 +161,6 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             uint256 burnedMemecoin
         )
     {
-        uint256 mainPoolMemecoinBudget = mainPoolUAssetBudget
-            * memeverseLauncherStorage.fundMetaDatas[uAsset].fundBasedAmount;
         uint160 mainPoolStartPrice = InitialPriceCalculator.calculateInitialSqrtPriceX96(
             memecoin, uAsset, mainPoolMemecoinBudget, mainPoolUAssetBudget
         );
@@ -254,6 +257,8 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         _safeApproveInf(pol, _polSplitter);
         (uint256 totalPT,) = IPOLSplitter(_polSplitter).split(verseId, plan.normalPolToSplit + plan.leveragedPolToSplit);
         _safeApprove(pt, swapRouter, totalPT);
+        // Split the minted PT asymmetrically: ~1/3 pairs with uAsset to expose a PT/uAsset price,
+        // ~2/3 pairs with POL to deepen the PT/POL swap leg used by YT flash swaps.
         uint256 ptForPtUAsset = totalPT / 3;
         uint256 ptForPtPol = totalPT - ptForPtUAsset;
 
@@ -383,10 +388,14 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 totalGenesisFunds = MemeverseLauncherLib.checkedTotalGenesisFunds(normalFunds, totalLeveragedDebt);
         if (totalGenesisFunds == 0) return plan;
 
+        // POL bootstrap is split into thirds over seven parts (2/7 + 3/7 + 2/7): one part seeds the POL/uAsset
+        // auxiliary pool, the largest part is split into normal vs leveraged PT shares, and the remainder seeds the
+        // PT/POL pool. Using a single 7-denominator keeps all three buckets additive without dust.
         plan.polForPolUAsset = FullMath.mulDiv(totalPOL, 2, 7);
         uint256 polToSplit = FullMath.mulDiv(totalPOL, 3, 7);
         plan.normalPolToSplit = FullMath.mulDiv(polToSplit, normalFunds, totalGenesisFunds);
         plan.leveragedPolToSplit = polToSplit - plan.normalPolToSplit;
+        // Final 2/7 absorbs any dust from the prior truncated divisions so every unit of POL is routed.
         plan.polForPtPol = totalPOL - plan.polForPolUAsset - polToSplit;
     }
 
@@ -438,12 +447,24 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         pure
         returns (uint256 amount)
     {
-        if (Currency.unwrap(poolKey.currency0) == token) {
+        return
+            _positiveDeltaAmount(delta, token, Currency.unwrap(poolKey.currency0), Currency.unwrap(poolKey.currency1));
+    }
+
+    /// @dev Core: return the positive leg of `delta` for `token`, given the pool's ordered token0/token1.
+    ///      Both `_deltaAmountForToken` (from PoolKey) and `_positiveDeltaAmountForToken` (from raw addresses)
+    ///      funnel through here so the positive-delta extraction has one source of truth.
+    function _positiveDeltaAmount(BalanceDelta delta, address token, address token0, address token1)
+        internal
+        pure
+        returns (uint256 amount)
+    {
+        if (token == token0) {
             int128 amount0 = delta.amount0();
             return amount0 > 0 ? uint256(uint128(amount0)) : 0;
         }
 
-        if (Currency.unwrap(poolKey.currency1) == token) {
+        if (token == token1) {
             int128 amount1 = delta.amount1();
             return amount1 > 0 ? uint256(uint128(amount1)) : 0;
         }
@@ -858,17 +879,6 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         returns (uint256 amount)
     {
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-
-        if (token == token0) {
-            int128 amount0 = delta.amount0();
-            return amount0 > 0 ? uint256(uint128(amount0)) : 0;
-        }
-
-        if (token == token1) {
-            int128 amount1 = delta.amount1();
-            return amount1 > 0 ? uint256(uint128(amount1)) : 0;
-        }
-
-        return 0;
+        return _positiveDeltaAmount(delta, token, token0, token1);
     }
 }

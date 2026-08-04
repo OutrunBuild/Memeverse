@@ -29,6 +29,14 @@ library MemeverseLauncherLib {
     ///      distributor and preview reader so the two callers cannot drift.
     uint256 internal constant RATIO = 10000;
 
+    /// @dev Numerator of the fixed 0.7% factor sizing the yield-vault virtual buffer V. Single source of
+    ///      truth shared by the facade's `setFundMetaData` validation and the launch sibling's vault-deploy
+    ///      computation so the two cannot drift.
+    uint256 internal constant YIELD_VAULT_VIRTUAL_ASSET_FACTOR = 7;
+
+    /// @dev Denominator paired with `YIELD_VAULT_VIRTUAL_ASSET_FACTOR` to express 0.7%.
+    uint256 internal constant YIELD_VAULT_VIRTUAL_ASSET_DIVISOR = 1000;
+
     /// @notice Reverts unless the swap-router, uniswap-hook, and launcher are mutually wired:
     ///         the router points at the hook, the hook is bound to this launcher, and the hook's
     ///         pool initializer is the router. Guards preorder settlement at both the config gate
@@ -126,6 +134,24 @@ library MemeverseLauncherLib {
     {
         executorReward = FullMath.mulDiv(uAssetFee, executorRewardRate, RATIO);
         govFee = uAssetFee - executorReward;
+    }
+
+    /// @notice Compute the permanent virtual buffer V for a yield vault from its fund metadata.
+    /// @dev V = minTotalFund * fundBasedAmount * YIELD_VAULT_VIRTUAL_ASSET_FACTOR / YIELD_VAULT_VIRTUAL_ASSET_DIVISOR
+    ///      (0.7% of the minimum main-pool memecoin provision). Shared by the facade `setFundMetaData`
+    ///      `> 0` validation and the launch sibling's vault-deploy computation so the two cannot drift.
+    ///      Plain multiplication/division (no FullMath) mirrors the original inline implementations; values
+    ///      are bounded (`fundBasedAmount <= MAX_FUND_BASED_AMOUNT = 2^64 - 1`, and `minTotalFund *` that
+    ///      product `* 7` cannot overflow uint256 in practice), so rounding/gas stay identical to before.
+    /// @param minTotalFund Minimum genesis fund for the uAsset (from FundMetaData).
+    /// @param fundBasedAmount Memecoins minted per unit of genesis fund (from FundMetaData).
+    /// @return virtualAssets The permanent virtual buffer V passed to MemecoinYieldVault.initialize.
+    function virtualAssetsBuffer(uint256 minTotalFund, uint256 fundBasedAmount)
+        internal
+        pure
+        returns (uint256 virtualAssets)
+    {
+        return minTotalFund * fundBasedAmount * YIELD_VAULT_VIRTUAL_ASSET_FACTOR / YIELD_VAULT_VIRTUAL_ASSET_DIVISOR;
     }
 
     /// @notice Build the LayerZero OFT `SendParam` for a fee-distribution send and quote its messaging fee.

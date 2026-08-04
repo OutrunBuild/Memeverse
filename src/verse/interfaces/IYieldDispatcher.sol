@@ -19,6 +19,8 @@ interface IYieldDispatcher is IMemeverseOFTEnum, ILayerZeroComposer {
 
     error PermissionDenied();
 
+    error InvalidTokenType();
+
     /// @notice Settles same-chain fee proceeds routed by the launcher.
     /// @dev The launcher transfers the fee token into this dispatcher first, then calls this entry so the same
     ///      settlement logic that handles bridged compose payloads also serves the local fast path.

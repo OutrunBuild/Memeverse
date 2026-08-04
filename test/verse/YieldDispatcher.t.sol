@@ -121,6 +121,23 @@ contract YieldDispatcherTest is Test {
         dispatcher.distributeSameChain(address(token), ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN, 1 ether);
     }
 
+    /// @notice Test same-chain path rejects an out-of-range token type instead of silently no-oping.
+    function testDistributeSameChainRevertsOnInvalidTokenType() external {
+        // Out-of-range tokenType (uint8 = 2; enum only defines UASSET=0/MEMECOIN=1). Hand-build
+        // calldata to bypass the compile-time enum bounds check. Solidity's ABI decoder rejects
+        // out-of-range enum values before _settle runs; _settle's `else revert InvalidTokenType()`
+        // is a defense-in-depth backstop in case the decoder ever lets one through. Either way the
+        // call must fail rather than silently succeed and strand funds.
+        bytes memory callData = bytes.concat(
+            IYieldDispatcher.distributeSameChain.selector, abi.encode(address(token), ALICE, uint8(2), uint256(1 ether))
+        );
+
+        vm.prank(LAUNCHER);
+        (bool ok,) = address(dispatcher).call(callData);
+
+        assertFalse(ok, "out-of-range tokenType must not silently succeed");
+    }
+
     /// @notice Test same-chain path burns memecoin for eoa receiver.
     function testDistributeSameChainBurnsMemecoinForEoaReceiver() external {
         uint256 amount = 5 ether;

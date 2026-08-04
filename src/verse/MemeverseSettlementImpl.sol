@@ -338,6 +338,9 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         address _yieldDispatcher = memeverseLauncherStorage.yieldDispatcher;
         address _polend = memeverseLauncherStorage.polend;
 
+        // Snapshot the auxiliary uAsset the launcher physically holds before any PT redemption. The PT-redeem calls
+        // below mint/redeem the converted uAsset DIRECTLY to `_yieldDispatcher` (their third arg), so only the
+        // pre-redemption amount is still on the launcher's balance and must be `_transferOut`'d separately (line below).
         uint256 auxiliaryGovUAssetHeldByLauncher = fees.auxiliaryGovUAssetFee;
         if (fees.auxiliaryGovPTFee != 0) {
             if (verse.currentStage == IMemeverseLauncher.Stage.Locked) {
@@ -350,6 +353,9 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
             fees.auxiliaryGovPTFee = 0;
         }
 
+        // `transferToDispatcher` covers what the launcher physically holds (snapshot + base govFee); the freshly
+        // redeemed uAsset already arrived at the dispatcher. `govFee` then reports the TOTAL (held + pre-sent) for
+        // accounting via `distributeSameChain`, so the two lines use two deliberately different buckets.
         uint256 transferToDispatcher = govFee + auxiliaryGovUAssetHeldByLauncher;
         govFee += fees.auxiliaryGovUAssetFee;
         // Same-chain governance routes through YieldDispatcher's dedicated same-chain entry so local and remote fee

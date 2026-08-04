@@ -4,14 +4,12 @@ pragma solidity ^0.8.35;
 import {MemeverseRegistrarAbstract} from "./MemeverseRegistrarAbstract.sol";
 import {IMemeverseRegistrarAtLocal} from "../interfaces/IMemeverseRegistrarAtLocal.sol";
 import {IMemeverseRegistrar, IMemeverseRegistrationCenter} from "../interfaces/IMemeverseRegistrar.sol";
+import {MemeverseRegistrationLib} from "../libraries/MemeverseRegistrationLib.sol";
 
 /**
  * @title Local MemeverseRegistrar for deploying memecoin and registering memeverse
  */
 contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegistrarAbstract {
-    uint256 internal constant FIXED_LOCKUP_DURATION = 365 days;
-    uint256 internal constant MAX_END_TIME = type(uint64).max - FIXED_LOCKUP_DURATION;
-
     address public registrationCenter;
 
     constructor(address _owner, address _registrationCenter, address _memeverseLauncher, address _memeverseCommonInfo)
@@ -33,14 +31,14 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
         returns (uint256 lzFee)
     {
         value;
-        uint32[] memory omnichainIds = _deduplicate(param.omnichainIds);
+        uint32[] memory omnichainIds = MemeverseRegistrationLib.deduplicate(param.omnichainIds);
         (,, uint192 currentNonce) = IMemeverseRegistrationCenter(registrationCenter).symbolRegistry(param.symbol);
         uint256 centerDay = IMemeverseRegistrationCenter(registrationCenter).DAY();
         uint256 endTimeRaw = block.timestamp + param.durationDays * centerDay;
-        require(endTimeRaw <= MAX_END_TIME, IMemeverseRegistrationCenter.InvalidInput());
+        require(endTimeRaw <= MemeverseRegistrationLib.MAX_END_TIME, IMemeverseRegistrationCenter.InvalidInput());
 
         uint64 endTime = uint64(endTimeRaw);
-        uint64 unlockTime = uint64(endTimeRaw + FIXED_LOCKUP_DURATION);
+        uint64 unlockTime = uint64(endTimeRaw + MemeverseRegistrationLib.FIXED_LOCKUP_DURATION);
         IMemeverseRegistrar.MemeverseParam memory memeverseParam = IMemeverseRegistrar.MemeverseParam({
             name: param.name,
             symbol: param.symbol,
@@ -89,32 +87,5 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
         registrationCenter = _registrationCenter;
 
         emit SetRegistrationCenter(_registrationCenter);
-    }
-
-    function _deduplicate(uint32[] calldata input) internal pure returns (uint32[] memory uniqueValues) {
-        uint256 inputLength = input.length;
-        if (inputLength == 0) return new uint32[](0);
-
-        uint32[] memory temp = new uint32[](inputLength);
-        uint256 uniqueCount;
-
-        for (uint256 i = 0; i < inputLength; ++i) {
-            bool found;
-            for (uint256 j = 0; j < uniqueCount; ++j) {
-                if (temp[j] == input[i]) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                temp[uniqueCount] = input[i];
-                ++uniqueCount;
-            }
-        }
-
-        uniqueValues = new uint32[](uniqueCount);
-        for (uint256 i = 0; i < uniqueCount; ++i) {
-            uniqueValues[i] = temp[i];
-        }
     }
 }

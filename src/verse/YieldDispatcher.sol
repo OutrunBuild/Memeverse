@@ -86,6 +86,8 @@ contract YieldDispatcher is IYieldDispatcher, TokenHelper, Ownable {
                 _safeApprove(token, receiver, amount);
                 IMemecoinDaoGovernor(receiver).receiveTreasuryIncome(token, amount);
             }
+        } else {
+            revert InvalidTokenType();
         }
     }
 }

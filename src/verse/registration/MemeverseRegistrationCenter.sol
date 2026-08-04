@@ -10,6 +10,7 @@ import {TokenHelper} from "../../common/token/TokenHelper.sol";
 import {ILzEndpointRegistry} from "../../common/omnichain/interfaces/ILzEndpointRegistry.sol";
 import {IMemeverseRegistrationCenter, MessagingFee} from "../interfaces/IMemeverseRegistrationCenter.sol";
 import {IMemeverseRegistrarAtLocal, IMemeverseRegistrar} from "../interfaces/IMemeverseRegistrarAtLocal.sol";
+import {MemeverseRegistrationLib} from "../libraries/MemeverseRegistrationLib.sol";
 
 /**
  * @title Memeverse Omnichain Registration Center
@@ -20,8 +21,6 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
     // uint256 public constant DAY = 24 * 3600;
     uint256 public constant DAY = 180; // OutrunTODO 180 seconds for testing
-    uint256 internal constant FIXED_LOCKUP_DURATION = 365 days;
-    uint256 internal constant MAX_END_TIME = type(uint64).max - FIXED_LOCKUP_DURATION;
     address public immutable MEMEVERSE_REGISTRAR;
     address public immutable MEMEVERSE_COMMON_INFO;
 
@@ -128,11 +127,11 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         }
 
         uint256 endTimeRaw = currentTime + param.durationDays * DAY;
-        require(endTimeRaw <= MAX_END_TIME, InvalidInput());
+        require(endTimeRaw <= MemeverseRegistrationLib.MAX_END_TIME, InvalidInput());
 
         uint192 nextNonce = currentNonce + 1;
         uint64 endTime = uint64(endTimeRaw);
-        uint64 unlockTime = uint64(endTimeRaw + FIXED_LOCKUP_DURATION);
+        uint64 unlockTime = uint64(endTimeRaw + MemeverseRegistrationLib.FIXED_LOCKUP_DURATION);
         uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, nextNonce, param.uAsset)));
         currentRegistration.uniqueId = uniqueId;
         currentRegistration.endTime = endTime;
@@ -230,51 +229,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
         uint32[] memory omnichainIds = param.omnichainIds;
         require(omnichainIds.length > 0 && omnichainIds.length < 32, InvalidLength());
-        param.omnichainIds = _deduplicate(omnichainIds);
-    }
-
-    function _deduplicate(uint32[] memory input) internal pure returns (uint32[] memory) {
-        if (input.length == 0) {
-            return new uint32[](0);
-        }
-
-        uint32[] memory temp = new uint32[](input.length);
-        uint256 uniqueCount = 0;
-        bool found;
-        uint256 inputLength = input.length;
-
-        for (uint256 i = 0; i < inputLength;) {
-            found = false;
-            for (uint256 j = 0; j < uniqueCount;) {
-                if (temp[j] == input[i]) {
-                    found = true;
-                    unchecked {
-                        ++j;
-                    }
-                    break;
-                }
-                unchecked {
-                    ++j;
-                }
-            }
-            if (!found) {
-                temp[uniqueCount] = input[i];
-                ++uniqueCount;
-            }
-            unchecked {
-                ++i;
-            }
-        }
-
-        uint32[] memory unique = new uint32[](uniqueCount);
-        for (uint256 i = 0; i < uniqueCount;) {
-            unique[i] = temp[i];
-            unchecked {
-                ++i;
-            }
-        }
-
-        return unique;
+        param.omnichainIds = MemeverseRegistrationLib.deduplicate(omnichainIds);
     }
 
     /**

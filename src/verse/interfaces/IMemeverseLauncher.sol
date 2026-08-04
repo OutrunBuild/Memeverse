@@ -32,6 +32,8 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
     }
 
     /// @notice Storage struct. When adding fields in upgrades, append only at the end.
+    /// PT here denotes the Principal Token minted by `POLSplitter` (the principal half of a POL split; the yield
+    /// half is the YT, Yield Token).
     struct BootstrapResidualClaims {
         uint256 normalResidualPOL;
         uint256 normalResidualPT;
@@ -85,18 +87,13 @@ interface IMemeverseLauncher is IMemeverseOFTEnum {
         uint40 settlementTimestamp;
     }
 
+    /// @notice Allocation plan for the POL raised at genesis. Splits total POL into four bootstrap buckets
+    /// (see `MemeverseLiquidityImpl._buildBootstrapPolPlan`): POL/uAsset pool, normal + leveraged PT split, PT/POL pool.
     struct BootstrapPolPlan {
         uint256 polForPolUAsset;
         uint256 normalPolToSplit;
         uint256 leveragedPolToSplit;
         uint256 polForPtPol;
-    }
-
-    struct BootstrapPoolResult {
-        uint256 burnedMemecoin;
-        uint256 mainPoolUAssetUsed;
-        uint256 polUAssetUsed;
-        uint256 ptUAssetUsed;
     }
 
     /// @notice Storage struct. When adding fields in upgrades, append only at the end.

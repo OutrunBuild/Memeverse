@@ -39,11 +39,6 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
 
     uint256 public constant RATIO = 10000;
     uint256 internal constant MAX_FUND_BASED_AMOUNT = (1 << 64) - 1;
-    /// @dev Numerator of the 0.7% factor used to size the yield-vault virtual buffer V from the minimum
-    ///      main-pool memecoin provision. `V = minTotalFund * fundBasedAmount * 7 / 1000`.
-    uint256 internal constant YIELD_VAULT_VIRTUAL_ASSET_FACTOR = 7;
-    /// @dev Denominator paired with `YIELD_VAULT_VIRTUAL_ASSET_FACTOR` to express 0.7%.
-    uint256 internal constant YIELD_VAULT_VIRTUAL_ASSET_DIVISOR = 1000;
 
     /// @dev Namespaced storage. The contract header's `layout at erc7201(...)` binds this struct to
     ///      the ERC-7201 base slot of "outrun.storage.MemeverseLauncher" — identical to the prior
@@ -966,10 +961,7 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
         // Derived virtual buffer V = minTotalFund * fundBasedAmount * 7 / 1000 must round up to >= 1,
         // else MemecoinYieldVault.initialize reverts ZeroVirtualAssets() and governance-chain deploy DoSs.
         // Boundary: 142*7=994 -> 0 (rejected); 143*7=1001 -> 1 (accepted).
-        require(
-            _minTotalFund * _fundBasedAmount * YIELD_VAULT_VIRTUAL_ASSET_FACTOR / YIELD_VAULT_VIRTUAL_ASSET_DIVISOR > 0,
-            VirtualAssetsTooLow()
-        );
+        require(MemeverseLauncherLib.virtualAssetsBuffer(_minTotalFund, _fundBasedAmount) > 0, VirtualAssetsTooLow());
 
         memeverseLauncherStorage.fundMetaDatas[_uAsset] = FundMetaData(_minTotalFund, _fundBasedAmount);
 

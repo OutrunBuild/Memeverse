@@ -325,7 +325,7 @@ contract CreditAccountingHandler is Test {
     ///      verse's debt on Genesis->Locked; executeGlobalSettlement subtracts it on Locked->Settled.
     ///      No handler path mutates globalDebtByUAsset outside those two, so the equality is strict.
     function globalDebtByUAsset() public view returns (uint256) {
-        return polend.globalDebtByUAsset(address(uAsset));
+        return polend.getTotalDebtByUAsset(address(uAsset));
     }
 
     function sumLockedDebt() public view returns (uint256 sum) {

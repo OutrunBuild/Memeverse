@@ -2,6 +2,13 @@
 pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
+import {
+    MessagingFee,
+    MessagingReceipt,
+    MessagingParams,
+    Origin
+} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
+import {SendParam} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
 import {GenesisCredit} from "../../src/credit/GenesisCredit.sol";
 import {IGenesisCredit} from "../../src/credit/interfaces/IGenesisCredit.sol";
@@ -11,6 +18,13 @@ import {IGenesisCredit} from "../../src/credit/interfaces/IGenesisCredit.sol";
 contract MockGenesisCreditEndpoint {
     address public delegate;
     uint32 public immutable eid;
+    uint32 public lastDstEid;
+    bytes32 public lastReceiver;
+    bytes public lastMessage;
+    bytes public lastOptions;
+    address public lastRefundAddress;
+    uint256 public lastNativeValue;
+    uint256 public quoteNativeFee;
 
     constructor(uint32 eid_) {
         eid = eid_;
@@ -18,6 +32,32 @@ contract MockGenesisCreditEndpoint {
 
     function setDelegate(address delegate_) external {
         delegate = delegate_;
+    }
+
+    function setQuoteNativeFee(uint256 nativeFee) external {
+        quoteNativeFee = nativeFee;
+    }
+
+    function quote(MessagingParams calldata params, address sender) external view returns (MessagingFee memory fee) {
+        params;
+        sender;
+        fee = MessagingFee({nativeFee: quoteNativeFee, lzTokenFee: 0});
+    }
+
+    function send(MessagingParams calldata params, address refundAddress)
+        external
+        payable
+        returns (MessagingReceipt memory receipt)
+    {
+        lastDstEid = params.dstEid;
+        lastReceiver = params.receiver;
+        lastMessage = params.message;
+        lastOptions = params.options;
+        lastRefundAddress = refundAddress;
+        lastNativeValue = msg.value;
+        receipt = MessagingReceipt({
+            guid: bytes32("send-guid"), nonce: 1, fee: MessagingFee({nativeFee: msg.value, lzTokenFee: 0})
+        });
     }
 }
 
@@ -29,6 +69,7 @@ contract GenesisCreditTest is Test {
     uint32 internal constant REMOTE_EID = 40_111;
     address internal constant DELEGATE = address(0xCAFE);
     address internal constant ALICE = address(0xA11CE);
+    address internal constant BOB = address(0xB0B);
 
     MockGenesisCreditEndpoint internal homeEndpoint;
     MockGenesisCreditEndpoint internal remoteEndpoint;
@@ -59,6 +100,51 @@ contract GenesisCreditTest is Test {
 
         assertEq(credit.balanceOf(ALICE), 100 ether);
         assertEq(credit.claimed(ALICE), 100 ether);
+    }
+
+    /// @notice Verifies the concrete GenesisCredit OFT send and receive surfaces with a remote instance.
+    function test_OFTSendAndReceive_UsesGenesisCreditBridgeSurface() external {
+        vm.prank(ALICE);
+        credit.claim(100 ether, aliceProof);
+
+        uint256 bridgeAmount = 40 ether;
+        SendParam memory sendParam = SendParam({
+            dstEid: REMOTE_EID,
+            to: bytes32(uint256(uint160(BOB))),
+            amountLD: bridgeAmount,
+            minAmountLD: bridgeAmount,
+            extraOptions: bytes(""),
+            composeMsg: bytes(""),
+            oftCmd: bytes("")
+        });
+        GenesisCredit remoteCredit =
+            new GenesisCredit("GenesisCredit", "GCR", address(remoteEndpoint), DELEGATE, HOME_EID);
+        vm.prank(DELEGATE);
+        credit.setPeer(REMOTE_EID, bytes32(uint256(uint160(address(remoteCredit)))));
+        vm.prank(DELEGATE);
+        remoteCredit.setPeer(HOME_EID, bytes32(uint256(uint160(address(credit)))));
+
+        MessagingFee memory fee = MessagingFee({nativeFee: 0.01 ether, lzTokenFee: 0});
+        homeEndpoint.setQuoteNativeFee(fee.nativeFee);
+
+        assertEq(credit.quoteSend(sendParam, false).nativeFee, fee.nativeFee);
+
+        vm.deal(ALICE, fee.nativeFee);
+        vm.prank(ALICE);
+        credit.send{value: fee.nativeFee}(sendParam, fee, ALICE);
+        assertEq(credit.balanceOf(ALICE), 60 ether);
+        assertEq(homeEndpoint.lastDstEid(), REMOTE_EID);
+        assertEq(homeEndpoint.lastReceiver(), bytes32(uint256(uint160(address(remoteCredit)))));
+        assertEq(homeEndpoint.lastRefundAddress(), ALICE);
+        assertEq(homeEndpoint.lastNativeValue(), fee.nativeFee);
+
+        bytes memory message = homeEndpoint.lastMessage();
+        Origin memory origin = Origin({srcEid: HOME_EID, sender: bytes32(uint256(uint160(address(credit)))), nonce: 1});
+
+        vm.prank(address(remoteEndpoint));
+        remoteCredit.lzReceive(origin, bytes32("receive-guid"), message, address(0), bytes(""));
+
+        assertEq(remoteCredit.balanceOf(BOB), bridgeAmount);
     }
 
     /// @notice A second claim by the same user reverts.

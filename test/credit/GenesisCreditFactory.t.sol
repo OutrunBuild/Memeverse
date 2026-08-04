@@ -110,6 +110,17 @@ contract GenesisCreditFactoryTest is Test {
         factory.deployCredit(address(usdc), "Credit", "CRT", delegate);
     }
 
+    /// @notice A non-contract uAsset must fail metadata decoding before CREATE3 deployment.
+    function test_RevertWhen_DeployCreditUAssetIsNotAContract() public {
+        address nonContract = address(0x123456);
+        assertEq(nonContract.code.length, 0);
+
+        vm.expectRevert();
+        factory.deployCredit(nonContract, "Credit", "CRT", delegate);
+
+        assertEq(factory.creditOf(nonContract), address(0));
+    }
+
     /// @notice A non-owner caller cannot deploy. OwnableUnauthorizedAccount is inherited from the
     ///         factory's own OZ Ownable.
     function test_RevertWhen_DeployCreditByNonOwner() public {

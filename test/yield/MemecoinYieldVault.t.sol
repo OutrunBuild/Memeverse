@@ -267,19 +267,51 @@ contract MemecoinYieldVaultTest is Test {
         uint256 shares = vault.deposit(20 ether, ATTACKER);
 
         vm.prank(ATTACKER);
-        vault.requestRedeem(shares / 2, ATTACKER);
+        uint256 firstAssets = vault.requestRedeem(shares / 2, ATTACKER);
         vm.warp(block.timestamp + 1 days);
 
+        uint64 secondRequestTime = uint64(block.timestamp);
         vm.prank(ATTACKER);
-        vault.requestRedeem(shares / 4, ATTACKER);
+        uint256 secondAssets = vault.requestRedeem(shares / 4, ATTACKER);
 
+        uint256 balanceBefore = asset.balanceOf(ATTACKER);
         vm.prank(ATTACKER);
         uint256 redeemedAmount = vault.executeRedeem();
 
-        assertGt(redeemedAmount, 0, "redeemed amount");
+        assertEq(redeemedAmount, firstAssets, "only the mature request is redeemed");
+        assertEq(asset.balanceOf(ATTACKER) - balanceBefore, firstAssets, "redeemed asset amount");
         (uint192 remainingAmount, uint64 remainingRequestTime) = vault.redeemRequestQueues(ATTACKER, 0);
-        assertGt(uint256(remainingAmount), 0, "remaining queue amount");
-        assertGt(uint256(remainingRequestTime), 0, "remaining queue request time");
+        assertEq(uint256(remainingAmount), secondAssets, "immature request remains queued");
+        assertEq(uint256(remainingRequestTime), uint256(secondRequestTime), "remaining request time");
+        vm.expectRevert();
+        vault.redeemRequestQueues(ATTACKER, 1);
+    }
+
+    /// @notice Verifies executeRedeem sums every request that is mature at the same time.
+    function testExecuteRedeemAggregatesAllMaturedRequests() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(40 ether, ATTACKER);
+
+        vm.prank(ATTACKER);
+        uint256 firstAssets = vault.requestRedeem(shares / 4, ATTACKER);
+
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        vm.prank(ATTACKER);
+        uint256 secondAssets = vault.requestRedeem(shares / 4, ATTACKER);
+
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        uint256 balanceBefore = asset.balanceOf(ATTACKER);
+        vm.prank(ATTACKER);
+        uint256 redeemedAmount = vault.executeRedeem();
+
+        uint256 expectedRedeemed = firstAssets + secondAssets;
+        assertEq(redeemedAmount, expectedRedeemed, "all mature requests are aggregated");
+        assertEq(asset.balanceOf(ATTACKER) - balanceBefore, expectedRedeemed, "aggregated transfer amount");
+
+        vm.expectRevert();
+        vault.redeemRequestQueues(ATTACKER, 0);
     }
 
     /// @notice Verifies the queue caps outstanding redeem requests.
@@ -343,6 +375,83 @@ contract MemecoinYieldVaultTest is Test {
         vm.prank(ATTACKER);
         vm.expectRevert(abi.encodeWithSelector(IMemecoinYieldVault.RedeemAmountOverflowed.selector, previewAssets));
         overflowVault.requestRedeem(type(uint128).max, ATTACKER);
+    }
+
+    /// @notice Verifies permit and delegateBySig consume the same nonce sequence on the vault.
+    function testPermitAndDelegateBySigShareNonceSequence() external {
+        uint256 alicePrivateKey = 0xA11CE;
+        address alice = vm.addr(alicePrivateKey);
+        uint256 deadline = block.timestamp + 1 days;
+
+        asset.mint(alice, 10 ether);
+        vm.prank(alice);
+        asset.approve(address(vault), type(uint256).max);
+        vm.prank(alice);
+        vault.deposit(10 ether, alice);
+
+        bytes32 permitTypeHash =
+            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+        bytes32 permitStructHash =
+            keccak256(abi.encode(permitTypeHash, alice, RECEIVER, 7 ether, vault.nonces(alice), deadline));
+        bytes32 permitDigest = keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), permitStructHash));
+        (uint8 permitV, bytes32 permitR, bytes32 permitS) = vm.sign(alicePrivateKey, permitDigest);
+
+        vault.permit(alice, RECEIVER, 7 ether, deadline, permitV, permitR, permitS);
+
+        assertEq(vault.allowance(alice, RECEIVER), 7 ether);
+        assertEq(vault.nonces(alice), 1);
+
+        bytes32 delegationTypeHash = keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
+        bytes32 delegationStructHash =
+            keccak256(abi.encode(delegationTypeHash, RECEIVER, vault.nonces(alice), deadline));
+        bytes32 delegationDigest =
+            keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), delegationStructHash));
+        (uint8 delegationV, bytes32 delegationR, bytes32 delegationS) = vm.sign(alicePrivateKey, delegationDigest);
+
+        vault.delegateBySig(RECEIVER, 1, deadline, delegationV, delegationR, delegationS);
+
+        assertEq(vault.delegates(alice), RECEIVER);
+        assertEq(vault.getVotes(RECEIVER), 10 ether);
+        assertEq(vault.nonces(alice), 2);
+    }
+
+    /// @notice Verifies the share conversion uses an independent floor oracle for non-divisible inputs.
+    function testConvertToSharesRoundsDownForNonDivisibleRate() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+
+        vm.prank(ATTACKER);
+        vault.accumulateYields(5 ether);
+
+        uint256 assetsToPreview = 7 ether;
+        uint256 numerator = assetsToPreview * (vault.totalSupply() + VIRTUAL_ASSETS);
+        uint256 denominator = vault.totalAssets() + VIRTUAL_ASSETS;
+        uint256 expectedShares = numerator / denominator;
+
+        assertGt(numerator % denominator, 0, "fixture must be non-divisible");
+        assertEq(vault.previewDeposit(assetsToPreview), expectedShares, "conversion rounds down");
+        assertLt(expectedShares * denominator, numerator, "floor is below exact quotient");
+        assertGt((expectedShares + 1) * denominator, numerator, "next share would round above exact quotient");
+    }
+
+    /// @notice Fuzzes the share conversion against the integer floor formula after yield changes the rate.
+    function testFuzz_PreviewDepositUsesFloor(uint96 initialAssets, uint96 yieldAssets, uint96 previewAssets) external {
+        initialAssets = uint96(bound(initialAssets, 1 ether, 1_000 ether));
+        yieldAssets = uint96(bound(yieldAssets, 1 ether, 1_000 ether));
+        previewAssets = uint96(bound(previewAssets, 1, 1_000 ether));
+
+        vm.prank(ATTACKER);
+        vault.deposit(initialAssets, ATTACKER);
+
+        asset.mint(YIELD_SOURCE, yieldAssets);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), type(uint256).max);
+        vault.accumulateYields(yieldAssets);
+        vm.stopPrank();
+
+        uint256 numerator = uint256(previewAssets) * (vault.totalSupply() + VIRTUAL_ASSETS);
+        uint256 denominator = vault.totalAssets() + VIRTUAL_ASSETS;
+        assertEq(vault.previewDeposit(previewAssets), numerator / denominator, "fuzz floor formula");
     }
 
     // ──────────────────────────────────────────────────────────────────────────────

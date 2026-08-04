@@ -176,8 +176,6 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
                 // Iterate backwards so pop-based removals can swap in the tail element without skipping unchecked requests.
                 if (i != requestQueue.length - 1) {
                     requestQueue[i] = requestQueue[requestQueue.length - 1];
-                    requestQueue[requestQueue.length - 1].amount = 0;
-                    requestQueue[requestQueue.length - 1].requestTime = 0;
                 }
                 requestQueue.pop();
 

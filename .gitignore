@@ -50,8 +50,6 @@ node_modules/
 # Claude Code agent worktrees (must never be created here — project uses .worktrees/)
 .claude/worktrees/
 
-# ZCode runtime artifacts (plans, local state). Workspace agents and hooks
-# under .zcode/agents/ and .zcode/config.json ARE version-controlled.
 .zcode/plans/
 .zcode/v2/
 

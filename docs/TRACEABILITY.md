@@ -6,7 +6,7 @@
 - Claude agents: .claude/agents/*
 - Codex agents: .codex/agents/*
 - ZCode agents: .zcode/agents/* (workspace-scoped, version-controlled)
-- ZCode hooks: .zcode/config.json
+- ZCode hooks: ~/.zcode/cli/config.json (user-scope, machine-local, NOT version-controlled)
 - Enforcement entrypoint: script/harness/gate.sh
 - CI gate entrypoint: script/harness/ci-gate-entrypoint.sh
 

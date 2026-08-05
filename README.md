@@ -73,11 +73,11 @@ The repository's harness (policy, gate, reviewer/implementer roles) works across
 |---|---|---|---|
 | Instructions | `AGENTS.md` + `CLAUDE.md` | `AGENTS.md` (native) | `AGENTS.md` (native) |
 | Subagents | `.claude/agents/*.md` (workspace) | `.codex/agents/*.toml` (workspace) | `.zcode/agents/*.md` (workspace) |
-| Hooks | `.claude/settings.json` (PreToolUse) | — | `.zcode/config.json` (`hooks.events`, needs `enabled:true`) |
+| Hooks | `.claude/settings.json` (PreToolUse) | — | `~/.zcode/cli/config.json` (user-scope, `hooks.events`, needs `enabled:true`; machine-local, not carried by the repo) |
 | Permissions | `.claude/settings.json` allow/deny | — | client permission mode + hooks (no workspace allow/deny file) |
 
 The seven roles (`solidity-implementer`, `process-implementer`, `spec-reviewer`, `logic-reviewer`, `security-reviewer`, `refinement-reviewer`, `verifier`) are kept in three hand-maintained copies. When you change a role, update all three.
 
-ZCode discovers workspace-scoped subagents from `.zcode/agents/` directly (no install step). The `.zcode/agents/` and `.zcode/config.json` files are version-controlled, so `git worktree add` and fresh clones carry them automatically. ZCode also reads user-scoped agents from `~/.zcode/agents/`, but only in the desktop runtime; this repo relies on the workspace scope, which works everywhere.
+ZCode discovers workspace-scoped subagents from `.zcode/agents/` directly (no install step). The `.zcode/agents/` directory is version-controlled, so `git worktree add` and fresh clones carry workspace-scoped agents automatically. ZCode hooks are NOT in the repo — they live in user-scope `~/.zcode/cli/config.json` (each machine configures its own; ZCode's security policy strips project-scope hooks, so hooks must be user-scoped). ZCode also reads user-scoped agents from `~/.zcode/agents/`, but only in the desktop runtime; this repo relies on the workspace scope, which works everywhere.
 
 Hook differences: Claude Code's `EnterWorktree` block has no ZCode equivalent (ZCode supports seven events and `EnterWorktree` is not among them). The `Agent` `isolation:"worktree"` block is effective in Claude Code, where the `Agent` tool has an `isolation` parameter; ZCode's `Agent` tool has no such parameter, so there is nothing to block there, and Codex has no hook mechanism. The shared `block-agent-worktree-isolation.sh` script uses `exit 2` so it blocks correctly under both the Claude Code and ZCode PreToolUse contracts.

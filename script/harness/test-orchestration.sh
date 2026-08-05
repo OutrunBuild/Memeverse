@@ -697,14 +697,28 @@ assert_destructive_git_guard_fails_closed() {
     local stash_create_bin
     local no_jq_bin
     local malformed_json_bin
-    local reader_failure_bin
-    local no_sed_bin
-    local emit_block_jq_failure_bin
     local status
     local payload='{"tool_input":{"command":"git reset --hard"}}'
     local non_string_case
     local non_string_label
     local non_string_payload
+    local destructive_case
+    local destructive_label
+    local destructive_payload
+    local allow_case
+    local allow_label
+    local allow_payload
+    local malformed_case
+    local malformed_label
+    local malformed_payload
+    local large_argument
+    local large_command
+    local large_payload
+    local cache_root_fixture
+    local cache_root_binary
+    local started_ns
+    local finished_ns
+    local elapsed_ms
 
     bash_bin="$(command -v bash)"
     [ -x "$bash_bin" ] || {
@@ -712,10 +726,44 @@ assert_destructive_git_guard_fails_closed() {
         return 1
     }
 
+    # Build the cached native helper with the real PATH before dependency-
+    # isolation cases replace PATH with a deliberately sparse directory.
+    set +e
+    "$bash_bin" "$guard" <<<'{"tool_input":{"command":"git status"}}' \
+        >"$tmp_dir/destructive-git-guard-warm.stdout" \
+        2>"$tmp_dir/destructive-git-guard-warm.stderr"
+    status=$?
+    set -e
+    [ "$status" -eq 0 ] || { echo "native guard warmup: expected exit 0, got $status" >&2; return 1; }
+
+    cache_root_fixture="$tmp_dir/destructive-git-cache-root"
+    cache_root_binary="$cache_root_fixture/.harness/.runs/destructive-git-guard/release/destructive-git-guard"
+    mkdir -p \
+        "$cache_root_fixture/script/harness/destructive-git-guard/src" \
+        "${cache_root_binary%/*}"
+    cp "$guard" "$cache_root_fixture/script/harness/block-destructive-git.sh"
+    : >"$cache_root_fixture/script/harness/destructive-git-guard/Cargo.toml"
+    : >"$cache_root_fixture/script/harness/destructive-git-guard/Cargo.lock"
+    : >"$cache_root_fixture/script/harness/destructive-git-guard/src/lib.rs"
+    cat >"$cache_root_binary" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+    chmod +x "$cache_root_binary"
+    set +e
+    (
+        cd "$cache_root_fixture/script/harness"
+        "$bash_bin" ./block-destructive-git.sh <<<'{"tool_input":{"command":"git status"}}'
+    ) >"$tmp_dir/destructive-git-cache-root.stdout" 2>"$tmp_dir/destructive-git-cache-root.stderr"
+    status=$?
+    set -e
+    [ "$status" -eq 0 ] || { echo "cache root from script directory: expected exit 0, got $status" >&2; return 1; }
+    [ ! -e "$cache_root_fixture/script/harness/.harness" ] \
+        || { echo "cache root from script directory: created nested .harness" >&2; return 1; }
+
     ordinary_bin="$(make_destructive_git_guard_path ordinary)"
     link_destructive_git_guard_tool "$ordinary_bin" cat
     link_destructive_git_guard_tool "$ordinary_bin" jq
-    link_destructive_git_guard_tool "$ordinary_bin" sed
     status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" ordinary "$payload")"
     [ "$status" -eq 2 ] || { echo "ordinary destructive git: expected exit 2, got $status" >&2; return 1; }
     grep -Eq '"continue"[[:space:]]*:[[:space:]]*false' "$tmp_dir/destructive-git-guard-ordinary.stdout" \
@@ -739,7 +787,6 @@ assert_destructive_git_guard_fails_closed() {
     stash_create_bin="$(make_destructive_git_guard_path stash-create)"
     link_destructive_git_guard_tool "$stash_create_bin" cat
     link_destructive_git_guard_tool "$stash_create_bin" jq
-    link_destructive_git_guard_tool "$stash_create_bin" sed
     status="$(run_destructive_git_guard "$guard" "$bash_bin" "$stash_create_bin" stash-create \
         '{"tool_input":{"command":"git stash create"}}')"
     [ "$status" -eq 0 ] || { echo "git stash create: expected exit 0, got $status" >&2; return 1; }
@@ -748,8 +795,8 @@ assert_destructive_git_guard_fails_closed() {
     link_destructive_git_guard_tool "$no_jq_bin" cat
     status="$(run_destructive_git_guard "$guard" "$bash_bin" "$no_jq_bin" no-jq "$payload")"
     [ "$status" -eq 2 ] || { echo "missing jq: expected exit 2, got $status" >&2; return 1; }
-    grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-no-jq.stderr" \
-        || { echo "missing jq: missing fail-closed diagnostic" >&2; return 1; }
+    grep -Eq '"continue"[[:space:]]*:[[:space:]]*false' "$tmp_dir/destructive-git-guard-no-jq.stdout" \
+        || { echo "missing jq: native helper did not block destructive git" >&2; return 1; }
 
     malformed_json_bin="$(make_destructive_git_guard_path malformed-json)"
     link_destructive_git_guard_tool "$malformed_json_bin" cat
@@ -760,39 +807,290 @@ assert_destructive_git_guard_fails_closed() {
     grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-malformed-json.stderr" \
         || { echo "malformed JSON: missing fail-closed diagnostic" >&2; return 1; }
 
-    reader_failure_bin="$(make_destructive_git_guard_path reader-failure)"
-    printf '%s\n' '#!/bin/sh' 'exit 1' >"$reader_failure_bin/cat"
-    chmod +x "$reader_failure_bin/cat"
-    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$reader_failure_bin" reader-failure "$payload")"
-    [ "$status" -eq 2 ] || { echo "stdin reader failure: expected exit 2, got $status" >&2; return 1; }
-    grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-reader-failure.stderr" \
-        || { echo "stdin reader failure: missing fail-closed diagnostic" >&2; return 1; }
+    # The old text splitter lost quote boundaries before shell wrappers were
+    # inspected. The AST guard must recurse into executable wrapper scripts,
+    # while keeping heredoc data and quoted literals non-executable.
+    for destructive_case in \
+        'shell-stdin-bash:{"tool_input":{"command":"bash <<'\''EOF'\''\ngit restore -- target\nEOF"}}' \
+        'shell-stdin-sh:{"tool_input":{"command":"sh <<'\''EOF'\''\ngit reset --hard HEAD\nEOF"}}' \
+        'shell-stdin-rtk-bash:{"tool_input":{"command":"rtk bash <<'\''EOF'\''\ngit restore -- target\nEOF"}}' \
+        'wrapped-semicolon-squote:{"tool_input":{"command":"bash -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-semicolon-dquote:{"tool_input":{"command":"bash -c \"git restore -- target; true\""}}' \
+        'wrapped-and:{"tool_input":{"command":"bash -c '\''git restore -- target && true'\''"}}' \
+        'wrapped-or:{"tool_input":{"command":"bash -c '\''git restore -- target || true'\''"}}' \
+        'wrapped-pipe:{"tool_input":{"command":"bash -c '\''git restore -- target | cat'\''"}}' \
+        'wrapped-newline:{"tool_input":{"command":"bash -c '\''git restore -- target\ntrue'\''"}}' \
+        'wrapped-trailing-argv0:{"tool_input":{"command":"bash -c '\''git restore -- target; true'\'' sentinel"}}' \
+        'wrapped-login-shell:{"tool_input":{"command":"bash -lc '\''git restore -- target; true'\'' sentinel"}}' \
+        'wrapped-double-space:{"tool_input":{"command":"bash  -c '\''git restore -- target; true'\'' sentinel"}}' \
+        'wrapped-tab-space:{"tool_input":{"command":"bash\t-c\t'\''git restore -- target; true'\'' sentinel"}}' \
+        'wrapped-path:{"tool_input":{"command":"/bin/bash -c '\''git restore -- target; true'\'' sentinel"}}' \
+        'wrapped-env:{"tool_input":{"command":"env bash -c '\''git restore -- target; true'\'' sentinel"}}' \
+        'wrapped-bash-plus-x:{"tool_input":{"command":"bash +x -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-bash-plus-xc:{"tool_input":{"command":"bash +xc '\''git restore -- target; true'\''"}}' \
+        'wrapped-bash-cluster-O:{"tool_input":{"command":"bash -xO extglob -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-bash-cluster-o:{"tool_input":{"command":"bash +xo posix -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-bash-plus-o:{"tool_input":{"command":"bash +O extglob -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-bash-pipefail:{"tool_input":{"command":"bash -o pipefail -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-bash-extglob:{"tool_input":{"command":"bash -O extglob -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-bash-rcfile:{"tool_input":{"command":"bash --rcfile /dev/null -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-bash-c-double-dash:{"tool_input":{"command":"bash -c -- \"git restore -- target\""}}' \
+        'wrapped-bash-Oc:{"tool_input":{"command":"bash -Oc extglob \"git restore -- target\""}}' \
+        'wrapped-bash-cO-separated:{"tool_input":{"command":"bash -cO extglob '\''git restore -- target'\''"}}' \
+        'wrapped-bash-co-separated:{"tool_input":{"command":"bash -co pipefail '\''git restore -- target'\''"}}' \
+        'wrapped-bash-c-space-O:{"tool_input":{"command":"bash -c -O extglob '\''git restore -- target'\''"}}' \
+        'wrapped-bash-c-space-o:{"tool_input":{"command":"bash -c -o pipefail '\''git restore -- target'\''"}}' \
+        'wrapped-trap-static:{"tool_input":{"command":"trap '\''git restore -- target'\'' EXIT"}}' \
+        'wrapped-trap-dynamic:{"tool_input":{"command":"trap \"$ACTION\" EXIT"}}' \
+        'wrapped-trap-double-dash-dynamic:{"tool_input":{"command":"trap -- \"$ACTION\" EXIT"}}' \
+        'wrapped-stash-update:{"tool_input":{"command":"git stash -u"}}' \
+        'wrapped-clean-config:{"tool_input":{"command":"git -c clean.requireForce=false clean"}}' \
+        'wrapped-clean-config-zero:{"tool_input":{"command":"git -c clean.requireForce=0 clean"}}' \
+        'wrapped-checkout-force:{"tool_input":{"command":"git checkout -f branch"}}' \
+        'wrapped-checkout-ours:{"tool_input":{"command":"git checkout --ours target"}}' \
+        'wrapped-checkout-path-mode:{"tool_input":{"command":"git checkout HEAD target"}}' \
+        'wrapped-switch-discard:{"tool_input":{"command":"git switch --discard-changes branch"}}' \
+        'wrapped-global-git-dir:{"tool_input":{"command":"git --git-dir .git restore -- target"}}' \
+        'wrapped-global-work-tree:{"tool_input":{"command":"git --work-tree=. restore -- target"}}' \
+        'wrapped-global-git-dir-attached:{"tool_input":{"command":"git --git-dir=.git restore -- target"}}' \
+        'wrapped-global-exec-path:{"tool_input":{"command":"git -e /tmp restore -- target"}}' \
+        'wrapped-global-unknown:{"tool_input":{"command":"git --unknown-global-option restore -- target"}}' \
+        'wrapped-global-after-boundary:{"tool_input":{"command":"git -- --git-dir .git restore -- target"}}' \
+        'wrapped-alias-config:{"tool_input":{"command":"git -c alias.wipe=\"restore --\" wipe target"}}' \
+        'wrapped-config-env-alias:{"tool_input":{"command":"ALIAS_VALUE='\''restore --'\'' git --config-env=alias.wipe=ALIAS_VALUE wipe target"}}' \
+        'wrapped-implicit-xargs-input:{"tool_input":{"command":"xargs git"}}' \
+        'wrapped-xargs-arg-file:{"tool_input":{"command":"xargs -a args.txt git"}}' \
+        'wrapped-runtime-xargs:{"tool_input":{"command":"printf \"%s\\n\" restore | xargs git"}}' \
+        'wrapped-runtime-xargs-env:{"tool_input":{"command":"printf \"%s\\n\" git | xargs env git"}}' \
+        'wrapped-runtime-xargs-rtk:{"tool_input":{"command":"printf \"%s\\n\" restore | xargs rtk git"}}' \
+        'wrapped-runtime-xargs-env-rtk:{"tool_input":{"command":"printf \"%s\\n\" restore | xargs env rtk git"}}' \
+        'wrapped-runtime-xargs-git-branch:{"tool_input":{"command":"printf \"%s\\n\" '\''-D main'\'' | xargs git branch"}}' \
+        'wrapped-env-cluster:{"tool_input":{"command":"env -iu FOO git restore -- target"}}' \
+        'wrapped-xargs-cluster:{"tool_input":{"command":"xargs -rn 1 git restore -- target <<< value"}}' \
+        'wrapped-time-format:{"tool_input":{"command":"/usr/bin/time -f marker git restore -- target"}}' \
+        'wrapped-time-long-format:{"tool_input":{"command":"/usr/bin/time --format marker git restore -- target"}}' \
+        'wrapped-inherited-shell-stdin:{"tool_input":{"command":"printf \"%s\\n\" \"git restore -- target\" | bash -c \"bash\""}}' \
+        'clean-option-boundary:{"tool_input":{"command":"git clean -f -- -n"}}' \
+        'rm-option-boundary:{"tool_input":{"command":"git rm -- --cached"}}' \
+        'rm-pathspec-operand:{"tool_input":{"command":"git rm --pathspec-from-file --cached"}}' \
+        'wrapped-runtime-xargs-herestring:{"tool_input":{"command":"xargs git <<< restore"}}' \
+        'wrapped-env-double-dash:{"tool_input":{"command":"env -- bash -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-env-path:{"tool_input":{"command":"/usr/bin/env bash -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-command-double-dash:{"tool_input":{"command":"command -- bash -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-ansi-c-quote:{"tool_input":{"command":"bash -c $'\''git restore -- target; true'\''"}}' \
+        'wrapped-ansi-c-command:{"tool_input":{"command":"bash -c $'\''\x67it restore -- target; true'\''"}}' \
+        'wrapped-subshell:{"tool_input":{"command":"bash -c '\''(git restore -- target)'\''"}}' \
+        'wrapped-brace:{"tool_input":{"command":"bash -c '\''{ git restore -- target; }'\''"}}' \
+        'wrapped-if:{"tool_input":{"command":"bash -c '\''if true; then git restore -- target; fi'\''"}}' \
+        'wrapped-negation:{"tool_input":{"command":"bash -c '\''! git restore -- target'\''"}}' \
+        'leading-redirection:{"tool_input":{"command":">/dev/null bash -c '\''git restore -- target'\''"}}' \
+        'here-string:{"tool_input":{"command":"bash <<< '\''git restore -- target'\''"}}' \
+        'file-stdin:{"tool_input":{"command":"bash < script/example.sh"}}' \
+        'env-opaque-split-string:{"tool_input":{"command":"env -iS '\''bash -c \"git restore -- target\"'\''"}}' \
+        'source-file:{"tool_input":{"command":"source script/example.sh"}}' \
+        'watch-wrapper:{"tool_input":{"command":"watch '\''git restore -- target'\''"}}' \
+        'xargs-input-command:{"tool_input":{"command":"xargs -n1 git restore -- target"}}' \
+        'comment-newline:{"tool_input":{"command":"echo ok # comment\ngit restore -- target"}}' \
+        'escaped-space-comment-lookalike:{"tool_input":{"command":"echo foo\\ #bar; git restore -- target"}}' \
+        'rtk-wrapped:{"tool_input":{"command":"rtk bash -c \"git reset --hard HEAD; echo ok\""}}' \
+        'rtk-proxy-wrapped:{"tool_input":{"command":"rtk proxy bash -c '\''git restore -- target; true'\''"}}' \
+        'rtk-run-wrapped:{"tool_input":{"command":"rtk run bash -c '\''git restore -- target; true'\''"}}' \
+        'rtk-err-wrapped:{"tool_input":{"command":"rtk err bash -c '\''git restore -- target; true'\''"}}' \
+        'rtk-summary-wrapped:{"tool_input":{"command":"rtk summary bash -c '\''git restore -- target; true'\''"}}' \
+        'rtk-test-wrapped:{"tool_input":{"command":"rtk test bash -c '\''git restore -- target; true'\''"}}' \
+        'rtk-verbose-proxy-wrapped:{"tool_input":{"command":"rtk -v proxy bash -c '\''git restore -- target; true'\''"}}' \
+        'wrapped-coproc-wait:{"tool_input":{"command":"bash -c '\''coproc git restore -- target; wait'\''"}}' \
+        'wrapped-coproc-and:{"tool_input":{"command":"bash -c '\''coproc git restore -- target && true'\''"}}' \
+        'wrapped-coproc-or:{"tool_input":{"command":"bash -c '\''coproc git restore -- target || true'\''"}}' \
+        'wrapped-coproc-pipe:{"tool_input":{"command":"bash -c '\''coproc git restore -- target | cat'\''"}}' \
+        'recursive-wrapped:{"tool_input":{"command":"rtk bash -c '\''sh -c "git restore -- target; true"'\'' sentinel"}}' \
+        'compound-wrapped:{"tool_input":{"command":"echo ok && bash -c '\''git restore -- target; true'\''"}}'; do
+        destructive_label="${destructive_case%%:*}"
+        destructive_payload="${destructive_case#*:}"
+        status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" "$destructive_label" "$destructive_payload")"
+        [ "$status" -eq 2 ] || { echo "$destructive_label: expected exit 2, got $status" >&2; return 1; }
+        grep -Eq '"continue"[[:space:]]*:[[:space:]]*false' "$tmp_dir/destructive-git-guard-$destructive_label.stdout" \
+            || { echo "$destructive_label: missing block result" >&2; return 1; }
+    done
 
-    no_sed_bin="$(make_destructive_git_guard_path no-sed)"
-    link_destructive_git_guard_tool "$no_sed_bin" cat
-    link_destructive_git_guard_tool "$no_sed_bin" jq
-    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$no_sed_bin" no-sed "$payload")"
-    [ "$status" -eq 2 ] || { echo "missing sed: expected exit 2, got $status" >&2; return 1; }
-    grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-no-sed.stderr" \
-        || { echo "missing sed: missing fail-closed diagnostic" >&2; return 1; }
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" toolInput-alias \
+        '{"toolInput":{"command":"git restore -- target"}}')"
+    [ "$status" -eq 2 ] || { echo "toolInput alias: expected exit 2, got $status" >&2; return 1; }
+    grep -Eq '"continue"[[:space:]]*:[[:space:]]*false' "$tmp_dir/destructive-git-guard-toolInput-alias.stdout" \
+        || { echo "toolInput alias: missing block result" >&2; return 1; }
 
-    # Simulate a parser that succeeds for extraction but fails for `jq -n` in
-    # emit_block. The hook must still produce a hard block with status 2.
-    emit_block_jq_failure_bin="$(make_destructive_git_guard_path emit-block-jq-failure)"
-    link_destructive_git_guard_tool "$emit_block_jq_failure_bin" cat
-    link_destructive_git_guard_tool "$emit_block_jq_failure_bin" sed
-    printf '%s\n' \
-        '#!/bin/sh' \
-        'if [ "${1-}" = "-r" ]; then' \
-        '    printf "%s\\n" "git reset --hard"' \
-        '    exit 0' \
-        'fi' \
-        'exit 1' >"$emit_block_jq_failure_bin/jq"
-    chmod +x "$emit_block_jq_failure_bin/jq"
-    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$emit_block_jq_failure_bin" emit-block-jq-failure "$payload")"
-    [ "$status" -eq 2 ] || { echo "emit_block jq failure: expected exit 2, got $status" >&2; return 1; }
-    grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-emit-block-jq-failure.stderr" \
-        || { echo "emit_block jq failure: missing fail-closed diagnostic" >&2; return 1; }
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" duplicate-safe-input \
+        '{"tool_input":{"command":"git status"},"tool_input":{"command":"git status"}}')"
+    [ "$status" -eq 0 ] || { echo "duplicate safe input: expected exit 0, got $status" >&2; return 1; }
+
+    for destructive_case in \
+        'duplicate-input-destructive-last:{"tool_input":{"command":"git status"},"tool_input":{"command":"git restore -- target"}}' \
+        'duplicate-input-destructive-first:{"tool_input":{"command":"git restore -- target"},"toolInput":{"command":"git status"}}' \
+        'duplicate-command-destructive-last:{"tool_input":{"command":"git status","command":"git restore -- target"}}'; do
+        destructive_label="${destructive_case%%:*}"
+        destructive_payload="${destructive_case#*:}"
+        status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" "$destructive_label" "$destructive_payload")"
+        [ "$status" -eq 2 ] || { echo "$destructive_label: expected exit 2, got $status" >&2; return 1; }
+        grep -Eq '"continue"[[:space:]]*:[[:space:]]*false' "$tmp_dir/destructive-git-guard-$destructive_label.stdout" \
+            || { echo "$destructive_label: missing block result" >&2; return 1; }
+    done
+
+    cat >"$tmp_dir/harness-guard-plugin-test.mjs" <<'NODE'
+import { pathToFileURL } from "node:url"
+
+const { default: guard } = await import(
+    pathToFileURL(process.env.HARNESS_GUARD_PLUGIN).href
+)
+
+const hooks = await guard({ directory: process.env.HARNESS_GUARD_REPO })
+const before = hooks["tool.execute.before"]
+
+async function expect(command, blocked) {
+    let threw = false
+    try {
+        await before({ tool: "bash" }, { args: { command } })
+    } catch {
+        threw = true
+    }
+    if (threw !== blocked) {
+        throw new Error((blocked ? "expected block: " : "expected allow: ") + command)
+    }
+}
+
+for (const command of [
+    "git push origin main",
+    "/usr/bin/git push origin main",
+    "'git' push origin main",
+    "git -C . push",
+    "bash -c 'git push origin main'",
+    "rtk bash -c 'git push origin main'",
+    "printf x | xargs git push",
+    "echo ok; git push",
+]) {
+    await expect(command, true)
+}
+
+for (const command of [
+    "rm -rf target",
+    "/bin/rm -rf target",
+    "env rm -rf target",
+    "bash -c 'rm -rf target'",
+    "git status",
+    "command -v git restore",
+    "trap -p EXIT",
+    "xargs git status",
+    "FOO=bar",
+]) {
+    await expect(command, false)
+}
+NODE
+    HARNESS_GUARD_REPO="$repo_root" \
+        HARNESS_GUARD_PLUGIN="$repo_root/.opencode/plugin/harness-guard.js" \
+        node "$tmp_dir/harness-guard-plugin-test.mjs"
+
+    for allow_case in \
+        'wrapped-safe-command:{"tool_input":{"command":"bash -c '\''git status; true'\''"}}' \
+        'wrapped-safe-variable:{"tool_input":{"command":"bash -c '\''printf \"%s\\n\" \"$HOME\"; true'\''"}}' \
+        'shell-stdin-safe-bash:{"tool_input":{"command":"bash <<'\''EOF'\''\ngit status\nEOF"}}' \
+        'data-heredoc-cat:{"tool_input":{"command":"cat <<'\''EOF'\''\ngit restore -- target\nEOF"}}' \
+        'shell-c-heredoc-data:{"tool_input":{"command":"bash -c '\''cat >/dev/null'\'' <<'\''EOF'\''\ngit restore -- target\nEOF"}}' \
+        'shell-script-heredoc-data:{"tool_input":{"command":"bash script/example.sh <<'\''EOF'\''\ngit reset --hard HEAD\nEOF"}}' \
+        'safe-heredoc-apostrophe:{"tool_input":{"command":"cat <<'\''EOF'\''\nit'\''s safe\nEOF"}}' \
+        'safe-heredoc-double-quote:{"tool_input":{"command":"cat <<'\''EOF'\''\n\"unterminated body quote\nEOF"}}' \
+        'safe-variable:{"tool_input":{"command":"printf \"%s\\n\" \"$HOME\""}}' \
+        'safe-command-substitution:{"tool_input":{"command":"printf \"%s\\n\" \"$(pwd)\""}}' \
+        'safe-xargs-static:{"tool_input":{"command":"xargs git status"}}' \
+        'safe-runtime-xargs-static:{"tool_input":{"command":"printf \"%s\\n\" restore | xargs git status"}}' \
+        'safe-runtime-xargs-herestring:{"tool_input":{"command":"xargs git status <<< restore"}}' \
+        'safe-xargs-env-static:{"tool_input":{"command":"xargs env git status"}}' \
+        'safe-xargs-rtk-static:{"tool_input":{"command":"xargs rtk git status"}}' \
+        'safe-watch-static:{"tool_input":{"command":"watch git status"}}' \
+        'safe-env-static:{"tool_input":{"command":"env git status -S"}}' \
+        'safe-bash-plus-x:{"tool_input":{"command":"bash +x -c '\''git status'\''"}}' \
+        'safe-bash-official-options:{"tool_input":{"command":"bash -p -c '\''git status'\''"}}' \
+        'safe-checkout-create:{"tool_input":{"command":"git checkout -b feature main"}}' \
+        'safe-clean-clustered-dry-run:{"tool_input":{"command":"git clean -nfdx"}}' \
+        'safe-rm-cached-recursive:{"tool_input":{"command":"git rm --cached -r target"}}' \
+        'safe-cat-here-string:{"tool_input":{"command":"cat <<< '\''git restore -- target'\''"}}' \
+        'safe-rtk-version:{"tool_input":{"command":"rtk --version"}}' \
+        'safe-rtk-help:{"tool_input":{"command":"rtk --help"}}' \
+        'safe-rtk-verbose-version:{"tool_input":{"command":"rtk -v --version"}}' \
+        'safe-rtk-run-help:{"tool_input":{"command":"rtk run --help"}}' \
+        'safe-rtk-proxy-help:{"tool_input":{"command":"rtk proxy -h"}}' \
+        'safe-rtk-err-help:{"tool_input":{"command":"rtk err --help"}}' \
+        'safe-rtk-summary-help:{"tool_input":{"command":"rtk summary --help"}}' \
+        'safe-rtk-test-help:{"tool_input":{"command":"rtk test --help"}}' \
+        'safe-rtk-summary-command:{"tool_input":{"command":"rtk summary git status"}}' \
+        'safe-rtk-test-command:{"tool_input":{"command":"rtk test git status"}}' \
+        'safe-grouping:{"tool_input":{"command":"(git status)"}}' \
+        'safe-conditional:{"tool_input":{"command":"if true; then git status; fi"}}' \
+        'safe-shell-script:{"tool_input":{"command":"bash script/example.sh"}}' \
+        'safe-command-option:{"tool_input":{"command":"command -v git"}}' \
+        'safe-command-option-args:{"tool_input":{"command":"command -v git restore"}}' \
+        'safe-command-query:{"tool_input":{"command":"command -V git restore"}}' \
+        'safe-command-clustered-query:{"tool_input":{"command":"command -pv git restore"}}' \
+        'safe-command-clustered-query-upper:{"tool_input":{"command":"command -pV git restore"}}' \
+        'safe-env-cluster:{"tool_input":{"command":"env -iu FOO git status"}}' \
+        'safe-xargs-cluster:{"tool_input":{"command":"xargs -rn 1 git status <<< value"}}' \
+        'safe-time-format:{"tool_input":{"command":"/usr/bin/time -f marker git status"}}' \
+        'safe-clean-option-boundary:{"tool_input":{"command":"git clean -n -- --no-dry-run"}}' \
+        'safe-rm-option-boundary:{"tool_input":{"command":"git rm -n -- --no-dry-run"}}' \
+        'safe-reset-path:{"tool_input":{"command":"git reset -- target"}}' \
+        'safe-reset-patch:{"tool_input":{"command":"git reset -p"}}' \
+        'safe-reset-intent-to-add:{"tool_input":{"command":"git reset -N target"}}' \
+        'safe-trap-query:{"tool_input":{"command":"trap -p EXIT"}}' \
+        'safe-trap-clear:{"tool_input":{"command":"trap - EXIT"}}' \
+        'safe-git-config:{"tool_input":{"command":"git -c core.quotePath=false status"}}' \
+        'safe-assignment-only:{"tool_input":{"command":"FOO=bar"}}' \
+        'safe-multiple-assignments:{"tool_input":{"command":"FOO=bar BAZ=qux"}}' \
+        'safe-substitution-assignment:{"tool_input":{"command":"FOO=$(pwd)"}}' \
+        'quoted-assignment-command-name:{"tool_input":{"command":"'\''FOO=bar'\''"}}' \
+        'leading-redirection-quoted-command:{"tool_input":{"command":">/dev/null '\''FOO=bar'\'' git restore -- target"}}' \
+        'quoted-literal-restore:{"tool_input":{"command":"echo '\''git restore -- target'\''"}}' \
+        'comment-apostrophe:{"tool_input":{"command":"echo ok # don'\''t"}}' \
+        'quoted-literal-operator:{"tool_input":{"command":"echo '\''a && b'\''"}}' \
+        'safe-double-quoted-backslash:{"tool_input":{"command":"printf \"%s\\n\" \"foo\\q\""}}' \
+        'safe-parameter-literal:{"tool_input":{"command":"printf \"%s\\n\" \"${value:-&git restore}\""}}'; do
+        allow_label="${allow_case%%:*}"
+        allow_payload="${allow_case#*:}"
+        status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" "$allow_label" "$allow_payload")"
+        [ "$status" -eq 0 ] || { echo "$allow_label: expected exit 0, got $status" >&2; return 1; }
+    done
+
+    local safe_ansi_command
+    local safe_ansi_payload
+    safe_ansi_command="printf '%s\\n' \$'don\\'t'"
+    safe_ansi_payload="$(jq -cn --arg command "$safe_ansi_command" '{tool_input:{command:$command}}')"
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" safe-ansi-apostrophe "$safe_ansi_payload")"
+    [ "$status" -eq 0 ] || { echo "safe-ansi-apostrophe: expected exit 0, got $status" >&2; return 1; }
+
+    for malformed_case in \
+        'unclosed-squote:{"tool_input":{"command":"bash -c '\''git restore -- target"}}' \
+        'unclosed-dquote:{"tool_input":{"command":"bash -c \"git restore -- target"}}' \
+        'trailing-backslash:{"tool_input":{"command":"git restore -- target \\"}}' \
+        'unbalanced-inner:{"tool_input":{"command":"bash -c \"echo '\''hi\""}}'; do
+        malformed_label="${malformed_case%%:*}"
+        malformed_payload="${malformed_case#*:}"
+        status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" "$malformed_label" "$malformed_payload")"
+        [ "$status" -eq 2 ] || { echo "$malformed_label: expected exit 2, got $status" >&2; return 1; }
+        grep -Fq '[harness] destructive-git guard failed closed' "$tmp_dir/destructive-git-guard-$malformed_label.stderr" \
+            || { echo "$malformed_label: missing fail-closed diagnostic" >&2; return 1; }
+    done
+
+    printf -v large_argument '%*s' 10240 ''
+    large_argument="${large_argument// /x}"
+    large_command="printf '%s\\n' '$large_argument'"
+    large_payload="$(jq -cn --arg command "$large_command" '{tool_input:{command:$command}}')"
+
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" large-warm "$large_payload")"
+    [ "$status" -eq 0 ] || { echo "10KB warmup: expected exit 0, got $status" >&2; return 1; }
+    started_ns="$(date +%s%N)"
+    status="$(run_destructive_git_guard "$guard" "$bash_bin" "$ordinary_bin" large-timed "$large_payload")"
+    finished_ns="$(date +%s%N)"
+    [ "$status" -eq 0 ] || { echo "10KB command: expected exit 0, got $status" >&2; return 1; }
+    elapsed_ms=$(((finished_ns - started_ns) / 1000000))
+    [ "$elapsed_ms" -le 500 ] \
+        || { echo "10KB command: expected <=500ms, got ${elapsed_ms}ms" >&2; return 1; }
 }
 
 if [ "${ORCHESTRATION_TEST_FOCUS-}" = "destructive-git-guard" ]; then

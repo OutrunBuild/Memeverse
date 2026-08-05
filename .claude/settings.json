@@ -64,7 +64,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ./script/harness/block-destructive-git.sh"
+            "command": "bash ./script/harness/block-destructive-git.sh",
+            "timeout": 120
           }
         ]
       }

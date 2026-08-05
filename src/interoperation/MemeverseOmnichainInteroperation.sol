@@ -49,8 +49,9 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     }
 
     /// @notice Quotes the native fee for staking a memecoin on the governance chain.
-    /// @dev Returns zero for same-chain governance routes and otherwise quotes the exact LayerZero fee for the
-    /// omnichain staking path.
+    /// @dev Uses `verse.omnichainIds[0]` as the governance chain. Same-chain routes return a zero fee; the actual
+    ///      same-chain staking call still requires a deployed yield vault. Remote routes quote the exact LayerZero
+    ///      fee for the staking parameters built below.
     /// @param memecoin memecoin address.
     /// @param receiver receiver address.
     /// @param amount token amount.
@@ -74,8 +75,10 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     }
 
     /// @notice Stakes memecoin either locally or through the omnichain staker.
-    /// @dev Pulls the memecoin from the caller and either deposits it directly into the local yield vault or forwards
-    /// it through OFT to the governance chain. Remote paths require the exact quoted native fee.
+    /// @dev Uses `verse.omnichainIds[0]` as the governance chain. On the same chain, it requires zero native fee and
+    ///      reverts with `EmptyYieldVault` when the vault is missing before depositing locally. On a remote chain, it
+    ///      quotes and sends with the same parameters, requiring the exact native fee. A successful source send still
+    ///      leaves destination `lzReceive`/`lzCompose` failures for LayerZero to retry.
     /// @param memecoin memecoin address.
     /// @param receiver receiver address.
     /// @param amount token amount.
@@ -121,7 +124,8 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         emit SetGasLimits(_oftReceiveGasLimit, _omnichainStakingGasLimit);
     }
 
-    /// @dev Builds the LayerZero send parameters shared by quote and remote staking paths.
+    /// @dev Maps the selected governance chain to its LayerZero endpoint and encodes the receiver and vault for the
+    ///      destination staker. Quote and send use these exact parameters.
     /// @param govChainId Governance chain ID.
     /// @param receiver Final staking beneficiary.
     /// @param yieldVault Yield vault on the governance chain.

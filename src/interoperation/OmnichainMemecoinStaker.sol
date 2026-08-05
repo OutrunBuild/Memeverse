@@ -21,7 +21,10 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
     }
 
     /// @notice Finalizes a remote memecoin staking compose message.
-    /// @dev Called by the local OFT endpoint after bridged memecoin arrives on the governance chain.
+    /// @dev Only the local OFT endpoint may call this after bridged memecoin arrives on the governance chain. If the
+    ///      destination vault exists, the tokens are deposited there for the receiver; otherwise they are transferred
+    ///      directly to the receiver as a fallback. The compose guid is marked executed only after local settlement
+    ///      succeeds, so a settlement revert leaves the message available for endpoint retry.
     /// @param memecoin Bridged memecoin address.
     /// @param guid Compose guid used for replay protection.
     /// @param message Encoded compose payload containing the receiver and yield-vault target.

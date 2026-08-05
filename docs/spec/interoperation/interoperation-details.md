@@ -8,7 +8,7 @@
 
 - `YieldDispatcher`
   - 处理治理收益路由
-  - 接收 OFT `compose`（组合回调：OFT 在目标链完成 `lzReceive` 后，由 LayerZero 另行调用 `lzCompose` 处理附带 payload）或 launcher 本地 fast path
+  - 接收 OFT（Omnichain Fungible Token，跨链同质化代币）`compose`（组合回调：OFT 在目标链完成 `lzReceive` 后，由 LayerZero endpoint 另行调用 `lzCompose` 处理附带 payload）或 launcher 通过 `distributeSameChain` 进入本地 fast path
 - `MemeverseOmnichainInteroperation`
   - 用户侧 memecoin staking 入口
   - 根据治理链位置决定本链或异链路径
@@ -33,11 +33,11 @@
 
 - launcher 先构造 OFT send 参数
 - token 通过 OFT 发送到治理链
-- 治理链先在 `lzReceive` 阶段接收 OFT，再由 `YieldDispatcher` 的 `lzCompose` compose 回调完成最终路由
+- 治理链先在 `lzReceive` 阶段接收 OFT，再由 LayerZero endpoint 调用 `YieldDispatcher` 的 `lzCompose` compose 回调完成最终路由
 
 ### 3.3 两类 token 的终点
 
-跨链 payload 中的 `amount` 使用 `asset-denominated`（资产计价）口径：数值表示该 token 自身的 OFT `amountLD`/underlying 数量，不转换成法币、另一种 token 或 share 数量。跨链传输和终点记账必须保持同一资产单位。
+跨链 payload 中的 `amount` 使用 `asset-denominated`（资产计价）口径：数值表示该 token 自身的 OFT `amountLD`/underlying 数量，不转换成法币、另一种 token 或 share 数量。`amountLD` 是该 token 在该链本地 decimals 表示下的 raw amount（原始 token 数量），不是 share 数量，也不是跨 token unit。跨链传输和终点记账必须保持同一资产单位。
 
 - `TokenType.MEMECOIN`
   - receiver 为合约时 -> `YieldVault.accumulateYields`
@@ -87,6 +87,7 @@
 | 异链 destination | 源链 send 已成功，但 destination `lzReceive` 失败 | 不回滚源链状态；LayerZero 重新尝试目标消息。 |
 | 异链 destination compose | `lzReceive` 已成功，但 `lzCompose` 失败 | 不回滚源链状态；compose 通过 LayerZero 重试，未执行的 yield compose 也可转入 `reAccumulateYields` 恢复路径。 |
 | 异链 staking compose | vault 有 code | `lzCompose` 完成 deposit；成功后才标记该 guid 已执行。 |
+| 异链 staking compose | vault 有 code 但 `amount` 映射 0 份额 | `deposit` revert `ZeroSharesDeposit()`；compose 不标记、资产留在目标链 OFT 缓冲区，UBO（=receiver）可经 `withdrawIfNotExecuted` 取回。 |
 | 异链 staking compose | vault 无 code | 走 fallback，直接转给 receiver；转账成功后才标记该 guid 已执行。 |
 
 ## 5. 为什么要求 exact fee

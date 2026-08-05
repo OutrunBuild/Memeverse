@@ -349,7 +349,7 @@ genesis + leveragedGenesis
 
 ```text
 POLend.preRedeemPTFee(..., mintTo=yieldDispatcher)
-Launcher 同笔调用 YieldDispatcher.lzCompose(uAsset, bytes32(0), abi.encode(governor, TokenType.UASSET, amount), address(0), "")
+Launcher 同笔调用 YieldDispatcher.distributeSameChain(...)
 ```
 
 异链路径：
@@ -357,6 +357,7 @@ Launcher 同笔调用 YieldDispatcher.lzCompose(uAsset, bytes32(0), abi.encode(g
 ```text
 POLend.preRedeemPTFee(..., mintTo=Launcher)
 Launcher 同笔 IOFT.send 到远端 YieldDispatcher
+LayerZero endpoint 在远端调用 YieldDispatcher.lzCompose
 compose receiver = governor
 ```
 
@@ -401,12 +402,13 @@ Splitter.redeemPT(verseId, ptAmount, receiver)
 本链：
 
 - `receiver = YieldDispatcher`
-- Launcher 同笔调用 `YieldDispatcher.lzCompose(... governor ...)`
+- Launcher 同笔调用 `YieldDispatcher.distributeSameChain(... governor ...)`
 
 异链：
 
 - `receiver = Launcher`
 - Launcher 同笔 `IOFT.send` 到远端 `YieldDispatcher`
+- LayerZero endpoint 在远端调用 `YieldDispatcher.lzCompose`
 - compose receiver 是 `governor`
 
 settle 后这条路径：
@@ -578,13 +580,7 @@ Memeverse DAO governor fee 无论本链还是异链，都统一经过 `YieldDisp
 
 ```text
 Launcher / POLend 使 uAsset 到达 YieldDispatcher
-Launcher 调 YieldDispatcher.lzCompose(
-    uAsset,
-    bytes32(0),
-    abi.encode(governor, TokenType.UASSET, amount),
-    address(0),
-    ""
-)
+Launcher 调 YieldDispatcher.distributeSameChain(...)
 YieldDispatcher 调 Governor.receiveTreasuryIncome
 ```
 
@@ -596,7 +592,8 @@ Launcher 构造 OFT SendParam
 SendParam.to = remote YieldDispatcher
 SendParam.composeMsg = abi.encode(governor, TokenType.UASSET)
 Launcher 调 IOFT.send
-远端 YieldDispatcher compose 后调 Governor.receiveTreasuryIncome
+LayerZero endpoint 在远端调用 YieldDispatcher.lzCompose
+YieldDispatcher 调 Governor.receiveTreasuryIncome
 ```
 
 最终业务接收者是 DAO governor。

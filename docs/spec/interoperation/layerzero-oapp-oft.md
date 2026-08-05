@@ -48,7 +48,7 @@
   - 目的端 `_lzReceive` → `_credit(0, ...)`，`OutrunOFTInit.sol:102,112` 把 `_to == address(0x0)` 重映射到 `0xdead` 并 mint 该数量；
   - 进入 compose 分支后，攻击者调用 `withdrawIfNotExecuted`（`OutrunOFTInit.sol:57`）→ `_update(composer, receiver, amount)`（`:66`）二次 mint。
   - 净效果：源端 burn 1X，目的端 mint 2X，绕过 token 层 launcher-only mint 约束，造成跨链通胀。
-- 根因修复在 common 层（见 [2026-08-03-oft-compose-refund-redesign-design.md](2026-08-03-oft-compose-refund-redesign-design.md)）；token 层可独立做防御性 override。
+- 根因修复在 common 层；token 层可独立做防御性 override。
 
 `[代码已证]`
 
@@ -68,8 +68,8 @@
 ### 3.3 收益分发与 staking 边界
 
 - Launcher fee 分发：
- - 本链治理：调用 `YieldDispatcher.lzCompose(...)` 本地直达
- - 异链治理：调用 `IOFT.send(...)` 远程发送
+ - 本链治理：调用 `YieldDispatcher.distributeSameChain(...)` 本地直达
+ - 异链治理：调用 `IOFT.send(...)` 远程发送，目标链由 LayerZero endpoint 调用 `YieldDispatcher.lzCompose(...)`
 - Memecoin staking：
  - 本链治理：直接 deposit 到 yieldVault
  - 异链治理：OFT 发送到 `OmnichainMemecoinStaker`，compose 后 deposit/transfer
@@ -79,7 +79,7 @@
 ## 4. 安全与执行约束
 
 - compose 回调授权：
- - 见 [docs/spec/access-control.md §3](../access-control.md)（`YieldDispatcher.lzCompose` 仅 `localEndpoint` 或 `memeverseLauncher`；`OmnichainMemecoinStaker.lzCompose` 仅 `localEndpoint`）
+ - 见 [docs/spec/access-control.md §3](../access-control.md)（`YieldDispatcher.distributeSameChain` 仅 `memeverseLauncher`；远端 `YieldDispatcher.lzCompose` 由 LayerZero endpoint 调用且仅 `localEndpoint`；`OmnichainMemecoinStaker.lzCompose` 仅 `localEndpoint`）
 - replay 防护：
  - endpoint 路径检查 `getComposeTxExecutedStatus(guid)`，并 `notifyComposeExecuted(guid)`
 - 费用约束：

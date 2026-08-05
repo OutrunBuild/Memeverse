@@ -61,8 +61,8 @@
 - 先从 `memecoin/uAsset` 主池与三个辅助池捕获 fee；目标分流规则见 [docs/spec/polend/README.md](spec/polend/README.md)
 - 主池 `memecoin/uAsset` fee：`memecoin` fee 进入 yield 路径；`uAsset` fee 拆成 `executorReward + govFee`
 - 辅助池 `POL/uAsset`、`PT/uAsset`、`PT/POL` fee：POL fee burn；普通侧 `uAsset/PT` fee 进入普通 fee 领取账本；杠杆侧 `uAsset` fee 进入 governor treasury 路径；杠杆侧 `PT` fee 在 settle 前 `preRedeemPTFee` 预兑付，settle 后 `redeemPT` 后分发；settle 前捕获但未主动分发的杠杆侧 PT fee 作为 pending，后续 settled 后再 `redeemPT` 分发
-- 本链治理：经 `yieldDispatcher.lzCompose` 分发到 governor / yieldVault
-- 异链治理：走 OFT `send`，`msg.value` 必须精确等于总报价
+- 本链治理：经 `yieldDispatcher.distributeSameChain` 分发到 governor / yieldVault
+- 异链治理：走 OFT `send`，目标链由 LayerZero endpoint 调用 `yieldDispatcher.lzCompose`，`msg.value` 必须精确等于总报价
 
 失败要点：未到 `Locked`、`rewardReceiver=0`、跨链费用不精确、外部依赖回退。`[代码已证]`
 

@@ -184,16 +184,22 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         return memecoinDaoGovernorStorage._governanceStartTime;
     }
 
+    /// @notice Returns the maximum treasury spend ratio allowed for one execution.
+    /// @dev The ratio is expressed in basis points, using 10000 as the denominator for 100%.
     function maxTreasurySpendRatio() external view override returns (uint256) {
         return memecoinDaoGovernorStorage._maxTreasurySpendRatio;
     }
 
+    /// @notice Returns the vote ratio required for proposals that include a Governor self-call.
+    /// @dev The ratio is expressed in basis points with denominator 10000. It applies when any proposal target is
+    ///      this Governor and compares `forVotes / (forVotes + againstVotes + abstainVotes)`.
     function upgradeSupermajorityRatio() external view returns (uint256) {
         return memecoinDaoGovernorStorage._upgradeSupermajorityRatio;
     }
 
     /// @notice Creates a new governance proposal for the caller.
-    /// @dev Prevents a proposer from opening a new proposal while a previous one is still unresolved.
+    /// @dev `userUnfinalizedProposalId` stores the latest proposal id for each proposer. A normal proposal is
+    ///      blocked while that stored proposal is not `Defeated` or `Succeeded`.
     /// @param targets The call targets for the proposal actions.
     /// @param values The ETH values for the proposal actions.
     /// @param calldatas The calldata payloads for the proposal actions.
@@ -221,8 +227,9 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         return proposalId;
     }
 
-    /// @notice Runs a successful proposal and clears the proposer's outstanding-proposal marker.
-    /// @dev Delegates the actual call execution to OpenZeppelin governor core, then updates local proposer bookkeeping.
+    /// @notice Runs a successful proposal and clears its proposer's outstanding-proposal marker.
+    /// @dev Delegates execution to OpenZeppelin governor core, then compare-and-clears the marker so finalizing an
+    ///      older proposal cannot clear a newer marker.
     /// @param targets The proposal action targets.
     /// @param values The ETH values for the proposal actions.
     /// @param calldatas The calldata payloads for the proposal actions.
@@ -236,11 +243,13 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     ) public payable override returns (uint256) {
         uint256 proposalId = super.execute(targets, values, calldatas, descriptionHash);
 
-        memecoinDaoGovernorStorage.userUnfinalizedProposalId[proposalProposer(proposalId)] = 0;
+        _clearUnfinalizedProposalMarker(proposalId);
 
         return proposalId;
     }
 
+    /// @dev Cancels a proposal through OpenZeppelin governor core, then compare-and-clears its proposer's marker so a
+    ///      stale or out-of-order finalization cannot clear a newer marker.
     function _cancel(
         address[] memory targets,
         uint256[] memory values,
@@ -249,7 +258,7 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     ) internal override returns (uint256) {
         uint256 proposalId = super._cancel(targets, values, calldatas, descriptionHash);
 
-        memecoinDaoGovernorStorage.userUnfinalizedProposalId[proposalProposer(proposalId)] = 0;
+        _clearUnfinalizedProposalMarker(proposalId);
 
         return proposalId;
     }
@@ -270,7 +279,8 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     /**
      * @notice Confirms a treasury token registration during a standalone execution.
      * @dev The paired incentivizer calls this after it has registered the token. No registration state is stored here;
-     * the execution shape is the security boundary.
+     * the non-nested execution context and one-operation count are the checks that allow confirmation only for a
+     * standalone registration operation.
      */
     function recordTreasuryTokenRegistration(address) external override {
         if (msg.sender != address(memecoinDaoGovernorStorage._governanceCycleIncentivizer)) {
@@ -310,6 +320,10 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         IERC20(_token).safeTransfer(_to, _amount);
     }
 
+    /// @dev Rejects nested execution and records the operation count so registration confirmation can be limited to
+    ///      a one-operation execution. The registered token list and this Governor's balances are snapshotted before
+    ///      operations run. Afterward, only tokens with `pre > 0` and `post < pre` are checked: `spent = pre - post`
+    ///      and `limit = pre * maxTreasurySpendRatio / 10000`.
     function _executeOperations(
         uint256 proposalId,
         address[] memory targets,
@@ -390,4 +404,12 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
      * @dev Allowing upgrades to the implementation contract only through governance proposals.
      */
     function _authorizeUpgrade(address newImplementation) internal override onlyGovernance {}
+
+    /// @dev Clear the marker only while it still identifies this proposal; newer proposals remain protected.
+    function _clearUnfinalizedProposalMarker(uint256 proposalId) private {
+        address proposer = proposalProposer(proposalId);
+        if (memecoinDaoGovernorStorage.userUnfinalizedProposalId[proposer] == proposalId) {
+            memecoinDaoGovernorStorage.userUnfinalizedProposalId[proposer] = 0;
+        }
+    }
 }

@@ -123,6 +123,56 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         assertTrue(secondProposalId != firstProposalId, "new proposal id differs");
     }
 
+    /// @notice Executing an older succeeded proposal preserves a newer outstanding-proposal marker.
+    function testExecutePreservesNewerUnfinalizedProposalMarker() external {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _proposalPayload();
+
+        vm.prank(ALICE);
+        uint256 firstProposalId = governor.propose(targets, values, calldatas, "proposal-1");
+        vm.roll(block.number + 1);
+        vm.prank(ALICE);
+        governor.castVote(firstProposalId, 1);
+        vm.roll(block.number + governor.votingPeriod() + 1);
+        assertEq(uint8(governor.state(firstProposalId)), uint8(IGovernor.ProposalState.Succeeded));
+
+        vm.prank(ALICE);
+        uint256 secondProposalId = governor.propose(targets, values, calldatas, "proposal-2");
+        assertEq(uint8(governor.state(secondProposalId)), uint8(IGovernor.ProposalState.Pending));
+
+        governor.execute(targets, values, calldatas, keccak256("proposal-1"));
+
+        vm.prank(ALICE);
+        vm.expectRevert(IMemecoinDaoGovernor.UserHasUnfinalizedProposal.selector);
+        governor.propose(targets, values, calldatas, "proposal-3");
+    }
+
+    /// @notice A succeeded proposal cannot be cancelled through the public entrypoint; the revert leaves the
+    ///         proposer's outstanding marker untouched. The `_cancel` compare-and-clear path is not reached here
+    ///         (`_validateCancel` reverts first); Pending-cancel cleanup and execute-path marker preservation are
+    ///         covered by MemecoinDaoGovernorCancel.t.sol and testExecutePreservesNewerUnfinalizedProposalMarker.
+    function testCancelSucceededProposalRevertsAndPreservesOutstandingMarker() external {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _proposalPayload();
+
+        vm.prank(ALICE);
+        uint256 firstProposalId = governor.propose(targets, values, calldatas, "proposal-1");
+        vm.roll(block.number + 1);
+        vm.prank(ALICE);
+        governor.castVote(firstProposalId, 1);
+        vm.roll(block.number + governor.votingPeriod() + 1);
+        assertEq(uint8(governor.state(firstProposalId)), uint8(IGovernor.ProposalState.Succeeded));
+
+        vm.prank(ALICE);
+        governor.propose(targets, values, calldatas, "proposal-2");
+
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, firstProposalId, ALICE));
+        governor.cancel(targets, values, calldatas, keccak256("proposal-1"));
+
+        vm.prank(ALICE);
+        vm.expectRevert(IMemecoinDaoGovernor.UserHasUnfinalizedProposal.selector);
+        governor.propose(targets, values, calldatas, "proposal-3");
+    }
+
     /// @notice Test cast vote accumulates cycle votes on incentivizer.
     function testCastVoteAccumulatesCycleVotesOnIncentivizer() external {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _proposalPayload();

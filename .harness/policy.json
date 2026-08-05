@@ -294,10 +294,12 @@
         {
           "change_tests": [
             "test/governance/GovernanceCycleIncentivizerUpgradeable.t.sol",
+            "test/governance/GovernanceIncentivizerPairIntegration.t.sol",
             "test/governance/MemecoinDaoGovernorUpgradeable.t.sol"
           ],
           "evidence_tests": [
             "test/governance/GovernanceCycleIncentivizerUpgradeable.t.sol",
+            "test/governance/GovernanceIncentivizerPairIntegration.t.sol",
             "test/governance/MemecoinDaoGovernorUpgradeable.t.sol"
           ],
           "id": "governance-core",

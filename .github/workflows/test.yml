@@ -20,6 +20,19 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.94.1
+        with:
+          components: rustfmt, clippy
+
+      - name: Check destructive-git guard
+        env:
+          CARGO_TARGET_DIR: .harness/.runs/destructive-git-guard
+        run: |
+          cargo fmt --manifest-path script/harness/destructive-git-guard/Cargo.toml --all -- --check
+          cargo clippy --manifest-path script/harness/destructive-git-guard/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path script/harness/destructive-git-guard/Cargo.toml --locked
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 

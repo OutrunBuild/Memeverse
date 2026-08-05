@@ -131,24 +131,44 @@ contract MemecoinYieldVaultTest is Test {
         assertLt(attackerRedeemed, 50 ether, "attacker capture must be damped by V across multiple victims");
     }
 
-    /// @notice Verifies the nominated redeem receiver can execute the delayed withdrawal.
-    /// @dev Confirms queue ownership tracks `receiver` rather than the original share holder.
-    function testReceiverCanExecuteRedeemAfterDelay() external {
+    /// @notice A third-party caller cannot queue a redemption into someone else's queue.
+    /// @dev Guards the self-redemption-only rule: the queue of the nominated receiver must stay untouched.
+    function testRequestRedeemRevertsForThirdPartyReceiver() external {
         vm.prank(ATTACKER);
         uint256 shares = vault.deposit(10 ether, ATTACKER);
 
         vm.prank(ATTACKER);
-        uint256 assetsOut = vault.requestRedeem(shares / 2, RECEIVER);
+        vm.expectRevert(IMemecoinYieldVault.NotSelfRedemption.selector);
+        vault.requestRedeem(shares / 2, RECEIVER);
 
-        vm.warp(block.timestamp + 1 days);
+        vm.expectRevert();
+        vault.redeemRequestQueues(RECEIVER, 0);
+    }
 
-        uint256 receiverBalanceBefore = asset.balanceOf(RECEIVER);
+    /// @notice The griefing queue-fill attack (5 wei deposit, 5 requests into the victim's queue) is blocked.
+    /// @dev Reproduces the reported DoS: each request into VICTIM's queue must revert, the victim's queue
+    ///      must stay empty, and the victim must still be able to queue their own request.
+    function testGriefingQueueFillAttackIsBlocked() external {
+        vm.prank(ATTACKER);
+        vault.deposit(5, ATTACKER);
 
-        vm.prank(RECEIVER);
-        uint256 redeemedAmount = vault.executeRedeem();
+        for (uint256 i = 0; i < vault.MAX_REDEEM_REQUESTS(); i++) {
+            vm.prank(ATTACKER);
+            vm.expectRevert(IMemecoinYieldVault.NotSelfRedemption.selector);
+            vault.requestRedeem(1, VICTIM);
+        }
 
-        assertEq(redeemedAmount, assetsOut, "redeemed amount");
-        assertEq(asset.balanceOf(RECEIVER) - receiverBalanceBefore, assetsOut, "receiver assets");
+        vm.expectRevert();
+        vault.redeemRequestQueues(VICTIM, 0);
+
+        // The victim can still queue their own redemption without hitting the request cap.
+        vm.prank(VICTIM);
+        uint256 victimShares = vault.deposit(10 ether, VICTIM);
+        vm.prank(VICTIM);
+        vault.requestRedeem(victimShares / 2, VICTIM);
+
+        (uint192 queuedAmount,) = vault.redeemRequestQueues(VICTIM, 0);
+        assertGt(uint256(queuedAmount), 0, "victim's own request stays queued");
     }
 
     /// @notice Verifies previewed shares match actual shares after yield accumulation.
@@ -228,14 +248,15 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(vault.CLOCK_MODE(), "mode=timestamp", "clock mode");
     }
 
-    /// @notice Verifies redeem requests reject zero receivers and zero-asset burns.
-    /// @dev Covers both guard branches in `requestRedeem`.
-    function testRequestRedeemRevertsOnZeroAddressAndZeroRedeemRequest() external {
+    /// @notice Verifies redeem requests reject third-party receivers and zero-asset burns.
+    /// @dev Both revert branches are guarded: a third-party or zero receiver reverts NotSelfRedemption,
+    ///      and a zero share burn reverts ZeroRedeemRequest.
+    function testRequestRedeemRevertsOnThirdPartyReceiverAndZeroRedeemRequest() external {
         vm.prank(ATTACKER);
         vault.deposit(10 ether, ATTACKER);
 
         vm.prank(ATTACKER);
-        vm.expectRevert(IMemecoinYieldVault.ZeroAddress.selector);
+        vm.expectRevert(IMemecoinYieldVault.NotSelfRedemption.selector);
         vault.requestRedeem(1 ether, address(0));
 
         vm.prank(ATTACKER);
@@ -860,6 +881,66 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(vault.getTotalAssetsCheckpointLen(), baselineLen, "no new checkpoint");
     }
 
+    /// @notice A non-zero deposit that rounds down to 0 shares reverts instead of absorbing the caller's assets.
+    /// @dev At rate > 1 (A=15e18, S=10e18, V=100 ether), 1 wei of assets maps to 0 shares; the deposit must
+    ///      revert with ZeroSharesDeposit before any transfer, leaving totalAssets and the caller's balance
+    ///      untouched so the caller can top up and retry.
+    function test_DepositRevertsWhenSharesRoundToZero() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+
+        vm.prank(ATTACKER);
+        vault.accumulateYields(5 ether);
+        assertEq(vault.totalAssets(), 15 ether, "fixture: rate > 1");
+
+        uint256 victimBalanceBefore = asset.balanceOf(VICTIM);
+
+        vm.prank(VICTIM);
+        vm.expectRevert(IMemecoinYieldVault.ZeroSharesDeposit.selector);
+        vault.deposit(1, VICTIM);
+
+        assertEq(vault.totalAssets(), 15 ether, "totalAssets unchanged after revert");
+        assertEq(asset.balanceOf(VICTIM), victimBalanceBefore, "caller assets not pulled after revert");
+    }
+
+    /// @notice The zero-share guard also fires in the residual state (S=0, A>0).
+    /// @dev After all shares are burned via requestRedeem, managed assets remain; a sub-threshold deposit
+    ///      still maps to 0 shares and must revert rather than leaving unowned dust in the vault.
+    function test_DepositRevertsWhenSharesRoundToZeroInResidualState() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+
+        vm.prank(ATTACKER);
+        vault.accumulateYields(5 ether);
+
+        // Burn every share; requestRedeem requires receiver == msg.sender (NotSelfRedemption).
+        uint256 attackerShares = vault.balanceOf(ATTACKER);
+        vm.prank(ATTACKER);
+        vault.requestRedeem(attackerShares, ATTACKER);
+        assertEq(vault.totalSupply(), 0, "fixture: no shares outstanding");
+        assertGt(vault.totalAssets(), 0, "fixture: residual assets remain");
+
+        vm.prank(VICTIM);
+        vm.expectRevert(IMemecoinYieldVault.ZeroSharesDeposit.selector);
+        vault.deposit(1, VICTIM);
+    }
+
+    /// @notice The zero-share guard only rejects deposits that round down to 0 shares.
+    /// @dev In the same rate > 1 fixture, depositing 2 wei maps to 1 share and must not revert,
+    ///      proving the guard does not over-block deposits with a sub-1-share but non-zero value.
+    function test_DepositBelowThresholdButNonZeroSharesDoesNotRevert() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+
+        vm.prank(ATTACKER);
+        vault.accumulateYields(5 ether);
+
+        vm.prank(VICTIM);
+        uint256 shares = vault.deposit(2, VICTIM);
+
+        assertEq(shares, 1, "2 wei maps to 1 share at the fixture rate");
+    }
+
     /// @notice Verifies accumulateYields(0) leaves totalAssets and checkpoints unchanged.
     /// @dev Guards the zero-yield early return in `_accumulateYield`.
     function testAccumulateZeroYieldReturnsEarlyWithoutSideEffects() external {
@@ -1036,7 +1117,8 @@ contract MemecoinYieldVaultTest is Test {
         assertGt(lockedAssets, 10 ether, "attacker redeems principal + yield share");
     }
 
-    /// @notice Empty-vault yield is still burned; the virtual buffer never participates before the first share.
+    /// @notice Empty-vault yield is still burned; while the vault is entirely empty (totalSupply == totalAssets == 0)
+    ///         the +V buffer cancels out of the share/asset conversion, so burn-on-empty is rate-neutral.
     /// @dev Guards the orthogonality between burn-on-empty (§5) and the V buffer (§4). Uses a compose-style
     ///      asset mock because the burn path calls `IMemecoin.burn(uint256)` (single-arg, from msg.sender =
     ///      the vault), which solmate's `MockERC20.burn(address,uint256)` does not satisfy.

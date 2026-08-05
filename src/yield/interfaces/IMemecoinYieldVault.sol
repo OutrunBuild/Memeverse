@@ -20,7 +20,9 @@ interface IMemecoinYieldVault is IERC20 {
     function totalAssets() external view returns (uint256 totalManagedAssets);
 
     /// @notice Preview how many vault shares a deposit would mint at the current rate.
-    /// @dev Uses the vault's current share pricing without mutating state.
+    /// @dev Uses the vault's current share pricing without mutating state. Does not revert on amounts
+    ///      that would round down to zero shares: previewDeposit returns 0 while deposit reverts
+    ///      ZeroSharesDeposit for the same amount.
     /// @param assets Amount of underlying asset to deposit.
     /// @return shares Shares that would be minted.
     function previewDeposit(uint256 assets) external view returns (uint256 shares);
@@ -61,7 +63,8 @@ interface IMemecoinYieldVault is IERC20 {
     function reAccumulateYields(bytes32 lzGuid) external;
 
     /// @notice Deposits underlying asset and mints vault shares.
-    /// @dev Implementations may add validation around who may receive shares.
+    /// @dev Implementations may add validation around who may receive shares. A non-zero deposit that
+    ///      rounds down to zero shares reverts ZeroSharesDeposit; a zero-asset deposit returns 0.
     /// @param assets Amount of underlying asset to deposit.
     /// @param receiver Recipient of the minted vault shares.
     /// @return shares Shares minted for the deposit.
@@ -89,13 +92,15 @@ interface IMemecoinYieldVault is IERC20 {
 
     event RedeemExecuted(address indexed receiver, uint256 amount);
 
-    error ZeroAddress();
-
     error ZeroVirtualAssets();
 
     error ZeroRedeemRequest();
 
+    error ZeroSharesDeposit();
+
     error MaxRedeemRequestsReached();
 
     error RedeemAmountOverflowed(uint256 assets);
+
+    error NotSelfRedemption();
 }

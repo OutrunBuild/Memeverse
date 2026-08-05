@@ -58,8 +58,8 @@ share 与 underlying 的转换使用一个**虚拟缓冲 V**：在虚拟资产�
 - 转换公式（覆盖 deposit / redeem / preview / votes 转换）
   - `shares = assets × (totalSupply + V) / (totalAssets + V)`
   - `assets = shares × (totalAssets + V) / (totalSupply + V)`
-- 初始（空金库）`price = (0 + V) / (0 + V) = 1`，即 1 share = 1 wei underlying；该单点价格与无缓冲的 `+1` 语义一致，但这只是 `totalSupply == 0` 这一点的巧合
-- 一旦 `totalSupply > 0`，`+1` 等价于 `price = (totalAssets + 1) / (totalSupply + 1)`，与本模型的 `(totalAssets + V) / (totalSupply + V)` 数学不再等价：V 是部署时一次写死的常数虚拟缓冲，而非每次调用 `+1` 量级的 per-call seed
+- 初始（空金库）`price = (0 + V) / (0 + V) = 1`，即 1 share = 1 wei underlying；该单点价格与无缓冲的 `+1` 语义一致，但这只是 `totalSupply == 0` 且 `totalAssets == 0` 这一点的巧合
+- 一旦 `totalAssets != totalSupply`，`+1` 等价于 `price = (totalAssets + 1) / (totalSupply + 1)`，与本模型的 `(totalAssets + V) / (totalSupply + V)` 数学不再等价：V 是部署时一次写死的常数虚拟缓冲，而非每次调用 `+1` 量级的 per-call seed
 - V 在治理链 deploy vault 时由 Launcher 计算后传入 `vault.initialize(...)`，vault 存储写住后**永久固定，不可改**
 
 V 的推导规则（固定推导，不是独立配置项）：
@@ -110,7 +110,7 @@ V / (D_total + V)
 
 这条规则的目标是防止首存者攫取历史收益。
 
-该 burn 规则与 §4 的虚拟缓冲 V 正交：V 只在 `totalSupply > 0`（即存在真实 share 持有人）后才参与 share/asset 转换；空金库阶段 yield 仍按本节直接 burn，不进入 V 缓冲吸收路径。
+该 burn 规则与 §4 的虚拟缓冲 V 正交，但正交点不是 `totalSupply` 本身：share/asset 转换公式（§4.1）中 V 无条件参与，当 `totalAssets == totalSupply`（含全新空金库的 `(0 + V) / (0 + V)`）时恰好约掉、price 为 1；当 vault 因全额赎回而残留 §4.3 的吸收收益（`totalSupply == 0` 但 `totalAssets > 0`）时，V 依然参与转换，使汇率保持有定义且非退化（无 V 时 `assets × 0 / totalAssets` 恒为 0 份额）；残留态（`totalSupply == 0`）下低于 `(totalAssets + V) / V` 的存款在 `deposit` 时向下取整为 0 份额，`deposit` 显式 `revert ZeroSharesDeposit()` 拒绝该笔存款（资产留在调用方、不并入残留收益），防止小额定金本金被静默吸收（一般态即 `totalSupply > 0` 时的 0 份额阈值按 §4.1 公式为 `(totalAssets + V) / (totalSupply + V)`）。与 V 正交的是 burn 规则本身：空金库阶段 yield 直接 burn，不进入 `totalAssets`，因此不进入 V 缓冲吸收路径。
 
 ## 6. 延迟赎回队列
 
@@ -126,6 +126,7 @@ V2 当前没有即时赎回 underlying，而是：
 - 每个地址最多 `MAX_REDEEM_REQUESTS`
 - 请求时即锁定本次 underlying 数量
 - 实际转账在执行时完成
+- `requestRedeem` 仅允许自我赎回：`receiver == msg.sender`，否则 revert `NotSelfRedemption()`。禁止第三方代排队的理由：`MAX_REDEEM_REQUESTS` 按 receiver 计数，若允许任意 `msg.sender` 向任意 receiver 排队，攻击者可用 5 wei dust 填满受害者的 5 个队列槽位，使受害者自己的赎回请求 revert `MaxRedeemRequestsReached()`；而 `executeRedeem` 只清成熟条目（`block.timestamp >= requestTime + REDEEM_DELAY`），该锁定持续 `REDEEM_DELAY` 并可每日重填，构成低成本可持续的退出封锁
 
 这个模型的目的，是降低 flash 攻击和瞬时套利对 vault 的影响。
 
@@ -139,9 +140,9 @@ V2 当前没有即时赎回 underlying，而是：
 
 ### 7.1 提案人 outstanding 标记
 
-`proposer outstanding`（提案人未完成提案标记）是 Governor 按 proposer 保存的最近 proposal id。`propose` 成功后写入该 id；当该 id 的状态既不是 `Defeated` 也不是 `Succeeded` 时，同一 proposer 再次 `propose` 会回滚。因此 one-outstanding rule 约束的是每个 proposer 同时只能有一个未完成 proposal。
+`proposer outstanding`（提案人未完成提案标记）是 Governor 按 proposer 保存的最近 proposal id。`propose` 会读取这个已保存 proposal 的状态：当该状态既不是 `Defeated` 也不是 `Succeeded` 时，同一 proposer 再次 `propose` 会回滚；进入这两种状态之一后，才可创建新 proposal，并用新 id 覆盖标记。这个检查是正常路径的 guard，不构成每个 proposer 绝对只能有一个未完成 proposal 的 invariant。
 
-当 proposal 成功执行 `execute` 或被 `cancel` 时，标记被清零。若旧 proposal 已进入 `Defeated` 或 `Succeeded`，即使标记尚未因 `execute`/`cancel` 清零，proposer 也可以创建新 proposal，新 id 会覆盖旧标记。
+`propose` 成功后写入新 id；`execute` 和 `_cancel` 仅在当前 marker 仍等于正在处理的 proposalId 时清零；若 marker 已更新为较新的 proposalId，则保留该较新 marker。`Defeated` 和 `Succeeded` 仍会放行新 proposal，因此该标记是正常路径的 guard，不构成每个 proposer 绝对只能有一个未完成 proposal 的 invariant。
 
 ### 7.2 Treasury spend cap 与执行快照
 

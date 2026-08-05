@@ -100,8 +100,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @notice Retries yield accumulation after a LayerZero compose call to `accumulateYields` failed.
-    /// @dev Uses `lzGuid` to withdraw the unexecuted cross-chain yield transfer and then applies the normal local
-    ///      accumulation path.
+    /// @dev This retry is permissionless. It withdraws the unexecuted compose transfer keyed by `lzGuid`, then
+    ///      reuses the normal `_accumulateYield` path. A zero-yield retry leaves assets and checkpoints unchanged;
+    ///      if the vault is empty, recovered yield is burned instead of becoming unowned value.
     /// @param lzGuid LayerZero guid.
     function reAccumulateYields(bytes32 lzGuid) external override {
         uint256 yield = IOFTCompose(asset).withdrawIfNotExecuted(lzGuid, address(this));
@@ -126,6 +127,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
 
     /// @notice Deposits underlying asset and mints vault shares to `receiver`.
     /// @dev Share minting uses the current `totalAssets` exchange rate before the new deposit is added.
+    ///      A non-zero deposit that would round down to 0 shares reverts instead of silently absorbing assets.
     /// @param assets Amount of underlying asset to deposit.
     /// @param receiver Recipient of the minted shares.
     /// @return shares Shares minted for the deposit.
@@ -134,6 +136,10 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         // checkpoint writes. Preserves the ERC-4626 round-trip: previewDeposit(0) == deposit(0) == 0.
         if (assets == 0) return 0;
         uint256 shares = _convertToShares(assets, totalAssets);
+        // A non-zero deposit that rounds down to 0 shares would silently absorb the caller's assets
+        // (transfer in, zero shares minted, no redemption path). Revert so the caller can top up;
+        // mirrors Solmate ERC4626's ZERO_SHARES guard.
+        if (shares == 0) revert ZeroSharesDeposit();
         _deposit(msg.sender, receiver, assets, shares);
         _writeTotalAssetCheckpoint(totalAssets);
 
@@ -141,12 +147,13 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @notice Burns shares and queues a delayed redemption for `receiver`.
-    /// @dev The queued asset amount is fixed at request time and later unlocked by `executeRedeem`.
+    /// @dev Self-redemption only: `receiver` must equal `msg.sender` so no one can fill another
+    ///      account's queue. The queued asset amount is fixed at request time and later unlocked by `executeRedeem`.
     /// @param shares Amount of shares to burn into the redemption queue.
     /// @param receiver Account that will later receive the underlying asset.
     /// @return assets Underlying asset amount locked into the redemption request.
     function requestRedeem(uint256 shares, address receiver) external override returns (uint256) {
-        require(receiver != address(0), ZeroAddress());
+        require(receiver == msg.sender, NotSelfRedemption());
 
         uint256 assets = _convertToAssets(shares, totalAssets);
         require(assets > 0, ZeroRedeemRequest());

@@ -53,4 +53,7 @@ node_modules/
 .zcode/plans/
 .zcode/v2/
 
+.pi-glla/
+.pi-subagents/
+
 skills/

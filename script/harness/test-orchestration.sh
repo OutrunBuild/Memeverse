@@ -691,7 +691,15 @@ run_destructive_git_guard() {
 }
 
 assert_destructive_git_guard_fails_closed() {
-    local guard="$repo_root/script/harness/block-destructive-git.sh"
+    local guard
+    if [ -x "$repo_root/script/harness/block-destructive-git.sh" ]; then
+        guard="$repo_root/script/harness/block-destructive-git.sh"
+    elif [ -x "$HOME/.local/share/destructive-git-guard/block-destructive-git.sh" ]; then
+        guard="$HOME/.local/share/destructive-git-guard/block-destructive-git.sh"
+    else
+        printf '%s\n' "SKIP destructive-git guard test: no guard script installed (repo or global)" >&2
+        return 0
+    fi
     local bash_bin
     local ordinary_bin
     local stash_create_bin

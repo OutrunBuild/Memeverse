@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gotgenes/pi-packages/main/packages/pi-permission-system/schemas/permissions.schema.json",
+
+  "permission": {
+    "bash": {
+      "rm *": "deny"
+    },
+    "read": {
+      ".env": "deny",
+      ".env.*": "deny"
+    }
+  }
+}

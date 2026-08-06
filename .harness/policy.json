@@ -57,6 +57,9 @@
       "^\\.claude/agents/.*$",
       "^\\.claude/rules/.*$",
       "^\\.claude/settings\\.json$",
+      "^\\.pi/agents/.*$",
+      "^\\.pi/extensions/.*$",
+      "^\\.pi/settings\\.json$",
       "^\\.opencode/.*$",
       "^opencode\\.jsonc?$",
       "^\\.codex/agents/.*$",
@@ -462,7 +465,6 @@
           ],
           "id": "common-oft-init",
           "paths": [
-            "src/common/omnichain/oft/IOFTCompose.sol",
             "src/common/omnichain/oft/OutrunOFTCoreInit.sol",
             "src/common/omnichain/oft/OutrunOFTInit.sol",
             "src/common/types/IMemeverseOFTEnum.sol"

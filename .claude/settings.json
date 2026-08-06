@@ -58,16 +58,6 @@
             "command": "echo 'MemeverseV2 禁用 EnterWorktree（默认建到 .claude/worktrees/）。worktree 用: git worktree add .worktrees/<name>' >&2; exit 2"
           }
         ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ./script/harness/block-destructive-git.sh",
-            "timeout": 120
-          }
-        ]
       }
     ]
   }

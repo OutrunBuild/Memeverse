@@ -210,12 +210,6 @@
         "npm_ci_when_package_changes"
       ]
     },
-    "commandIdArray": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/commandId" },
-      "minItems": 1,
-      "uniqueItems": true
-    },
     "fastRequiredCommands": {
       "type": "array",
       "items": { "$ref": "#/$defs/commandId" },
@@ -281,8 +275,6 @@
         "id": { "type": "string", "minLength": 1 },
         "message": { "type": "string", "minLength": 1 },
         "paths": { "$ref": "#/$defs/stringArray" },
-        "tokens": { "$ref": "#/$defs/stringArray" },
-        "commands": { "$ref": "#/$defs/commandIdArray" },
         "surfaces": { "$ref": "#/$defs/surfaceNameArray" },
         "writer_roles": {
           "type": "array",
@@ -295,18 +287,14 @@
           "items": { "$ref": "#/$defs/surfaceSet" },
           "minItems": 1,
           "uniqueItems": true
-        },
-        "legacy_roots": { "type": "boolean" }
+        }
       },
       "additionalProperties": false,
       "anyOf": [
         { "required": ["paths"] },
-        { "required": ["tokens"] },
-        { "required": ["commands"] },
         { "required": ["surfaces"] },
         { "required": ["writer_roles"] },
-        { "required": ["mixed_surface_sets"] },
-        { "required": ["legacy_roots"] }
+        { "required": ["mixed_surface_sets"] }
       ]
     },
     "testingGap": {

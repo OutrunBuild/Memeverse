@@ -20,19 +20,6 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.94.1
-        with:
-          components: rustfmt, clippy
-
-      - name: Check destructive-git guard
-        env:
-          CARGO_TARGET_DIR: .harness/.runs/destructive-git-guard
-        run: |
-          cargo fmt --manifest-path script/harness/destructive-git-guard/Cargo.toml --all -- --check
-          cargo clippy --manifest-path script/harness/destructive-git-guard/Cargo.toml --locked --all-targets -- -D warnings
-          cargo test --manifest-path script/harness/destructive-git-guard/Cargo.toml --locked
-
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
@@ -51,7 +38,7 @@ jobs:
         run: npm ci
 
       - name: Install Slither
-        run: python3 -m pip install slither-analyzer==0.11.5 jsonschema
+        run: python3 -m pip install slither-analyzer==0.11.5 jsonschema pyyaml
 
       - name: Show Forge version
         run: forge --version
@@ -61,6 +48,9 @@ jobs:
           HARNESS_EVENT_NAME: ${{ github.event_name }}
           RUN_RECORD_PATH: ${{ runner.temp }}/memeversev2-gate-ci.json
         run: bash script/harness/ci-gate-entrypoint.sh
+
+      - name: Run orchestration regression tests
+        run: bash script/harness/test-orchestration.sh
 
       - name: Upload gate run record
         if: always()

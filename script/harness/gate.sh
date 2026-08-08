@@ -1092,9 +1092,9 @@ if [ "$all_mode" -eq 1 ]; then
         fi
     done < <(find "$repo_root" -name '*.sol' -not -path '*/lib/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -print0 2>/dev/null)
 
-    for pattern in "${harness_control_patterns[@]}"; do
-        while IFS= read -r rel; do
-            [ -n "$rel" ] || continue
+    while IFS= read -r -d '' file; do
+        rel="${file#"${repo_root}/"}"
+        if match_path_against_patterns "$rel" "${harness_control_patterns[@]}"; then
             append_unique harness_control_files "$rel"
             append_unique selected_surfaces "harness_control"
 
@@ -1117,8 +1117,8 @@ if [ "$all_mode" -eq 1 ]; then
                     append_unique package_trigger_files "$rel"
                     ;;
             esac
-        done < <(expand_repo_glob "$pattern")
-    done
+        fi
+    done < <(find "$repo_root" -type f -not -path '*/.git/*' -not -path '*/lib/*' -not -path '*/node_modules/*' -print0 2>/dev/null)
 
     mapfile -t changed_files < <(printf '%s\n' "${solidity_prod_files[@]}" "${solidity_test_files[@]}" "${harness_control_files[@]}" | awk '!seen[$0]++')
 else
@@ -1340,7 +1340,8 @@ while IFS= read -r hard_block_rule; do
         fi
     fi
 
-    if jq -e '.paths? != null and .tokens? == null' >/dev/null <<<"$hard_block_rule"; then
+    # schema forbids tokens/commands/legacy_roots on blockRule, so no combined-rule exclusion is needed here
+    if jq -e '.paths? != null' >/dev/null <<<"$hard_block_rule"; then
         mapfile -t hard_block_paths < <(jq -r '.paths[]' <<<"$hard_block_rule")
         for changed_file in "${changed_files[@]}"; do
             if match_path_against_patterns "$changed_file" "${hard_block_paths[@]}"; then

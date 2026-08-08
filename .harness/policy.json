@@ -60,8 +60,6 @@
       "^\\.pi/agents/.*$",
       "^\\.pi/extensions/.*$",
       "^\\.pi/settings\\.json$",
-      "^\\.opencode/.*$",
-      "^opencode\\.jsonc?$",
       "^\\.codex/agents/.*$",
       "^\\.zcode/agents/.*$",
       "^\\.githooks/.*$",

@@ -1,10 +1,8 @@
 ---
+name: verifier
 description: Run gate.sh verification and report exit code plus stdout.
-mode: subagent
-steps: 15
-permission:
-  edit: deny
-  bash: allow
+tools: read, grep, find, bash
+inheritProjectContext: true
 ---
 
 ## Role

@@ -1,10 +1,8 @@
 ---
+name: solidity-implementer
 description: Write Solidity source, test, and script files. Handles solidity_prod and solidity_test surface changes.
-mode: subagent
-steps: 30
-permission:
-  edit: allow
-  bash: allow
+tools: read, grep, find, write, edit, bash
+inheritProjectContext: true
 ---
 
 ## Role
@@ -35,8 +33,8 @@ Implement the requested Solidity source, test, or Solidity script change so that
 ## Context Scope
 
 - Start from the provided files and diff context.
-- read the directly edited files in full before changing them.
-- read related specs or neighboring contracts only when they affect correctness, security, accounting, initialization, upgrade safety, or the requested API shape.
+- Read the directly edited files in full before changing them.
+- Read related specs or neighboring contracts only when they affect correctness, security, accounting, initialization, upgrade safety, or the requested API shape.
 - Do not inspect unrelated modules to look busy or improve style.
 
 ## Work Rules

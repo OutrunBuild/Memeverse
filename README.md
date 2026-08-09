@@ -67,18 +67,18 @@ When production Solidity changes, `gate:fast` resolves targeted tests from `poli
 
 `.githooks/` calls the same gate entrypoints when enabled with `core.hooksPath=.githooks`.
 
-## Multi-tool Support (Claude Code / Codex / ZCode)
+## Multi-tool Support (Claude Code / Codex / ZCode / Pi)
 
-The repository's harness (policy, gate, reviewer/implementer roles) works across Claude Code, Codex, and ZCode. Each tool loads the shared pieces differently:
+The repository's harness (policy, gate, reviewer/implementer roles) works across Claude Code, Codex, ZCode, and Pi. Each tool loads the shared pieces differently:
 
-| Piece | Claude Code | Codex | ZCode |
-|---|---|---|---|
-| Instructions | `AGENTS.md` + `CLAUDE.md` | `AGENTS.md` (native) | `AGENTS.md` (native) |
-| Subagents | `.claude/agents/*.md` (workspace) | `.codex/agents/*.toml` (workspace) | `.zcode/agents/*.md` (workspace) |
-| Hooks | `.claude/settings.json` (PreToolUse) | — | `~/.zcode/cli/config.json` (user-scope, `hooks.events`, needs `enabled:true`; machine-local, not carried by the repo) |
-| Permissions | `.claude/settings.json` allow/deny | — | client permission mode + hooks (no workspace allow/deny file) |
+| Piece | Claude Code | Codex | ZCode | Pi |
+|---|---|---|---|---|
+| Instructions | `AGENTS.md` + `CLAUDE.md` | `AGENTS.md` (native) | `AGENTS.md` (native) | `AGENTS.md` (native) |
+| Subagents | `.claude/agents/*.md` (workspace) | `.codex/agents/*.toml` (workspace) | `.zcode/agents/*.md` (workspace) | `.pi/agents/*.md` (workspace) |
+| Hooks | `.claude/settings.json` (PreToolUse) | — | `~/.zcode/cli/config.json` (user-scope, `hooks.events`, needs `enabled:true`; machine-local, not carried by the repo) | `.pi/extensions/pi-permission-system/config.json` + `.pi/extensions/claude-rules.ts` (project-scoped, version-controlled) |
+| Permissions | `.claude/settings.json` allow/deny | — | client permission mode + hooks (no workspace allow/deny file) | `.pi/extensions/pi-permission-system/config.json` (project-scoped, version-controlled) |
 
-The seven roles (`solidity-implementer`, `process-implementer`, `spec-reviewer`, `logic-reviewer`, `security-reviewer`, `refinement-reviewer`, `verifier`) are kept in three hand-maintained copies. When you change a role, update all three.
+The seven roles (`solidity-implementer`, `process-implementer`, `spec-reviewer`, `logic-reviewer`, `security-reviewer`, `refinement-reviewer`, `verifier`) are kept in four hand-maintained copies. When you change a role, update all four. Authoritative source: `AGENTS.md` (Project agent files) and `docs/TRACEABILITY.md`; this table is a convenience summary.
 
 ZCode discovers workspace-scoped subagents from `.zcode/agents/` directly (no install step). The `.zcode/agents/` directory is version-controlled, so `git worktree add` and fresh clones carry workspace-scoped agents automatically. ZCode hooks are NOT in the repo — they live in user-scope `~/.zcode/cli/config.json` (each machine configures its own; ZCode's security policy strips project-scope hooks, so hooks must be user-scoped). ZCode also reads user-scoped agents from `~/.zcode/agents/`, but only in the desktop runtime; this repo relies on the workspace scope, which works everywhere.
 

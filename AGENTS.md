@@ -44,7 +44,8 @@ Do not override policy or gate evidence with natural-language guesses.
 - Current local task completion defaults to `gate:fast`. Use `full`, `ci`, release, or merge-equivalent verification only when explicitly requested or running in that context.
 - Current Solidity contracts are pre-deployment development artifacts unless a human explicitly says deployed compatibility must be preserved.
 - Review roles remain reviewer-only; do not place verifier inside review roles.
-- Project agent files under .claude/agents/ and .codex/agents/ are execution files. They do not define policy or verdict rules.
+- Project agent files (all agent trees listed in docs/TRACEABILITY.md) are execution files. They do not define policy or verdict rules.
+- Agent role-body contract text (from the `## Role` section onward) is replicated across every agent tree listed in docs/TRACEABILITY.md (currently four: `.claude/agents/`, `.codex/agents/`, `.zcode/agents/`, `.pi/agents/`); each tree is that tool's agent-definition directory (Claude Code, Codex, ZCode, Pi). Any role-body revision or new role file must land in all trees' same-named files within the same change; never scope a role-body fix or addition to a single tree.
 - Do not create a parallel control plane outside policy, gate, and project agent files.
 - Deleting untracked files from the current git working tree requires explicit human confirmation.
 
@@ -74,7 +75,7 @@ Do not override policy or gate evidence with natural-language guesses.
 - Many tiny single-use helpers make code harder to follow because readers must jump around.
 - Extract a helper only when it clearly improves readability, naming, reuse, or testability.
 - Inline trivial single-use logic unless extraction clearly improves comprehension.
-- Solidity style and best practices live in `.claude/rules/` (`solidity-contracts.md` for `src/`, `solidity-tests.md` for `test/`, `solidity-scripts.md` for `script/`). Claude Code auto-loads them by scope when editing `.sol` files (no manual read needed); Codex, ZCode, and opencode do not auto-load them, so when working in those tools you MUST lazy-load them yourself: before writing or modifying Solidity, use the Read tool to read only the rule file matching the file type you are about to touch (`src/**` → solidity-contracts.md, `test/**` → solidity-tests.md, `script/**` → solidity-scripts.md). Do NOT preemptively read all three — read only the relevant one at the moment you start editing Solidity, treat its content as mandatory instructions, and do not restate it in replies. Follow them when writing or modifying Solidity code.
+- Solidity style and best practices live in `.claude/rules/` (`solidity-contracts.md` for `src/`, `solidity-tests.md` for `test/`, `solidity-scripts.md` for `script/`). Claude Code auto-loads them by scope when editing `.sol` files (no manual read needed); Pi does the same when the project-level `.pi/extensions/claude-rules.ts` loader is installed — otherwise it does not auto-load them. Codex and ZCode do not auto-load them, so when working in those tools, or in Pi without the loader, you MUST lazy-load them yourself: before writing or modifying Solidity, use the Read tool to read only the rule file matching the file type you are about to touch (`src/**` → solidity-contracts.md, `test/**` → solidity-tests.md, `script/**` → solidity-scripts.md). Do NOT preemptively read all three — read only the relevant one at the moment you start editing Solidity, treat its content as mandatory instructions, and do not restate it in replies. Follow them when writing or modifying Solidity code.
 
 ## Test Code Rules
 
@@ -87,6 +88,7 @@ Do not override policy or gate evidence with natural-language guesses.
 ## Uncommitted Changes
 
 - Do not overwrite, delete, or revert uncommitted changes you did not create. If a required edit overlaps them, stop and report it.
+- Parallel-change ownership: when you notice a suspicious or out-of-scope change mid-task, do not assume it was made by a subagent you dispatched. First check whether a parallel session or another workflow is also editing the same file (compare file mtime, git status/diff, the active state of other agents and sessions, and review/batch documents). When ownership is uncertain, treat the change as someone else's uncommitted work: do not revert, restore, or rewrite it — stop and report. Before reverting any suspicious or out-of-scope change, confirm more than once that it is not a parallel-session change.
 
 ## Context Scope
 

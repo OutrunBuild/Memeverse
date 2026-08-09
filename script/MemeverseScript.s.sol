@@ -142,7 +142,6 @@ contract MemeverseScript is BaseScript {
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_PROXY_DEPLOYER = vm.envAddress("MEMEVERSE_PROXY_DEPLOYER");
         MEMEVERSE_YIELD_DISPATCHER = vm.envAddress("MEMEVERSE_YIELD_DISPATCHER");
-        OMNICHAIN_MEMECOIN_STAKER = vm.envAddress("OMNICHAIN_MEMECOIN_STAKER");
         MEMEVERSE_SWAP_ROUTER = _optionalEnvAddress("MEMEVERSE_SWAP_ROUTER");
         MEMEVERSE_UNISWAP_HOOK = _optionalEnvAddress("MEMEVERSE_UNISWAP_HOOK");
         POLEND_INTEREST_RATE = vm.envUint("POLEND_INTEREST_RATE");
@@ -153,7 +152,9 @@ contract MemeverseScript is BaseScript {
 
     // POLEND/POLSPLITTER use optional loading: during deployment the deploy functions set them
     // directly; for standalone readiness checks (openSupportedUAssetsAfterReadiness) the env vars
-    // must be set to the deployed addresses.
+    // must be set to the deployed addresses. OMNICHAIN_MEMECOIN_STAKER is a REQUIRED env var here:
+    // _requireDeploymentReady checks code at it (STAKER_CODE_NOT_READY), so the standalone readiness
+    // entry must load it from env just like _loadScriptEnv does.
     function _loadReadinessEnv() internal {
         owner = vm.envAddress("OWNER");
         UUSD = vm.envAddress("UUSD");
@@ -162,6 +163,7 @@ contract MemeverseScript is BaseScript {
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_PROXY_DEPLOYER = vm.envAddress("MEMEVERSE_PROXY_DEPLOYER");
         MEMEVERSE_YIELD_DISPATCHER = vm.envAddress("MEMEVERSE_YIELD_DISPATCHER");
+        OMNICHAIN_MEMECOIN_STAKER = vm.envAddress("OMNICHAIN_MEMECOIN_STAKER");
         POLEND = _optionalEnvAddress("POLEND");
         POLSPLITTER = _optionalEnvAddress("POLSPLITTER");
     }
@@ -301,8 +303,10 @@ contract MemeverseScript is BaseScript {
         bytes32 memecoinYieldVaultSalt = keccak256(abi.encodePacked("MemecoinYieldVaultImplementation", nonce));
         bytes32 incentivizerSalt = keccak256(abi.encodePacked("GovernanceCycleIncentivizerImplementation", nonce));
 
-        bytes memory memecoinCreationCode =
-            abi.encodePacked(type(Memecoin).creationCode, abi.encode(endpoints[uint32(block.chainid)]));
+        address localEndpoint = endpoints[uint32(block.chainid)];
+        require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
+
+        bytes memory memecoinCreationCode = abi.encodePacked(type(Memecoin).creationCode, abi.encode(localEndpoint));
 
         address memecoinImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinSalt, memecoinCreationCode);
         address memecoinYieldVaultImplementation =
@@ -317,8 +321,9 @@ contract MemeverseScript is BaseScript {
 
     function _deployMemecoinPOLImplementation(uint256 nonce) internal {
         bytes32 memecoinPOLSalt = keccak256(abi.encodePacked("MemecoinPOLImplementation", nonce));
-        bytes memory memecoinPOLCreationCode =
-            abi.encodePacked(type(MemePol).creationCode, abi.encode(endpoints[uint32(block.chainid)]));
+        address localEndpoint = endpoints[uint32(block.chainid)];
+        require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
+        bytes memory memecoinPOLCreationCode = abi.encodePacked(type(MemePol).creationCode, abi.encode(localEndpoint));
         address memecoinPOLImplementation =
             IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinPOLSalt, memecoinPOLCreationCode);
 
@@ -336,6 +341,7 @@ contract MemeverseScript is BaseScript {
     function _deployRegistrationCenter(uint256 nonce) internal {
         bytes32 salt = keccak256(abi.encodePacked("MemeverseRegistrationCenter", nonce));
         address localEndpoint = endpoints[uint32(block.chainid)];
+        require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
         bytes memory creationCode = abi.encodePacked(
             type(MemeverseRegistrationCenter).creationCode,
             abi.encode(owner, localEndpoint, MEMEVERSE_REGISTRAR, MEMEVERSE_COMMON_INFO)
@@ -395,6 +401,7 @@ contract MemeverseScript is BaseScript {
         bytes memory encodedArgs;
         bytes memory creationBytecode;
         address localEndpoint = endpoints[uint32(block.chainid)];
+        require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
         if (block.chainid == vm.envUint("BSC_TESTNET_CHAINID")) {
             encodedArgs = abi.encode(owner, MEMEVERSE_REGISTRATION_CENTER, MEMEVERSE_LAUNCHER, MEMEVERSE_COMMON_INFO);
             creationBytecode = type(MemeverseRegistrarAtLocal).creationCode;
@@ -836,6 +843,10 @@ contract MemeverseScript is BaseScript {
         broadcaster
     {
         _loadReadinessEnv();
+        // _requireDeploymentReady compares the dispatcher's localEndpoint() against
+        // endpoints[block.chainid], which is only filled by _chainsInit — the standalone entry must
+        // fill it like run() does (readiness env + chain endpoints). Missing chain env vars revert.
+        _chainsInit();
         _openSupportedUAssetsAfterReadiness(registrationCenter, swapRouter, hook);
     }
 
@@ -846,6 +857,23 @@ contract MemeverseScript is BaseScript {
         _requireContractCode(MEMEVERSE_YIELD_DISPATCHER, "YIELD_DISPATCHER_CODE_NOT_READY");
         _requireContractCode(POLEND, "POLEND_CODE_NOT_READY");
         _requireContractCode(POLSPLITTER, "POLSPLITTER_CODE_NOT_READY");
+        _requireContractCode(OMNICHAIN_MEMECOIN_STAKER, "STAKER_CODE_NOT_READY");
+        require(
+            _readAddress(OMNICHAIN_MEMECOIN_STAKER, "localEndpoint()") == endpoints[uint32(block.chainid)],
+            "STAKER_ENDPOINT_NOT_READY"
+        );
+        require(
+            _readAddress(MEMEVERSE_YIELD_DISPATCHER, "localEndpoint()") == endpoints[uint32(block.chainid)],
+            "YIELD_DISPATCHER_ENDPOINT_NOT_READY"
+        );
+        // Endpoint capability check: the whole omnichain stack (OFT sendCompose/lzCompose, both
+        // composers verifySettle composeQueue read) assumes endpoints[chainid] is a LayerZero
+        // EndpointV2 exposing the MessagingComposer surface. The identity readbacks above cannot
+        // catch a wrong env value — deploy functions bake the same endpoints[chainid] into the
+        // constructor args, so both sides agree on a wrong address. Probe the surface directly.
+        address localEndpoint = endpoints[uint32(block.chainid)];
+        _requireContractCode(localEndpoint, "ENDPOINT_CODE_NOT_READY");
+        _requireComposeQueueReadable(localEndpoint, "ENDPOINT_COMPOSE_QUEUE_NOT_READY");
 
         require(_readAddress(MEMEVERSE_LAUNCHER, "owner()") == owner, "LAUNCHER_OWNER_NOT_READY");
         // Production exposes launcher wiring through the aggregate getter, not legacy public fields.
@@ -971,6 +999,20 @@ contract MemeverseScript is BaseScript {
         require(target.code.length > 0, errorMessage);
     }
 
+    /// @dev Staticcall probe that the endpoint exposes a surface matching the MessagingComposer
+    ///      composeQueue getter (the surface verifySettle and both composers lzCompose/OFT
+    ///      sendCompose depend on). Placeholder args are fine: any (from, to, guid, index) key reads
+    ///      back a 32-byte word (bytes32(0) for unset keys), so success && data.length >= 32 implies
+    ///      a compatible getter surface exists on the target.
+    function _requireComposeQueueReadable(address endpoint, string memory errorMessage) internal view {
+        (bool success, bytes memory data) = endpoint.staticcall(
+            abi.encodeWithSignature(
+                "composeQueue(address,address,bytes32,uint16)", address(1), address(1), bytes32(0), uint16(0)
+            )
+        );
+        require(success && data.length >= 32, errorMessage);
+    }
+
     function _readAddress(address target, string memory signature) internal view returns (address value) {
         (bool success, bytes memory data) = target.staticcall(abi.encodeWithSignature(signature));
         require(success && data.length >= 32, "STATICCALL_ADDRESS_FAILED");
@@ -997,9 +1039,12 @@ contract MemeverseScript is BaseScript {
 
     function _deployYieldDispatcher(uint256 nonce) internal {
         address localEndpoint = endpoints[uint32(block.chainid)];
+        require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
+        require(MEMEVERSE_LAUNCHER != address(0), "ZERO_MEMEVERSE_LAUNCHER");
+        require(OUTRUN_DEPLOYER != address(0), "ZERO_OUTRUN_DEPLOYER");
 
         bytes memory creationCode =
-            abi.encodePacked(type(YieldDispatcher).creationCode, abi.encode(owner, localEndpoint, MEMEVERSE_LAUNCHER));
+            abi.encodePacked(type(YieldDispatcher).creationCode, abi.encode(localEndpoint, MEMEVERSE_LAUNCHER));
 
         bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", nonce));
         address memeverseOFTDispatcher = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
@@ -1008,6 +1053,8 @@ contract MemeverseScript is BaseScript {
     }
 
     function _deployMemeverseOmnichainInteroperation(uint256 nonce) internal {
+        require(OMNICHAIN_MEMECOIN_STAKER != address(0), "ZERO_OMNICHAIN_MEMECOIN_STAKER");
+        require(OUTRUN_DEPLOYER != address(0), "ZERO_OUTRUN_DEPLOYER");
         bytes memory creationCode = abi.encodePacked(
             type(MemeverseOmnichainInteroperation).creationCode,
             abi.encode(owner, MEMEVERSE_COMMON_INFO, MEMEVERSE_LAUNCHER, OMNICHAIN_MEMECOIN_STAKER, 115000, 135000)
@@ -1021,6 +1068,8 @@ contract MemeverseScript is BaseScript {
 
     function _deployOmnichainMemecoinStaker(uint256 nonce) internal {
         address localEndpoint = endpoints[uint32(block.chainid)];
+        require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
+        require(OUTRUN_DEPLOYER != address(0), "ZERO_OUTRUN_DEPLOYER");
 
         bytes memory creationCode =
             abi.encodePacked(type(OmnichainMemecoinStaker).creationCode, abi.encode(localEndpoint));

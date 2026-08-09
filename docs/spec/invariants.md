@@ -91,16 +91,16 @@
 - 价值：保证发行与 LP 凭证配置只通过 launcher 生命周期执行。
 - 主要锚点：`src/token/Memecoin.sol::mint`，`src/token/MemePol.sol::onlyMemeverseLauncher (modifier)`，`src/token/MemePol.sol::setPoolId`，`src/token/MemePol.sol::mint`
 
-### INV-09A token burn 守恒与 OFT 公开 send 例外
+### INV-09A token burn 守恒与 OFT 公开 send
 
-- 约束（单通道供给）：`OutrunERC20Init._update`（`src/common/token/OutrunERC20Init.sol:164-193`）对 `from == address(0)` 增 `_totalSupply`（`:166-168`）、对 `to == address(0)` 减 `_totalSupply`（`:180-183`），mint/burn 经此单一通道维护供给；token 层无独立供给字段，故各链 `totalSupply` 恒等于 Σmint − Σburn。`[代码已证]`
-- 约束（OFT 公开 send 例外）：OFT 公开 `send`（`OutrunOFTCoreInit.sol:211`）经 `_debit`→`_burn`（`OutrunOFTInit.sol:80`）在源端减供给、`_credit`→`_mint`（`OutrunOFTInit.sol:102`）在目的端增供给，跨链两端的 `_totalSupply` 各自变化。但 COMMON-001（见 [docs/spec/interoperation/layerzero-oapp-oft.md §3.2.1](interoperation/layerzero-oapp-oft.md)）在 `to = bytes32(0)` 的 compose 路径下破坏该守恒——目的端经 `_credit` + compose 二次 mint 造成净通胀（源端 burn 1X、目的端 mint 2X），即 INV-09 的 launcher-only mint 约束被 OFT 公开 send 绕过。故该守恒成立的**例外条件**是「无 COMMON-001 触发路径」（`to` 非 `bytes32(0)` 或未触发 compose 二次 mint）。`[代码已证]`
-- 价值：在无 COMMON-001 路径下，保证 token 单通道供给守恒；明确标注 COMMON-001 是该守恒与 INV-09 mint 权限约束的共同例外。
-- 主要锚点：`src/common/token/OutrunERC20Init.sol::_update`，`src/common/omnichain/oft/OutrunOFTInit.sol::_debit`、`::_credit`、`::withdrawIfNotExecuted`，`src/common/omnichain/oft/OutrunOFTCoreInit.sol::send`
+- 约束（单通道供给）：`OutrunERC20Init._update`（`src/common/token/OutrunERC20Init.sol::_update`）对 `from == address(0)` 增 `_totalSupply`（mint 分支）、对 `to == address(0)` 减 `_totalSupply`（burn 分支），mint/burn 经此单一通道维护供给；token 层无独立供给字段，故各链 `totalSupply` 恒等于 Σmint − Σburn。`[代码已证]`
+- 约束（OFT 公开 send 守恒）：OFT 公开 `send`（`OutrunOFTCoreInit.sol::send`）经 `_debit`→`_burn`（`OutrunOFTInit.sol::_debit`）在源端减供给、`_credit`→`_mint`（`OutrunOFTInit.sol::_credit`）在目的端增供给，跨链两端的 `_totalSupply` 各自变化。合并后 OFT 回归官方 LayerZero OFTCore，token 层 UBO 机制（`withdrawIfNotExecuted`/`ComposeTxStatus`）已删除，send 路径不再产生 compose 二次 mint——源端 burn 1X、目的端经 `_credit` 单次 mint 1X（`to = address(0)` 仅重映射到 `0xdead`，mint 即终态，见 [docs/spec/interoperation/layerzero-oapp-oft.md §3.2.1](interoperation/layerzero-oapp-oft.md)），COMMON-001 跨链通胀例外已不存在。故该守恒**无例外条件**成立。`[代码已证]`
+- 价值：保证 token 单通道供给守恒在 OFT 公开 send 路径下无例外成立；OFT 回归官方 OFTCore 后，不再存在 COMMON-001 对该守恒与 INV-09 mint 权限约束的共同例外。
+- 主要锚点：`src/common/token/OutrunERC20Init.sol::_update`，`src/common/omnichain/oft/OutrunOFTInit.sol::_debit`、`::_credit`，`src/common/omnichain/oft/OutrunOFTCoreInit.sol::send`
 
 ### INV-10 OFT compose 回调具备 replay 防护
 
-- 约束：`YieldDispatcher` 与 `OmnichainMemecoinStaker` 都在 endpoint 路径下检查 `guid` 未执行，再标记执行。`[代码已证]`
+- 约束：`YieldDispatcher` 与 `OmnichainMemecoinStaker` 在 endpoint 路径的 `ComposeState.None` 状态下检查 `guid` 未执行、再置 `Settled`；`ComposeState.Released` 态下 `lzCompose` 幂等放行（no-op），不标记执行、不结算。`[代码已证]`
 - 价值：跨链到账处理不可重复记账。
 - 主要锚点：`src/verse/YieldDispatcher.sol::lzCompose`，`src/interoperation/OmnichainMemecoinStaker.sol::lzCompose`
 
@@ -255,6 +255,13 @@ settlementUAsset >= previewPTToUAsset(PT.totalSupply())
 - 价值：保证 YT Flash Swap 不引入第二个 AMM、不重复收费、不消费 Router 自有余额，且所有失败路径（capacity 不足、价格限制、partial fill、恶意 callback、token/Splitter 重入、int128/uint256 边界、过期 deadline、principal/dependency 失配、非法成本/债务、minPOLOut/maxPOLIn 违反、baseline/allowance 未恢复）都原子回滚，用户不会因失败交易被保留预拉资产。
 - 去重关系：本条与 INV-22（普通动态 Swap 一次选费/四路径）共享「真实 BalanceDelta 是唯一结算依据」「一次选费」语义——YT Flash Swap 的底层 PT/POL 腿就是一次普通动态 swap，INV-22 的费率/容量/价格限制规则完全适用，本条只在其之上叠加 split/merge flash 结算与 baseline/allowance/principal/dependency 的额外约束，不重复普通 swap 规则。与 INV-23（Smart EOA transient session）共享 active session principal 语义——本条要求 Router 入口前 principal==msg.sender，不改变 session 生命周期。
 - 主要锚点：`src/swap/MemeverseYTFlashSwapRouter.sol::swapPOLForExactYT`、`::swapExactYTForPOL`、`::unlockCallback`、`::_executeBuy`、`::_executeSell`（买入 split/PT settle/baseline 与卖出 merge/POL settle/baseline），`src/swap/interfaces/IMemeverseYTFlashSwapRouter.sol`（两入口、`YTFlashSwapPOLForYT`/`YTFlashSwapYTForPOL` 事件、错误集合），`src/swap/MemeverseUniswapHook.sol::activeAccountSessionPrincipal`（只读 transient getter），`src/swap/interfaces/IMemeverseUniswapHook.sol::activeAccountSessionPrincipal`，`src/polend/POLSplitter.sol::split`、`::merge`（既有生命周期/PT-backing 唯一真源）。
+
+### INV-25 OFT compose 兜底结算单一解析与记账一致性 `[代码已证]`
+
+- 不变量：每个 (token, guid) 对在每个 composer 上至多被解析一次——`lzCompose`（置 `Settled`）与 `settlePendingCompose`（置 `Released`）经按 token 键控的 `ComposeState` 单向迁移互斥（None→Settled 或 None→Released，不可逆），endpoint 的 `RECEIVED_MESSAGE_HASH` 作纵深防御；OFT token 合约不再托管 compose 状态（无 `withdrawIfNotExecuted`/`ComposeTxStatus`/UBO），mint 即终态；staker 的 deposit 分支在外部 deposit 调用前校验 `vault.asset() == 投递 token`、`YieldDispatcher._settleToContract` MEMECOIN 分支同样在 approve 前绑定 `receiver.asset() == 投递 token`（本轮 code writer 同步落地；均 `TokenVaultMismatch`）——伪造 (token, vault) 配对在 staker 与 dispatcher 两侧均 revert、无资金移动，“伪造防护”因此同时覆盖 deposit 与 settle 两条资金流，而不只是互斥锁槽。
+- 机制细节（投递证明、键控互斥与伪造防护、CEI 置位顺序、结算分支）：见 [docs/spec/interoperation/layerzero-oapp-oft.md §4](interoperation/layerzero-oapp-oft.md)。
+- 价值：消除 COMMON-001（to=0 经 `withdrawIfNotExecuted` 二次 mint 通胀）攻击面，并修复 UBO 机制系统性失效（三路径已投递未执行 compose 兜底结算全坏）。token 合约回归官方 LayerZero OFTCore，兜底结算复杂度住在 composer，符合市场最佳实践。
+- 主要锚点：`src/verse/YieldDispatcher.sol::settlePendingCompose`/`::_settle`/`::lzCompose`，`src/interoperation/OmnichainMemecoinStaker.sol::settlePendingCompose`/`::lzCompose`，`src/verse/interfaces/IYieldDispatcher.sol`（`ComposeState`/错误/事件），`src/interoperation/interfaces/IOmnichainMemecoinStaker.sol`，`src/yield/MemecoinYieldVault.sol::reAccumulateYields`，`src/common/omnichain/oft/OutrunOFTCoreInit.sol::_lzReceive`（回归官方）。
 
 ## 3. 确定性边界
 

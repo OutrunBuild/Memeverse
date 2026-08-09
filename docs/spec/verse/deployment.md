@@ -80,6 +80,7 @@
 - Launcher 与所有继承 `ReentrancyGuard` 的合约（`POLend`、`POLSplitter`、`MemeverseUniswapHook`）依赖 EIP-1153 transient storage（`tload`/`tstore` 操作码），编译目标 `evm_version = "prague"`。部署链必须支持 Cancun 或更新硬分叉，否则 `nonReentrant` 修饰符将导致 `invalid opcode` 回退。见 [docs/operations.md](../../operations.md#6-evm-兼容性要求)。`[代码已证]`
 - 跨链分发与 staking 的 gas 参数来自 launcher/interoperation 的可配置 gas limits。`[代码已证]`
 - `MemeverseProxyDeployer.quorumNumerator` 仅影响后续新部署 governor 初始化，不回溯既有实例。`[代码已证]`
+- composer 系与 token/registration 部署函数（`MemeverseScript._deployYieldDispatcher` / `_deployOmnichainMemecoinStaker` / `_deployMemeverseOmnichainInteroperation` / `_deployImplementation` / `_deployMemecoinPOLImplementation` / `_deployRegistrationCenter` / `_deployMemeverseRegistrar`）对各自烘焙进 immutable/构造参数的值前置 require 非零（并集，非每个函数全查）：`localEndpoint` 于 6 个函数（`_deployYieldDispatcher` / `_deployOmnichainMemecoinStaker` / `_deployImplementation` / `_deployMemecoinPOLImplementation` / `_deployRegistrationCenter` / `_deployMemeverseRegistrar`，错误串 `ZERO_LOCAL_ENDPOINT`）、`MEMEVERSE_LAUNCHER` 于 `_deployYieldDispatcher`（`ZERO_MEMEVERSE_LAUNCHER`）、`OMNICHAIN_MEMECOIN_STAKER` 于 `_deployMemeverseOmnichainInteroperation`（`ZERO_OMNICHAIN_MEMECOIN_STAKER`）、CREATE3 部署器 `OUTRUN_DEPLOYER` 于 `_deployYieldDispatcher` / `_deployMemeverseOmnichainInteroperation` / `_deployOmnichainMemecoinStaker`（`ZERO_OUTRUN_DEPLOYER`）；零配置部署在部署期失败；三个 composer 构造器（`YieldDispatcher` / `OmnichainMemecoinStaker` / `MemeverseOmnichainInteroperation`）自身对 immutable 参数 revert `ZeroAddress()`。`[代码已证]`
 
 ## 5. Launcher 原生 gas dust 边界
 
@@ -150,6 +151,10 @@ Readiness checks 至少包括：`[代码已证]`
 - 同一 nonce 复用时，`lpTokenImplementation` 与 3 facet（`SwapFacet`/`DynamicFeeFacet`/`SettlementFacet`）必须和按当前 salt 预测出的地址一致；各 artifact 的运行期 codehash 都必须等于预期值（`lpTokenImplementation` 对应 `EXPECTED_LP_TOKEN_IMPLEMENTATION_CODEHASH`，3 facet 分别对应 `EXPECTED_SWAP_FACET_CODEHASH` / `EXPECTED_DYNAMIC_FEE_FACET_CODEHASH` / `EXPECTED_SETTLEMENT_FACET_CODEHASH`，见 `script/DeployMemeverseHookProxy.s.sol::_validateExistingImplementationCodehashes`），同时要求地址非零且有代码。
 - 每个支持的 `uAsset` 都有非零 `fundMetaDatas(uAsset).minTotalFund` 与 `fundMetaDatas(uAsset).fundBasedAmount`，且派生虚拟缓冲 `V = minTotalFund × fundBasedAmount × 7 / 1000 > 0`（等价 `minTotalFund × fundBasedAmount >= 143`）。
 - `POLend.settlementDustStates(uAsset).maxReserve > 0`。
+- `OMNICHAIN_MEMECOIN_STAKER` 进 readiness check：脚本 `_requireContractCode(OMNICHAIN_MEMECOIN_STAKER, "STAKER_CODE_NOT_READY")` 校验有代码——dispatcher 已有 code/双向接线检查而 staker 此前零检查，env 配错（EOA/错合约）时 readiness 全绿、`memecoinStaking` 远端路径静默指向坏 composer 的缺口关闭。`[代码已证]`
+- dispatcher endpoint 读回进 readiness check：脚本 `_readAddress(MEMEVERSE_YIELD_DISPATCHER, "localEndpoint()")` 读回值须 `== endpoints[uint32(block.chainid)]`（错误串 `YIELD_DISPATCHER_ENDPOINT_NOT_READY`）——endpoints 配成非零但错误值时 `lzCompose` 恒 `PermissionDenied` 的静默缺口关闭（对比 launcher 已有 `LAUNCHER_ENDPOINT_MISMATCH` 部署期读回）。`[代码已证]`
+- staker endpoint 读回进 readiness check：脚本 `_readAddress(OMNICHAIN_MEMECOIN_STAKER, "localEndpoint()")` 读回值须 `== endpoints[uint32(block.chainid)]`（错误串 `STAKER_ENDPOINT_NOT_READY`）——与 dispatcher 读回对称（`YIELD_DISPATCHER_ENDPOINT_NOT_READY`），关闭 staker 侧 endpoints 配成非零但错误值时 `lzCompose` 恒 `PermissionDenied` 的静默缺口。`[代码已证]`
+- endpoint 能力进 readiness check：脚本对 `endpoints[uint32(block.chainid)]` 校验有代码（`ENDPOINT_CODE_NOT_READY`）且 `composeQueue(address,address,bytes32,uint16)` selector 可读（`ENDPOINT_COMPOSE_QUEUE_NOT_READY`）——身份读回两侧同源（构造器与比对均取同一 `endpoints[chainid]`），env 错值可穿透，能力探针拦截之；全 OFT compose 栈（sendCompose/lzCompose/verifySettle）共享该假设。`[代码已证]`
 
 ## 7. 脚本层可见事实（非最终清单）
 

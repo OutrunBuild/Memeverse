@@ -295,7 +295,7 @@ POLend.preRedeemPTFee(verseId, ptAmount, mintTo)
 - 只由 `Launcher` 调用
 - `mintTo != address(0)`
 - 返回 `uAssetBacking`
-- 不调用 `YieldDispatcher.lzCompose`
+- 不调用 `YieldDispatcher.distributeSameChain`
 - 不调用 `IOFT.send`
 - 不重新 claim fee
 - 不重新拆分普通侧 / 杠杆侧
@@ -349,7 +349,7 @@ genesis + leveragedGenesis
 
 ```text
 POLend.preRedeemPTFee(..., mintTo=yieldDispatcher)
-Launcher 同笔调用 YieldDispatcher.distributeSameChain(...)
+Launcher 同笔调用 YieldDispatcher.distributeSameChain(uAsset, governor, TokenType.UASSET, amount)
 ```
 
 异链路径：
@@ -580,9 +580,21 @@ Memeverse DAO governor fee 无论本链还是异链，都统一经过 `YieldDisp
 
 ```text
 Launcher / POLend 使 uAsset 到达 YieldDispatcher
-Launcher 调 YieldDispatcher.distributeSameChain(...)
+Launcher 调 YieldDispatcher.distributeSameChain(
+    uAsset,
+    governor,
+    TokenType.UASSET,
+    amount
+)
 YieldDispatcher 调 Governor.receiveTreasuryIncome
 ```
+
+`distributeSameChain` 的 `amount` 是**两桶合计**（见 `MemeverseSettlementImpl._distributeRedeemedFees` 的双桶注释），对账时不能只按「launcher 转入 dispatcher 的 `Transfer` 事件金额」核对 governor 入账，否则会漏算 PT 赎回直达桶：
+
+- **持币桶**：launcher 物理持有的 uAsset（`govFee` 基数 + 快照的 `auxiliaryGovUAssetFee`），经 `_transferOut` 转账到 dispatcher，产生可见的 `Transfer` 事件。
+- **PT 赎回直达桶**：杠杆侧 PT fee 经 `preRedeemPTFee`（settle 前）/ `redeemPT`（settle 后）兑换成 uAsset，第三参 `mintTo = YieldDispatcher`，兑换出的 uAsset **直接 mint/redeem 到 dispatcher**，不经过 launcher 余额，无 launcher→dispatcher 的 `Transfer` 事件。
+
+链下对账 governor 的 `TreasuryIncomeRecorded` 入账时，须把两桶相加，不能仅凭 launcher→dispatcher 的 `Transfer` 金额核对。`amount` 口径的接口层同步见 `IYieldDispatcher.distributeSameChain` @dev。
 
 异链路径：
 

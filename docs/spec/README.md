@@ -97,6 +97,7 @@
 | INV-07A Locked→Unlocked 同交易结算 | [invariants.md](invariants.md) | 结算与公开 swap 保护同交易落地 |
 | INV-08 动态费池 + 固定 tickSpacing | [invariants.md](invariants.md) | Router/Hook 操作约束 |
 | INV-09 代币增发权限集中 | [invariants.md](invariants.md) | 增发权限集中在 Launcher |
+| INV-09A token burn 守恒与 OFT 公开 send | [invariants.md](invariants.md) | 单通道供给守恒，OFT send 无二次 mint |
 | INV-10 OFT compose replay 防护 | [invariants.md](invariants.md) | compose 回调具备 replay 防护 |
 | INV-11 注册时间权威值 | [invariants.md](invariants.md) | 来自注册中心写入 |
 | INV-12 解锁保护窗口优先 | [invariants.md](invariants.md) | 解锁后先经保护窗口再恢复 swap |
@@ -107,6 +108,12 @@
 | INV-17 创世总资金累计上限 | [invariants.md](invariants.md) | 累计且排除 preorder |
 | INV-18 PT settlement backing 偿还 | [invariants.md](invariants.md) | backing 偿还不变量 |
 | INV-19 PT backing ratio 实际额约束 | [invariants.md](invariants.md) | backing ratio 实际额约束 |
+| INV-20 返佣偿付能力与 protocol fee 拆分守恒 | [invariants.md](invariants.md) | rebate 偿付能力 + protocol fee 拆分守恒 |
+| INV-21 GenesisCredit 利息分栏与混池 burn 会计 | [invariants.md](invariants.md) | real/credit 分栏存储 + 混池 burn 量 |
+| INV-22 普通动态 Swap 一次选费四路径结算 | [invariants.md](invariants.md) | 一次选费、四路径、真实 BalanceDelta 唯一结算 |
+| INV-23 Smart EOA transient session 动态费隔离 | [invariants.md](invariants.md) | principal 替换 trader + 地址批次隔离 |
+| INV-24 YT Flash Swap 结算不变量 | [invariants.md](invariants.md) | 恰好一次 swap + 真实 delta + baseline 恢复 |
+| INV-25 OFT compose 兜底结算单一解析 | [invariants.md](invariants.md) | 每 (token,guid) 至多解析一次，互斥+幂等+纵深防御 |
 
 ### 2.3 权限边界
 

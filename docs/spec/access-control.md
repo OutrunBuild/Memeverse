@@ -27,10 +27,11 @@
   - 证据：`src/verse/MemeverseLauncher.sol::setExternalInfo`, `src/governance/MemecoinDaoGovernorUpgradeable.sol::propose`, `src/governance/MemecoinDaoGovernorUpgradeable.sol::sendTreasuryAssets`
 - `permissionless caller`
   - 未加 owner/role 白名单，仅靠阶段/参数约束。
-  - 证据：`src/verse/MemeverseLauncher.sol::genesis`, `src/verse/MemeverseLauncher.sol::preorder`, `src/yield/MemecoinYieldVault.sol::accumulateYields`
+  - 证据：`src/verse/MemeverseLauncher.sol::genesis`, `src/verse/MemeverseLauncher.sol::preorder`, `src/yield/MemecoinYieldVault.sol::accumulateYields`, `src/yield/MemecoinYieldVault.sol::reAccumulateYields`, `src/verse/YieldDispatcher.sol::settlePendingCompose`
 - `external dispatcher / endpoint caller`
   - 仅允许 LayerZero endpoint、launcher 或合约自身的调度入口。
-  - 证据：`src/verse/YieldDispatcher.sol::lzCompose`, `src/interoperation/OmnichainMemecoinStaker.sol::lzCompose`, `src/verse/registration/MemeverseRegistrationCenter.sol::lzSend`
+  - 证据：`src/verse/YieldDispatcher.sol::lzCompose`, `::distributeSameChain`, `src/interoperation/OmnichainMemecoinStaker.sol::lzCompose`, `src/verse/registration/MemeverseRegistrationCenter.sol::lzSend`
+  - 同 surface 另有 `OmnichainMemecoinStaker.settlePendingCompose` 为 receiver-only 兜底入口（`msg.sender == receiver`，receiver 从哈希绑定 message 解码，属受益人自领），不属 endpoint/launcher/合约自身调度，详见 §3 边界矩阵。
 
 ## 3. 边界矩阵（源码锚点）
 
@@ -50,11 +51,11 @@
 | `Memecoin` | `mint` 仅 launcher；`burn` 自主 | `src/token/Memecoin.sol::mint`, `::burn` |
 | `MemePol` | `setPoolId` 与 `mint` 仅 launcher；`burn` 为持币人或 allowance 授权方 | `src/token/MemePol.sol::setPoolId`, `::mint`, `::burn`, `onlyMemeverseLauncher` (modifier) |
 | `Memecoin` / `MemePol` `memeverseLauncher` initialize-only | `memeverseLauncher` 为普通 storage，仅 `initialize` 写入一次，无 setter，不可由 owner 旋转（区别于 Solidity `immutable` 关键字的 EVM 级只读保证；实际不可变仅源于当前 implementation 无 setter） | `src/token/Memecoin.sol:11,32`（`memeverseLauncher` storage + initialize 写入）, `src/token/MemePol.sol:12,44`（同） |
-| `Memecoin` / `MemePol` endpoint 配置权（owner == delegate） | 继承 OApp/OFT 的 5 个 `onlyOwner` endpoint 配置 setter；initialize 时 owner 与 delegate 均设为 launcher，故部署后 launcher 作为 owner == delegate 持有该配置权 | `setPeer`（`src/common/omnichain/oapp/OutrunOAppCoreInit.sol:68`）, `setDelegate`（`OutrunOAppCoreInit.sol:90`）, `setMsgInspector`（`src/common/omnichain/oft/OutrunOFTCoreInit.sol:143`）, `setEnforcedOptions`（`src/common/omnichain/oapp/OutrunOAppOptionsType3Init.sol:54`）, `setPreCrime`（`src/common/omnichain/oapp/OutrunOAppPreCrimeSimulatorInit.sol:59`）；owner/delegate initialize 写入见 `src/token/Memecoin.sol:24-32`, `src/token/MemePol.sol:33-44` |
+| `Memecoin` / `MemePol` endpoint 配置权（owner == delegate） | 继承 OApp/OFT 的 5 个 `onlyOwner` endpoint 配置 setter；initialize 时 owner 与 delegate 均设为 launcher，故部署后 launcher 作为 owner == delegate 持有该配置权 | `setPeer`（`src/common/omnichain/oapp/OutrunOAppCoreInit.sol:68`）, `setDelegate`（`OutrunOAppCoreInit.sol:90`）, `setMsgInspector`（`src/common/omnichain/oft/OutrunOFTCoreInit.sol::setMsgInspector`）, `setEnforcedOptions`（`src/common/omnichain/oapp/OutrunOAppOptionsType3Init.sol:54`）, `setPreCrime`（`src/common/omnichain/oapp/OutrunOAppPreCrimeSimulatorInit.sol:59`）；owner/delegate initialize 写入见 `src/token/Memecoin.sol:24-32`, `src/token/MemePol.sol:33-44` |
 | `MemePol.setPoolId` 可重设 | ACL 仍仅 launcher（`onlyMemeverseLauncher`）；但函数体裸写 `poolId = _poolId`，无 one-shot guard，launcher 可多次调用覆盖 | `src/token/MemePol.sol:50` |
-| `MemecoinYieldVault` | `accumulateYields` / `deposit` / `executeRedeem` 为 permissionless 业务入口（非 owner 门禁）；`requestRedeem` 同样非 owner 门禁，但仅允许自我赎回：`receiver == msg.sender`，否则 revert `NotSelfRedemption()` | `src/yield/MemecoinYieldVault.sol::accumulateYields`, `::deposit`, `::requestRedeem`, `::executeRedeem` |
-| `YieldDispatcher` | `distributeSameChain` 仅 `memeverseLauncher`；`lzCompose` 仅 `localEndpoint` | `src/verse/YieldDispatcher.sol::distributeSameChain`, `src/verse/YieldDispatcher.sol::lzCompose` |
-| `OmnichainMemecoinStaker` | `lzCompose` 仅 `localEndpoint` | `src/interoperation/OmnichainMemecoinStaker.sol::lzCompose` |
+| `MemecoinYieldVault` | `accumulateYields` / `deposit` / `executeRedeem` / `reAccumulateYields` 为 permissionless 业务入口（非 owner 门禁；`reAccumulateYields` 是未执行 yield compose 的恢复入口，委托 `YieldDispatcher.settlePendingCompose`）；`requestRedeem` 同样非 owner 门禁，但仅允许自我赎回：`receiver == msg.sender`，否则 revert `NotSelfRedemption()` | `src/yield/MemecoinYieldVault.sol::accumulateYields`, `::deposit`, `::requestRedeem`, `::executeRedeem`, `::reAccumulateYields` |
+| `YieldDispatcher` | `distributeSameChain` 仅 `memeverseLauncher`；`lzCompose` 仅 `localEndpoint`；`settlePendingCompose` permissionless（接收方从 `message` 解码，任何人可调，经 `composeStates` 互斥） | `src/verse/YieldDispatcher.sol::distributeSameChain`, `::lzCompose`, `::settlePendingCompose` |
+| `OmnichainMemecoinStaker` | `lzCompose` 仅 `localEndpoint`；`settlePendingCompose` 仅接收人（`receiver == msg.sender`，receiver 从 hash 绑定的 `message` 解码，防第三方 front-run 抢占） | `src/interoperation/OmnichainMemecoinStaker.sol::lzCompose`, `::settlePendingCompose` |
 | `MemeverseRegistrationCenter` dispatcher 封装 | `lzSend` 仅合约自身可调用；`_lzReceive` 校验 origin.sender 为 registrar | `src/verse/registration/MemeverseRegistrationCenter.sol::lzSend`, `::_lzReceive` |
 | `MemeverseOmnichainInteroperation` | staking 入口 permissionless；`setGasLimits` 仅 owner | `src/interoperation/MemeverseOmnichainInteroperation.sol::memecoinStaking`, `::setGasLimits` |
 | `MemecoinDaoGovernorUpgradeable` | treasury 支出与升级授权仅治理执行；reward payout 资产由 governor 托管，`disburseReward(...)` 为 `Incentivizer` 专用 payout 路径 | [docs/spec/governance/governance-yield-details.md](governance/governance-yield-details.md); [docs/spec/verse/accounting.md](verse/accounting.md) |

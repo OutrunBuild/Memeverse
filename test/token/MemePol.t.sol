@@ -7,7 +7,6 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 import {MemePol} from "../../src/token/MemePol.sol";
 import {IPol} from "../../src/token/interfaces/IPol.sol";
-import {IOFTCompose} from "../../src/common/omnichain/oft/IOFTCompose.sol";
 
 contract MockMemePolEndpoint {
     address public delegate;
@@ -56,10 +55,10 @@ contract MemePolTest is Test {
         memePol.initialize("POL-MEME", "POLM", MEMECOIN, LAUNCHER, DELEGATE);
         PoolId poolId = PoolId.wrap(bytes32(uint256(1234)));
 
-        vm.expectRevert(IOFTCompose.PermissionDenied.selector);
+        vm.expectRevert(IPol.PermissionDenied.selector);
         memePol.setPoolId(poolId);
 
-        vm.expectRevert(IOFTCompose.PermissionDenied.selector);
+        vm.expectRevert(IPol.PermissionDenied.selector);
         memePol.mint(ALICE, 1 ether);
 
         vm.prank(LAUNCHER);

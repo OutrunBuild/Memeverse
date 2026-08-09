@@ -15,7 +15,6 @@ import {
 import {OFTMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
-import {IOFTCompose} from "./IOFTCompose.sol";
 import {OutrunOAppInit} from "../oapp/OutrunOAppInit.sol";
 import {OutrunOAppOptionsType3Init} from "../oapp/OutrunOAppOptionsType3Init.sol";
 import {OutrunOAppPreCrimeSimulatorInit} from "../oapp/OutrunOAppPreCrimeSimulatorInit.sol";
@@ -26,7 +25,6 @@ import {OutrunOAppPreCrimeSimulatorInit} from "../oapp/OutrunOAppPreCrimeSimulat
  */
 abstract contract OutrunOFTCoreInit is
     IOFT,
-    IOFTCompose,
     OutrunOAppInit,
     OutrunOAppPreCrimeSimulatorInit,
     OutrunOAppOptionsType3Init
@@ -37,7 +35,6 @@ abstract contract OutrunOFTCoreInit is
     struct OFTCoreStorage {
         // Address of an optional contract to inspect both 'message' and 'options'
         address msgInspector;
-        mapping(bytes32 guid => ComposeTxStatus) composeTxs;
     }
 
     // @notice Provides a conversion rate when swapping between denominations of SD and LD
@@ -107,15 +104,6 @@ abstract contract OutrunOFTCoreInit is
         return $.msgInspector;
     }
 
-    /// @notice Checks whether a compose transaction has already been executed.
-    /// @dev Compose status is tracked for fallback withdrawal flow.
-    /// @param guid LayerZero message GUID.
-    /// @return executed True when compose transaction is finalized.
-    function getComposeTxExecutedStatus(bytes32 guid) external view override returns (bool) {
-        OFTCoreStorage storage $ = _getOFTCoreStorage();
-        return $.composeTxs[guid].isExecuted;
-    }
-
     /**
      * @notice Retrieves interfaceID and the version of the OFT.
      * @return interfaceId The interface ID.
@@ -159,7 +147,7 @@ abstract contract OutrunOFTCoreInit is
         returns (OFTLimit memory oftLimit, OFTFeeDetail[] memory oftFeeDetails, OFTReceipt memory oftReceipt)
     {
         uint256 minAmountLD = 0; // Unused in the default implementation.
-        uint256 maxAmountLD = type(uint64).max; // Unused in the default implementation.
+        uint256 maxAmountLD = type(uint64).max * decimalConversionRate; // Unused in the default implementation.
         oftLimit = OFTLimit(minAmountLD, maxAmountLD);
 
         // Unused in the default implementation; reserved for future complex fee details.
@@ -306,11 +294,6 @@ abstract contract OutrunOFTCoreInit is
             // @dev The off-chain executor will listen and process the msg based on the src-chain-callers compose options passed.
             // @dev The index is used when a OApp needs to compose multiple msgs on lzReceive.
             // For default OFT implementation there is only 1 compose msg per lzReceive, thus its always 0.
-            ComposeTxStatus storage txStatus = _getOFTCoreStorage().composeTxs[_guid];
-            txStatus.composer = toAddress;
-            txStatus.amount = amountReceivedLD;
-            // The default first parameter must always be the UBO address.
-            txStatus.UBO = abi.decode(_message.composeMsg(), (address));
             endpoint.sendCompose(
                 toAddress,
                 _guid,
@@ -321,18 +304,6 @@ abstract contract OutrunOFTCoreInit is
         }
 
         emit OFTReceived(_guid, _origin.srcEid, toAddress, amountReceivedLD);
-    }
-
-    /// @notice Marks compose transaction `guid` as executed.
-    /// @dev Reverts unless caller matches stored compose executor.
-    /// @param guid LayerZero message GUID.
-    function notifyComposeExecuted(bytes32 guid) external override {
-        ComposeTxStatus storage txStatus = _getOFTCoreStorage().composeTxs[guid];
-        require(msg.sender == txStatus.composer, PermissionDenied());
-
-        txStatus.isExecuted = true;
-
-        emit NotifyComposeExecuted(guid);
     }
 
     /**

@@ -49,25 +49,6 @@ abstract contract OutrunOFTInit is OutrunOFTCoreInit, OutrunERC20Init {
         return false;
     }
 
-    /// @notice Releases compose funds when the compose step did not execute.
-    /// @dev Callable only by the recorded UBO and only once per `guid`.
-    /// @param guid LayerZero message GUID.
-    /// @param receiver Address receiving the refunded tokens.
-    /// @return amount Token amount transferred to `receiver`.
-    function withdrawIfNotExecuted(bytes32 guid, address receiver) external override returns (uint256 amount) {
-        ComposeTxStatus storage txStatus = _getOFTCoreStorage().composeTxs[guid];
-        require(!txStatus.isExecuted, AlreadyExecuted());
-        require(msg.sender == txStatus.UBO, PermissionDenied());
-
-        txStatus.isExecuted = true;
-
-        amount = txStatus.amount;
-        address composer = txStatus.composer;
-        _update(composer, receiver, amount);
-
-        emit WithdrawIfNotExecuted(guid, composer, receiver, amount);
-    }
-
     /**
      * @dev Burns tokens from the sender's specified balance.
      * @param _from The address to debit the tokens from.

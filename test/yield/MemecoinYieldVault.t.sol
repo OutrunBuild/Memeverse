@@ -2,13 +2,22 @@
 pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppReceiver.sol";
 
 import {MemecoinYieldVault} from "../../src/yield/MemecoinYieldVault.sol";
 import {IMemecoinYieldVault} from "../../src/yield/interfaces/IMemecoinYieldVault.sol";
+import {YieldDispatcher} from "../../src/verse/YieldDispatcher.sol";
+import {IComposeState} from "../../src/common/types/IComposeState.sol";
+import {IYieldDispatcher} from "../../src/verse/interfaces/IYieldDispatcher.sol";
+import {IMemeverseOFTEnum} from "../../src/common/types/IMemeverseOFTEnum.sol";
 import {MockComposeAsset} from "../mocks/yield/YieldMocks.sol";
+import {MockMessagingComposerEndpoint} from "../mocks/infrastructure/MockMessagingComposerEndpoint.sol";
+import {OFTHarness} from "../mocks/infrastructure/OFTHarness.sol";
 
 contract MemecoinYieldVaultTest is Test {
     address internal constant ATTACKER = address(0xA11CE);
@@ -217,28 +226,407 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(asset.balanceOf(ATTACKER), attackerBalanceBefore + lockedAssets, "attacker received locked amount");
     }
 
-    /// @notice Verifies `reAccumulateYields` rebooks the withdrawn compose amount into managed assets.
-    /// @dev Models the retry path used when a LayerZero compose call to `accumulateYields` previously failed.
-    function testReAccumulateYieldsAddsWithdrawnAmountToManagedAssets() external {
+    /// @notice Verifies `reAccumulateYields` claims the stuck compose from the dispatcher and credits totalAssets.
+    /// @dev Models the retry path used when a LayerZero compose call to `accumulateYields` previously failed:
+    ///      the vault calls YieldDispatcher.settlePendingCompose, which proves delivery via endpoint composeQueue, then
+    ///      approves this vault and calls accumulateYields (pull + totalAssets accounting).
+    function testReAccumulateYieldsClaimsFromDispatcherAndAccumulates() external {
         MockComposeAsset composeAsset = new MockComposeAsset();
-        MemecoinYieldVault implementation = new MemecoinYieldVault();
-        MemecoinYieldVault composeVault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        bytes32 guid = keccak256("compose-guid");
+        (MemecoinYieldVault composeVault, address dispatcherAddr, address endpointAddr) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
 
-        composeVault.initialize("Compose Vault", "cvMEME", address(0xD15A7), address(composeAsset), 2, VIRTUAL_ASSETS);
-
+        // Seed an existing deposit so _accumulateYield credits totalAssets (non-empty vault path).
         composeAsset.mint(ATTACKER, 10 ether);
         vm.prank(ATTACKER);
         composeAsset.approve(address(composeVault), type(uint256).max);
-
         vm.prank(ATTACKER);
         composeVault.deposit(10 ether, ATTACKER);
 
-        composeAsset.setQueuedAmount(guid, 5 ether);
+        bytes32 guid = keccak256("compose-guid");
+        uint256 yieldAmount = 5 ether;
+        composeAsset.mint(dispatcherAddr, yieldAmount);
+        bytes memory message = _buildMemecoinComposeMessage(address(composeVault), yieldAmount);
+        MockMessagingComposerEndpoint(endpointAddr)
+            .setQueue(address(composeAsset), dispatcherAddr, guid, 0, keccak256(message));
 
-        composeVault.reAccumulateYields(guid);
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
 
         assertEq(composeVault.totalAssets(), 15 ether, "total assets after re-accumulate");
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.Released),
+            "dispatcher marked released"
+        );
+    }
+
+    /// @notice Empty-vault `reAccumulateYields` burns the claimed yield instead of absorbing it.
+    /// @dev Complements the non-empty retry test above by covering the empty-vault branch of the retry
+    ///      chain (reAccumulateYields -> settlePendingCompose -> _settleToContract -> accumulateYields ->
+    ///      _accumulateYield burn). With no shares outstanding the yield is burned, so totalAssets stays
+    ///      zero and no unowned value is left for a future first depositor.
+    function testReAccumulateYieldsBurnsYieldOnEmptyVault() external {
+        MockComposeAsset burnableAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr, address endpointAddr) =
+            _deployComposeVaultWithDispatcher(address(burnableAsset));
+
+        assertEq(composeVault.totalAssets(), 0, "vault starts empty");
+        assertEq(composeVault.totalSupply(), 0, "no shares outstanding");
+        assertEq(burnableAsset.balanceOf(address(composeVault)), 0, "vault holds no asset before yield");
+
+        bytes32 guid = keccak256("compose-guid");
+        uint256 yieldAmount = 5 ether;
+        burnableAsset.mint(dispatcherAddr, yieldAmount);
+        bytes memory message = _buildMemecoinComposeMessage(address(composeVault), yieldAmount);
+        MockMessagingComposerEndpoint(endpointAddr)
+            .setQueue(address(burnableAsset), dispatcherAddr, guid, 0, keccak256(message));
+
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
+
+        // Empty vault: the pulled yield is burned, not absorbed, so no unowned value is created.
+        assertEq(composeVault.totalAssets(), 0, "totalAssets unchanged after burn-on-empty");
+        assertEq(burnableAsset.balanceOf(address(composeVault)), 0, "vault holds no burned yield");
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(burnableAsset), guid)),
+            uint256(IComposeState.ComposeState.Released),
+            "dispatcher marked released"
+        );
+        assertEq(burnableAsset.balanceOf(dispatcherAddr), 0, "dispatcher drained");
+    }
+
+    /// @notice `reAccumulateYields` reverts `NotDelivered` when the guid was never delivered to the endpoint.
+    /// @dev Covers the first guard of the retry chain: with no endpoint `composeQueue` entry (mock default zero),
+    ///      YieldDispatcher.settlePendingCompose cannot prove delivery and reverts before any fund movement. No queue
+    ///      is planted and no tokens are minted — the revert must happen before state or balance changes.
+    function testReAccumulateYieldsRevertsWhenNotDelivered() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr,) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        bytes32 guid = keccak256("compose-guid");
+        bytes memory message = _buildMemecoinComposeMessage(address(composeVault), 5 ether);
+
+        // No setQueue: the endpoint composeQueue slot stays zero, so the delivery proof fails with NotDelivered.
+        vm.expectRevert(IComposeState.NotDelivered.selector);
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
+
+        // Revert is atomic: the (token, guid) mutex slot is untouched, so a funded retry can still resolve it.
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.None),
+            "revert left guid slot unresolved"
+        );
+    }
+
+    /// @notice `reAccumulateYields` reverts `ZeroInput` for zero-amount payloads and `AlreadyResolved` on replay.
+    /// @dev Covers the remaining guards of the retry chain: a delivered zero-amount message passes the delivery
+    ///      proof but is rejected before settlement (keeping the (token, guid) slot resolvable), and a guid settled
+    ///      once is pinned to Released so a second attempt reverts before the delivery check runs again.
+    function testReAccumulateYieldsRevertsOnZeroInputAndAlreadyResolved() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr, address endpointAddr) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        // ZeroInput: delivered message carries amount 0, so the delivery proof passes but settlement is refused.
+        bytes32 zeroGuid = keccak256("zero-input-guid");
+        bytes memory zeroMessage = _buildMemecoinComposeMessage(address(composeVault), 0);
+        MockMessagingComposerEndpoint(endpointAddr)
+            .setQueue(address(composeAsset), dispatcherAddr, zeroGuid, 0, keccak256(zeroMessage));
+
+        vm.expectRevert(IYieldDispatcher.ZeroInput.selector);
+        composeVault.reAccumulateYields(dispatcherAddr, zeroGuid, zeroMessage);
+
+        // Revert is atomic: the zero-input rejection left the slot unpinned (composeStates stays None).
+        // The hash-bound zero payload can never be settled with funds via settlePendingCompose; only the
+        // endpoint's lzCompose callback can consume this guid.
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), zeroGuid)),
+            uint256(IComposeState.ComposeState.None),
+            "zero-input revert left guid slot unresolved"
+        );
+
+        // AlreadyResolved: a guid settled once is pinned to Released, so the second attempt reverts.
+        bytes32 guid = keccak256("compose-guid");
+        uint256 yieldAmount = 5 ether;
+        composeAsset.mint(dispatcherAddr, yieldAmount);
+        bytes memory message = _buildMemecoinComposeMessage(address(composeVault), yieldAmount);
+        MockMessagingComposerEndpoint(endpointAddr)
+            .setQueue(address(composeAsset), dispatcherAddr, guid, 0, keccak256(message));
+
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
+
+        vm.expectRevert(IYieldDispatcher.AlreadyResolved.selector);
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
+
+        // The replay revert is atomic too: the first settle pinned the guid to Released and the retry left it there.
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.Released),
+            "replay revert kept guid pinned released"
+        );
+    }
+
+    /// @notice `reAccumulateYields` succeeds when the caller passes the dispatcher the compose was actually
+    ///         delivered to, even if it differs from the vault's initialize-time pointer (launcher rotation).
+    /// @dev Covers the rotation fix: after `setYieldDispatcher` rotates the canonical dispatcher, a stuck compose for a
+    ///      pre-rotation vault lands in the NEW dispatcher's composeQueue. The vault's `reAccumulateYields` must
+    ///      accept the new dispatcher as a parameter and settle from ITS queue. Passing the stale initialize-time
+    ///      dispatcher reads an empty queue slot and reverts NotDelivered — the bug this fix resolves for the success path.
+    function testReAccumulateYieldsSettlesViaRotatedDispatcher() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherA, address endpointAddr) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        // dispatcherA (0xD15A7) is the vault's initialize-time storage pointer. Simulate a post-creation rotation
+        // by deploying a second YieldDispatcher whose localEndpoint points at the same mock endpoint (0x9999) the
+        // settle path reads. The stuck compose is delivered into dispatcherB's queue, not dispatcherA's.
+        // Native deploy (no etch): composeStates and the composeQueue `to` key both derive from dispatcherB's own
+        // address, and constructor immutables are set correctly, so a fresh deploy is sufficient and avoids the
+        // etch-only-copies-code storage caveat that the dispatcherA setup must work around.
+        YieldDispatcher dispatcherB = new YieldDispatcher(endpointAddr, address(this));
+
+        // Seed an existing deposit so settlement credits totalAssets (non-empty vault path).
+        composeAsset.mint(ATTACKER, 10 ether);
+        vm.prank(ATTACKER);
+        composeAsset.approve(address(composeVault), type(uint256).max);
+        vm.prank(ATTACKER);
+        composeVault.deposit(10 ether, ATTACKER);
+
+        // ── Positive: settle via the rotated dispatcher (dispatcherB), not the initialize-time pointer (dispatcherA).
+        bytes32 guid = keccak256("rotated-guid");
+        uint256 yieldAmount = 5 ether;
+        composeAsset.mint(address(dispatcherB), yieldAmount);
+        bytes memory message = _buildMemecoinComposeMessage(address(composeVault), yieldAmount);
+        // Queue key is composeQueue[token][to=dispatcherB][guid][0]; verifySettle reads address(this) under
+        // dispatcherB's context, so the planted key must be keyed on dispatcherB, not the vault or dispatcherA.
+        MockMessagingComposerEndpoint(endpointAddr)
+            .setQueue(address(composeAsset), address(dispatcherB), guid, 0, keccak256(message));
+
+        composeVault.reAccumulateYields(address(dispatcherB), guid, message);
+
+        // Settlement pulled 5 ether from dispatcherB into the vault: totalAssets 10 -> 15.
+        assertEq(composeVault.totalAssets(), 15 ether, "total assets after re-accumulate via rotated dispatcher");
+        assertEq(
+            uint256(dispatcherB.composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.Released),
+            "rotated dispatcher marked released"
+        );
+
+        // ── Negative: a second compose also delivered to dispatcherB fails when the caller passes the stale
+        //    initialize-time pointer (dispatcherA). verifySettle keys composeQueue on address(this) = the
+        //    dispatcher it runs under, so dispatcherA reads its own (empty) queue slot and reverts NotDelivered
+        //    before any state or fund movement.
+        bytes32 guid2 = keccak256("rotated-guid-2");
+        bytes memory message2 = _buildMemecoinComposeMessage(address(composeVault), 3 ether);
+        MockMessagingComposerEndpoint(endpointAddr)
+            .setQueue(address(composeAsset), address(dispatcherB), guid2, 0, keccak256(message2));
+
+        vm.expectRevert(IComposeState.NotDelivered.selector);
+        composeVault.reAccumulateYields(dispatcherA, guid2, message2);
+
+        // Revert is atomic: guid2 was never processed, so dispatcherB's (token, guid2) mutex slot stays None.
+        assertEq(
+            uint256(dispatcherB.composeStates(address(composeAsset), guid2)),
+            uint256(IComposeState.ComposeState.None),
+            "stale-dispatcher revert left guid2 unresolved on dispatcherB"
+        );
+    }
+
+    /// @notice `reAccumulateYields` reverts `NotComposeBeneficiary` when the message's inner receiver is not this vault.
+    /// @dev Covers the beneficiary gate: the compose's receiver word ([76:108] of the payload) must be this
+    ///      vault, because the endpoint hash-binds the message to the guid, so a message whose receiver is another
+    ///      address can never settle yield into this vault. The gate runs before any dispatcher interaction, so no
+    ///      queue is planted and the (token, guid) mutex slot stays untouched.
+    function testReAccumulateYieldsRevertsWhenMessageReceiverIsNotThisVault() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr,) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        bytes32 guid = keccak256("compose-guid");
+        // Receiver is a third party, not the vault: the beneficiary gate must revert before the dispatcher is called.
+        bytes memory message = _buildMemecoinComposeMessage(address(0xBeef), 5 ether);
+
+        vm.expectRevert(IMemecoinYieldVault.NotComposeBeneficiary.selector);
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
+
+        // Revert is atomic: the (token, guid) mutex slot is untouched, so a legitimately-delivered compose can still resolve it.
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.None),
+            "revert left guid slot unresolved"
+        );
+    }
+
+    /// @notice `reAccumulateYields` reverts `ComposeSettlementFailed` when the dispatcher returns without settling.
+    /// @dev Covers the return-value gate: a dispatcher that claims success but releases no amount must not let
+    ///      the retry pass silently. `vm.mockCall` stubs the dispatcher to return 0 (exact selector+args match, so
+    ///      the stub fires for this precise call) while the message receiver is this vault, so the beneficiary gate
+    ///      passes and the zero return is caught.
+    function testReAccumulateYieldsRevertsWhenDispatcherSettlesNothing() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr,) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        bytes32 guid = keccak256("compose-guid");
+        bytes memory message = _buildMemecoinComposeMessage(address(composeVault), 5 ether);
+
+        // Stub settlePendingCompose to return 0 without executing the dispatcher's code.
+        vm.mockCall(
+            dispatcherAddr,
+            abi.encodeWithSelector(
+                IYieldDispatcher.settlePendingCompose.selector, address(composeAsset), guid, message
+            ),
+            abi.encode(uint256(0))
+        );
+
+        vm.expectRevert(IMemecoinYieldVault.ComposeSettlementFailed.selector);
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
+
+        // The stubbed dispatcher never ran, so its (token, guid) mutex slot stays None.
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.None),
+            "zero-settle revert left guid slot unresolved"
+        );
+    }
+
+    /// @notice `reAccumulateYields` reverts `ComposeMessageTooShort` for payloads shorter than 108 bytes.
+    /// @dev Covers the length gate: a message truncated below the beneficiary word ([76:108]) cannot carry the
+    ///      inner receiver and can never settle (the dispatcher needs the full header plus the 64-byte tuple), so it
+    ///      must fail with the named error before any dispatcher interaction.
+    function testReAccumulateYieldsRevertsOnShortMessage() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr,) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        bytes32 guid = keccak256("compose-guid");
+        bytes memory message = _buildMemecoinComposeMessage(address(composeVault), 5 ether);
+        assertGt(message.length, 108, "fixture: valid message is longer than the gate boundary");
+        bytes memory truncated = new bytes(107);
+        for (uint256 i = 0; i < truncated.length; i++) {
+            truncated[i] = message[i];
+        }
+
+        vm.expectRevert(IMemecoinYieldVault.ComposeMessageTooShort.selector);
+        composeVault.reAccumulateYields(dispatcherAddr, guid, truncated);
+
+        // Revert is atomic: the (token, guid) mutex slot is untouched.
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.None),
+            "revert left guid slot unresolved"
+        );
+    }
+
+    /// @notice An exactly-108-byte message (receiver word present) passes the vault length gate.
+    /// @dev Pins the `>= 108` boundary: a frame whose tail is only the 32-byte receiver word at [76:108] clears
+    ///      the vault's entry gate (a `> 108` gate would instead revert `ComposeMessageTooShort` here). With no
+    ///      queue planted, the retry proceeds into the dispatcher's delivery proof and reverts `NotDelivered`,
+    ///      proving 108 is NOT rejected by the vault gate and that the next boundary lives dispatcher-side.
+    function testReAccumulateYieldsAllowsExactly108ByteMessage() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr,) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        bytes32 guid = keccak256("compose-guid");
+        // 8 nonce + 4 srcEid + 32 amountLD + 32 composeFrom + 32 receiver word = 108 bytes exactly.
+        bytes memory message =
+            _buildRawComposeFrame(5 ether, abi.encodePacked(bytes32(uint256(uint160(address(composeVault))))));
+        assertEq(message.length, 108, "fixture: exactly 108 bytes");
+
+        // No setQueue: the vault gates pass (108 >= 108, receiver word == vault) and the dispatcher's delivery
+        // proof reverts NotDelivered — proving 108 is not rejected by the vault entry gate.
+        vm.expectRevert(IComposeState.NotDelivered.selector);
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
+
+        // Revert is atomic: the (token, guid) mutex slot is untouched.
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.None),
+            "revert left guid slot unresolved"
+        );
+    }
+
+    /// @notice A 120-byte frame (108-139 band) clears the vault gates and is rejected by the dispatcher's
+    ///         inner-tuple guard with the NAMED `MalformedComposeMsg`.
+    /// @dev Pins the dispatcher-side boundary: the vault only checks the 32-byte receiver word (present at
+    ///      [76:108]), while `settlePendingCompose` additionally requires the inner (address, TokenType) tuple
+    ///      to be >= 64 bytes. A 44-byte tuple tail (120-byte frame) passes the vault gate and the delivery proof
+    ///      but fails the dispatcher's `composeMsg.length >= TUPLE_LENGTH` guard — the same named error the
+    ///      forward `lzCompose` path uses for unparseable payloads — with no settlement and the slot left None.
+    function testReAccumulateYieldsRevertsAtDispatcherForShortTupleBand() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr, address endpointAddr) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        bytes32 guid = keccak256("compose-guid");
+        // 76-byte header + 32-byte receiver word + 12 bytes of the tuple = 120 bytes.
+        bytes memory message = _buildRawComposeFrame(
+            5 ether, abi.encodePacked(bytes32(uint256(uint160(address(composeVault)))), bytes12(0))
+        );
+        assertEq(message.length, 120, "fixture: 120-byte short-tuple frame");
+        MockMessagingComposerEndpoint(endpointAddr)
+            .setQueue(address(composeAsset), dispatcherAddr, guid, 0, keccak256(message));
+
+        vm.expectRevert(IComposeState.MalformedComposeMsg.selector);
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
+
+        // Revert is atomic: no settlement ran, so the (token, guid) mutex slot stays None.
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.None),
+            "revert left guid slot unresolved"
+        );
+    }
+
+    /// @notice A length-legal frame with a dirty-high-bit receiver word reverts OPAQUELY at the dispatcher.
+    /// @dev Pins the documented class claim (operations.md §3.13 / reAccumulateYields comment): the vault's
+    ///      uint160 downcast truncates the forged receiver word so its low 160 bits equal this vault and the
+    ///      gate passes, but the dispatcher's strict `abi.decode` rejects the dirty word with EMPTY revert data
+    ///      — not NotComposeBeneficiary, not any named error. vm.expectRevert(bytes("")) is exact for empty
+    ///      revert data in this Foundry version (a named error fails the expectation), so the form is load-bearing.
+    function testReAccumulateYieldsDirtyHighBitsRevertOpaqueAtDispatcher() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr, address endpointAddr) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        bytes32 guid = keccak256("compose-guid");
+        // Full 64-byte tuple whose receiver word is (non-zero high 96 bits | vault low 160 bits): 140 bytes.
+        bytes32 dirtyReceiverWord = bytes32((uint256(1) << 160) | uint256(uint160(address(composeVault))));
+        bytes memory message = _buildRawComposeFrame(5 ether, abi.encodePacked(dirtyReceiverWord, bytes32(uint256(1))));
+        assertEq(message.length, 140, "fixture: full 140-byte frame");
+        MockMessagingComposerEndpoint(endpointAddr)
+            .setQueue(address(composeAsset), dispatcherAddr, guid, 0, keccak256(message));
+
+        // The vault gate passes via uint160 truncation; the dispatcher's strict abi.decode reverts with EMPTY
+        // revert data — pinning that this class does NOT revert NotComposeBeneficiary (or any named error).
+        vm.expectRevert(bytes(""));
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
+
+        // Revert is atomic: no settlement ran, so the (token, guid) mutex slot stays None.
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(IComposeState.ComposeState.None),
+            "revert left guid slot unresolved"
+        );
+    }
+
+    /// @notice A zero-amount 120-byte frame reverts `ZeroInput` before the tuple-shape guard runs.
+    /// @dev Pins the guard order in `settlePendingCompose`: `require(amount != 0, ZeroInput())` precedes the
+    ///      `composeMsg.length >= 64` guard, so a short-tuple frame with amountLD = 0 fails `ZeroInput` — NOT
+    ///      `MalformedComposeMsg` — documenting the precedence the dispatcher's comments rely on.
+    function testReAccumulateYieldsZeroAmountShortTupleRevertsZeroInput() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault, address dispatcherAddr, address endpointAddr) =
+            _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        bytes32 guid = keccak256("compose-guid");
+        bytes memory message =
+            _buildRawComposeFrame(0, abi.encodePacked(bytes32(uint256(uint160(address(composeVault)))), bytes12(0)));
+        MockMessagingComposerEndpoint(endpointAddr)
+            .setQueue(address(composeAsset), dispatcherAddr, guid, 0, keccak256(message));
+
+        vm.expectRevert(IYieldDispatcher.ZeroInput.selector);
+        composeVault.reAccumulateYields(dispatcherAddr, guid, message);
     }
 
     /// @notice Verifies the vault reports timestamp-based clock metadata.
@@ -1142,5 +1530,214 @@ contract MemecoinYieldVaultTest is Test {
 
         assertEq(emptyVault.totalAssets(), 0, "totalAssets unchanged after burn-on-empty");
         assertEq(burnableAsset.balanceOf(address(emptyVault)), 0, "vault holds no burned yield");
+    }
+
+    /// @notice Vault-side E2E (finding part B): a REAL OFT `_lzReceive` writes the compose queue the vault's
+    ///         `reAccumulateYields` recovery entry reads — the runbook chain's first hop (OFT mints the bridged
+    ///         amount to the dispatcher) through the re-accumulate retry (queue proof → Released), with the settle
+    ///         payload copied VERBATIM from the endpoint's ComposeSent log.
+    /// @dev The OFT's endpoint immutable is the SAME etched mock (0x9999) the dispatcher's `localEndpoint` immutable
+    ///      points at, so `_lzReceive`'s `endpoint.sendCompose(toAddress, guid, 0, composeMsg)` writes
+    ///      `composeQueue[oft][dispatcher][guid][0] = keccak256(composeMsg)` — the exact key `verifySettle` reads when
+    ///      `reAccumulateYields` retries. Mirrors the OFTHarness wiring of YieldDispatcher.t.sol's E2E tests.
+    function testE2E_OFTLzReceiveWritesComposeQueueReadByReAccumulateYields() external {
+        // The dispatcher's endpoint (0x9999) is fixed by _deployComposeVaultWithDispatcher; the real OFT must use the
+        // same address so its sendCompose lands in the queue the retry reads.
+        OFTHarness implementation = new OFTHarness(address(0x9999));
+        OFTHarness oft = OFTHarness(Clones.clone(address(implementation)));
+
+        // Etch the endpoint mock onto 0x9999 (and the dispatcher onto 0xD15A7) BEFORE initializing the OFT: the OFT
+        // initializer calls endpoint.setDelegate, which needs the etched code to be in place.
+        (MemecoinYieldVault composeVault, address dispatcherAddr,) = _deployComposeVaultWithDispatcher(address(oft));
+
+        oft.initialize(address(this), "E2E Meme", "E2EM", address(0xCAFE));
+        oft.setPeer(101, bytes32(uint256(uint160(0xBEEF))));
+
+        // Seed an existing deposit so _accumulateYield credits totalAssets (non-empty vault path).
+        oft.mintTest(ATTACKER, 10 ether);
+        vm.prank(ATTACKER);
+        oft.approve(address(composeVault), type(uint256).max);
+        vm.prank(ATTACKER);
+        composeVault.deposit(10 ether, ATTACKER);
+        assertEq(composeVault.totalAssets(), 10 ether, "fixture: seeded deposit");
+
+        // Raw OFT _lzReceive wire payload: sendTo(32) || amountSD(8) || composeFrom(32) || composeMessage — the same
+        // layout as YieldDispatcher.t.sol's _encodeOftLzReceiveMessage (mirrors OFTMsgCodec.encode). amount must be an
+        // exact multiple of decimalConversionRate (1e12) so amountReceivedLD round-trips exactly.
+        uint256 amount = 5 ether;
+        bytes32 guid = keccak256("e2e-oft-guid");
+        bytes memory composeMessage = abi.encode(address(composeVault), IMemeverseOFTEnum.TokenType.MEMECOIN);
+        bytes32 composeFrom = bytes32(uint256(uint160(ATTACKER)));
+        bytes memory message = abi.encodePacked(
+            bytes32(uint256(uint160(dispatcherAddr))), // sendTo = the dispatcher
+            oft.toSharedDecimals(amount), // amountSD
+            composeFrom, // compose-from (source-chain sender)
+            composeMessage
+        );
+
+        Origin memory origin = Origin({srcEid: 101, sender: bytes32(uint256(uint160(0xBEEF))), nonce: 1});
+        bytes32 composeSentTopic0 = keccak256("ComposeSent(address,address,bytes32,uint16,bytes)");
+        vm.recordLogs();
+        vm.prank(address(0x9999));
+        oft.lzReceive(origin, guid, message, address(0), "");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        // Runbook chain hop 1: the OFT minted the bridged amount to the payload's sendTo (the dispatcher).
+        assertEq(oft.balanceOf(dispatcherAddr), amount, "OFT minted the bridged amount to the dispatcher");
+
+        // Take the settle payload VERBATIM from the ComposeSent log (the runbook's "原样拷贝 message 字段" step); it
+        // hashes to the queue slot verifySettle reads.
+        bytes memory settleMessage;
+        bool found;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length == 0 || logs[i].topics[0] != composeSentTopic0) continue;
+            found = true;
+            (address from, address to, bytes32 logGuid, uint16 index, bytes memory payload) =
+                abi.decode(logs[i].data, (address, address, bytes32, uint16, bytes));
+            assertEq(from, address(oft), "ComposeSent from is the OFT");
+            assertEq(to, dispatcherAddr, "ComposeSent to is the dispatcher");
+            assertEq(logGuid, guid, "ComposeSent guid");
+            assertEq(uint256(index), 0, "ComposeSent index");
+            settleMessage = payload;
+        }
+        assertTrue(found, "lzReceive -> sendCompose emitted ComposeSent");
+        assertEq(
+            MockMessagingComposerEndpoint(address(0x9999)).composeQueue(address(oft), dispatcherAddr, guid, 0),
+            keccak256(settleMessage),
+            "queue slot matches the verbatim settle payload"
+        );
+
+        // Runbook recovery entry: the vault retries the stuck compose with the verbatim payload.
+        composeVault.reAccumulateYields(dispatcherAddr, guid, settleMessage);
+
+        assertEq(composeVault.totalAssets(), 15 ether, "total assets after re-accumulate (10 deposit + 5 yield)");
+        assertEq(
+            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(oft), guid)),
+            uint256(IComposeState.ComposeState.Released),
+            "dispatcher marked released"
+        );
+    }
+
+    /// @dev Deploys a fresh compose-vault clone and a real YieldDispatcher, etching the dispatcher onto the
+    ///      fixed `0xD15A7` address the vault references as `yieldDispatcher` and the mock composer endpoint
+    ///      onto `0x9999`. Every `reAccumulateYields` retry-path test calls this so dispatcher-constructor /
+    ///      etch drift has a single edit point. Returns the etched `dispatcherAddr` (state MUST be read via
+    ///      `YieldDispatcher(dispatcherAddr)`, since `vm.etch` copies only code, not storage — the in-memory
+    ///      `dispatcher` instance is a distinct storage context) and the mock `endpointAddr` (used to plant
+    ///      the compose queue).
+    function _deployComposeVaultWithDispatcher(address asset)
+        internal
+        returns (MemecoinYieldVault composeVault, address dispatcherAddr, address endpointAddr)
+    {
+        composeVault = MemecoinYieldVault(Clones.clone(address(new MemecoinYieldVault())));
+        dispatcherAddr = address(0xD15A7);
+        endpointAddr = address(0x9999);
+        MockMessagingComposerEndpoint endpointImpl = new MockMessagingComposerEndpoint();
+        vm.etch(endpointAddr, address(endpointImpl).code);
+        YieldDispatcher dispatcher = new YieldDispatcher(endpointAddr, address(this));
+        vm.etch(dispatcherAddr, address(dispatcher).code);
+        composeVault.initialize("Compose Vault", "cvMEME", dispatcherAddr, asset, 2, VIRTUAL_ASSETS);
+    }
+
+    /// @dev Builds the OFT compose payload a launcher would have sent for a memecoin-yield retry:
+    ///      `composeFrom(ATTACKER)` + `abi.encode(targetVault, MEMECOIN)`, wrapped via OFTComposeMsgCodec.
+    function _buildMemecoinComposeMessage(address targetVault, uint256 amount)
+        internal
+        pure
+        returns (bytes memory message)
+    {
+        bytes memory composeMessage = abi.encodePacked(
+            bytes32(uint256(uint160(ATTACKER))), abi.encode(targetVault, IMemeverseOFTEnum.TokenType.MEMECOIN)
+        );
+        message = OFTComposeMsgCodec.encode(1, 101, amount, composeMessage);
+    }
+
+    /// @dev Builds a raw OFT compose frame with a caller-supplied tail: nonce(8) + srcEid(4) + amountLD(32) +
+    ///      composeFrom(32) + tail — the same packing as OFTComposeMsgCodec.encode — so boundary tests can
+    ///      exercise exact frame lengths (108/120/140) that the high-level helper cannot produce. The receiver
+    ///      word sits at [76:108], i.e. the first 32 bytes of `tail`.
+    function _buildRawComposeFrame(uint256 amountLD, bytes memory tail) internal pure returns (bytes memory message) {
+        message = abi.encodePacked(bytes8(uint64(1)), uint32(101), amountLD, bytes32(uint256(uint160(ATTACKER))), tail);
+    }
+
+    /// @notice Anchors MR-69's window invariant: while a full-redeem queue is in-flight (shares burned but
+    ///         REDEEM_DELAY not yet elapsed), incoming yield hits the `totalSupply() == 0` burn branch and is
+    ///         burned, yet the queued redemption obligation is neither consumed nor diluted — the matured
+    ///         `executeRedeem` still pays the full locked amount. Distinct from the existing empty-vault test,
+    ///         which starts from a vault that was never deposited into; here the vault WAS deposited into, the
+    ///         shares were then fully burned by `requestRedeem`, and assets physically remain in the vault as a
+    ///         pending obligation during the delay window.
+    /// @dev Window semantics under test: `totalSupply() == 0` AND `totalAssets() == 0` AND a non-empty
+    ///      `redeemRequestQueues[ATTACKER]` (queued amount sitting in the vault balance). Yield arriving in this
+    ///      window is pulled in then burned via `IMemecoin.burn(uint256)`, which destroys only the freshly-arrived
+    ///      yield held by the vault, not the queued obligation. Uses `MockComposeAsset` because the burn path calls
+    ///      `IMemecoin.burn(uint256)` (single-arg, from the caller = the vault), which solmate `MockERC20`'s
+    ///      two-arg `burn(address,uint256)` does not satisfy. Calls `accumulateYields` directly (no dispatcher /
+    ///      settle / `reAccumulateYields`): the target is the window's state invariant, not the retry path, which
+    ///      is already covered by the empty-vault burn test plus this test's burn-branch coverage.
+    function testAccumulateYieldsBurnsYieldDuringQueuedRedeemWindow() external {
+        // Compose-style asset implements the single-arg burn the vault's empty-vault path calls.
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault,,) = _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        // Fund ATTACKER and approve the vault for both the initial deposit and the later yield pull.
+        composeAsset.mint(ATTACKER, 10 ether);
+        vm.prank(ATTACKER);
+        composeAsset.approve(address(composeVault), type(uint256).max);
+
+        // Deposit principal; with no prior yield the share rate is 1:1 so 10 ether deposits 10 shares.
+        vm.prank(ATTACKER);
+        uint256 shares = composeVault.deposit(10 ether, ATTACKER);
+        assertEq(shares, 10 ether, "initial deposit mints 1:1 shares");
+
+        // Full redemption request: burns all shares and deducts totalAssets, but assets stay in the vault
+        // as a pending obligation until REDEEM_DELAY elapses.
+        vm.prank(ATTACKER);
+        uint256 lockedAssets = composeVault.requestRedeem(shares, ATTACKER);
+        assertEq(lockedAssets, 10 ether, "locked amount equals principal at no-yield state");
+
+        // Window-state assertions: empty on the books but the queued obligation physically sits in the vault.
+        assertEq(composeVault.totalSupply(), 0, "shares fully burned by requestRedeem");
+        assertEq(composeVault.totalAssets(), 0, "totalAssets deducted by requestRedeem");
+        (uint192 queuedAmount,) = composeVault.redeemRequestQueues(ATTACKER, 0);
+        assertEq(uint256(queuedAmount), lockedAssets, "queued obligation equals locked amount");
+        assertGe(
+            composeAsset.balanceOf(address(composeVault)),
+            lockedAssets,
+            "queued obligation assets physically held by vault during window"
+        );
+
+        // Snapshot the vault balance right before yield arrives: this is exactly the queued obligation.
+        uint256 vaultBalanceBeforeYield = composeAsset.balanceOf(address(composeVault));
+
+        // Keep the timestamp inside the REDEEM_DELAY window (do NOT warp) and inject yield directly.
+        uint256 yieldAmount = 5 ether;
+        composeAsset.mint(ATTACKER, yieldAmount);
+        vm.prank(ATTACKER);
+        composeVault.accumulateYields(yieldAmount);
+
+        // Invariant: yield was burned (not retained). The pull temporarily raised the vault balance by
+        // yieldAmount; the burn then destroyed exactly that freshly-arrived yield, leaving the vault balance
+        // back at the pre-yield snapshot — i.e. the queued obligation is untouched.
+        assertEq(
+            composeAsset.balanceOf(address(composeVault)),
+            vaultBalanceBeforeYield,
+            "yield burned, vault balance restored to pre-yield (queued obligation untouched)"
+        );
+        assertEq(composeVault.totalAssets(), 0, "burned yield never enters totalAssets accounting");
+        assertEq(composeVault.totalSupply(), 0, "burn branch keeps totalSupply at zero");
+
+        // Mature the queue past REDEEM_DELAY and settle: the full locked obligation must still be payable.
+        vm.warp(block.timestamp + 1 days);
+        uint256 attackerBalanceBefore = composeAsset.balanceOf(ATTACKER);
+        vm.prank(ATTACKER);
+        uint256 redeemed = composeVault.executeRedeem();
+
+        assertEq(redeemed, lockedAssets, "matured executeRedeem pays the full locked obligation");
+        assertEq(
+            composeAsset.balanceOf(ATTACKER),
+            attackerBalanceBefore + lockedAssets,
+            "attacker receives the full queued amount after window closes"
+        );
     }
 }

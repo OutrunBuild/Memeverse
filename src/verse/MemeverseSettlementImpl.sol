@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
-import {IOFT, SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import {IOFT, OFTReceipt, SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
 import {TokenHelper} from "../common/token/TokenHelper.sol";
 import {DelegatecallOnly} from "../common/access/DelegatecallOnly.sol";
@@ -17,6 +17,7 @@ import {MemeversePoolKeyLib} from "../swap/libraries/MemeversePoolKeyLib.sol";
 import {ILzEndpointRegistry} from "../common/omnichain/interfaces/ILzEndpointRegistry.sol";
 import {IYieldDispatcher} from "./interfaces/IYieldDispatcher.sol";
 import {IMemeverseLauncher} from "./interfaces/IMemeverseLauncher.sol";
+import {ICrossChainSendErrors} from "../common/types/ICrossChainSendErrors.sol";
 import {MemeverseLauncherStorage} from "./interfaces/IMemeverseLauncherStorage.sol";
 import {MemeverseLauncherLib} from "./libraries/MemeverseLauncherLib.sol";
 
@@ -274,7 +275,9 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         (fees.memecoinFee, fees.uAssetFee) = _claimPairFees(verse.memecoin, verse.uAsset, _hook);
 
         address pt = IPOLSplitter(_polSplitter).getPT(verseId);
-        (fees.auxiliaryGovUAssetFee, fees.auxiliaryGovPTFee, fees.polFee) = _claimAndAccrueAuxiliaryFees(
+        // totalLeveragedDebt is discarded here: only `unlockFromLocked` reuses it to skip a duplicate
+        // getTotalLeveragedDebt call; `_collectRedeemedFees` (redeemAndDistributeFees path) never needs it.
+        (fees.auxiliaryGovUAssetFee, fees.auxiliaryGovPTFee, fees.polFee,) = _claimAndAccrueAuxiliaryFees(
             verseId, verse, pt, verse.currentStage == IMemeverseLauncher.Stage.Locked, _hook
         );
 
@@ -447,16 +450,31 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
 
         uint256 requiredLzFee = govMessagingFee.nativeFee + memecoinMessagingFee.nativeFee;
         if (msg.value != requiredLzFee) revert IMemeverseLauncher.InvalidLzFee(requiredLzFee, msg.value);
+        // Reject sub-`decimalConversionRate` fees before sending: a fee truncated to zero by `_removeDust` would burn
+        // nothing, deliver a zero-amount compose, strand the fee at the launcher/dispatcher (no sweep), and charge the
+        // full LayerZero fee. Fee amounts are protocol-computed (swap-fee accumulation), so only the truncate-to-zero
+        // case is rejected — not the non-zero remainder (amount % rate != 0), which is the documented dust-stranding
+        // trade-off for the fee path.
         if (govFee != 0) {
+            _requireNonZeroDelivery(verse.uAsset, sendUAssetParam);
             // solhint-disable-next-line check-send-result
             IOFT(verse.uAsset).send{value: govMessagingFee.nativeFee}(sendUAssetParam, govMessagingFee, msg.sender);
         }
         if (memecoinFee != 0) {
+            _requireNonZeroDelivery(verse.memecoin, sendMemecoinParam);
             // solhint-disable-next-line check-send-result,multiple-sends
             IOFT(verse.memecoin).send{value: memecoinMessagingFee.nativeFee}(
                 sendMemecoinParam, memecoinMessagingFee, msg.sender
             );
         }
+    }
+
+    /// @dev Pre-send guard for cross-chain fee distribution. Mirrors the staking path's guard but rejects only the
+    ///      truncate-to-ZERO case (`amountReceivedLD != 0`), not non-zero remainders — fee amounts are
+    ///      protocol-computed, so requiring an exact multiple would revert normal settlement.
+    function _requireNonZeroDelivery(address token, SendParam memory sendParam) internal view {
+        (,, OFTReceipt memory receipt) = IOFT(token).quoteOFT(sendParam);
+        require(receipt.amountReceivedLD != 0, ICrossChainSendErrors.DustAmount());
     }
 
     // Shared via MemeverseLauncherLib.splitExecutorReward; the reader uses the same lib helper.
@@ -484,10 +502,11 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         IMemeverseLauncher.Memeverse storage verse,
         address polSplitterAddress,
         address hook
-    ) internal {
+    ) internal returns (uint256 totalLeveragedDebt) {
         address pt = IPOLSplitter(polSplitterAddress).getPT(verseId);
-        (uint256 govUAssetFee, uint256 govPTFee, uint256 burnedPolFee) =
+        (uint256 govUAssetFee, uint256 govPTFee, uint256 burnedPolFee, uint256 leveragedDebt) =
             _claimAndAccrueAuxiliaryFees(verseId, verse, pt, true, hook);
+        totalLeveragedDebt = leveragedDebt;
         if (burnedPolFee != 0) IPol(verse.pol).burn(address(this), burnedPolFee);
 
         IMemeverseLauncher.PendingAuxiliaryGovFeeState storage pendingGovFeeState =
@@ -502,7 +521,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         address pt,
         bool preserveNormalShare,
         address _hook
-    ) internal returns (uint256 govUAssetFee, uint256 govPTFee, uint256 burnedPolFee) {
+    ) internal returns (uint256 govUAssetFee, uint256 govPTFee, uint256 burnedPolFee, uint256 totalLeveragedDebt) {
         (uint256 polUAssetPolFee, uint256 polUAssetUAssetFee) = _claimPairFees(verse.pol, verse.uAsset, _hook);
         burnedPolFee = polUAssetPolFee;
 
@@ -516,7 +535,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
             burnedPolFee += ptPolPolFee;
         }
 
-        (govUAssetFee, govPTFee) =
+        (govUAssetFee, govPTFee, totalLeveragedDebt) =
             _accrueAuxiliaryFeeShares(verseId, totalAuxiliaryUAssetFee, totalPTFee, preserveNormalShare);
     }
 
@@ -525,9 +544,10 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         uint256 totalUAssetFee,
         uint256 totalPTFee,
         bool preserveNormalShare
-    ) internal returns (uint256 govUAssetFee, uint256 govPTFee) {
-        (govUAssetFee, govPTFee) = _splitAuxiliaryGovFees(verseId, totalUAssetFee, totalPTFee, preserveNormalShare);
-        if (!preserveNormalShare) return (govUAssetFee, govPTFee);
+    ) internal returns (uint256 govUAssetFee, uint256 govPTFee, uint256 totalLeveragedDebt) {
+        (govUAssetFee, govPTFee, totalLeveragedDebt) =
+            _splitAuxiliaryGovFees(verseId, totalUAssetFee, totalPTFee, preserveNormalShare);
+        if (!preserveNormalShare) return (govUAssetFee, govPTFee, totalLeveragedDebt);
 
         IMemeverseLauncher.NormalFeeState storage feeState = memeverseLauncherStorage.normalFeeStates[verseId];
         feeState.accUAssetFee += totalUAssetFee - govUAssetFee;
@@ -539,14 +559,16 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         uint256 totalUAssetFee,
         uint256 totalPTFee,
         bool preserveNormalShare
-    ) internal view returns (uint256 govUAssetFee, uint256 govPTFee) {
+    ) internal view returns (uint256 govUAssetFee, uint256 govPTFee, uint256 totalLeveragedDebt) {
         // GR-001: short-circuit before the SLOAD + external getTotalLeveragedDebt fetch on the
         // Unlocked-stage path (preserveNormalShare == false), where redeemAndDistributeFees is
         // repeatedly callable. Mirrors the lib helper's own first-line guard; restoring pre-refactor gas.
-        if (!preserveNormalShare) return (totalUAssetFee, totalPTFee);
+        // totalLeveragedDebt is left at its default 0 here: only the Locked-capture path consumes it,
+        // and that path always passes preserveNormalShare == true (never short-circuits).
+        if (!preserveNormalShare) return (totalUAssetFee, totalPTFee, 0);
         uint256 normalFunds = memeverseLauncherStorage.totalNormalFunds[verseId];
-        uint256 totalLeveragedDebt = IPOLend(memeverseLauncherStorage.polend).getTotalLeveragedDebt(verseId);
-        return MemeverseLauncherLib.splitAuxiliaryGovFees(
+        totalLeveragedDebt = IPOLend(memeverseLauncherStorage.polend).getTotalLeveragedDebt(verseId);
+        (govUAssetFee, govPTFee) = MemeverseLauncherLib.splitAuxiliaryGovFees(
             normalFunds, totalLeveragedDebt, totalUAssetFee, totalPTFee, preserveNormalShare
         );
     }
@@ -595,12 +617,16 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         address _polend = memeverseLauncherStorage.polend;
         IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
 
-        _captureLockedAuxiliaryFees(verseId, verse, polSplitter, hook);
+        // totalLeveragedDebt is captured here (read once inside _captureLockedAuxiliaryFees) and reused below
+        // for the executeGlobalSettlement gate, instead of a second identical getTotalLeveragedDebt STATICCALL.
+        // Safe because the intervening `settle` never writes the two slots getTotalLeveragedDebt reads
+        // (totalLeveragedInterest / interestRate); see GR-001 note in _splitAuxiliaryGovFees.
+        uint256 totalLeveragedDebt = _captureLockedAuxiliaryFees(verseId, verse, polSplitter, hook);
         // Write Stage.Unlocked BEFORE the callbacks: POLend re-enters the launcher during executeGlobalSettlement
         // and must observe the Unlocked stage.
         verse.currentStage = IMemeverseLauncher.Stage.Unlocked;
         IPOLSplitter(polSplitter).settle(verseId);
-        if (IPOLend(_polend).getTotalLeveragedDebt(verseId) != 0) {
+        if (totalLeveragedDebt != 0) {
             IPOLend(_polend).executeGlobalSettlement(verseId);
         }
         _activatePostUnlockPublicSwapProtection(verseId, verse, polSplitter, hook);

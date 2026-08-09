@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
+import {ICrossChainSendErrors} from "../../common/types/ICrossChainSendErrors.sol";
+
 /**
  * @title Memeverse Omnichain Interoperation Interface
  */
-interface IMemeverseOmnichainInteroperation {
+interface IMemeverseOmnichainInteroperation is ICrossChainSendErrors {
     /// @notice Quotes the LayerZero fee required to stake a memecoin on the governance chain.
     /// @dev Returns zero when the memecoin already belongs to the local governance chain.
     /// @param memecoin Memecoin address to stake.
@@ -40,4 +42,6 @@ interface IMemeverseOmnichainInteroperation {
     error EmptyYieldVault();
 
     error InvalidLzFee(uint256 expected, uint256 actual);
+
+    error ZeroAddress();
 }

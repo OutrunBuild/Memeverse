@@ -57,10 +57,17 @@ interface IMemecoinYieldVault is IERC20 {
     /// @param amount Amount of underlying asset being contributed as yield.
     function accumulateYields(uint256 amount) external;
 
-    /// @notice Retries a failed cross-chain yield accumulation using the stored compose payload.
-    /// @dev Implementations may restrict who is allowed to call this entrypoint.
-    /// @param lzGuid LayerZero compose guid for the failed yield transfer.
-    function reAccumulateYields(bytes32 lzGuid) external;
+    /// @notice Retries a failed cross-chain yield accumulation by settling the stuck compose from the dispatcher.
+    /// @dev The caller must supply the `dispatcher` the compose was actually delivered to (the endpoint's ComposeSent
+    ///      `to`, since the launcher's `setYieldDispatcher` can rotate the canonical dispatcher after this vault was
+    ///      created) and the original compose `message` (reconstructable from the same ComposeSent log); the
+    ///      dispatcher's `settlePendingCompose` verifies both against the endpoint's composeQueue. The entry also
+    ///      verifies the message's inner receiver is this vault (revert `NotComposeBeneficiary`) and that the
+    ///      settlement returned a non-zero amount (revert `ComposeSettlementFailed`).
+    /// @param dispatcher YieldDispatcher the stuck compose was delivered to.
+    /// @param guid LayerZero compose guid for the failed yield transfer.
+    /// @param message The original compose payload.
+    function reAccumulateYields(address dispatcher, bytes32 guid, bytes calldata message) external;
 
     /// @notice Deposits underlying asset and mints vault shares.
     /// @dev Implementations may add validation around who may receive shares. A non-zero deposit that
@@ -103,4 +110,14 @@ interface IMemecoinYieldVault is IERC20 {
     error RedeemAmountOverflowed(uint256 assets);
 
     error NotSelfRedemption();
+
+    /// @dev The compose payload is shorter than 108 bytes, so it cannot carry the inner
+    ///      (address, TokenType) beneficiary word at [76:108] and can never settle.
+    error ComposeMessageTooShort();
+
+    /// @dev The compose's inner receiver is not this vault; settling it would never yield into this vault.
+    error NotComposeBeneficiary();
+
+    /// @dev The dispatcher returned without releasing any amount; nothing was settled.
+    error ComposeSettlementFailed();
 }

@@ -7,6 +7,7 @@ import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/Option
 import {IOFT, SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
+import {ICrossChainSendErrors} from "../../src/common/types/ICrossChainSendErrors.sol";
 import {
     IMemeverseOmnichainInteroperation
 } from "../../src/interoperation/interfaces/IMemeverseOmnichainInteroperation.sol";
@@ -42,6 +43,12 @@ contract MemeverseOmnichainInteroperationTest is Test {
         interoperation = new MemeverseOmnichainInteroperation(
             OWNER, address(registry), address(launcher), OMNICHAIN_STAKER, 115_000, 135_000
         );
+    }
+
+    /// @notice Test constructor rejects zero omnichain memecoin staker.
+    function testConstructorRejectsZeroOmnichainMemecoinStaker() external {
+        vm.expectRevert(IMemeverseOmnichainInteroperation.ZeroAddress.selector);
+        new MemeverseOmnichainInteroperation(OWNER, address(registry), address(launcher), address(0), 115_000, 135_000);
     }
 
     /// @notice Test quote memecoin staking rejects zero input.
@@ -223,6 +230,92 @@ contract MemeverseOmnichainInteroperationTest is Test {
 
         assertEq(interoperation.oftReceiveGasLimit(), oftReceiveGasLimit);
         assertEq(interoperation.omnichainStakingGasLimit(), stakingGasLimit);
+    }
+
+    /// @notice Regression guard for the sub-`decimalConversionRate` truncation (MR-45).
+    /// @dev `_removeDust` truncates `amountLD / rate * rate`; for an 18-decimal memecoin (rate = 1e12) any
+    ///      `0 < amount < 1e12` collapses to `amountReceivedLD = 0`. Before the fix this would silently pull the
+    ///      dust into the router, send a zero-amount compose (zero position, full LZ fee), and strand the dust.
+    ///      The router now rejects it with `DustAmount` BEFORE `_transferIn`, so the caller's balance is untouched.
+    function testMemecoinStakingRemotePathRejectsSubConversionRateAmount() external {
+        _setRemoteVerse(address(yieldVault));
+        memecoin.setQuoteFee(0.4 ether);
+        uint256 subRate = 1e12 - 1; // strictly below decimalConversionRate -> truncates to 0
+        memecoin.mint(address(this), subRate);
+        memecoin.approve(address(interoperation), type(uint256).max);
+
+        vm.expectRevert(ICrossChainSendErrors.DustAmount.selector);
+        interoperation.memecoinStaking{value: 0.4 ether}(address(memecoin), RECEIVER, subRate);
+
+        // Guard fires BEFORE _transferIn: the caller still holds the full dust (no stranding).
+        assertEq(memecoin.balanceOf(address(this)), subRate);
+        assertEq(memecoin.balanceOf(address(interoperation)), 0);
+    }
+
+    /// @notice Quote path mirrors the send guard: a sub-rate amount reverts at quote time too.
+    function testQuoteMemecoinStakingRejectsSubConversionRateAmount() external {
+        _setRemoteVerse(address(yieldVault));
+        memecoin.setQuoteFee(0.25 ether);
+
+        vm.expectRevert(ICrossChainSendErrors.DustAmount.selector);
+        interoperation.quoteMemecoinStaking(address(memecoin), RECEIVER, 1e12 - 1);
+    }
+
+    /// @notice Boundary counterpart: an amount that is an exact multiple of `decimalConversionRate` passes the guard.
+    /// @dev `amount == rate` (`1e12`) is an exact multiple (`_removeDust(1e12) == 1e12`, `amountSentLD == amountLD`),
+    ///      so the guard accepts it. Pins the upper edge so a guard that wrongly rejected rate-sized amounts is caught.
+    function testMemecoinStakingRemotePathAcceptsConversionRateAmount() external {
+        _setRemoteVerse(address(yieldVault));
+        memecoin.setQuoteFee(0.4 ether);
+        uint256 rate = 1e12; // exactly the conversion rate -> an exact multiple, no truncation
+        memecoin.mint(address(this), rate);
+        memecoin.approve(address(interoperation), type(uint256).max);
+
+        interoperation.memecoinStaking{value: 0.4 ether}(address(memecoin), RECEIVER, rate);
+
+        // The full rate-sized amount was pulled and burned by the OFT send (no stranding).
+        assertEq(memecoin.balanceOf(address(this)), 0);
+        assertEq(memecoin.balanceOf(address(interoperation)), 0);
+        assertEq(memecoin.lastSendDstEid(), REMOTE_EID);
+    }
+
+    /// @notice A non-exact-multiple amount above the rate does NOT revert — the un-burnt remainder is refunded to the
+    ///         caller on the source chain, so nothing strands. Pins the refund behavior (vs the alternative of
+    ///         reverting, which would force the caller to round to an exact multiple).
+    /// @dev `amount = rate + 1` truncates to `amountSentLD = rate` (1 wei remainder). The send proceeds, then
+    ///      `memecoinStaking` refunds the 1-wei remainder to `msg.sender`. The caller ends with 1 wei back; the
+    ///      contract holds nothing.
+    function testMemecoinStakingRemotePathRefundsNonExactMultipleRemainder() external {
+        _setRemoteVerse(address(yieldVault));
+        memecoin.setQuoteFee(0.4 ether);
+        uint256 nonMultiple = 1e12 + 1; // above rate, not an exact multiple -> truncates to 1e12, 1 wei remainder
+        memecoin.mint(address(this), nonMultiple);
+        memecoin.approve(address(interoperation), type(uint256).max);
+
+        interoperation.memecoinStaking{value: 0.4 ether}(address(memecoin), RECEIVER, nonMultiple);
+
+        // The 1-wei remainder was refunded to the caller; the contract holds nothing (no stranding).
+        assertEq(memecoin.balanceOf(address(this)), 1, "remainder refunded");
+        assertEq(memecoin.balanceOf(address(interoperation)), 0, "contract holds no dust");
+        assertEq(memecoin.lastSendDstEid(), REMOTE_EID);
+    }
+
+    /// @notice A large whole-ether amount (an exact 1e12-multiple) sends the full amount with zero remainder — no
+    ///         refund, nothing strands. Guards against a regression where the refund path or guard would wrongly
+    ///         affect normal staking.
+    /// @dev `1.5 ether == 1.5e18 == 1.5e6 * 1e12`, an exact multiple, so `_removeDust` leaves it unchanged and the
+    ///      remainder is 0 (no refund transfer).
+    function testMemecoinStakingRemotePathAcceptsWholeEtherAmount() external {
+        _setRemoteVerse(address(yieldVault));
+        memecoin.setQuoteFee(0.4 ether);
+        uint256 wholeEther = 1.5 ether; // 1.5e18 = 1.5e6 * 1e12, an exact multiple
+        memecoin.mint(address(this), wholeEther);
+        memecoin.approve(address(interoperation), type(uint256).max);
+
+        interoperation.memecoinStaking{value: 0.4 ether}(address(memecoin), RECEIVER, wholeEther);
+
+        assertEq(memecoin.balanceOf(address(this)), 0);
+        assertEq(memecoin.balanceOf(address(interoperation)), 0);
     }
 
     function _setLocalVerse(address yieldVaultAddress) internal {

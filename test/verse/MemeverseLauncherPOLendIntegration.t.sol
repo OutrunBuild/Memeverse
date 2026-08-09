@@ -639,6 +639,11 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         _writeVerseBack(verse);
         vm.warp(block.timestamp + 1);
 
+        // The debt read inside _captureLockedAuxiliaryFees is reused at the executeGlobalSettlement gate
+        // (no second identical getTotalLeveragedDebt STATICCALL). Exactly one read per Locked->Unlocked
+        // transition, even on the zero-debt branch where executeGlobalSettlement is skipped.
+        vm.expectCall(address(polend), abi.encodeCall(IPOLend.getTotalLeveragedDebt, (VERSE_ID)), 1);
+
         launcher.changeStage(VERSE_ID);
 
         assertEq(splitter.lastCallIndex(), 1, "splitter settles");
@@ -660,6 +665,11 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         _writeVerseBack(verse);
         polend.setTotalLeveragedDebt(VERSE_ID, 1 ether);
         vm.warp(block.timestamp + 1);
+
+        // The debt read inside _captureLockedAuxiliaryFees is reused at the executeGlobalSettlement gate
+        // (no second identical getTotalLeveragedDebt STATICCALL). Exactly one read per Locked->Unlocked
+        // transition, even on the non-zero-debt branch where executeGlobalSettlement runs.
+        vm.expectCall(address(polend), abi.encodeCall(IPOLend.getTotalLeveragedDebt, (VERSE_ID)), 1);
 
         launcher.changeStage(VERSE_ID);
 

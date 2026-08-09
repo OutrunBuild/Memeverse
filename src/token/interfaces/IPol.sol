@@ -62,4 +62,7 @@ interface IPol is IERC20 {
     function burn(address account, uint256 amount) external;
 
     error ZeroInput();
+
+    /// @dev Thrown when a privileged action is invoked by an account that is not the authorized controller.
+    error PermissionDenied();
 }

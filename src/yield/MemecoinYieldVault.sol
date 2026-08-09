@@ -5,8 +5,8 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IMemecoin} from "../token/interfaces/IMemecoin.sol";
 import {OutrunNoncesInit} from "../common/token/OutrunNoncesInit.sol";
-import {IOFTCompose} from "../common/omnichain/oft/IOFTCompose.sol";
 import {IMemecoinYieldVault} from "./interfaces/IMemecoinYieldVault.sol";
+import {ISettleCompose} from "../common/omnichain/ISettleCompose.sol";
 import {OutrunSafeERC20, IERC20} from "./libraries/OutrunSafeERC20.sol";
 import {OutrunERC20PermitInit} from "../common/token/OutrunERC20PermitInit.sol";
 import {OutrunERC20Init, OutrunERC20VotesInit} from "../common/token/extensions/governance/OutrunERC20VotesInit.sol";
@@ -20,6 +20,14 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     uint256 public constant MAX_REDEEM_REQUESTS = 5;
     uint256 public constant REDEEM_DELAY = 1 days; // Preventing flash attacks
 
+    /// @dev Bound once in `initialize`. `reAccumulateYields` takes the dispatcher as a parameter
+    ///      instead of reading this slot (the launcher can rotate its canonical dispatcher after this vault is
+    ///      created). Retained only to preserve the clone + initializer storage layout.
+    ///      DO NOT use this slot for compose recovery: it is not read by any runtime path. After a launcher
+    ///      `setYieldDispatcher` rotation it holds a stale pointer that can diverge from the dispatcher a stuck compose
+    ///      was actually delivered to; passing it to `reAccumulateYields` reverts `NotDelivered` (wrong dispatcher's
+    ///      empty composeQueue slot). Recovery callers MUST source `dispatcher` from the endpoint's `ComposeSent` event
+    ///      `to` field, never here.
     address public yieldDispatcher;
     address public asset;
     uint256 public totalAssets;
@@ -100,13 +108,41 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @notice Retries yield accumulation after a LayerZero compose call to `accumulateYields` failed.
-    /// @dev This retry is permissionless. It withdraws the unexecuted compose transfer keyed by `lzGuid`, then
-    ///      reuses the normal `_accumulateYield` path. A zero-yield retry leaves assets and checkpoints unchanged;
-    ///      if the vault is empty, recovered yield is burned instead of becoming unowned value.
-    /// @param lzGuid LayerZero guid.
-    function reAccumulateYields(bytes32 lzGuid) external override {
-        uint256 yield = IOFTCompose(asset).withdrawIfNotExecuted(lzGuid, address(this));
-        _accumulateYield(yieldDispatcher, yield);
+    /// @dev Delegates to the `dispatcher`'s `settlePendingCompose`, which proves the compose was delivered-but-unrun
+    ///      via the endpoint's composeQueue and then settles by approving this vault and calling `accumulateYields`
+    ///      (pull + totalAssets accounting) in one step. The `dispatcher` is taken as a parameter rather than read from
+    ///      this vault's `initialize`-time `yieldDispatcher` storage: the launcher's `setYieldDispatcher` can rotate the
+    ///      canonical dispatcher after this vault was created, so a stuck compose may sit in a different dispatcher's
+    ///      composeQueue than the one captured at initialization. The caller must supply the dispatcher the compose was
+    ///      actually delivered to (the `to` field of the endpoint's `ComposeSent` event, sourced alongside `message`),
+    ///      plus the original compose `message`, reconstructable from the same `ComposeSent` log. `settlePendingCompose`
+    ///      re-derives delivery against `composeQueue(token, dispatcher, guid, 0)`. This entry also verifies that the
+    ///      message's inner receiver is this vault (revert `NotComposeBeneficiary`) and that the settlement released
+    ///      a non-zero amount (revert `ComposeSettlementFailed`).
+    /// @param dispatcher YieldDispatcher that the stuck compose was delivered to (ComposeSent `to`).
+    /// @param guid LayerZero guid.
+    /// @param message The original compose payload.
+    function reAccumulateYields(address dispatcher, bytes32 guid, bytes calldata message) external override {
+        // The compose's beneficiary is fixed by the message (hash-bound to the guid by the endpoint queue), so only
+        // a message whose inner receiver is this vault can settle yield into this vault. The receiver word sits at
+        // [76:108] — OFTComposeMsgCodec's COMPOSE_FROM_OFFSET plus the first word of the (address, TokenType) tuple
+        // (the offsets YieldDispatcher parses in _parseCompose). A message shorter than 108 bytes cannot carry the
+        // word and can never settle (verifySettle needs the full header and the tuple needs 64 more bytes), so it
+        // fails here with a named error before reaching the dispatcher.
+        require(message.length >= 108, ComposeMessageTooShort());
+        // Note: the uint160 downcast truncates a dirty-high-bit receiver word, so a self-forged word whose low 160 bits
+        // are this vault passes this gate and then reverts inside the dispatcher (frames >= 140 bytes at its strict
+        // abi.decode with an opaque empty-data revert; the 108-139-byte band at its named MalformedComposeMsg guard).
+        // Either way there is no settlement, the slot stays None, and error-name monitoring must not expect
+        // NotComposeBeneficiary for this class.
+        require(address(uint160(uint256(bytes32(message[76:108])))) == address(this), NotComposeBeneficiary());
+
+        // No separate local accounting step — settlePendingCompose handles pull + totalAssets in one call. The
+        // declared return is asserted non-zero: a genuine settle always releases the payload's non-zero amount
+        // (the dispatcher rejects zero-amount payloads with ZeroInput), so a zero return means the dispatcher
+        // claimed success without settling anything.
+        uint256 amount = ISettleCompose(dispatcher).settlePendingCompose(asset, guid, message);
+        require(amount != 0, ComposeSettlementFailed());
     }
 
     function _accumulateYield(address yieldSource, uint256 yield) internal {

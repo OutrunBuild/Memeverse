@@ -495,7 +495,7 @@ contract POLend layout at erc7201("outrun.storage.POLend")
     /// @notice Refund a caller's leveraged-genesis interest after the verse fails and the market
     ///         enters `Refund`. Returns the real-uAsset interest paid; any GenesisCredit interest
     ///         paid by the same caller is also refunded as the same-denomination credit token.
-    /// @dev    F-3: judgement is the conjunction of both ledgers (`realPaid == 0 && creditPaid == 0`)
+    /// @dev    Judgement is the conjunction of both ledgers (`realPaid == 0 && creditPaid == 0`)
     ///         and is performed before per-asset routing, so a credit-only participant can claim
     ///         credit back without reverting on the real ledger being empty. Real-uAsset and credit
     ///         payouts are physically isolated: each branch is gated by its own non-zero guard so we

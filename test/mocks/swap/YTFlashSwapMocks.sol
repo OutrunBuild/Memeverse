@@ -278,7 +278,7 @@ contract MockYTHook {
 ///      `HookCodeNotReady` guard (it has code), then the runtime-cast STATICCALL
 ///      `IImmutableState(address(hook_)).poolManager()` hits an unknown selector with no fallback -> the EVM dispatcher
 ///      reverts with empty returndata -> Solidity's high-level ABI-decode of the return value reverts, aborting
-///      deployment. This is the F-008 residual path; it is unguarded-by-named-error but still fail-closed. This mock
+///      deployment. This residual path is unguarded-by-named-error but still fail-closed. This mock
 ///      deliberately diverges from `MockYTHook` by omitting the `poolManager` public state var so its auto-getter
 ///      selector is absent. Setters mirror `MockYTHook` for symmetry even though the failing path reverts before any
 ///      runtime call uses them.

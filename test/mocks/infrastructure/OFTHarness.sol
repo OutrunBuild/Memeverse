@@ -26,17 +26,12 @@ contract OFTHarness is OutrunOFTInit {
         _mint(to, amount);
     }
 
-    /// @notice Seed compose.
-    /// @param guid See implementation.
-    /// @param composer See implementation.
-    /// @param ubo See implementation.
-    /// @param amount See implementation.
-    /// @param executed See implementation.
-    function seedCompose(bytes32 guid, address composer, address ubo, uint256 amount, bool executed) external {
-        ComposeTxStatus storage txStatus = _getOFTCoreStorage().composeTxs[guid];
-        txStatus.composer = composer;
-        txStatus.UBO = ubo;
-        txStatus.amount = amount;
-        txStatus.isExecuted = executed;
+    /// @notice Converts an LD amount to shared decimals via the OFT's conversion rate, mirroring OFT `_toSD`.
+    ///         Single shared site for the LD→SD conversion across the test suites (OutrunOFTInit.t.sol and
+    ///         YieldDispatcher.t.sol previously each defined their own copy).
+    /// @param amountLD Local-decimals amount.
+    /// @return amountSD Shared-decimals amount.
+    function toSharedDecimals(uint256 amountLD) external view returns (uint64) {
+        return uint64(amountLD / decimalConversionRate);
     }
 }

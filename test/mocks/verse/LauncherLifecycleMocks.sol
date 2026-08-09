@@ -1405,15 +1405,20 @@ contract MockOFTToken is MockERC20, IOFT {
         return 6;
     }
 
-    /// @notice Quote oft.
-    /// @dev Present to satisfy the IOFT interface but left unused in these tests.
-    /// @return See implementation.
-    function quoteOFT(SendParam calldata)
+    /// @notice Quote oft — mirrors `OutrunOFTCoreInit._debitView`/`_removeDust` truncation.
+    /// @dev The production OFT truncates the local-decimal amount to
+    ///      `(amountLD / decimalConversionRate) * decimalConversionRate` before encoding the shared-decimal amount on
+    ///      the wire, so a sub-`decimalConversionRate` `amountLD` collapses to `amountSentLD = amountReceivedLD = 0`.
+    ///      The settlement path's `_sendRedeemedFeesCrossChain` now pre-checks this receipt's `amountReceivedLD`,
+    ///      so the mock must implement the same truncation (rate = 1e12 for this 18-decimal mock, sharedDecimals = 6).
+    function quoteOFT(SendParam calldata sendParam)
         external
-        pure
+        view
         returns (OFTLimit memory, OFTFeeDetail[] memory, OFTReceipt memory)
     {
-        revert("unused");
+        uint256 rate = 10 ** (this.decimals() - this.sharedDecimals());
+        uint256 amountSentLD = (sendParam.amountLD / rate) * rate;
+        return (OFTLimit(0, type(uint64).max), new OFTFeeDetail[](0), OFTReceipt(amountSentLD, amountSentLD));
     }
 
     /// @notice Quote send.

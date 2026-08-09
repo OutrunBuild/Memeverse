@@ -5,6 +5,10 @@ import {Test} from "forge-std/Test.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 import {MemeverseScript} from "../../script/MemeverseScript.s.sol";
+import {IOutrunDeployer} from "../../script/IOutrunDeployer.sol";
+import {YieldDispatcher} from "../../src/verse/YieldDispatcher.sol";
+import {OmnichainMemecoinStaker} from "../../src/interoperation/OmnichainMemecoinStaker.sol";
+import {MemeverseOmnichainInteroperation} from "../../src/interoperation/MemeverseOmnichainInteroperation.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {LauncherReadinessMockBase} from "../mocks/verse/LauncherReadinessMockBase.sol";
 
@@ -60,11 +64,33 @@ contract MockScriptProxyDeployer {
     }
 }
 
+// Captures the creationCode passed to OUTRUN_DEPLOYER so a test can execute the script's
+// exact constructor-arg encoding and pin its order/count against the real YieldDispatcher.
+contract MockScriptOutrunDeployer is IOutrunDeployer {
+    bytes public lastCreationCode;
+    bytes32 public lastSalt;
+
+    function deploy(bytes32 salt, bytes memory creationCode) external payable returns (address deployed) {
+        lastSalt = salt;
+        lastCreationCode = creationCode;
+        return address(0);
+    }
+
+    function getDeployed(address deployer, bytes32 salt) external view returns (address deployed) {
+        return address(0);
+    }
+}
+
 contract MockScriptYieldDispatcher {
     address public memeverseLauncher;
+    address public localEndpoint;
 
     constructor(address launcher_) {
         memeverseLauncher = launcher_;
+    }
+
+    function setLocalEndpoint(address localEndpoint_) external {
+        localEndpoint = localEndpoint_;
     }
 }
 
@@ -184,6 +210,54 @@ contract MemeverseScriptHarness is MemeverseScript {
         _openSupportedUAssetsAfterReadiness(registrationCenter, router, hook);
     }
 
+    function setOutrunDeployerForTest(address deployer) external {
+        OUTRUN_DEPLOYER = deployer;
+    }
+
+    function setEndpointForTest(uint32 chainId, address endpoint) external {
+        endpoints[chainId] = endpoint;
+    }
+
+    function setOmnichainMemecoinStakerForTest(address staker) external {
+        OMNICHAIN_MEMECOIN_STAKER = staker;
+    }
+
+    function setMemeverseLauncherForTest(address launcher_) external {
+        MEMEVERSE_LAUNCHER = launcher_;
+    }
+
+    function setMemeverseCommonInfoForTest(address commonInfo_) external {
+        MEMEVERSE_COMMON_INFO = commonInfo_;
+    }
+
+    function deployOmnichainMemecoinStakerForTest(uint256 nonce) external {
+        _deployOmnichainMemecoinStaker(nonce);
+    }
+
+    function deployMemeverseOmnichainInteroperationForTest(uint256 nonce) external {
+        _deployMemeverseOmnichainInteroperation(nonce);
+    }
+
+    function deployYieldDispatcherForTest(uint256 nonce) external {
+        _deployYieldDispatcher(nonce);
+    }
+
+    function deployImplementationForTest(uint256 nonce) external {
+        _deployImplementation(nonce);
+    }
+
+    function deployMemecoinPOLImplementationForTest(uint256 nonce) external {
+        _deployMemecoinPOLImplementation(nonce);
+    }
+
+    function deployRegistrationCenterForTest(uint256 nonce) external {
+        _deployRegistrationCenter(nonce);
+    }
+
+    function deployMemeverseRegistrarForTest(uint256 nonce) external {
+        _deployMemeverseRegistrar(nonce);
+    }
+
     function optionalEnvAddressForTest(string memory name) external view returns (address) {
         return _optionalEnvAddress(name);
     }
@@ -196,6 +270,8 @@ contract MemeverseScriptHarness is MemeverseScript {
 contract MemeverseScriptTest is Test {
     address internal constant UETH = address(0x1001);
     address internal constant UUSD = address(0x1002);
+    address internal constant LOCAL_ENDPOINT = address(0x1337);
+    address internal constant STAKER = address(0x6002);
     address internal constant MOCK_POOL_MANAGER = address(0x4631);
     // Facet addresses wired onto readyHook by _mockFacetsOnHook; named so individual tests can override one facet.
     address internal constant READY_SWAP_FACET = address(uint160(0xFAB1));
@@ -244,6 +320,27 @@ contract MemeverseScriptTest is Test {
             address(yieldDispatcher),
             address(polend),
             address(splitter)
+        );
+        // Readiness wiring: _requireDeploymentReady now requires code at OMNICHAIN_MEMECOIN_STAKER and
+        // consistency between the dispatcher's localEndpoint() and the harness endpoints mapping.
+        vm.etch(STAKER, address(lens).code);
+        // F3: readiness reads back staker.localEndpoint() (STAKER_ENDPOINT_NOT_READY); the etched lens code
+        // has no such getter, so mock it to match endpoints[block.chainid].
+        vm.mockCall(STAKER, abi.encodeWithSignature("localEndpoint()"), abi.encode(LOCAL_ENDPOINT));
+        script.setOmnichainMemecoinStakerForTest(STAKER);
+        yieldDispatcher.setLocalEndpoint(LOCAL_ENDPOINT);
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+        // Endpoint capability check: _requireDeploymentReady now requires the endpoint to have code
+        // and expose the MessagingComposer composeQueue getter. The harness endpoint has no real
+        // code, so etch lens bytecode and mock the probe with the exact placeholder calldata the
+        // script uses (vm.mockCall cannot fake EXTCODESIZE; etch provides the code length).
+        vm.etch(LOCAL_ENDPOINT, address(lens).code);
+        vm.mockCall(
+            LOCAL_ENDPOINT,
+            abi.encodeWithSignature(
+                "composeQueue(address,address,bytes32,uint16)", address(1), address(1), bytes32(0), uint16(0)
+            ),
+            abi.encode(bytes32(0))
         );
     }
 
@@ -390,16 +487,59 @@ contract MemeverseScriptTest is Test {
     function testPublicOpenSupportedUAssetsLoadsEnvAndOpensWhenReady() external {
         MemeverseScriptHarness publicEntryScript = new MemeverseScriptHarness();
         publicEntryScript.setBroadcastSender(address(this));
+        // The standalone entry fills endpoints from env via _chainsInit, so the test chain must be one
+        // of the nine configured chains (BSC testnet) with its ENDPOINT/EID env vars set.
+        vm.chainId(97);
         MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
         (address readyRouter, address readyHook) = _configureReadySwap();
         polend.setSettlementDustState(UETH, 0, 1);
         polend.setSettlementDustState(UUSD, 0, 1);
         _setReadinessEnv(address(script), address(launcher), address(polend), address(splitter));
+        _setChainEnv(LOCAL_ENDPOINT);
 
         publicEntryScript.openSupportedUAssetsAfterReadiness(address(center), readyRouter, readyHook);
 
         assertTrue(center.supportedUAssets(UETH));
         assertTrue(center.supportedUAssets(UUSD));
+    }
+
+    // Regression: the standalone entry must load OMNICHAIN_MEMECOIN_STAKER from env and reject a
+    // non-zero address without code instead of silently skipping the check (previously the env var was
+    // never loaded on this path, so the code check always failed with STAKER_CODE_NOT_READY).
+    function testPublicOpenSupportedUAssetsRevertsWhenStakerEnvHasNoCode() external {
+        MemeverseScriptHarness publicEntryScript = new MemeverseScriptHarness();
+        publicEntryScript.setBroadcastSender(address(this));
+        vm.chainId(97);
+        MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
+        (address readyRouter, address readyHook) = _configureReadySwap();
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+        _setReadinessEnv(address(script), address(launcher), address(polend), address(splitter));
+        _setChainEnv(LOCAL_ENDPOINT);
+        vm.setEnv("OMNICHAIN_MEMECOIN_STAKER", vm.toString(address(0xDEAD)));
+
+        vm.expectRevert("STAKER_CODE_NOT_READY");
+        publicEntryScript.openSupportedUAssetsAfterReadiness(address(center), readyRouter, readyHook);
+    }
+
+    // Regression: the standalone entry must fill endpoints (via _chainsInit) before comparing the
+    // dispatcher's localEndpoint() against endpoints[block.chainid]; a mismatch must be rejected with
+    // YIELD_DISPATCHER_ENDPOINT_NOT_READY (previously the mapping was never filled on this path, so a
+    // legitimate dispatcher was always rejected against endpoints[chainid] == 0).
+    function testPublicOpenSupportedUAssetsRevertsWhenDispatcherEndpointMismatchesLocal() external {
+        MemeverseScriptHarness publicEntryScript = new MemeverseScriptHarness();
+        publicEntryScript.setBroadcastSender(address(this));
+        vm.chainId(97);
+        MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
+        (address readyRouter, address readyHook) = _configureReadySwap();
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+        _setReadinessEnv(address(script), address(launcher), address(polend), address(splitter));
+        _setChainEnv(LOCAL_ENDPOINT);
+        yieldDispatcher.setLocalEndpoint(address(0x9999));
+
+        vm.expectRevert("YIELD_DISPATCHER_ENDPOINT_NOT_READY");
+        publicEntryScript.openSupportedUAssetsAfterReadiness(address(center), readyRouter, readyHook);
     }
 
     function testOptionalEnvAddressReturnsZeroWhenMissing() external view {
@@ -412,6 +552,334 @@ contract MemeverseScriptTest is Test {
         assertEq(
             script.optionalEnvAddressForTest("MEMEVERSE_SCRIPT_OPTIONAL_ADDRESS_PRESENT_FOR_TEST"), address(0x1234)
         );
+    }
+
+    // Regression: pins _deployYieldDispatcher's creationCode constructor-arg encoding (order + count)
+    // against the real YieldDispatcher constructor. The script builds the creation code by type-erased
+    // abi.encode, so a constructor-signature drift (e.g. the 3-arg-with-owner -> 2-arg change) compiles
+    // cleanly and would silently deploy a dispatcher with wrong immutables. Byte-equality against a
+    // hand-written expectation alone cannot catch constructor-side arg-order drift (both sides would
+    // keep the same handwritten order), so the captured bytes are ALSO executed and the deployed
+    // immutables read back: any arg-count mismatch reverts the create, any arg-order mismatch flips
+    // localEndpoint()/memeverseLauncher() and fails the read-back assertions.
+    function testDeployYieldDispatcherPinsConstructorArgEncoding() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        address localEndpoint = address(0x1234);
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), localEndpoint);
+
+        script.deployYieldDispatcherForTest(2);
+
+        bytes memory expectedCreationCode =
+            abi.encodePacked(type(YieldDispatcher).creationCode, abi.encode(localEndpoint, address(launcher)));
+        assertEq(deployer.lastCreationCode(), expectedCreationCode);
+        assertEq(deployer.lastSalt(), keccak256(abi.encodePacked("YieldDispatcher", uint256(2))));
+
+        // Execute the exact creation code the script handed to the deployer and read back the
+        // immutables the real constructor assigns. The YieldDispatcher constructor performs no
+        // external calls, so a plain create is safe in the test EVM.
+        bytes memory creationCode = deployer.lastCreationCode();
+        address deployed;
+        assembly {
+            deployed := create(0, add(creationCode, 0x20), mload(creationCode))
+        }
+        assertTrue(deployed != address(0), "creationCode deploy reverted");
+        assertEq(YieldDispatcher(deployed).localEndpoint(), localEndpoint);
+        assertEq(YieldDispatcher(deployed).memeverseLauncher(), address(launcher));
+    }
+
+    // Mirror of testDeployYieldDispatcherPinsConstructorArgEncoding for the staker. Same motivation:
+    // _deployOmnichainMemecoinStaker builds the creation code by type-erased abi.encode, so a constructor
+    // signature change would compile cleanly and silently bake a wrong localEndpoint immutable. A wrong
+    // localEndpoint makes the lzCompose `msg.sender == localEndpoint` guard permanently false, so the
+    // staker would silently drop every omnichain staking message. Byte-equality alone cannot catch
+    // arg-order drift (both sides keep the handwritten order), so the captured bytes are also executed
+    // and localEndpoint() read back: any arg-count mismatch reverts the create, any order mismatch
+    // flips the read-back.
+    function testDeployOmnichainMemecoinStakerPinsConstructorArgEncoding() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        address localEndpoint = address(0x1234);
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), localEndpoint);
+
+        script.deployOmnichainMemecoinStakerForTest(2);
+
+        assertEq(
+            deployer.lastCreationCode(),
+            abi.encodePacked(type(OmnichainMemecoinStaker).creationCode, abi.encode(localEndpoint))
+        );
+        assertEq(deployer.lastSalt(), keccak256(abi.encodePacked("OmnichainMemecoinStaker", uint256(2))));
+
+        // Execute the exact creation code the script handed to the deployer and read back the immutable
+        // the real constructor assigns. The staker constructor performs no external calls, so a plain
+        // create is safe in the test EVM.
+        bytes memory creationCode = deployer.lastCreationCode();
+        address deployed;
+        assembly {
+            deployed := create(0, add(creationCode, 0x20), mload(creationCode))
+        }
+        assertTrue(deployed != address(0), "creationCode deploy reverted");
+        assertEq(OmnichainMemecoinStaker(deployed).localEndpoint(), localEndpoint);
+    }
+
+    // Mirror of testDeployYieldDispatcherPinsConstructorArgEncoding for the interoperation. Same
+    // motivation but stronger: _deployMemeverseOmnichainInteroperation packs six constructor args by
+    // type-erased abi.encode, so a parameter reorder or type swap compiles cleanly and silently bakes
+    // wrong immutables. Byte-equality alone cannot catch arg-order drift, so the captured bytes are also
+    // executed and ALL six constructor args are read back to detect any reorder or count change.
+    function testDeployMemeverseOmnichainInteroperationPinsConstructorArgEncoding() external {
+        // owner comes from setUp (setDeploymentAddresses wired owner = address(script)); owner is passed
+        // as the first constructor arg and is the only input not exposed via a script storage slot, so it
+        // is reused directly rather than re-set.
+        address expectedOwner = address(script);
+        address commonInfo = address(0x4242);
+        // Gas limits are hardcoded in the script (115000 / 135000); mirror them exactly so the
+        // byte-equality check would fail if either literal were edited.
+        uint128 oftReceiveGasLimit = 115000;
+        uint128 omnichainStakingGasLimit = 135000;
+
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setMemeverseCommonInfoForTest(commonInfo);
+        script.setMemeverseLauncherForTest(address(launcher));
+        script.setOmnichainMemecoinStakerForTest(STAKER);
+
+        script.deployMemeverseOmnichainInteroperationForTest(2);
+
+        assertEq(
+            deployer.lastCreationCode(),
+            abi.encodePacked(
+                type(MemeverseOmnichainInteroperation).creationCode,
+                abi.encode(
+                    expectedOwner, commonInfo, address(launcher), STAKER, oftReceiveGasLimit, omnichainStakingGasLimit
+                )
+            )
+        );
+        assertEq(deployer.lastSalt(), keccak256(abi.encodePacked("MemeverseOmnichainInteroperation", uint256(2))));
+
+        // Execute the exact creation code and read back every constructor arg. The interoperation
+        // constructor performs no external calls, so a plain create is safe in the test EVM.
+        bytes memory creationCode = deployer.lastCreationCode();
+        address deployed;
+        assembly {
+            deployed := create(0, add(creationCode, 0x20), mload(creationCode))
+        }
+        assertTrue(deployed != address(0), "creationCode deploy reverted");
+        // The script passes MEMEVERSE_COMMON_INFO as the `_lzEndpointRegistry` constructor arg, so the
+        // LZ_ENDPOINT_REGISTRY() read-back must equal commonInfo. Pinning this faithfully exposes any
+        // future change to which script slot feeds that arg.
+        assertEq(MemeverseOmnichainInteroperation(deployed).LZ_ENDPOINT_REGISTRY(), commonInfo);
+        assertEq(MemeverseOmnichainInteroperation(deployed).MEMEVERSE_LAUNCHER(), address(launcher));
+        assertEq(MemeverseOmnichainInteroperation(deployed).OMNICHAIN_MEMECOIN_STAKER(), STAKER);
+        assertEq(MemeverseOmnichainInteroperation(deployed).oftReceiveGasLimit(), oftReceiveGasLimit);
+        assertEq(MemeverseOmnichainInteroperation(deployed).omnichainStakingGasLimit(), omnichainStakingGasLimit);
+        assertEq(MemeverseOmnichainInteroperation(deployed).owner(), expectedOwner);
+    }
+
+    // Regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // localEndpoint=0 into a permanently unusable dispatcher (same guard as _deployGenesisCreditFactory).
+    function testDeployYieldDispatcherRevertsOnZeroLocalEndpoint() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), address(0));
+
+        vm.expectRevert("ZERO_LOCAL_ENDPOINT");
+        script.deployYieldDispatcherForTest(2);
+
+        // F1: pin that the guard fires BEFORE any OutrunDeployer call. The revert alone would still
+        // pass if the require were later moved after the deploy call (the mock deployer never reverts),
+        // silently losing the "deploy never invoked" property this test exists to protect.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // Regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // localEndpoint=0 into a permanently unusable staker.
+    function testDeployOmnichainMemecoinStakerRevertsOnZeroLocalEndpoint() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), address(0));
+
+        vm.expectRevert("ZERO_LOCAL_ENDPOINT");
+        script.deployOmnichainMemecoinStakerForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // Regression: a zero omnichain staker must fail loudly at deploy time instead of baking
+    // OMNICHAIN_MEMECOIN_STAKER=0 into the interoperation contract (its send path would always target zero).
+    function testDeployMemeverseOmnichainInteroperationRevertsOnZeroStaker() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setOmnichainMemecoinStakerForTest(address(0));
+
+        vm.expectRevert("ZERO_OMNICHAIN_MEMECOIN_STAKER");
+        script.deployMemeverseOmnichainInteroperationForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // Regression: a zero MEMEVERSE_LAUNCHER must fail loudly at dispatcher deploy time instead of baking
+    // memeverseLauncher=0 into the dispatcher (distributeSameChain would be permanently unusable).
+    function testDeployYieldDispatcherRevertsOnZeroMemeverseLauncher() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+        script.setMemeverseLauncherForTest(address(0));
+
+        vm.expectRevert("ZERO_MEMEVERSE_LAUNCHER");
+        script.deployYieldDispatcherForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // RR-01 regression: a zero OUTRUN_DEPLOYER must fail loudly at dispatcher deploy time instead of
+    // handing the CREATE3 salt/creation code to an unusable deployer (calls to address(0) succeed
+    // silently with empty return data, so the deploy would look "successful" without deploying).
+    function testDeployYieldDispatcherRevertsOnZeroOutrunDeployer() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(0));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+
+        vm.expectRevert("ZERO_OUTRUN_DEPLOYER");
+        script.deployYieldDispatcherForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // F1 regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // localEndpoint=0 into the Memecoin/MemecoinYieldVault/Incentivizer implementations.
+    function testDeployImplementationRevertsOnZeroLocalEndpoint() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), address(0));
+
+        vm.expectRevert("ZERO_LOCAL_ENDPOINT");
+        script.deployImplementationForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // F1 regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // localEndpoint=0 into the MemecoinPOL implementation.
+    function testDeployMemecoinPOLImplementationRevertsOnZeroLocalEndpoint() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), address(0));
+
+        vm.expectRevert("ZERO_LOCAL_ENDPOINT");
+        script.deployMemecoinPOLImplementationForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // F1 regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // localEndpoint=0 into the registration center.
+    function testDeployRegistrationCenterRevertsOnZeroLocalEndpoint() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), address(0));
+
+        vm.expectRevert("ZERO_LOCAL_ENDPOINT");
+        script.deployRegistrationCenterForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // F1 regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // localEndpoint=0 into the memeverse registrar.
+    function testDeployMemeverseRegistrarRevertsOnZeroLocalEndpoint() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), address(0));
+
+        vm.expectRevert("ZERO_LOCAL_ENDPOINT");
+        script.deployMemeverseRegistrarForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // F2 regression: a zero OUTRUN_DEPLOYER must fail loudly at staker deploy time (the endpoint guard
+    // fires first, so wire a non-zero endpoint to reach the deployer guard).
+    function testDeployOmnichainMemecoinStakerRevertsOnZeroOutrunDeployer() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(0));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+
+        vm.expectRevert("ZERO_OUTRUN_DEPLOYER");
+        script.deployOmnichainMemecoinStakerForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // F2 regression: a zero OUTRUN_DEPLOYER must fail loudly at interoperation deploy time (the staker
+    // guard fires first, so wire a non-zero staker to reach the deployer guard).
+    function testDeployMemeverseOmnichainInteroperationRevertsOnZeroOutrunDeployer() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(0));
+        script.setOmnichainMemecoinStakerForTest(STAKER);
+
+        vm.expectRevert("ZERO_OUTRUN_DEPLOYER");
+        script.deployMemeverseOmnichainInteroperationForTest(2);
+
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // Endpoint capability check: readiness must reject an endpoint address with no code.
+    // The endpoint identity readbacks (STAKER/YIELD_DISPATCHER_ENDPOINT_NOT_READY) compare against
+    // the same endpoints[chainid] the deploy functions bake, so a wrong env value passes them; the
+    // capability probe catches it. The readbacks run before the probe, so realign staker/dispatcher
+    // localEndpoint to the new endpoint value to isolate the ENDPOINT_CODE_NOT_READY revert.
+    function testReadinessRevertsWhenEndpointHasNoCode() external {
+        address badEndpoint = address(0xDEAD);
+        script.setEndpointForTest(uint32(block.chainid), badEndpoint);
+        vm.mockCall(STAKER, abi.encodeWithSignature("localEndpoint()"), abi.encode(badEndpoint));
+        yieldDispatcher.setLocalEndpoint(badEndpoint);
+
+        vm.expectRevert("ENDPOINT_CODE_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // Endpoint capability check: readiness must reject an endpoint that has code but does not expose
+    // the MessagingComposer composeQueue getter (e.g. a wrong contract wired as the endpoint).
+    function testReadinessRevertsWhenEndpointLacksComposeQueue() external {
+        address codedEndpoint = address(0x1234);
+        vm.etch(codedEndpoint, address(lens).code);
+        script.setEndpointForTest(uint32(block.chainid), codedEndpoint);
+        vm.mockCall(STAKER, abi.encodeWithSignature("localEndpoint()"), abi.encode(codedEndpoint));
+        yieldDispatcher.setLocalEndpoint(codedEndpoint);
+
+        vm.expectRevert("ENDPOINT_COMPOSE_QUEUE_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // F3 regression: readiness must reject a staker whose localEndpoint() differs from
+    // endpoints[block.chainid] (mirror of the dispatcher's YIELD_DISPATCHER_ENDPOINT_NOT_READY check).
+    function testReadinessRevertsWhenStakerEndpointMismatchesLocal() external {
+        vm.mockCall(STAKER, abi.encodeWithSignature("localEndpoint()"), abi.encode(address(0x9999)));
+
+        vm.expectRevert("STAKER_ENDPOINT_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
     }
 
     function _configureReadySwap() internal returns (address readyRouter, address readyHook) {
@@ -466,7 +934,32 @@ contract MemeverseScriptTest is Test {
         vm.setEnv("MEMEVERSE_REGISTRAR", vm.toString(address(registrar)));
         vm.setEnv("MEMEVERSE_PROXY_DEPLOYER", vm.toString(address(proxyDeployer)));
         vm.setEnv("MEMEVERSE_YIELD_DISPATCHER", vm.toString(address(yieldDispatcher)));
+        vm.setEnv("OMNICHAIN_MEMECOIN_STAKER", vm.toString(STAKER));
         vm.setEnv("POLEND", vm.toString(polend_));
         vm.setEnv("POLSPLITTER", vm.toString(splitter_));
+    }
+
+    // Fills every ENDPOINT/EID env var _chainsInit reads. The standalone readiness entry reverts on any
+    // missing chain env var, so tests exercising it must set the full set; only the local chain's
+    // endpoint value is asserted against (endpoints[block.chainid]).
+    function _setChainEnv(address localEndpoint) internal {
+        vm.setEnv("BSC_TESTNET_ENDPOINT", vm.toString(localEndpoint));
+        vm.setEnv("BASE_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
+        vm.setEnv("ARBITRUM_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
+        vm.setEnv("AVALANCHE_FUJI_ENDPOINT", vm.toString(localEndpoint));
+        vm.setEnv("POLYGON_AMOY_ENDPOINT", vm.toString(localEndpoint));
+        vm.setEnv("SONIC_BLAZE_ENDPOINT", vm.toString(localEndpoint));
+        vm.setEnv("BLAST_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
+        vm.setEnv("SCROLL_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
+        vm.setEnv("ETHEREUM_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
+        vm.setEnv("BSC_TESTNET_EID", vm.toString(uint256(40102)));
+        vm.setEnv("BASE_SEPOLIA_EID", vm.toString(uint256(40245)));
+        vm.setEnv("ARBITRUM_SEPOLIA_EID", vm.toString(uint256(40231)));
+        vm.setEnv("AVALANCHE_FUJI_EID", vm.toString(uint256(40106)));
+        vm.setEnv("POLYGON_AMOY_EID", vm.toString(uint256(40267)));
+        vm.setEnv("SONIC_BLAZE_EID", vm.toString(uint256(40363)));
+        vm.setEnv("BLAST_SEPOLIA_EID", vm.toString(uint256(40287)));
+        vm.setEnv("SCROLL_SEPOLIA_EID", vm.toString(uint256(40170)));
+        vm.setEnv("ETHEREUM_SEPOLIA_EID", vm.toString(uint256(40161)));
     }
 }

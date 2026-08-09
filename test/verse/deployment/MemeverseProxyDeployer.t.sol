@@ -171,6 +171,7 @@ contract MockReadinessProxyDeployer {
 
 contract MockReadinessYieldDispatcher {
     address public memeverseLauncher;
+    address public localEndpoint;
 
     constructor(address launcher_) {
         memeverseLauncher = launcher_;
@@ -178,6 +179,10 @@ contract MockReadinessYieldDispatcher {
 
     function setLauncher(address launcher_) external {
         memeverseLauncher = launcher_;
+    }
+
+    function setLocalEndpoint(address endpoint_) external {
+        localEndpoint = endpoint_;
     }
 }
 
@@ -308,6 +313,10 @@ contract TestableMemeverseScript is MemeverseScript {
 
     function deployMemeverseLauncherHarness(uint256 nonce) external {
         _deployMemeverseLauncher(nonce);
+    }
+
+    function setOmnichainMemecoinStakerForTest(address staker) external {
+        OMNICHAIN_MEMECOIN_STAKER = staker;
     }
 
     function configureReadinessHarness(
@@ -1018,6 +1027,21 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         registrar.setLauncher(registrarLauncher == address(0) ? launcherAddress : registrarLauncher);
         proxyDeployer.setLauncher(proxyDeployerLauncher == address(0) ? launcherAddress : proxyDeployerLauncher);
         dispatcher.setLauncher(dispatcherLauncher == address(0) ? launcherAddress : dispatcherLauncher);
+        // Readiness reads back dispatcher.localEndpoint() and compares it with endpoints[block.chainid]
+        // (set to LOCAL_ENDPOINT by setUp's configureLauncherDeployment); keep them consistent.
+        dispatcher.setLocalEndpoint(LOCAL_ENDPOINT);
+        // Endpoint capability check: _requireDeploymentReady now requires the endpoint to have code
+        // and expose the MessagingComposer composeQueue getter (ENDPOINT_CODE_NOT_READY /
+        // ENDPOINT_COMPOSE_QUEUE_NOT_READY). LOCAL_ENDPOINT (0x1001) has no code, so etch and mock
+        // the probe like the staker/creditFactory etches above (mockCall cannot fake EXTCODESIZE).
+        vm.etch(LOCAL_ENDPOINT, type(MockReadinessHook).creationCode);
+        vm.mockCall(
+            LOCAL_ENDPOINT,
+            abi.encodeWithSignature(
+                "composeQueue(address,address,bytes32,uint16)", address(1), address(1), bytes32(0), uint16(0)
+            ),
+            abi.encode(bytes32(0))
+        );
         polend.setDependencies(launcherAddress, address(splitter));
         splitter.setDependencies(launcherAddress, address(polend));
         // readiness checks POLend.creditFactory() points at a contract with code
@@ -1025,6 +1049,15 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         address creditFactoryAddr = address(uint160(0x6001));
         vm.etch(creditFactoryAddr, type(MockReadinessHook).creationCode);
         polend.setCreditFactory(creditFactoryAddr);
+        // Readiness requires code at OMNICHAIN_MEMECOIN_STAKER (STAKER_CODE_NOT_READY); wire a
+        // coded address like the creditFactory etch above.
+        address stakerAddr = address(uint160(0x6005));
+        vm.etch(stakerAddr, type(MockReadinessHook).creationCode);
+        scriptHarness.setOmnichainMemecoinStakerForTest(stakerAddr);
+        // F3: readiness reads back staker.localEndpoint() (STAKER_ENDPOINT_NOT_READY); the etched
+        // MockReadinessHook has no such getter, so mock it to match endpoints[block.chainid]
+        // (LOCAL_ENDPOINT, kept consistent with the dispatcher above).
+        vm.mockCall(stakerAddr, abi.encodeWithSignature("localEndpoint()"), abi.encode(LOCAL_ENDPOINT));
         polend.setReserve(UETH, 1);
         polend.setReserve(UUSD, 1);
         // Minimum config that passes the derived virtual-buffer guard (143 * 1 * 7 / 1000 = 1 > 0);

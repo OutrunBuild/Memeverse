@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import {MemeverseLauncherLifecycleTest} from "./MemeverseLauncherLifecycle.t.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
+import {ICrossChainSendErrors} from "../../src/common/types/ICrossChainSendErrors.sol";
 import {MockOFTToken} from "../mocks/verse/LauncherLifecycleMocks.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
@@ -100,6 +101,56 @@ contract MemeverseLauncherFeePreviewConsistencyTest is MemeverseLauncherLifecycl
 
         vm.expectRevert(abi.encodeWithSelector(IMemeverseLauncher.InvalidLzFee.selector, quoted, quoted - 1));
         launcher.redeemAndDistributeFees{value: quoted - 1}(verseId, REWARD_RECEIVER);
+    }
+
+    /// @notice The fee-distribution send reverts `DustAmount` when a memecoin fee is below the OFT
+    ///         `decimalConversionRate` (1e12 for the 18-decimal mock), closing the truncate-to-zero class on the
+    ///         fee path (MR-45 F2). Without the guard, a sub-rate fee would burn nothing, deliver a zero-amount
+    ///         compose, strand the fee at the launcher/dispatcher, and still charge the LayerZero fee.
+    /// @dev Uses a fixed gov-quote fee large enough to fund the LZ send; the memecoin fee (1e12 - 1) is the
+    ///      sub-rate trigger. The guard runs in `_sendRedeemedFeesCrossChain` right before the memecoin `send`,
+    ///      after the exact-LZ-fee check, so the revert is `DustAmount` (not `InvalidLzFee`).
+    function testFeeDistribution_RevertsDustAmount_WhenMemecoinFeeBelowConversionRate() external {
+        uint256 verseId = 200;
+        // memecoin fee strictly below 1e12 -> `_removeDust` truncates to zero -> guard reverts DustAmount.
+        uint256 subRateMemecoinFee = 1e12 - 1;
+        uint256 quoted = _setupRemoteFeeVerse(verseId, subRateMemecoinFee, 4 ether, 6 ether, 0.15 ether, 0.25 ether);
+
+        vm.expectRevert(ICrossChainSendErrors.DustAmount.selector);
+        launcher.redeemAndDistributeFees{value: quoted}(verseId, REWARD_RECEIVER);
+    }
+
+    /// @notice The guard rejects a sub-rate gov (uAsset) fee too — the uAsset OFT is also 18-decimal with rate 1e12.
+    /// @dev govFee = mainUAssetFee - executorReward (no auxiliary fees here, so set auxUAssetFee = 0). Setting
+    ///      mainUAssetFee to a sub-rate value keeps the resulting govFee below 1e12 after the small executor cut.
+    function testFeeDistribution_RevertsDustAmount_WhenGovFeeBelowConversionRate() external {
+        uint256 verseId = 201;
+        // No auxiliary uAsset fee (0) so govFee = mainUAssetFee - executorReward stays sub-rate.
+        uint256 subRateGovSource = 1e12 - 1;
+        uint256 quoted = _setupRemoteFeeVerse(
+            verseId,
+            0,
+            /*memecoinFee*/
+            subRateGovSource,
+            0,
+            /*auxUAssetFee*/
+            0.15 ether,
+            0
+        );
+
+        vm.expectRevert(ICrossChainSendErrors.DustAmount.selector);
+        launcher.redeemAndDistributeFees{value: quoted}(verseId, REWARD_RECEIVER);
+    }
+
+    /// @notice Boundary counterpart: a fee exactly equal to `decimalConversionRate` (1e12) is NOT truncated
+    ///         (`amountReceivedLD == 1e12 != 0`), so the guard accepts it and the send proceeds.
+    function testFeeDistribution_AcceptsFeeAtConversionRate() external {
+        uint256 verseId = 202;
+        uint256 rateFee = 1e12; // exactly the conversion rate -> no truncation
+        uint256 quoted = _setupRemoteFeeVerse(verseId, rateFee, 4 ether, 6 ether, 0.15 ether, 0.25 ether);
+
+        // Funding exactly the quoted amount succeeds — the rate-sized memecoin fee passes the guard.
+        launcher.redeemAndDistributeFees{value: quoted}(verseId, REWARD_RECEIVER);
     }
 
     /// @notice Sets up a remote (cross-chain) verse with identical preview and claim fee sources, funds the

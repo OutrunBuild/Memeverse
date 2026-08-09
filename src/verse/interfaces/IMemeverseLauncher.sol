@@ -2,11 +2,12 @@
 pragma solidity ^0.8.35;
 
 import {IMemeverseOFTEnum} from "../../common/types/IMemeverseOFTEnum.sol";
+import {ICrossChainSendErrors} from "../../common/types/ICrossChainSendErrors.sol";
 
 /**
  * @title MemeverseLauncher interface
  */
-interface IMemeverseLauncher is IMemeverseOFTEnum {
+interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     enum Stage {
         Genesis,
         Refund,

@@ -6,7 +6,6 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 
 import {Memecoin} from "../../src/token/Memecoin.sol";
 import {IMemecoin} from "../../src/token/interfaces/IMemecoin.sol";
-import {IOFTCompose} from "../../src/common/omnichain/oft/IOFTCompose.sol";
 
 contract MockMemecoinEndpoint {
     address public delegate;
@@ -51,7 +50,7 @@ contract MemecoinTest is Test {
     function testMintOnlyLauncherAndBurnByHolder() external {
         memecoin.initialize("Memecoin", "MEME", LAUNCHER, DELEGATE);
 
-        vm.expectRevert(IOFTCompose.PermissionDenied.selector);
+        vm.expectRevert(IMemecoin.PermissionDenied.selector);
         memecoin.mint(ALICE, 1 ether);
 
         vm.prank(LAUNCHER);

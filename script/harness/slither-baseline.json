@@ -905,15 +905,6 @@
       "key": "unused-return|src/swap/MemeverseUniswapHook.sol|MemeverseUniswapHook.unlockCallback(bytes) ignores return value by (delta,None) = poolManager.modifyLiquidity(data.key,data.params,bytes())"
     },
     {
-      "id": "ca910c1e1856b7b0e8e553802bf0720e22bde9dc37633dfe0f3a505c70f3b67c",
-      "check": "unused-return",
-      "impact": "Medium",
-      "confidence": "Medium",
-      "location": "src/yield/MemecoinYieldVault.sol#L119-L122",
-      "summary": "MemecoinYieldVault.reAccumulateYields(address,bytes32,bytes) ignores return value by IYieldDispatcher(dispatcher).settlePendingCompose(asset,guid,message)",
-      "key": "unused-return|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault.reAccumulateYields(address,bytes32,bytes) ignores return value by IYieldDispatcher(dispatcher).settlePendingCompose(asset,guid,message)"
-    },
-    {
       "id": "cdaf7e90b1ccd4422be292e230304995c199139d7def90930367f68b2eed7f01",
       "check": "unused-return",
       "impact": "Medium",

@@ -112,7 +112,7 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
         uint256 grossInputAmount = uint256(-int256(params.params.amountSpecified));
         SwapFeeMath.SwapFeeContext memory ctx = _resolveSwapFeeContext(params.key, params.params.zeroForOne);
 
-        // The entry price seeds the pre-swap volatility anchor. PIF uses the callback's swap-adjacent price below.
+        // The entry price seeds the pre-swap volatility anchor. PIF (price move) uses the callback's swap-adjacent price below.
         DynamicFeeMath.refreshVolatilityAnchorAndCarry(
             _memeverseUniswapHookStorage.dynamicFeeState[poolId], entrySqrtPriceX96
         );
@@ -363,7 +363,7 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
         if (effectiveSupply != 0) return effectiveSupply;
         // cached == 0: orphaned-liquidity gate (liquidity > 0 reverts; drained pool liquidity == 0 falls
         // through to return 0 — the caller's per-share divide guard catches the empty-pool case).
-        SwapGuardMath.revertIfNoActiveLiquidityShares(poolManager.getLiquidity(poolId));
+        SwapGuardMath.revertIfOrphanedLiquidity(poolManager.getLiquidity(poolId));
         return 0;
     }
 }

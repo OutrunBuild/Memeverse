@@ -14,7 +14,7 @@ import {IMemeverseUniswapHook} from "./interfaces/IMemeverseUniswapHook.sol";
 import {IMemeverseYTFlashSwapRouter} from "./interfaces/IMemeverseYTFlashSwapRouter.sol";
 import {MemeversePoolKeyLib} from "./libraries/MemeversePoolKeyLib.sol";
 import {CurrencySettler} from "./libraries/CurrencySettler.sol";
-import {OutrunSafeERC20} from "../yield/libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
 
 /// @title MemeverseYTFlashSwapRouter
 /// @notice Reuses the canonical PT/POL Uniswap v4 pool to swap POL against exact YT amounts in a single

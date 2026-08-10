@@ -47,7 +47,7 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
         // Read liquidity once and reuse it for both the orphan-liquidity gate and the fee quote,
         // mirroring the execution path (SwapFacet reads getLiquidity once, threads it through).
         uint128 liquidity = poolManager.getLiquidity(poolId);
-        _revertIfNoActiveLiquidityShares(hook, poolId, params.amountSpecified, liquidity);
+        _revertIfOrphanedLiquidity(hook, poolId, params.amountSpecified, liquidity);
 
         (uint160 preSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         bool protocolFeeOnInput = _protocolFeeOnInput(hook, key, params.zeroForOne);
@@ -152,10 +152,10 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
 
         // Fee growth is Q128-scaled by the hook; round down to avoid over-previewing claimable fees.
         if (fee0PerShare > fee0Offset) {
-            fee0Amount += FullMath.mulDiv(balance, fee0PerShare - fee0Offset, FeeMath.FEE_GROWTH_Q128);
+            fee0Amount += FeeMath.claimableFee(balance, fee0PerShare, fee0Offset);
         }
         if (fee1PerShare > fee1Offset) {
-            fee1Amount += FullMath.mulDiv(balance, fee1PerShare - fee1Offset, FeeMath.FEE_GROWTH_Q128);
+            fee1Amount += FeeMath.claimableFee(balance, fee1PerShare, fee1Offset);
         }
     }
 
@@ -177,7 +177,7 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
     ///      mirror the execution path (SwapFacet._activeLpSupplyForSwap); the `amountSpecified == 0`
     ///      early-return below is quote-path-only — a zero-amount quote is a legitimate no-op, unlike the
     ///      execution path where v4 guarantees amountSpecified is non-zero.
-    function _revertIfNoActiveLiquidityShares(
+    function _revertIfOrphanedLiquidity(
         IMemeverseUniswapHook hook,
         PoolId poolId,
         int256 amountSpecified,
@@ -185,6 +185,6 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
     ) internal view {
         if (amountSpecified == 0) return;
         if (hook.cachedLpTotalSupply(poolId) != 0) return;
-        SwapGuardMath.revertIfNoActiveLiquidityShares(liquidity);
+        SwapGuardMath.revertIfOrphanedLiquidity(liquidity);
     }
 }

@@ -41,7 +41,7 @@ library SwapGuardMath {
     ///      `SettlementFacet._collectPreorderSettlementInputFees` (that check guards on the
     ///      caller-supplied `effectiveSupply` to protect a per-share division — different semantics).
     /// @param liquidity Live v4 pool liquidity from `poolManager.getLiquidity(poolId)`.
-    function revertIfNoActiveLiquidityShares(uint128 liquidity) internal pure {
+    function revertIfOrphanedLiquidity(uint128 liquidity) internal pure {
         if (liquidity == 0) return;
         revert NoActiveLiquidityShares();
     }

@@ -21,7 +21,7 @@ interface IDynamicFeeFacet {
     struct DynamicFeeState {
         uint256 weightedVolume0;
         uint256 weightedPriceVolume0;
-        uint256 ewVWAPX18;
+        uint256 ewVWAPX18; // exponentially-weighted volume-weighted average price (X18)
         uint160 volAnchorSqrtPriceX96;
         uint40 volLastMoveTs;
         uint24 volDeviationAccumulator;
@@ -54,7 +54,7 @@ interface IDynamicFeeFacet {
     /// @notice Prepared fee quote returned before a swap.
     struct PreparedSwapFee {
         uint256 feeBps;
-        uint256 pifPpm;
+        uint256 pifPpm; // price-move (PIF) in ppm
         uint256 adverseImpactPartBps;
         uint256 volatilityPartBps;
         uint256 shortImpactPartBps;

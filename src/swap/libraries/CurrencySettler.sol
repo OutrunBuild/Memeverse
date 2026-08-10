@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {OutrunSafeERC20} from "../../yield/libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "../../common/token/OutrunSafeERC20.sol";
 import {IERC20} from "../../common/token/OutrunERC20Init.sol";
 
 /// @title CurrencySettler

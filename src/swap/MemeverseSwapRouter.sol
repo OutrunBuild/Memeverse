@@ -14,7 +14,7 @@ import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Mini
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {OutrunSafeERC20} from "../yield/libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
 import {IMemeverseUniswapHookLens} from "./interfaces/IMemeverseUniswapHookLens.sol";
 import {IMemeverseUniswapHook} from "./interfaces/IMemeverseUniswapHook.sol";
 import {IMemeverseSwapRouter} from "./interfaces/IMemeverseSwapRouter.sol";
@@ -170,6 +170,9 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
             sqrtPriceX96, LiquidityQuote.MIN_SQRT_PRICE_X96, LiquidityQuote.MAX_SQRT_PRICE_X96, liquidityDesired
         );
 
+        // `LiquidityAmounts.getAmountsForLiquidity` truncates (floor); the `++` pads each required amount so the
+        // quote never understates what minting `liquidityDesired` needs — mirroring the explicit roundUp=true
+        // used by `_exactLiquidityAmountsAtPrice`.
         if (liquidityDesired != 0) {
             if (sqrtPriceX96 <= LiquidityQuote.MIN_SQRT_PRICE_X96) {
                 unchecked {
@@ -568,6 +571,9 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         uint256 inputBudget
     ) internal beforeDeadline(deadline) returns (BalanceDelta delta) {
         if (address(key.hooks) != address(hook)) revert InvalidHook();
+        // Reject zero-address recipients before they reach the unlock callback, where output
+        // tokens would be taken to the zero address.
+        if (recipient == address(0)) revert InvalidRecipient(recipient);
         if (params.amountSpecified == 0) revert SwapAmountCannotBeZero();
         if (params.amountSpecified > 0 && amountInMaximum == 0) revert AmountInMaximumRequired();
 

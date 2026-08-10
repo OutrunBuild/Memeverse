@@ -9,7 +9,8 @@ import {IDynamicFeeFacet} from "../interfaces/IDynamicFeeFacet.sol";
 
 /// @title DynamicFeeMath
 /// @notice Dynamic-fee algorithms and the shared volatility refresh helper.
-/// @dev This library holds the EWVWAP / volatility-deviation / short-impact / address-batch math, plus the
+/// @dev This library holds the EWVWAP (Exponentially-Weighted Volume-weighted Average Price; see FeeMath) /
+///      volatility-deviation / short-impact / address-batch math, plus the
 ///      shared storage-writing volatility refresh (`refreshVolatilityAnchorAndCarry`), so the facet stays a
 ///      thin external entry shell. `FeeMath.BPS_BASE` and `FeeMath.PPM_BASE` remain the single source of
 ///      truth for common precision constants. Every function is `internal` and inlines into its caller.
@@ -119,7 +120,7 @@ library DynamicFeeMath {
             effectivePifPpm = uint256(senderBatchState.batchAccumPpm) + quote.pifPpm;
         }
         // Adverse-impact fee curve (three steps, all in PPM = 1e6 base):
-        //   1) satPpm — Michaelis-Menten saturation `x·1e6/(x + PIF_CAP_PPM)`: maps unbounded PIF into [0, PPM_BASE),
+        //   1) satPpm — Michaelis-Menten saturation `x·1e6/(x + PIF_CAP_PPM)`: maps unbounded PIF (price move) into [0, PPM_BASE),
         //      bounding the saturated input to the PPM range (note: this bounds `satPpm`, NOT the final fee).
         //   2) dffPpm (dynamic-fee ppm ceiling) — scales the saturated value up to the max dynamic-fee range
         //      `FEE_DFF_MAX_PPM` (800_000 ppm = 80% of the PPM base).

@@ -13,9 +13,22 @@ library FeeMath {
     uint256 internal constant PROTOCOL_FEE_SHARE_BPS = 3_500;
 
     /// @notice Q128 fixed-point scaling used by per-share LP fee growth (1 << 128). Single source of
-    ///         truth shared by `MemeverseUniswapHookLens.claimableFees` and
-    ///         `MemeverseSwapFeeBase._accrueLpFee` so the per-share accumulator cannot drift.
+    ///         truth shared by `MemeverseSwapFeeBase._accrueLpFee` (write side) and `claimableFee`
+    ///         below (read side) so the per-share accumulator cannot drift.
     uint256 internal constant FEE_GROWTH_Q128 = uint256(1) << 128;
+
+    /// @notice LP fee crystallized for an LP balance given per-share growth and the user's offset.
+    /// @dev Round-down floor shared by `MemeverseUniswapHookLens.claimableFees` (off-chain preview) and
+    ///      `SwapFacet._updateUserSnapshot` (on-chain crystallize truth) so the two cannot drift on
+    ///      rounding semantics. `unchecked`: `fee*PerShare` is monotonically non-decreasing — the sole
+    ///      write-site `MemeverseSwapFeeBase._accrueLpFee` only adds a positive delta — so `feePerShare`
+    ///      is always `>= feeOffset` and the subtraction cannot underflow. Callers keep their own
+    ///      zero-growth / zero-balance early-returns and `>` guards; this only owns the arithmetic.
+    function claimableFee(uint256 balance, uint256 feePerShare, uint256 feeOffset) internal pure returns (uint256) {
+        unchecked {
+            return FullMath.mulDiv(balance, feePerShare - feeOffset, FEE_GROWTH_Q128);
+        }
+    }
 
     // Constants used by the dynamic-fee pure math primitives below. They live here as the single source of truth so
     // both the engine and any importer (tests) reference the same value.
@@ -25,6 +38,7 @@ library FeeMath {
     uint256 internal constant Q192 = uint256(1) << 192;
     uint256 internal constant Q192_MASK = Q192 - 1;
     uint256 internal constant PPM_BASE = 1_000_000;
+    // PIF = price move: the ppm difference between two sqrt prices, capped here (`priceMovePpmCapped`).
     uint24 internal constant PIF_CAP_PPM = 150_000;
     uint24 internal constant VOL_MAX_FEE_BPS = 50;
     uint24 internal constant VOL_MAX_DEVIATION_ACCUMULATOR = 1_500_000;

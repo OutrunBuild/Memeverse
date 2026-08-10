@@ -59,6 +59,10 @@ interface IMemeverseSwapRouter {
     /// @notice Reverts when a launcher-only bootstrap function is called by any other account.
     error UnauthorizedLauncher();
 
+    /// @notice Reverts when a swap output recipient is the zero address.
+    /// @param recipient The zero-address recipient that was rejected.
+    error InvalidRecipient(address recipient);
+
     /// @notice Reverts when a lens address has no deployed bytecode.
     /// @param lens Address that failed the code check.
     error HookLensCodeNotReady(address lens);

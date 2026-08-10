@@ -844,7 +844,7 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
             // A live pool with no cached LP shares cannot distribute LP fees. Match Lens and execution
             // before delegating so every non-zero quote entry rejects the same orphaned-liquidity state.
             if (_memeverseUniswapHookStorage.cachedLpTotalSupply[poolId] == 0) {
-                SwapGuardMath.revertIfNoActiveLiquidityShares(liquidity);
+                SwapGuardMath.revertIfOrphanedLiquidity(liquidity);
             }
         }
         bytes memory ret = _facetDelegatecall(

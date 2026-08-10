@@ -14,7 +14,6 @@ Project commands:
 Harness commands:
 
 - `npm run gate:fast` - rapid local feedback: fmt, lint, build, and changed/mapped tests
-- `npm run gate` - default local gate, same as `gate:fast`
 - `npm run gate:full` - release-like local gate
 - `npm run gate:ci` - CI gate; CI must pass explicit changed-file input
 

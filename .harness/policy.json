@@ -73,16 +73,13 @@
       "^\\.harness/schemas/.*$",
       "^docs/.*$",
       "^foundry\\.toml$",
+      "^foundry\\.lock$",
       "^lib/LayerZero-v2$",
       "^lib/devtools$",
-      "^lib/flexible-voting$",
       "^lib/forge-std$",
       "^lib/openzeppelin-contracts-upgradeable$",
-      "^lib/openzeppelin-foundry-upgrades$",
       "^lib/solidity-bytes-utils$",
       "^lib/solmate$",
-      "^lib/v4-core$",
-      "^lib/v4-hooks-public$",
       "^lib/v4-periphery$",
       "^npm-shrinkwrap\\.json$",
       "^package-lock\\.json$",
@@ -358,7 +355,7 @@
           "paths": [
             "src/yield/MemecoinYieldVault.sol",
             "src/yield/interfaces/IMemecoinYieldVault.sol",
-            "src/yield/libraries/OutrunSafeERC20.sol"
+            "src/common/token/OutrunSafeERC20.sol"
           ]
         },
         {

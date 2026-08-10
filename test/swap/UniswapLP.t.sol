@@ -4,9 +4,12 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
+import {Initializable} from "../../src/common/access/Initializable.sol";
+import {OutrunERC20PermitInit} from "../../src/common/token/OutrunERC20PermitInit.sol";
 import {UniswapLP} from "../../src/swap/tokens/UniswapLP.sol";
 import {CountingSnapshotHook} from "../mocks/swap/CountingSnapshotHook.sol";
 
@@ -49,13 +52,21 @@ contract UniswapLPTest is Test {
         assertEq(token.owner(), address(this), "owner");
     }
 
+    /// @dev Decimals is a per-clone storage override; exercise the non-default path to keep the override honest.
+    function testInitializeWithNonDefaultDecimals() external {
+        UniswapLP freshClone = UniswapLP(Clones.clone(address(implementation)));
+        freshClone.initialize("Memeverse LP", "MLP", 6, TEST_POOL_ID, address(this));
+
+        assertEq(freshClone.decimals(), 6, "decimals");
+    }
+
     function testInitializeRevertsOnSecondCall() external {
-        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        vm.expectRevert(Initializable.AlreadyInitialized.selector);
         token.initialize("Other", "OTHER", 6, PoolId.wrap(bytes32(uint256(2))), address(0xBEEF));
     }
 
     function testImplementationCannotBeInitializedByExternalCaller() external {
-        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        vm.expectRevert(Initializable.AlreadyInitialized.selector);
         implementation.initialize("Implementation", "IMPL", 18, TEST_POOL_ID, address(this));
     }
 
@@ -84,6 +95,13 @@ contract UniswapLPTest is Test {
         assertEq(token.balanceOf(OWNER), 0);
     }
 
+    /// @dev The common base reverts with the IERC6093 error surface instead of the old `ZeroAddressTransfer`
+    ///      custom error / Panic underflow (F-55 accepted change).
+    function testTransferToZeroAddressReverts() external {
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
+        token.transfer(address(0), 1);
+    }
+
     function testPermitUsesInitializedCloneDomain() external {
         uint256 deadline = block.timestamp + 1 days;
         bytes32 digest = _permitDigest(OWNER, SPENDER, 7 ether, deadline);
@@ -101,7 +119,7 @@ contract UniswapLPTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_PK, digest);
         uint256 expiredDeadline = block.timestamp - 1;
 
-        vm.expectRevert(abi.encodeWithSelector(UniswapLP.PermitDeadlineExpired.selector, expiredDeadline));
+        vm.expectRevert(abi.encodeWithSelector(OutrunERC20PermitInit.ERC2612ExpiredSignature.selector, expiredDeadline));
         token.permit(OWNER, SPENDER, 7 ether, expiredDeadline, v, r, s);
     }
 
@@ -110,8 +128,27 @@ contract UniswapLPTest is Test {
         bytes32 digest = _permitDigest(OWNER, SPENDER, 7 ether, deadline);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(OTHER_PK, digest);
 
-        vm.expectRevert(abi.encodeWithSelector(UniswapLP.InvalidSigner.selector, OTHER, OWNER));
+        vm.expectRevert(abi.encodeWithSelector(OutrunERC20PermitInit.ERC2612InvalidSigner.selector, OTHER, OWNER));
         token.permit(OWNER, SPENDER, 7 ether, deadline, v, r, s);
+    }
+
+    /// @dev F-55 permit now routes through OZ ECDSA.recover, which enforces the low-s bound: mirroring a valid
+    ///      low-s `s` across the secp256k1 group order yields a high-s value (always > n/2) that must be rejected.
+    ///      A bare `ecrecover` implementation would accept this signature, so this test locks in the ECDSA path.
+    function testPermitRevertsWithHighS() external {
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 digest = _permitDigest(OWNER, SPENDER, 7 ether, deadline);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_PK, digest);
+
+        // secp256k1 group order n; n - s is the high-s mirror of low-s `s` (vm.sign always emits low-s).
+        bytes32 highS =
+            bytes32(uint256(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141) - uint256(s));
+
+        vm.expectRevert(abi.encodeWithSelector(ECDSA.ECDSAInvalidSignatureS.selector, highS));
+        token.permit(OWNER, SPENDER, 7 ether, deadline, v, r, highS);
+
+        // Revert unwinds the nonce increment performed inside `permit`; nothing was consumed.
+        assertEq(token.nonces(OWNER), 0, "nonce untouched");
     }
 
     function _permitDigest(address owner, address spender, uint256 value, uint256 deadline)
@@ -125,9 +162,11 @@ contract UniswapLPTest is Test {
     }
 }
 
-/// @dev Dedicated coverage for the `_beforeTokenTransfer` snapshot callback, which `UniswapLPTest` cannot exercise
+/// @dev Dedicated coverage for the `_update` snapshot callback, which `UniswapLPTest` cannot exercise
 ///      because it wires the hook to `address(this)` (no `updateUserSnapshot`). This harness binds a real
-///      `CountingSnapshotHook` so it can mint (hook is owner) and assert callback call counts.
+///      `CountingSnapshotHook` so it can mint (hook is owner), assert callback call counts, and host the
+///      transfer revert-path tests (a non-zero-from/to transfer fires the snapshot hook before the base
+///      balance revert).
 contract UniswapLPSnapshotTransferTest is Test {
     PoolId internal constant TEST_POOL_ID = PoolId.wrap(bytes32(uint256(1)));
 
@@ -145,6 +184,18 @@ contract UniswapLPSnapshotTransferTest is Test {
         // mint is onlyOwner (== hook); prank as the hook to seed a balance for transfer tests.
         vm.prank(address(hook));
         token.mint(holder, 10 ether);
+
+        // Mint routes from == address(0) through `_update`, so the snapshot callback must not fire (F-55).
+        assertEq(hook.snapshotCallCount(TEST_POOL_ID, holder), 0, "mint excludes snapshot");
+    }
+
+    /// @dev Burn routes `to == address(0)` through `_update`, so the snapshot callback must not fire (F-55).
+    function testBurnExcludesSnapshot() external {
+        vm.prank(address(hook));
+        token.burn(holder, 1 ether);
+
+        assertEq(hook.snapshotCallCount(TEST_POOL_ID, holder), 0, "burn excludes snapshot");
+        assertEq(token.balanceOf(holder), 9 ether, "balance after burn");
     }
 
     /// @dev Self-transfer must update the snapshot exactly once, not twice (SWAP-002a redundancy removal).
@@ -167,7 +218,7 @@ contract UniswapLPSnapshotTransferTest is Test {
         assertEq(hook.snapshotCallCount(TEST_POOL_ID, recipient), 1, "to snapshot calls");
     }
 
-    /// @dev `transferFrom` is a separate entry point into `_beforeTokenTransfer`; a self-transferFrom must
+    /// @dev `transferFrom` is a separate entry point into the `_update` snapshot callback; a self-transferFrom must
     ///      also update the snapshot exactly once (locks in LR-001 entry-point coverage).
     function testSelfTransferFromUpdatesSnapshotOnce() external {
         vm.startPrank(holder);
@@ -178,5 +229,30 @@ contract UniswapLPSnapshotTransferTest is Test {
 
         assertEq(hook.snapshotCallCount(TEST_POOL_ID, holder), 1, "snapshot calls");
         assertEq(token.balanceOf(holder), 10 ether, "balance unchanged");
+    }
+
+    /// @dev Transfers above the holder balance revert with the IERC6093 error surface; the `holder` snapshot
+    ///      fires first and succeeds via `CountingSnapshotHook`, then the base `_update` reverts with data.
+    function testTransferInsufficientBalanceReverts() external {
+        uint256 balance = token.balanceOf(holder);
+
+        vm.prank(holder);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, holder, balance, balance + 1)
+        );
+        token.transfer(address(0xB0B), balance + 1);
+    }
+
+    /// @dev `transferFrom` spends the allowance before `_update`, so the snapshot never fires and the
+    ///      insufficient-allowance revert is the only error surface.
+    function testTransferFromInsufficientAllowanceReverts() external {
+        address spender = address(0xBEEF);
+
+        vm.prank(holder);
+        token.approve(spender, 5);
+
+        vm.prank(spender);
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, spender, 5, 6));
+        token.transferFrom(holder, address(0xB0B), 6);
     }
 }

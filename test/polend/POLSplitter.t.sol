@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {POLSplitter} from "../../src/polend/POLSplitter.sol";
@@ -11,7 +12,8 @@ import {PrincipalToken} from "../../src/polend/tokens/PrincipalToken.sol";
 import {YieldToken} from "../../src/polend/tokens/YieldToken.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 
-import {MockPOL, ReentrantMockERC20, POLSplitterReentryProbe} from "../mocks/polend/POLSplitterMocks.sol";
+import {MockPOL} from "../mocks/polend/MockPOL.sol";
+import {ReentrantMockERC20, POLSplitterReentryProbe} from "../mocks/polend/POLSplitterMocks.sol";
 import {POLSplitterStorageHelper} from "../mocks/polend/POLSplitterStorageHelper.sol";
 
 contract MockLauncher {
@@ -114,6 +116,11 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
         uint256 uAssetAmount,
         uint256 memecoinAmount
     );
+    event VerseInitialized(uint256 indexed verseId, address indexed pt, address indexed yt);
+    event Split(uint256 indexed verseId, address indexed user, uint256 polAmount, uint256 ptAmount, uint256 ytAmount);
+    event Merge(uint256 indexed verseId, address indexed user, uint256 amount, uint256 polAmount);
+    event BackingRatioRecorded(uint256 indexed verseId, uint256 numerator, uint256 denominator);
+    event VerseSettled(uint256 indexed verseId, uint256 settlementUAsset, uint256 settlementMemecoin);
 
     MockERC20 internal memecoin;
     MockERC20 internal uAsset;
@@ -715,6 +722,90 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
         emit RedeemYT(VERSE_ID, BOB, BOB, 150 ether, 250 ether, 150 ether);
         vm.prank(BOB);
         splitter.redeemYT(VERSE_ID, 150 ether, BOB);
+    }
+
+    /// @notice initializeVerse emits VerseInitialized with verseId/pt/yt indexed.
+    /// @dev The expected pt/yt are the deterministic clone addresses for the fresh splitter's
+    ///      implementations (Clones.cloneDeterministic with salt bytes32(verseId)), so the
+    ///      asserted addresses equal the actually deployed tokens.
+    function testInitializeVerse_EmitsVerseInitializedEvent() external {
+        POLSplitter otherSplitter = _deploySplitter(address(launcher));
+        address expectedPt = Clones.predictDeterministicAddress(
+            otherSplitter.principalTokenImplementation(), bytes32(VERSE_ID), address(otherSplitter)
+        );
+        address expectedYt = Clones.predictDeterministicAddress(
+            otherSplitter.yieldTokenImplementation(), bytes32(VERSE_ID), address(otherSplitter)
+        );
+
+        vm.expectEmit(true, true, true, true);
+        emit VerseInitialized(VERSE_ID, expectedPt, expectedYt);
+        vm.prank(address(launcher));
+        otherSplitter.initializeVerse(VERSE_ID, address(pol), address(memecoin), address(uAsset), "Verse", "VRS");
+    }
+
+    /// @notice split emits Split with verseId/user indexed and pol/pt/yt amounts (all equal pre-launch).
+    /// @dev Mirrors testSplitAndMerge_RoundTripBeforeUnlocked: 300e18 POL in => 300e18 PT + 300e18 YT.
+    function testSplit_EmitsSplitEvent() external {
+        vm.prank(address(launcher));
+        splitter.recordPTBackingRatio(VERSE_ID, 1 ether, 1 ether);
+        pol.mint(address(this), 300 ether);
+        pol.approve(address(splitter), 300 ether);
+
+        vm.expectEmit(true, true, true, true);
+        emit Split(VERSE_ID, address(this), 300 ether, 300 ether, 300 ether);
+        splitter.split(VERSE_ID, 300 ether);
+    }
+
+    /// @notice merge emits Merge with verseId/user indexed and amount/polAmount (equal pre-launch).
+    /// @dev Mirrors testMerge_BurnsTokensDecrementsCollateralAndReturnsPOL: 100e18 PT+YT => 100e18 POL.
+    function testMerge_EmitsMergeEvent() external {
+        vm.prank(address(launcher));
+        splitter.recordPTBackingRatio(VERSE_ID, 1 ether, 1 ether);
+        pol.mint(address(this), 300 ether);
+        pol.approve(address(splitter), 300 ether);
+        splitter.split(VERSE_ID, 300 ether);
+        pt.approve(address(splitter), 100 ether);
+        yt.approve(address(splitter), 100 ether);
+
+        vm.expectEmit(true, true, true, true);
+        emit Merge(VERSE_ID, address(this), 100 ether, 100 ether);
+        splitter.merge(VERSE_ID, 100 ether);
+    }
+
+    /// @notice recordPTBackingRatio emits BackingRatioRecorded with verseId indexed and the stored ratio.
+    /// @dev Mirrors testRecordPTBackingRatio_StoresRatioAndPreviewConvertsPT: 7:14 ratio.
+    function testRecordPTBackingRatio_EmitsBackingRatioRecordedEvent() external {
+        launcher.setStage(VERSE_ID, IMemeverseLauncher.Stage.Locked);
+
+        vm.expectEmit(true, true, true, true);
+        emit BackingRatioRecorded(VERSE_ID, 7 ether, 14 ether);
+        vm.prank(address(launcher));
+        splitter.recordPTBackingRatio(VERSE_ID, 7 ether, 14 ether);
+    }
+
+    /// @notice settle emits VerseSettled with the net settlementUAsset after the pre-redeemed PT
+    ///         backing is deducted (must equal the function's return value).
+    /// @dev Mirrors testSettle_BurnsPreRedeemedBackingAndDeductsSettlementUAsset: launcher pre-redeems
+    ///      120e18 PT (1:1 backing) against a 900e18 uAsset redemption => 780e18 net; settle is
+    ///      onlyLauncher, so the call is pranked as the launcher like the other settle tests.
+    function testSettle_EmitsVerseSettledEvent() external {
+        vm.prank(address(launcher));
+        splitter.recordPTBackingRatio(VERSE_ID, 1 ether, 1 ether);
+        pol.mint(address(this), 500 ether);
+        pol.approve(address(splitter), 500 ether);
+        splitter.split(VERSE_ID, 500 ether);
+        mintPTForTest(address(splitter), VERSE_ID, address(launcher), 120 ether);
+
+        vm.prank(address(polend));
+        splitter.preRedeemPTFee(VERSE_ID, 120 ether);
+
+        launcher.seedRedemption(VERSE_ID, 900 ether, 400 ether);
+        launcher.setStage(VERSE_ID, IMemeverseLauncher.Stage.Unlocked);
+
+        vm.expectEmit(true, true, true, true);
+        emit VerseSettled(VERSE_ID, 780 ether, 400 ether);
+        vm.prank(address(launcher));
+        splitter.settle(VERSE_ID);
     }
 
     function testRedeemYT_RevertsOnZeroRecipientBeforeBurn() external {

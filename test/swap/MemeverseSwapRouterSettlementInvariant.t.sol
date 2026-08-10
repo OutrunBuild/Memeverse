@@ -1,6 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
+/// @title Swap router settlement treasury accounting invariant
+/// @notice 该测试对原生 router.swap 的三个入口（regular swap、public-swap-marker swap、
+///         以及 spoof public-swap 尝试）进行不变量模糊测试，断言 treasury 的 token0 余额始终
+///         等于各 handler 累计的 per-call 余额差之和。该不变量实际保护的是 treasury 会计
+///         一致性：确保没有 handler 之外的路径向 treasury 转账。
+/// @dev 已知灵敏度边界（刻意记录，非缺陷）：
+///      handler 的 expected treasury fee 通过 `balanceOf(treasury) - treasuryBefore` 累加得到。
+///      由于 treasury 初值为 0，且 handler 外无任何路径向其注资，顶层 invariant
+///      `balanceOf(treasury) == Σ(delta)` 退化为数学恒等式。因此它对系统性 fee 错误
+///      （如错误的 `FeeMath.PROTOCOL_FEE_SHARE_BPS` 常量，或共享的
+///      `OrdinarySwapMath.deriveFeeSplit -> FeeMath.splitFeeBps` 公式错误）零敏感——
+///      quote 路径与执行路径共用同一套 fee math，错误会同步偏移而不被察觉。
+///      per-call 的 `assertEq(treasuryDelta, quote.estimatedProtocolFeeAmount)` 同样只覆盖
+///      quote 与执行路径的分歧，无法捕捉共享 fee math 的错误。
+///      fee 金额正确性的实际保护层由硬编码金额单测承担：
+///      `test/swap/MemeverseSwapRouter.t.sol` 与 `test/swap/FeeMath.t.sol`。
 import {Test} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
@@ -29,7 +45,7 @@ contract RouterSettlementAccountingHandler is Test {
     PoolKey internal key;
 
     uint256 public expectedRegularTreasuryFee;
-    uint256 public expectedSettlementTreasuryFee;
+    uint256 public expectedMarkerTreasuryFee;
 
     constructor(MemeverseUniswapHook _hook, MockERC20 _token0, address _treasury, PoolKey memory _key) {
         hook = _hook;
@@ -79,13 +95,18 @@ contract RouterSettlementAccountingHandler is Test {
 
         uint256 treasuryDelta = token0.balanceOf(treasury) - treasuryBefore;
         assertEq(treasuryDelta, quote.estimatedProtocolFeeAmount, "regular protocol fee");
+        // 自引用：expected 累加实际 treasury 余额差，对系统性 fee 错误零敏感（见文件头灵敏度边界说明）。
         expectedRegularTreasuryFee += treasuryDelta;
     }
 
-    /// @notice Executes a marker-tagged routed swap and records treasury accounting.
-    /// @dev Marker payload follows standard public-swap fee behavior.
+    /// @notice Executes a public-swap-marker routed swap and records treasury accounting.
+    /// @dev Differs from `regularSwap` only in the hookData marker string (`bytes("public-swap")`
+    ///      vs. `bytes("regular")`). The marker is a non-settlement path: it does NOT call
+    ///      `executePreorderSettlement`, and since both markers are < 20 bytes, `_decodeReferrer`
+    ///      returns `address(0)` for both — no referral/rebate behavior is exercised either.
+    ///      Named `markerSwap` (not `settlementSwap`) so the invariant name reflects the path it runs.
     /// @param amountSeed Fuzzed swap amount seed.
-    function settlementSwap(uint256 amountSeed) external {
+    function markerSwap(uint256 amountSeed) external {
         uint256 balance = token0.balanceOf(address(this));
         if (balance < 1 ether) return;
 
@@ -101,12 +122,13 @@ contract RouterSettlementAccountingHandler is Test {
         BalanceDelta delta = router.swap(key, params, address(this), block.timestamp, 0, amount, bytes("public-swap"));
         hook.endAccountSession();
 
-        assertLt(delta.amount0(), 0, "settlement delta0");
-        assertGt(delta.amount1(), 0, "settlement delta1");
+        assertLt(delta.amount0(), 0, "marker delta0");
+        assertGt(delta.amount1(), 0, "marker delta1");
 
         uint256 treasuryDelta = token0.balanceOf(treasury) - treasuryBefore;
         assertEq(treasuryDelta, quote.estimatedProtocolFeeAmount, "marker protocol fee");
-        expectedSettlementTreasuryFee += treasuryDelta;
+        // 自引用：expected 累加实际 treasury 余额差，对系统性 fee 错误零敏感（见文件头灵敏度边界说明）。
+        expectedMarkerTreasuryFee += treasuryDelta;
     }
 
     function _min(uint256 a, uint256 b) internal pure returns (uint256) {
@@ -147,8 +169,9 @@ contract RouterSettlementSpoofHandler is Test {
         vm.warp(block.timestamp + bound(deltaSeed, 0, 40 minutes));
     }
 
-    /// @notice Executes a marker-tagged public swap from an arbitrary caller.
-    /// @dev Marker payload is treated as regular hook data.
+    /// @notice Executes a public-swap-marker public swap from an arbitrary caller.
+    /// @dev Marker payload is treated as regular hook data; named `spoofSettlement` because it
+    ///      attempts to mimic the marker path of `markerSwap` from an external caller.
     /// @param amountSeed Fuzzed swap amount seed.
     function spoofSettlement(uint256 amountSeed) external {
         uint256 balance = token0.balanceOf(address(this));
@@ -171,6 +194,7 @@ contract RouterSettlementSpoofHandler is Test {
             assertGt(delta.amount1(), 0, "spoof delta1");
             uint256 treasuryDelta = token0.balanceOf(treasury) - treasuryBefore;
             assertEq(treasuryDelta, quote.estimatedProtocolFeeAmount, "spoof protocol fee");
+            // 自引用：累加实际 treasury 余额差（见文件头灵敏度边界说明）。
             expectedSpoofTreasuryFee += treasuryDelta;
         } catch {}
         hook.endAccountSession();
@@ -247,12 +271,12 @@ contract MemeverseSwapRouterSettlementInvariantTest is StdInvariant, Test, HookS
         targetContract(address(spoofHandler));
     }
 
-    /// @notice Ensures treasury fees equal the sum of regular and settlement expectations.
-    /// @dev Guards end-to-end accounting across both router paths.
-    function invariant_treasuryAccountingMatchesRegularPlusSettlementPaths() external view {
+    /// @notice Ensures treasury fees equal the sum of regular and marker expectations.
+    /// @dev Guards end-to-end accounting across both router paths (regular + public-swap-marker).
+    function invariant_treasuryAccountingMatchesRegularPlusMarkerPaths() external view {
         assertEq(
             token0.balanceOf(treasury),
-            accountingHandler.expectedRegularTreasuryFee() + accountingHandler.expectedSettlementTreasuryFee()
+            accountingHandler.expectedRegularTreasuryFee() + accountingHandler.expectedMarkerTreasuryFee()
                 + spoofHandler.expectedSpoofTreasuryFee(),
             "treasury accounting"
         );

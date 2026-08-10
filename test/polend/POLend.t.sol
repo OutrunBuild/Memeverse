@@ -12,12 +12,12 @@ import {POLend} from "../../src/polend/POLend.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {
-    MockPOLForPOLend,
     MintableToken,
     BurnableMockERC20,
     HookedBurnableMockERC20,
     ReentrantClaimMockERC20
 } from "../mocks/polend/POLendMocks.sol";
+import {MockPOL} from "../mocks/polend/MockPOL.sol";
 import {POLendStorageHelper} from "../mocks/polend/POLendStorageHelper.sol";
 import {MockGenesisCreditFactory} from "../mocks/credit/MockGenesisCreditFactory.sol";
 
@@ -232,6 +232,12 @@ contract POLendTest is Test, POLendStorageHelper {
     );
     event LeveragedGenesisWithCredit(uint256 indexed verseId, address indexed user, uint256 creditAmount);
     event CreditBurned(uint256 indexed verseId, address indexed uAsset, uint256 totalCreditInterest);
+    event LendMarketRegistered(uint256 indexed verseId, address indexed uAsset, uint256 interestRate);
+    event MarketRefundable(uint256 indexed verseId);
+    event LeveragedGenesisFinalized(
+        uint256 indexed verseId, address indexed uAsset, uint256 debt, uint256 realInterestSwept, uint256 creditBurned
+    );
+    event LeveragedYTRecorded(uint256 indexed verseId, address indexed yt, uint256 totalLeveragedYT);
     event ClaimRefund(uint256 indexed verseId, address indexed user, address indexed to, uint256 refundedAmount);
     event CreditRefunded(uint256 indexed verseId, address indexed user, address indexed to, uint256 amount);
     event ClaimLeveragedYT(uint256 indexed verseId, address indexed user, address indexed to, uint256 amount);
@@ -244,7 +250,7 @@ contract POLendTest is Test, POLendStorageHelper {
     MintableToken internal yt;
     MintableToken internal pt;
     MockERC20 internal memecoin;
-    MockPOLForPOLend internal pol;
+    MockPOL internal pol;
     MockLauncherForPOLend internal launcher;
     MockSplitterForPOLend internal splitter;
     POLend internal polend;
@@ -255,7 +261,7 @@ contract POLendTest is Test, POLendStorageHelper {
         yt = new MintableToken("YT", "YT");
         pt = new MintableToken("PT", "PT");
         memecoin = new MockERC20("MEME", "MEME", 18);
-        pol = new MockPOLForPOLend(address(memecoin));
+        pol = new MockPOL(address(memecoin));
         launcher = new MockLauncherForPOLend();
         splitter = new MockSplitterForPOLend();
         splitter.setTokens(address(pt), address(yt));
@@ -761,6 +767,8 @@ contract POLendTest is Test, POLendStorageHelper {
         launcher.setVerseUAsset(verseId, address(uAsset));
         localPolend.setMaxSettlementDustReserve(address(uAsset), uint128(MAX_SETTLEMENT_DUST));
 
+        vm.expectEmit(true, true, false, true);
+        emit LendMarketRegistered(verseId, address(uAsset), 1e17);
         vm.prank(address(launcher));
         (bool success,) = address(localPolend).call(abi.encodeWithSignature("registerLendMarket(uint256)", verseId));
 
@@ -1028,6 +1036,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.expectEmit(true, true, false, true);
         emit CreditBurned(VERSE_ID, address(uAsset), 50 ether);
+        vm.expectEmit(true, true, false, true);
+        emit LeveragedGenesisFinalized(VERSE_ID, address(uAsset), 1_500 ether, 100 ether, 50 ether);
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
 
@@ -1114,6 +1124,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.expectEmit(true, true, false, true);
         emit CreditBurned(VERSE_ID, address(uAsset), 10 ether);
+        vm.expectEmit(true, true, false, true);
+        emit LeveragedGenesisFinalized(VERSE_ID, address(uAsset), 100 ether, 0, 10 ether);
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
 
@@ -1143,6 +1155,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
         // No CreditBurned fires; the full real interest sweeps to treasury.
         vm.recordLogs();
+        vm.expectEmit(true, true, false, true);
+        emit LeveragedGenesisFinalized(VERSE_ID, address(uAsset), 100 ether, 10 ether, 0);
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
 
@@ -1634,6 +1648,151 @@ contract POLendTest is Test, POLendStorageHelper {
         (uint256 uAssetAmount, uint256 memecoinAmount) = _claimResidual(VERSE_ID, CAROL);
         assertEq(uAssetAmount, 50 ether, "pure-real uAsset unchanged");
         assertEq(memecoinAmount, 25 ether, "pure-real memecoin unchanged");
+    }
+
+    /// @dev F-38 lock-in helper: both users pay `aliceInterest` / `bobInterest` into VERSE_ID via the
+    ///      real leveragedGenesis path, then the launcher finalizes. Each test drives the remaining
+    ///      lifecycle steps (recordLeveragedYT / executeGlobalSettlement) itself.
+    function _fundAndFinalizeLeveragedVerse(uint256 aliceInterest, uint256 bobInterest) internal {
+        uAsset.mint(ALICE, aliceInterest);
+        vm.startPrank(ALICE);
+        uAsset.approve(address(polend), aliceInterest);
+        polend.leveragedGenesis(VERSE_ID, aliceInterest);
+        vm.stopPrank();
+
+        uAsset.mint(BOB, bobInterest);
+        vm.startPrank(BOB);
+        uAsset.approve(address(polend), bobInterest);
+        polend.leveragedGenesis(VERSE_ID, bobInterest);
+        vm.stopPrank();
+
+        vm.prank(address(launcher));
+        polend.finalizeLeveragedGenesis(VERSE_ID);
+    }
+
+    /// @notice F-38 lock-in (spec settlement-and-fees.md L769): residual payout floors to
+    ///         `mulDiv(residual, paid, totalLeveragedInterest)`. Non-divisible shares leave the
+    ///         rounding dust on POLend's balance forever (L558: no sweep), and both participants'
+    ///         claim flags are consumed even though Σ payout < residual.
+    function testClaimResidual_NonDivisibleShares_LeavesDustInPOLend() external {
+        // ALICE 1 / BOB 2 of totalLeveragedInterest 3; rate 1e17 => debt = 30 wei.
+        // Recovered 130 wei => residualUAsset = 100 wei (not divisible by 3).
+        _fundAndFinalizeLeveragedVerse(1, 2);
+        launcher.setSettlementResult(VERSE_ID, 0, 0, 130);
+        uAsset.mint(address(polend), 130);
+        vm.prank(address(launcher));
+        polend.executeGlobalSettlement(VERSE_ID);
+
+        (uint256 residualUAsset,) = polend.residualStates(VERSE_ID);
+        assertEq(residualUAsset, 100, "residual non-divisible by 3");
+
+        vm.prank(ALICE);
+        (uint256 aliceUAsset, uint256 aliceMemecoin) = _claimResidual(VERSE_ID, CAROL);
+        assertEq(aliceUAsset, 33, "alice floor share mulDiv(100,1,3)");
+        assertEq(aliceMemecoin, 0, "no memecoin residual");
+
+        vm.prank(BOB);
+        (uint256 bobUAsset, uint256 bobMemecoin) = _claimResidual(VERSE_ID, CAROL);
+        assertEq(bobUAsset, 66, "bob floor share mulDiv(100,2,3)");
+        assertEq(bobMemecoin, 0, "no memecoin residual");
+
+        uint256 totalClaimed = aliceUAsset + bobUAsset;
+        assertLt(totalClaimed, residualUAsset, "sum of floor shares < residual");
+        // L558 design: the 1 wei rounding dust is never swept and stays on POLend's balance.
+        assertEq(uAsset.balanceOf(address(polend)), residualUAsset - totalClaimed, "dust stays in POLend");
+        assertEq(uAsset.balanceOf(CAROL), totalClaimed, "recipient received exactly the floor shares");
+
+        // Both claim flags consumed: a second call reverts InvalidClaim.
+        vm.prank(ALICE);
+        _expectLowLevelRevert(
+            abi.encodeWithSignature("claimResidual(uint256,address)", VERSE_ID, BOB), IPOLend.InvalidClaim.selector
+        );
+        vm.prank(BOB);
+        _expectLowLevelRevert(
+            abi.encodeWithSignature("claimResidual(uint256,address)", VERSE_ID, ALICE), IPOLend.InvalidClaim.selector
+        );
+    }
+
+    /// @notice F-38 lock-in (spec settlement-and-fees.md L769/L787): a floor-0 residual payout must
+    ///         still succeed and mark `residualClaimed` — it is not a revert path.
+    function testClaimResidual_ZeroPayout_StillMarksClaimed() external {
+        // ALICE 1 / BOB 100 of totalLeveragedInterest 101; debt = 1010 wei, recovered 1011 =>
+        // residualUAsset = 1 wei, so ALICE's share mulDiv(1, 1, 101) floors to 0.
+        _fundAndFinalizeLeveragedVerse(1, 100);
+        launcher.setSettlementResult(VERSE_ID, 0, 0, 1011);
+        uAsset.mint(address(polend), 1011);
+        vm.prank(address(launcher));
+        polend.executeGlobalSettlement(VERSE_ID);
+
+        (uint256 residualUAsset,) = polend.residualStates(VERSE_ID);
+        assertEq(residualUAsset, 1, "tiny residual");
+
+        // `_claimResidual` asserts the call succeeds — the point is this is NOT a revert.
+        vm.prank(ALICE);
+        (uint256 uAssetAmount, uint256 memecoinAmount) = _claimResidual(VERSE_ID, CAROL);
+        assertEq(uAssetAmount, 0, "zero uAsset payout");
+        assertEq(memecoinAmount, 0, "zero memecoin payout");
+        assertEq(uAsset.balanceOf(CAROL), 0, "nothing transferred");
+        assertEq(uAsset.balanceOf(address(polend)), 1, "residual stays in POLend");
+
+        // Flag consumed despite zero payout.
+        vm.prank(ALICE);
+        _expectLowLevelRevert(
+            abi.encodeWithSignature("claimResidual(uint256,address)", VERSE_ID, BOB), IPOLend.InvalidClaim.selector
+        );
+    }
+
+    /// @notice F-38 lock-in (spec settlement-and-fees.md L768/L787): the leveraged-YT payout
+    ///         `mulDiv(totalLeveragedYT, paid, totalLeveragedInterest)` floors to 0; the claim
+    ///         still succeeds, transfers nothing, and consumes `leveragedYTClaimed`.
+    function testClaimLeveragedYT_ZeroPayout_StillMarksClaimed() external {
+        // ALICE 1 / BOB 2 of totalLeveragedInterest 3; totalLeveragedYT = 2 =>
+        // ALICE's share mulDiv(2, 1, 3) = 0.
+        _fundAndFinalizeLeveragedVerse(1, 2);
+        vm.prank(address(launcher));
+        polend.recordLeveragedYT(VERSE_ID, address(yt), 2);
+        yt.mint(address(polend), 2);
+
+        // `_claimLeveragedYT` asserts the call succeeds — zero payout is not a revert.
+        vm.prank(ALICE);
+        uint256 amount = _claimLeveragedYT(VERSE_ID, CAROL);
+        assertEq(amount, 0, "mulDiv(2,1,3) floors to zero");
+        assertEq(yt.balanceOf(CAROL), 0, "no YT transferred");
+        assertEq(yt.balanceOf(address(polend)), 2, "YT pool untouched");
+
+        // Flag consumed despite zero payout.
+        vm.prank(ALICE);
+        _expectLowLevelRevert(
+            abi.encodeWithSignature("claimLeveragedYT(uint256,address)", VERSE_ID, BOB), IPOLend.InvalidClaim.selector
+        );
+    }
+
+    /// @notice F-38 lock-in (spec settlement-and-fees.md L769): break-even settlement
+    ///         (residual == (0, 0)) still consumes the flag — the participant's claim succeeds
+    ///         and returns (0, 0) instead of reverting.
+    function testClaimResidual_BreakEvenZeroResidual_StillMarksClaimed() external {
+        // ALICE 1 / BOB 2 of totalLeveragedInterest 3; debt = 30 wei, recovered exactly 30 =>
+        // residual (0, 0).
+        _fundAndFinalizeLeveragedVerse(1, 2);
+        launcher.setSettlementResult(VERSE_ID, 0, 0, 30);
+        uAsset.mint(address(polend), 30);
+        vm.prank(address(launcher));
+        polend.executeGlobalSettlement(VERSE_ID);
+
+        (uint256 residualUAsset, uint256 residualMemecoin) = polend.residualStates(VERSE_ID);
+        assertEq(residualUAsset, 0, "no uAsset residual");
+        assertEq(residualMemecoin, 0, "no memecoin residual");
+
+        vm.prank(ALICE);
+        (uint256 uAssetAmount, uint256 memecoinAmount) = _claimResidual(VERSE_ID, CAROL);
+        assertEq(uAssetAmount, 0, "zero uAsset payout");
+        assertEq(memecoinAmount, 0, "zero memecoin payout");
+
+        // Flag consumed despite (0, 0) residual.
+        vm.prank(ALICE);
+        _expectLowLevelRevert(
+            abi.encodeWithSignature("claimResidual(uint256,address)", VERSE_ID, BOB), IPOLend.InvalidClaim.selector
+        );
     }
 
     function testOwnerSetters_ValidateOwnerBoundsAndEmitEvents() external {
@@ -2300,6 +2459,8 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         polend.leveragedGenesis(VERSE_ID, 10 ether);
 
+        vm.expectEmit(true, false, false, true);
+        emit MarketRefundable(VERSE_ID);
         vm.prank(address(launcher));
         polend.markRefundable(VERSE_ID);
 
@@ -2319,6 +2480,8 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
 
+        vm.expectEmit(true, true, false, true);
+        emit LeveragedYTRecorded(VERSE_ID, address(yt), 100 ether);
         vm.prank(address(launcher));
         polend.recordLeveragedYT(VERSE_ID, address(yt), 100 ether);
 

@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {OutrunSafeERC20} from "../../../src/yield/libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "../../../src/common/token/OutrunSafeERC20.sol";
 
 contract OutrunSafeERC20Harness {
     using OutrunSafeERC20 for IERC20;

@@ -12,7 +12,7 @@ import {IPOLSplitter} from "../../src/polend/interfaces/IPOLSplitter.sol";
 import {IMemeverseYTFlashSwapRouter} from "../../src/swap/interfaces/IMemeverseYTFlashSwapRouter.sol";
 import {MemeverseYTFlashSwapRouter} from "../../src/swap/MemeverseYTFlashSwapRouter.sol";
 import {ReentrancyGuard} from "../../src/common/access/ReentrancyGuard.sol";
-import {OutrunSafeERC20} from "../../src/yield/libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "../../src/common/token/OutrunSafeERC20.sol";
 import {
     MockYTManager,
     MockYTHook,

@@ -13,8 +13,8 @@ contract SwapGuardMathHarness {
         SwapGuardMath.revertIfPublicSwapBlocked(resumeTime);
     }
 
-    function exposed_revertIfNoActiveLiquidityShares(uint128 liquidity) external pure {
-        SwapGuardMath.revertIfNoActiveLiquidityShares(liquidity);
+    function exposed_revertIfOrphanedLiquidity(uint128 liquidity) external pure {
+        SwapGuardMath.revertIfOrphanedLiquidity(liquidity);
     }
 
     function exposed_revertIfNativeCurrencyUnsupported(Currency currency0, Currency currency1) external pure {
@@ -60,7 +60,7 @@ contract SwapGuardMathTest is Test {
     }
 
     // -----------------------------------------------------------------
-    // revertIfNoActiveLiquidityShares
+    // revertIfOrphanedLiquidity
     // -----------------------------------------------------------------
     // Every call site checks `cachedLpTotalSupply` and returns early when `cached != 0` before calling this
     // helper. Integration tests cover that caller precheck; these unit tests cover the helper's two branches:
@@ -68,13 +68,13 @@ contract SwapGuardMathTest is Test {
 
     /// @notice No v4 liquidity — fully drained pool — must not revert (quote path returns 0).
     function testNoActiveShares_NoLiquidity_DoesNotRevert() external {
-        harness.exposed_revertIfNoActiveLiquidityShares(0);
+        harness.exposed_revertIfOrphanedLiquidity(0);
     }
 
     /// @notice Live v4 liquidity but the caller already passed the cached-supply precheck — orphaned pool, must revert.
     function testNoActiveShares_OnlyV4Liquidity_Reverts() external {
         vm.expectRevert(SwapGuardMath.NoActiveLiquidityShares.selector);
-        harness.exposed_revertIfNoActiveLiquidityShares(5_000 ether);
+        harness.exposed_revertIfOrphanedLiquidity(5_000 ether);
     }
 
     // -----------------------------------------------------------------

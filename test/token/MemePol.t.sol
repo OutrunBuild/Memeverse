@@ -7,16 +7,7 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 import {MemePol} from "../../src/token/MemePol.sol";
 import {IPol} from "../../src/token/interfaces/IPol.sol";
-
-contract MockMemePolEndpoint {
-    address public delegate;
-
-    /// @notice Set delegate.
-    /// @param delegate_ See implementation.
-    function setDelegate(address delegate_) external {
-        delegate = delegate_;
-    }
-}
+import {MockOAppCoreEndpoint} from "../mocks/common/CommonMocks.sol";
 
 contract MemePolTest is Test {
     using Clones for address;
@@ -27,13 +18,13 @@ contract MemePolTest is Test {
     address internal constant ALICE = address(0xA11CE);
     address internal constant BOB = address(0xB0B);
 
-    MockMemePolEndpoint internal endpoint;
+    MockOAppCoreEndpoint internal endpoint;
     MemePol internal implementation;
     MemePol internal memePol;
 
     /// @notice Set up.
     function setUp() external {
-        endpoint = new MockMemePolEndpoint();
+        endpoint = new MockOAppCoreEndpoint();
         implementation = new MemePol(address(endpoint));
         memePol = MemePol(address(implementation).clone());
     }
@@ -62,8 +53,18 @@ contract MemePolTest is Test {
         memePol.mint(ALICE, 1 ether);
 
         vm.prank(LAUNCHER);
+        vm.expectEmit(true, true, true, true);
+        emit IPol.PoolIdSet(PoolId.wrap(bytes32(0)), poolId);
         memePol.setPoolId(poolId);
         assertEq(PoolId.unwrap(memePol.poolId()), PoolId.unwrap(poolId));
+
+        // Launcher may reset: oldPoolId is the overwritten value.
+        PoolId secondPoolId = PoolId.wrap(bytes32(uint256(5678)));
+        vm.prank(LAUNCHER);
+        vm.expectEmit(true, true, true, true);
+        emit IPol.PoolIdSet(poolId, secondPoolId);
+        memePol.setPoolId(secondPoolId);
+        assertEq(PoolId.unwrap(memePol.poolId()), PoolId.unwrap(secondPoolId));
 
         vm.prank(LAUNCHER);
         memePol.mint(ALICE, 2 ether);
@@ -88,6 +89,15 @@ contract MemePolTest is Test {
         memePol.burn(ALICE, 1 ether);
         assertEq(memePol.balanceOf(ALICE), 1 ether);
         assertEq(memePol.allowance(ALICE, BOB), 0);
+    }
+
+    /// @notice Test initialize rejects zero memecoin or launcher.
+    function testInitializeRejectsZeroAddresses() external {
+        vm.expectRevert(IPol.ZeroInput.selector);
+        memePol.initialize("POL-MEME", "POLM", address(0), LAUNCHER, DELEGATE);
+
+        vm.expectRevert(IPol.ZeroInput.selector);
+        memePol.initialize("POL-MEME", "POLM", MEMECOIN, address(0), DELEGATE);
     }
 
     /// @notice Test mint and burn reject zero amount.

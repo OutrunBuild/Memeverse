@@ -8,7 +8,8 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {POLend} from "../../src/polend/POLend.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
-import {MockPOLForPOLend, MintableToken, BurnableMockERC20} from "../mocks/polend/POLendMocks.sol";
+import {MintableToken, BurnableMockERC20} from "../mocks/polend/POLendMocks.sol";
+import {MockPOL} from "../mocks/polend/MockPOL.sol";
 import {MockGenesisCreditFactory} from "../mocks/credit/MockGenesisCreditFactory.sol";
 
 /// @notice Launcher mock that drives a verse through Genesis -> Locked -> Settled for the
@@ -197,7 +198,7 @@ contract GenesisCreditPOLendIntegration is Test {
     BurnableMockERC20 internal credit;
     MintableToken internal yt;
     MockERC20 internal memecoin;
-    MockPOLForPOLend internal pol;
+    MockPOL internal pol;
     IntegrationLauncher internal launcher;
     IntegrationSplitter internal splitter;
     MockGenesisCreditFactory internal creditFactory;
@@ -208,7 +209,7 @@ contract GenesisCreditPOLendIntegration is Test {
         credit = new BurnableMockERC20("CREDIT", "CREDIT");
         yt = new MintableToken("YT", "YT");
         memecoin = new MockERC20("MEME", "MEME", 18);
-        pol = new MockPOLForPOLend(address(memecoin));
+        pol = new MockPOL(address(memecoin));
 
         launcher = new IntegrationLauncher();
         splitter = new IntegrationSplitter();

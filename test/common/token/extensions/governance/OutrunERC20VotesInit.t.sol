@@ -25,6 +25,44 @@ contract OutrunERC20VotesInitTest is Test {
         token.initialize("Vote Token", "VOTE");
     }
 
+    /// @notice Test initialize sets the EIP-712 domain separator to a literal baseline.
+    function testInitializeSetsDomainSeparatorToLiteralBaseline() external view {
+        assertEq(
+            token.domainSeparator(),
+            keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes("Vote Token")),
+                    keccak256(bytes("1")),
+                    block.chainid,
+                    address(token)
+                )
+            )
+        );
+    }
+
+    /// @notice Test the cached domain separator stays consistent with the live EIP-712 metadata.
+    /// @dev Guards the invariant introduced by the F-14 hash cache: `_EIP712Name`/`_EIP712Version`
+    ///      must return stable values after init, otherwise the cached `_hashedName`/`_hashedVersion`
+    ///      desync from what `eip712Domain()` exposes. This check recomputes the separator from the
+    ///      live metadata, so a future dynamic override that diverges from the cache turns red.
+    function testDomainSeparatorMatchesLiveEip712Metadata() external view {
+        (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+            token.eip712Domain();
+        assertEq(
+            token.domainSeparator(),
+            keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes(name)),
+                    keccak256(bytes(version)),
+                    chainId,
+                    verifyingContract
+                )
+            )
+        );
+    }
+
     /// @notice Test delegate moves voting power and creates checkpoints.
     function testDelegateMovesVotingPowerAndCreatesCheckpoints() external {
         token.mintTest(ALICE, 10 ether);

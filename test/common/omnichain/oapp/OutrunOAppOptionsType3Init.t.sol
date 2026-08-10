@@ -41,6 +41,21 @@ contract OutrunOAppOptionsType3InitTest is Test {
         harness.setEnforcedOptions(params);
     }
 
+    /// @notice Test set enforced options rejects empty and short (1-byte) options with typed InvalidOptions.
+    function testSetEnforcedOptionsRejectsEmptyOptions() external {
+        EnforcedOptionParam[] memory params = new EnforcedOptionParam[](1);
+        params[0] = EnforcedOptionParam({eid: 101, msgType: 1, options: hex""});
+
+        vm.prank(OWNER);
+        vm.expectRevert(abi.encodeWithSelector(IOAppOptionsType3.InvalidOptions.selector, hex""));
+        harness.setEnforcedOptions(params);
+
+        params[0] = EnforcedOptionParam({eid: 101, msgType: 1, options: hex"01"});
+        vm.prank(OWNER);
+        vm.expectRevert(abi.encodeWithSelector(IOAppOptionsType3.InvalidOptions.selector, hex"01"));
+        harness.setEnforcedOptions(params);
+    }
+
     /// @notice Test combine options handles no enforced no extra and merging.
     function testCombineOptionsHandlesNoEnforcedNoExtraAndMerging() external {
         assertEq(harness.combineOptions(101, 1, hex"1234"), hex"1234");

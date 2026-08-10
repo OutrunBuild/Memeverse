@@ -337,6 +337,24 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         );
     }
 
+    /// @notice Verifies swaps reject a zero-address output recipient.
+    /// @dev The recipient guard lives in `MemeverseSwapRouter.sol::_swap`, the shared convergence
+    ///      point for both `swap()` and `swapWithPermit2()`, so this single check covers both
+    ///      public entries. The guard runs before the `amountSpecified == 0` check, so a zero
+    ///      recipient reverts `InvalidRecipient` regardless of the other params.
+    function testSwapReverts_WhenRecipientIsZeroAddress() external {
+        vm.expectRevert(abi.encodeWithSelector(IMemeverseSwapRouter.InvalidRecipient.selector, address(0)));
+        router.swap(
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: 0, sqrtPriceLimitX96: _validExecutionPriceLimit(true)}),
+            address(0),
+            block.timestamp,
+            0,
+            100 ether,
+            ""
+        );
+    }
+
     /// @notice Verifies setting the treasury to the zero address reverts.
     /// @dev Covers owner configuration validation.
     function testSetTreasury_RevertsOnZeroAddress() external {

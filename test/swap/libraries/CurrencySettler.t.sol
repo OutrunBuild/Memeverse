@@ -7,7 +7,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 import {CurrencySettler} from "../../../src/swap/libraries/CurrencySettler.sol";
-import {OutrunSafeERC20} from "../../../src/yield/libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "../../../src/common/token/OutrunSafeERC20.sol";
 
 import {
     FalseTransferFromToken,

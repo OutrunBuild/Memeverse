@@ -24,13 +24,14 @@ abstract contract POLSplitterStorageHelper is StorageSlotPrimitives {
     uint256 internal constant OFF_YT_IMPL = 5; // address
 
     // SplitInfo sub-field offsets (src/polend/interfaces/IPOLSplitter.sol:5-17).
-    // Order: pt, yt, pol, memecoin, uAsset, totalPOLCollateral, settlementUAsset,
-    //        settlementMemecoin, ptBackingNumerator, ptBackingDenominator, settled(bool).
+    // Order: pt, yt, pol, memecoin, uAsset, settled(bool), totalPOLCollateral, settlementUAsset,
+    //        settlementMemecoin, ptBackingNumerator, ptBackingDenominator.
+    // settled packs into the uAsset slot (off+4, bits 160-167), so the struct is 10 slots, not 11.
     uint256 internal constant OFF_SI_PT = 0;
     uint256 internal constant OFF_SI_YT = 1;
+    uint256 internal constant OFF_SI_SETTLED = 4;
     uint256 internal constant OFF_SI_SETTLEMENT_UASSET = 6;
     uint256 internal constant OFF_SI_SETTLEMENT_MEMECOIN = 7;
-    uint256 internal constant OFF_SI_SETTLED = 10;
 
     // ── Slot computation helpers ──
 
@@ -42,14 +43,18 @@ abstract contract POLSplitterStorageHelper is StorageSlotPrimitives {
     // ── Seed methods (mirror POLSplitterHarness, field-by-field equivalent) ──
 
     /// @notice Write $.splitInfos[verseId].settlementUAsset, .settlementMemecoin and .settled=true.
-    /// @dev Equivalent to POLSplitterHarness.mockSettled; settled occupies its own 32-byte slot at off+10.
+    /// @dev Equivalent to POLSplitterHarness.mockSettled. settled shares the uAsset slot (off+4,
+    ///      bits 160-167), so the write is a read-modify-write: OR the settled bit into the slot
+    ///      instead of overwriting it, preserving the uAsset address in bits 0-159.
     function mockSettledForTest(address proxy, uint256 verseId, uint256 settlementUAsset, uint256 settlementMemecoin)
         internal
     {
         bytes32 base = _splitInfoSlot(verseId);
         _writeSlot(proxy, bytes32(uint256(base) + OFF_SI_SETTLEMENT_UASSET), bytes32(settlementUAsset));
         _writeSlot(proxy, bytes32(uint256(base) + OFF_SI_SETTLEMENT_MEMECOIN), bytes32(settlementMemecoin));
-        _writeSlot(proxy, bytes32(uint256(base) + OFF_SI_SETTLED), bytes32(uint256(1)));
+        bytes32 settledSlot = bytes32(uint256(base) + OFF_SI_SETTLED);
+        bytes32 packed = _loadSlot(proxy, settledSlot);
+        _writeSlot(proxy, settledSlot, bytes32(uint256(packed) | (uint256(1) << 160)));
     }
 
     /// @notice Read $.splitInfos[verseId].pt from storage (avoids a wide multi-return public getter).

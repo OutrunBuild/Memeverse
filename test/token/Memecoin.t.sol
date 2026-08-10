@@ -6,16 +6,7 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 
 import {Memecoin} from "../../src/token/Memecoin.sol";
 import {IMemecoin} from "../../src/token/interfaces/IMemecoin.sol";
-
-contract MockMemecoinEndpoint {
-    address public delegate;
-
-    /// @notice Set delegate.
-    /// @param delegate_ See implementation.
-    function setDelegate(address delegate_) external {
-        delegate = delegate_;
-    }
-}
+import {MockOAppCoreEndpoint} from "../mocks/common/CommonMocks.sol";
 
 contract MemecoinTest is Test {
     using Clones for address;
@@ -24,13 +15,13 @@ contract MemecoinTest is Test {
     address internal constant DELEGATE = address(0xCAFE);
     address internal constant ALICE = address(0xA11CE);
 
-    MockMemecoinEndpoint internal endpoint;
+    MockOAppCoreEndpoint internal endpoint;
     Memecoin internal implementation;
     Memecoin internal memecoin;
 
     /// @notice Set up.
     function setUp() external {
-        endpoint = new MockMemecoinEndpoint();
+        endpoint = new MockOAppCoreEndpoint();
         implementation = new Memecoin(address(endpoint));
         memecoin = Memecoin(address(implementation).clone());
     }
@@ -62,12 +53,22 @@ contract MemecoinTest is Test {
         assertEq(memecoin.balanceOf(ALICE), 1 ether);
     }
 
+    /// @notice Test initialize rejects zero launcher.
+    function testInitializeRejectsZeroLauncher() external {
+        vm.expectRevert(IMemecoin.ZeroInput.selector);
+        memecoin.initialize("Memecoin", "MEME", address(0), DELEGATE);
+    }
+
     /// @notice Test mint and burn reject zero amount.
     function testMintAndBurnRejectZeroAmount() external {
         memecoin.initialize("Memecoin", "MEME", LAUNCHER, DELEGATE);
 
         vm.prank(LAUNCHER);
         vm.expectRevert(IMemecoin.ZeroInput.selector);
+        memecoin.mint(ALICE, 0);
+
+        // Non-launcher + zero amount reverts PermissionDenied first, matching MemePol's modifier ordering.
+        vm.expectRevert(IMemecoin.PermissionDenied.selector);
         memecoin.mint(ALICE, 0);
 
         vm.prank(ALICE);

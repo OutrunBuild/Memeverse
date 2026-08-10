@@ -24,6 +24,11 @@ contract VotesHarness is OutrunERC20VotesInit {
         _mint(to, amount);
     }
 
+    /// @notice Exposes the EIP-712 domain separator so tests can anchor it to a literal baseline.
+    function domainSeparator() external view returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+
     /// @notice Delegation digest.
     /// @param delegatee See implementation.
     /// @param nonce See implementation.

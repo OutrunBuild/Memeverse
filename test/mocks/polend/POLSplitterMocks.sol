@@ -5,15 +5,6 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {IPOLSplitter} from "../../../src/polend/interfaces/IPOLSplitter.sol";
 
-/// @notice Simple POL token mock exposing its paired memecoin address.
-contract MockPOL is MockERC20 {
-    address public memecoin;
-
-    constructor(address memecoin_) MockERC20("POL", "POL", 18) {
-        memecoin = memecoin_;
-    }
-}
-
 interface IPOLSplitterReentryTarget {
     function onTokenTransferReenter(uint8 mode) external;
 }

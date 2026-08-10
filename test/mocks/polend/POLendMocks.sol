@@ -5,15 +5,6 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {POLend} from "../../../src/polend/POLend.sol";
 
-/// @notice POL token mock exposing its paired memecoin address for POLend tests.
-contract MockPOLForPOLend is MockERC20 {
-    address public memecoin;
-
-    constructor(address memecoin_) MockERC20("POL", "POL", 18) {
-        memecoin = memecoin_;
-    }
-}
-
 contract MintableToken is MockERC20 {
     constructor(string memory name_, string memory symbol_) MockERC20(name_, symbol_, 18) {}
 }

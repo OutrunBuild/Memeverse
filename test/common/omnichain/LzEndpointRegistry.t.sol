@@ -82,4 +82,37 @@ contract LzEndpointRegistryTest is Test {
         vm.expectRevert();
         registry.setLzEndpointIds(pairs);
     }
+
+    /// @notice A chainId repeated within one batch reverts the whole batch, so
+    ///         the earlier pair is not silently overwritten (no partial writes).
+    function testSetLzEndpointIdsRevertsOnDuplicateChainIdInBatch() external {
+        ILzEndpointRegistry.LzEndpointIdPair[] memory pairs = new ILzEndpointRegistry.LzEndpointIdPair[](2);
+        pairs[0] = ILzEndpointRegistry.LzEndpointIdPair({chainId: 1, endpointId: 101});
+        pairs[1] = ILzEndpointRegistry.LzEndpointIdPair({chainId: 1, endpointId: 202});
+
+        vm.prank(OWNER);
+        vm.expectRevert(abi.encodeWithSelector(ILzEndpointRegistry.DuplicateChainIdInBatch.selector, 1));
+        registry.setLzEndpointIds(pairs);
+
+        // Nothing written: the pair at index 0 was not stored.
+        assertEq(registry.lzEndpointIdOfChain(1), 0);
+    }
+
+    /// @notice Re-pointing a chain to another endpoint across transactions stays
+    ///         legal: only duplicates within one batch are rejected.
+    function testSetLzEndpointIdsAllowsRePointingAcrossTransactions() external {
+        ILzEndpointRegistry.LzEndpointIdPair[] memory first = new ILzEndpointRegistry.LzEndpointIdPair[](1);
+        first[0] = ILzEndpointRegistry.LzEndpointIdPair({chainId: 1, endpointId: 101});
+
+        vm.prank(OWNER);
+        registry.setLzEndpointIds(first);
+        assertEq(registry.lzEndpointIdOfChain(1), 101);
+
+        ILzEndpointRegistry.LzEndpointIdPair[] memory second = new ILzEndpointRegistry.LzEndpointIdPair[](1);
+        second[0] = ILzEndpointRegistry.LzEndpointIdPair({chainId: 1, endpointId: 202});
+
+        vm.prank(OWNER);
+        registry.setLzEndpointIds(second);
+        assertEq(registry.lzEndpointIdOfChain(1), 202);
+    }
 }

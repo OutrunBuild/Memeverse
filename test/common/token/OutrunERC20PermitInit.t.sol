@@ -30,13 +30,49 @@ contract OutrunERC20PermitInitTest is Test {
     function testInitializeSetsMetadataAndDomainSeparator() external view {
         assertEq(token.name(), "Permit Token");
         assertEq(token.symbol(), "PRM");
-        assertTrue(token.DOMAIN_SEPARATOR() != bytes32(0));
+        // Anchor the domain separator to a literal EIP-712 recomputation so that any future
+        // change to the production domain construction (typehash string or field encoding order)
+        // breaks this test instead of silently drifting alongside the harness digest.
+        assertEq(
+            token.DOMAIN_SEPARATOR(),
+            keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes("Permit Token")),
+                    keccak256(bytes("1")),
+                    block.chainid,
+                    address(token)
+                )
+            )
+        );
         (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
             token.eip712Domain();
         assertEq(name, "Permit Token");
         assertEq(version, "1");
         assertEq(chainId, block.chainid);
         assertEq(verifyingContract, address(token));
+    }
+
+    /// @notice Test the cached domain separator stays consistent with the live EIP-712 metadata.
+    /// @dev Guards the invariant introduced by the F-14 hash cache: `_EIP712Name`/`_EIP712Version`
+    ///      must return stable values after init, otherwise the cached `_hashedName`/`_hashedVersion`
+    ///      desync from what `eip712Domain()` exposes. This check recomputes the separator from the
+    ///      live metadata, so a future dynamic override that diverges from the cache turns red.
+    function testDomainSeparatorMatchesLiveEip712Metadata() external view {
+        (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+            token.eip712Domain();
+        assertEq(
+            token.DOMAIN_SEPARATOR(),
+            keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes(name)),
+                    keccak256(bytes(version)),
+                    chainId,
+                    verifyingContract
+                )
+            )
+        );
     }
 
     /// @notice Test permit sets allowance and consumes nonce.

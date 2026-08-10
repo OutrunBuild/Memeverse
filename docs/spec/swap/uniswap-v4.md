@@ -116,6 +116,9 @@ PoolManager 传入 `afterSwap` 的 `BalanceDelta` 是实际核心 delta：它决
 ## 5. LP 总量与零供给语义
 
 - 加/减流动性路径在 LP token `mint` / `burn` 后直接同步 `cachedLpTotalSupply[poolId]`，保持缓存总量与实际 LP token `totalSupply()` 一致；fee per-share 以全部已发行 LP token 为分母，不设置永久锁定或排除分账的 LP 份额；不要求额外的一行转发 helper。
+- LP token 转账（`transfer` / `transferFrom`）先经 `UniswapLP.sol::_update` 对 `from` / `to` 调用 `MemeverseUniswapHook.sol::updateUserSnapshot(poolId, ...)`，结晶 fee 快照：将可 claim fee 累入 `pendingFee0` / `pendingFee1` 并推进 offset（`SwapFacet.sol::updateUserSnapshotLogic`）`[代码已证]`。
+  - `mint` / `burn` 不经该钩子：hook 内部加/减流动性路径直接经 `MemeverseUniswapHook.sol::_updateUserSnapshotViaFacet` 完成同一结晶。
+  - 自转（`from == to` 非零）只结晶一次：`updateUserSnapshot` 在同一交易内按地址幂等（SwapFacet 零增长 fast path）。
 - swap 路径使用 `_activeLpSupplyForSwap` 作为有效 LP 供应量的业务入口：`cachedLpTotalSupply == 0` 时 fallback 到 `poolManager.getLiquidity(poolId)`。
   - 两者均为 0 → 非零普通动态报价与公开 swap 都必须拒绝；不能以零输出、partial fill 或费用预估伪装为可执行。
   - 缓存为 0 但 pool liquidity > 0 → revert `NoActiveLiquidityShares`（不一致状态，不应出现）。

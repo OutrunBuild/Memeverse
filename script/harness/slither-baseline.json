@@ -1373,15 +1373,6 @@
       "key": "calls-loop|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl._lzConfigure(address,address,uint32[]) has external calls inside a loop: IOAppCore(pol).setPeer(remoteEndpointId,bytes32(uint256(uint160(pol))))"
     },
     {
-      "id": "51a666f0395bcc62cd09e573230a8036d95b8e7d6c3ce09ceba6a350aa39f92f",
-      "check": "reentrancy-benign",
-      "impact": "Low",
-      "confidence": "Medium",
-      "location": "src/swap/tokens/UniswapLP.sol#L104-L121",
-      "summary": "Reentrancy in UniswapLP.transferFrom(address,address,uint256):",
-      "key": "reentrancy-benign|src/swap/tokens/UniswapLP.sol|Reentrancy in UniswapLP.transferFrom(address,address,uint256):"
-    },
-    {
       "id": "95115d00adb68a23c467ea49f072ded4f0c6403ace3deaf0214ffe35f104c1a4",
       "check": "reentrancy-benign",
       "impact": "Low",
@@ -1416,15 +1407,6 @@
       "location": "src/verse/MemeverseLiquidityImpl.sol#L304-L316",
       "summary": "Reentrancy in MemeverseLiquidityImpl._createPTPOLAuxiliaryPool(uint256,address,address,address,uint256,uint256):",
       "key": "reentrancy-benign|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._createPTPOLAuxiliaryPool(uint256,address,address,address,uint256,uint256):"
-    },
-    {
-      "id": "c6fec1701165e49a839780f2f381041d377138aa8fb23966e54ee12cb8a9e930",
-      "check": "reentrancy-benign",
-      "impact": "Low",
-      "confidence": "Medium",
-      "location": "src/swap/tokens/UniswapLP.sol#L83-L96",
-      "summary": "Reentrancy in UniswapLP.transfer(address,uint256):",
-      "key": "reentrancy-benign|src/swap/tokens/UniswapLP.sol|Reentrancy in UniswapLP.transfer(address,uint256):"
     },
     {
       "id": "ef3e3c91b2c0dc6f8fb386d220d909cb3027f1c50c12257b8d9801ac66fd75f4",
@@ -1470,15 +1452,6 @@
       "location": "src/verse/MemeverseSettlementImpl.sol#L209-L217",
       "summary": "Reentrancy in MemeverseSettlementImpl.claimUnlockedPreorderMemecoin(uint256):",
       "key": "reentrancy-events|src/verse/MemeverseSettlementImpl.sol|Reentrancy in MemeverseSettlementImpl.claimUnlockedPreorderMemecoin(uint256):"
-    },
-    {
-      "id": "2d784452acee8d5900ba845f16dd1b207334c96a183f9c18fc7b5fab961052e1",
-      "check": "reentrancy-events",
-      "impact": "Low",
-      "confidence": "Medium",
-      "location": "src/swap/tokens/UniswapLP.sol#L104-L121",
-      "summary": "Reentrancy in UniswapLP.transferFrom(address,address,uint256):",
-      "key": "reentrancy-events|src/swap/tokens/UniswapLP.sol|Reentrancy in UniswapLP.transferFrom(address,address,uint256):"
     },
     {
       "id": "2eb4d4b6b84ec46606989ebb405a43aed15969e15a2e38c66f2188df70ea0c9c",
@@ -1587,15 +1560,6 @@
       "location": "src/verse/YieldDispatcher.sol#L92-L96",
       "summary": "Reentrancy in YieldDispatcher.distributeSameChain(address,address,IMemeverseOFTEnum.TokenType,uint256):",
       "key": "reentrancy-events|src/verse/YieldDispatcher.sol|Reentrancy in YieldDispatcher.distributeSameChain(address,address,IMemeverseOFTEnum.TokenType,uint256):"
-    },
-    {
-      "id": "92378095a4c270949a359af86e7df88bdb345b4f1eece12f677516862da9bbf6",
-      "check": "reentrancy-events",
-      "impact": "Low",
-      "confidence": "Medium",
-      "location": "src/swap/tokens/UniswapLP.sol#L83-L96",
-      "summary": "Reentrancy in UniswapLP.transfer(address,uint256):",
-      "key": "reentrancy-events|src/swap/tokens/UniswapLP.sol|Reentrancy in UniswapLP.transfer(address,uint256):"
     },
     {
       "id": "94d6283985b09a2781b211228a1549b9120961d59f2e4302893452768644b558",
@@ -1857,15 +1821,6 @@
       "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L327-L381",
       "summary": "MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) uses timestamp for comparisons",
       "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) uses timestamp for comparisons"
-    },
-    {
-      "id": "6e415af5c86a3c31158e66cad812fed204702d229c0f86290b2bcbbddbd864e8",
-      "check": "timestamp",
-      "impact": "Low",
-      "confidence": "Medium",
-      "location": "src/swap/tokens/UniswapLP.sol#L148-L186",
-      "summary": "UniswapLP.permit(address,address,uint256,uint256,uint8,bytes32,bytes32) uses timestamp for comparisons",
-      "key": "timestamp|src/swap/tokens/UniswapLP.sol|UniswapLP.permit(address,address,uint256,uint256,uint8,bytes32,bytes32) uses timestamp for comparisons"
     },
     {
       "id": "754d9f93e205e69bab50b93b8f30e67647e7db8bc47a192dabf689b0b94ec8f0",
@@ -2541,6 +2496,24 @@
       "location": "src/verse/YieldDispatcher.sol#L30",
       "summary": "YieldDispatcher.TOKEN_TYPE_OFFSET is never used in YieldDispatcher",
       "key": "unused-state|src/verse/YieldDispatcher.sol|YieldDispatcher.TOKEN_TYPE_OFFSET is never used in YieldDispatcher"
+    },
+    {
+      "id": "b7ae80ea8fd39a0f2e464108a32aa89db3c1356d4d5cb57cf7bac6fd08998005",
+      "check": "reentrancy-benign",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/swap/tokens/UniswapLP.sol#L89-L95",
+      "summary": "Reentrancy in UniswapLP._update(address,address,uint256):",
+      "key": "reentrancy-benign|src/swap/tokens/UniswapLP.sol|Reentrancy in UniswapLP._update(address,address,uint256):"
+    },
+    {
+      "id": "d356a19a3d1462a07020c8caeb0347a8513db3742962a53da6e97a079267cbbf",
+      "check": "reentrancy-events",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/swap/tokens/UniswapLP.sol#L89-L95",
+      "summary": "Reentrancy in UniswapLP._update(address,address,uint256):",
+      "key": "reentrancy-events|src/swap/tokens/UniswapLP.sol|Reentrancy in UniswapLP._update(address,address,uint256):"
     }
   ]
 }

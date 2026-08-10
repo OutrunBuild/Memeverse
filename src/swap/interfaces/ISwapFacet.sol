@@ -32,7 +32,8 @@ interface ISwapFacet {
         returns (bytes4 selector, BeforeSwapDelta delta, uint24 lpFeeBps);
 
     /// @notice Logic entry for the v4 `afterSwap` hook callback.
-    /// @dev Updates ewVWAP, reference-price volatility state, short-term impact state, and optionally takes
+    /// @dev Updates ewVWAP (exponentially-weighted volume-weighted average price), reference-price volatility state,
+    ///      short-term impact state, and optionally takes
     ///      protocol fees. Return shape matches `IHooks.afterSwap`.
     /// @param sender Original caller forwarded by PoolManager.
     /// @param key Pool key of the swap.

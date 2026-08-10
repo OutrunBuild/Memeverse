@@ -392,6 +392,13 @@ run_single_command() {
     local scope_json="$3"
     shift 3
     local -a cmd=("$@")
+    # Route any forge subcommand through forge-serialize.sh so gate's builds/tests
+    # join the same flock queue as agent-invoked builds — prevents concurrent
+    # compiles (gate vs agent, or multiple gates) from corrupting the via_ir
+    # incremental cache. Only forge is intercepted; bash/npx/node/solhint untouched.
+    if [ "${cmd[0]}" = "forge" ]; then
+        cmd=("bash" "$repo_root/script/harness/forge-serialize.sh" "${cmd[@]:1}")
+    fi
     local command_string
     local exit_code
 
@@ -442,7 +449,7 @@ run_looped_command() {
         set +e
         case "$id" in
             targeted_tests)
-                forge test --match-path "$item" >> "$_loop_output_file" 2>&1
+                bash "$repo_root/script/harness/forge-serialize.sh" test --match-path "$item" >> "$_loop_output_file" 2>&1
                 ;;
             node_syntax_changed_js)
                 node --check "$item" >> "$_loop_output_file" 2>&1
@@ -587,7 +594,7 @@ run_targeted_tests_command() {
         return
     fi
 
-    run_looped_command "$id" "$reason" "$scope_json" "forge test --match-path" "${scope[@]}"
+    run_looped_command "$id" "$reason" "$scope_json" "bash $repo_root/script/harness/forge-serialize.sh test --match-path" "${scope[@]}"
 }
 
 slither_baseline_path() {

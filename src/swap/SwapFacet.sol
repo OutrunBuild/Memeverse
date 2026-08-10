@@ -481,7 +481,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         // early-return: when fee growth has not advanced past the offset, mulDiv is 0,
         // the if(>0) guards skip, and the offset SSTOREs would be no-ops, so we skip
         // balanceOf + mulDiv + noop writes entirely (the common case on the Router
-        // remove path, where LP _beforeTokenTransfer already synced the offset).
+        // remove path, where the LP token's _update override already synced the offset).
         uint256 fee0PerShare = pool.fee0PerShare;
         uint256 fee1PerShare = pool.fee1PerShare;
         uint256 fee0Offset = state.fee0Offset;

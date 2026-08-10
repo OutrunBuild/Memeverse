@@ -253,6 +253,7 @@ POLend.markRefundable(verseId)
 - 只允许 market 处于 `Genesis`
 - 不需要推导或保存债务
 - 只把 market 状态改成 `Refund`
+- 状态翻转时 emit `MarketRefundable(verseId)`
 
 `claimRefund`：
 
@@ -307,6 +308,7 @@ real 用户退 uAsset、credit 用户退 GenesisCredit，两条物理隔离；�
 - mint `totalLeveragedDebt` 数量的该 verse `uAsset` 到 `Launcher`（基于合计 `totalLeveragedInterest`，real + credit 一同推导）
 - 把真付部分 realInterest 全额清扫至 `protocolTreasury`：`realInterest = market.totalLeveragedInterest - market.totalCreditInterest`，该 `uAsset` 全额转给 `POLend.protocolTreasury`，不做 reserve 拆分。settlement dust reserve 仅由 Launcher bootstrap unused `uAsset`（`_handleBootstrapResiduals` → `fundSettlementDustReserve`）与手动 `fundSettlementDustReserve` 注入。credit 部分无 token 流入，跳过 treasury 清扫
 - 若 `market.totalCreditInterest > 0`：**burn 托管的 GenesisCredit** `GenesisCredit.burn(market.totalCreditInterest)`（POLend 烧自己托管的 credit 余额，permissionless 自烧，无需 burner 权限模型），并 emit `CreditBurned(verseId, uAsset, totalCreditInterest)`。`totalCreditInterest == 0` 的 real-only finalize 跳过 burn 与事件——`GenesisCredit.burn(0)` 会 `revert ZeroInput()`，且无销毁发生不应发审计事件
+- 无论 credit 与否,函数尾无条件 emit `LeveragedGenesisFinalized(verseId, uAsset, debt, realInterestSwept, creditBurned)`(real-only 时 `creditBurned == 0`;credit-only 时 `realInterestSwept == 0` 且无 treasury 转账)
 - `globalDebtByUAsset[market.uAsset] += totalLeveragedDebt`
 
 mint 数量：
@@ -423,6 +425,7 @@ POLend.recordLeveragedYT(verseId, yt, totalLeveragedYT)
 - 只记录 `yt` 与 `totalLeveragedYT`
 - 不转 token
 - 不改变 market 主状态
+- 记录时 emit `LeveragedYTRecorded(verseId, yt, totalLeveragedYT)`
 
 ## 6. PT / YT 生命周期
 

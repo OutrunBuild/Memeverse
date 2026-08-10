@@ -59,7 +59,7 @@
   - `setPeer`（`src/common/omnichain/oapp/OutrunOAppCoreInit.sol::setPeer` onlyOwner）
   - `setDelegate`（`OutrunOAppCoreInit.sol::setDelegate` onlyOwner）
   - `setMsgInspector`（`src/common/omnichain/oft/OutrunOFTCoreInit.sol::setMsgInspector` onlyOwner）
-  - `setEnforcedOptions`（`src/common/omnichain/oapp/OutrunOAppOptionsType3Init.sol::setEnforcedOptions` onlyOwner）
+  - `setEnforcedOptions`（`src/common/omnichain/oapp/OutrunOAppOptionsType3Init.sol::setEnforcedOptions` onlyOwner）—— 当前未启用：全仓（src/ + script/）该 setter 仅有定义、零生产调用，初始化器 `__OutrunOAppOptionsType3_init()` 函数体为空从不写入映射，故 `enforcedOptions` 恒空；所有 OFT 发送路径经 `combineOptions`（`OutrunOAppOptionsType3Init.sol:88`）原样透传 caller `_extraOptions`，不施加接收端选项下限、不在发送路径做 type-3 类型校验。是否启用 enforced options 由产品侧在 verse/interoperation 发送路径另行评估（跨批）。
   - `setPreCrime`（`src/common/omnichain/oapp/OutrunOAppPreCrimeSimulatorInit.sol::setPreCrime` onlyOwner）
 - `initialize` 时 owner 与 delegate 均设为 launcher（`Memecoin.sol::initialize` / `MemePol.sol::initialize`），故部署后 launcher 作为 owner == delegate 持有上述 endpoint 配置权。
 - 与 §3.1（`launcher.registerMemeverse` 时调 `setPeer`）相区分：§3.1 是 launcher 注册流程的即时调用，本节是 token 自身 owner == delegate 的常态配置面。

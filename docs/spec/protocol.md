@@ -37,6 +37,11 @@
 - `burn(uint256)`（`src/token/MemePol.sol:77`）：仅自烧，无 allowance 分支。
 - `Memecoin.burn(uint256)`（`src/token/Memecoin.sol:48`）：仅自烧。
 
+**POL token 命名约定**（当前规则，代码已证）：
+- POL token 的 name/symbol 固定使用 `POL-` + verse name/symbol 前缀（`MemeverseLaunchImpl.sol::_deployAndInitializeVerseTokens`）。
+- 同族固定前缀：`PT-`/`YT-`（PT/YT token，`POLSplitter.sol::initializeVerse`）、`Staked `（name）/`s`（symbol）（yield vault，`MemeverseLaunchImpl.sol::_deployGovernanceComponents`）。
+- 这是固定命名约定，集成者可据此识别与展示各 token。
+
 ## 4. 用户可见主流程
 
 ### 4.1 注册流程

@@ -306,6 +306,13 @@ setter 规则：
 - `maxReserve > 0`
 - 若下调上限，必须满足当前 `reserve <= maxReserve`
 
+生命周期约束（运维 / 治理须知）：
+
+- `maxReserve` 不允许归零或禁用：`maxReserve == 0` 在 `POLend.sol::setMaxSettlementDustReserve` 中被 `ZeroInput` 拒绝，并被 `POLend.sol::registerLendMarket`、`POLend.sol::_debtCapacity` 与 `POLend.sol::fundSettlementDustReserve` 复用为「该 uAsset 未完成 reserve 配置」哨兵；不存在「已配置但禁用」状态。
+- 下调上限允许，但不得低于当前已存 reserve（revert `InvalidConfig`）。
+- reserve 余额是单向池：只经 `POLend.sol::fundSettlementDustReserve` 增加（Launcher bootstrap unused uAsset 自动注资或任意地址手动注入），只在 `POLend.sol::executeGlobalSettlement` 的 bounded deficit 消耗中减少；不存在主动取回 / sweep 路径，退役 uAsset 的未消耗 reserve 余额永久留在 `POLend`，唯一回收通道是协议升级。
+- Launcher bootstrap 路径的 unused uAsset 自动注入无 opt-out：只要 bootstrap 残留非零即全额路由至 `fundSettlementDustReserve`，容量内进 reserve、超容部分进 treasury；excess 只覆盖新增资金，不回流存量。
+
 `finalizeLeveragedGenesis` 必须把真付部分（realInterest）的杠杆利息全额清扫至 `protocolTreasury`。GenesisCredit 抵扣的 credit 利息没有对应 `uAsset` token 流入，不进入 treasury 清扫：
 
 ```text
@@ -404,7 +411,7 @@ else:
 
 以上容量计算只在 `settlementDustStates[uAsset].maxReserve > 0` 时执行；否则容量返回 0。
 
-该公式与 `totalLeveragedInterest * 1e18 / market.interestRate` 的向下取整语义严格匹配。实现应使用全精度乘除，避免中间乘法溢出。
+该公式与 `totalLeveragedInterest * 1e18 / market.interestRate` 的向下取整语义严格匹配。实现应使用全精度乘除，避免中间乘法溢出，并在精确商 ≥ `type(uint256).max`（即乘积 ≥ `(2^256 - 1) * 1e18`）时防御性饱和返回 `type(uint256).max`；该饱和分支在极端配置（如 `minTotalFund > uint128.max`）下可触发，但其结果随后在 `_debtCapacity` 中被 aggregate 钳制，最终 `debtCap` 恒 ≤ `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = uint128.max < uint256.max`，故 `maxTotalInterest` 计算中 `debtCap == type(uint256).max` 的防御分支当前不可达（与 `POLend.sol` 的 `_debtCapacity` 注释一致）。
 
 ## 8. 错误语义
 
@@ -417,6 +424,7 @@ else:
 - `registerLendMarket`：对应 `uAsset` 未完成全局 reserve 配置
 - `fundSettlementDustReserve`：`uAsset` 未完成全局 reserve 配置
 - `initialize / setLeveragedDebtFactor`：`leveragedDebtFactor > uint128.max * 1e18`
+- `setMaxSettlementDustReserve`：下调上限低于当前已存 reserve（`state.reserve > maxReserve`）
 
 `POLend` 侧 `InvalidState` 使用场景：
 
@@ -437,13 +445,15 @@ else:
 
 `POLSplitter` 侧 `InvalidState` 等价错误：
 
-- `recordPTBackingRatio`：verse 未 initialize 或 ratio 已记录
+- `recordPTBackingRatio`：verse 未 initialize（`InvalidClaim`）、已 settled（`AlreadySettled`）、存在 split 产生的未合并回零 collateral（`totalPOLCollateral != 0` → `InvalidClaim`）或 ratio 已记录（`InvalidClaim`）
 - `split / previewPTToUAsset / preRedeemPTFee / redeemPT / redeemYT`：ratio 未记录
 - `AlreadyUnlocked`：split/merge 时 verse 已 Unlocked 或 settle 已完成
 - `NotUnlocked`：settle 时 verse 尚未 Unlocked
 - `AlreadySettled`：重复 settle，或 preRedeemPTFee 时已 settled
 - `NotSettled`：redeemPT/redeemYT 时尚未 settled
 - `AlreadyDeployed`：`initializeVerse` 重复调用
+
+`recordPTBackingRatio` 的 settled 与已有 split 检查均为防御性守卫：正常流程中不会触发（Launcher 在 Genesis→Locked 建池流程中于任何 split 前调用一次；`split / merge` 被 `_requirePTBackingRatio` 门控，ratio 未记录时即 revert，故先 split 后 record 不可达）；其作用是在 Launcher 调用逻辑异常时阻止对已 settled 或存在未合并回零 split collateral 的 verse 重复记录 backing ratio。
 
 `GenesisCredit` / `GenesisCreditFactory` 侧错误语义（permissionless claim 与 owner-only 部署）：
 

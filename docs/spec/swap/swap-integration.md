@@ -133,7 +133,7 @@ function swap(
 
 - `key`：池子 key（`currency0` / `currency1` 的 ERC20-only 与 native 拒绝 V5 见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3）
 - `params`：Uniswap v4 swap 参数
-- `recipient`：最终接收输出币的地址
+- `recipient`：最终接收输出币的地址；为零地址时 `MemeverseSwapRouter.sol::_swap` 入口回退 `InvalidRecipient(recipient)`（recipient 非零规则见 [docs/spec/invariants.md](../invariants.md) INV-07）
 - `deadline`：过期时间
 - `amountOutMinimum`：
   - exact-input 时用于最小输出保护
@@ -163,6 +163,8 @@ function quoteSwap(PoolKey calldata key, SwapParams calldata params, address tra
 `quoteSwap` 是公开的只读入口，前端、SDK、链上 Router 与聚合器可按普通 `view` 函数直接调用，无需手动构造 `staticcall`。Lens 会在内部以 `STATICCALL` 进入 non-view Hook bridge，再由 Hook 路由到报价 facet；函数 selector 与返回结构不变。
 
 上述公开入口、Lens 的 `STATICCALL` bridge 与 ABI 结构是当前实现事实。`[代码已证]`
+
+**`trader` 参数契约** `[代码已证]`：`quoteSwap` 的 `trader` 是无 session 的只读 preview 输入——合约侧不对其做认证，也不提供执行 principal（与 §1.1 一致）。但**为使报价费率与实际执行一致，`trader` 必须等于即将执行该 swap 的 session principal**。原因：动态费率的地址批累积 `addressBatchState[trader][poolId]`（`MemeverseUniswapHookStorage` 命名空间）由 `DynamicFeeFacet.sol::quote` → `DynamicFeeMath.sol::selectDynamicFee` 读入 `effectivePifPpm`，经 Michaelis-Menten 饱和 + dff 缩放进最终 `feeBps`，以 `trader` 为 key；执行路径以 `activePrincipal()` 为 key（见 `SwapFacet.sol::beforeSwapLogic`）。若 `trader != 执行 principal`（例如用一个全新地址报价、另一地址执行 swap），报价不含执行者的批累积，**返回费率会低于实际执行费率**，据此设的 `amountOutMinimum` / `amountInMaximum` 滑点保护可能不足。`feeBps` 与 amount 估算仅在与执行同一 principal 时保证一致。
 
 以下仅为面向集成方的非规范报价 API 导览：通常直接调用 `quoteSwap(...)` 获取报价；需要通过 Lens 接入时使用其 `STATICCALL` bridge。非零报价精确的一次选费、四路径、raw limit、容量、可执行性、报价一致性、只读和零金额边界，均以 [uniswap-v4.md §3.1–§3.2](uniswap-v4.md) 为唯一 canonical。
 
@@ -198,7 +200,7 @@ function quoteSwap(PoolKey calldata key, SwapParams calldata params, address tra
 对只知道 token pair、不想感知 `PoolKey` / Hook 细节的集成方，当前只读 helper 可以这样理解：
 
 - `lpToken(tokenA, tokenB)`：返回该 pair 对应的 Hook LP token 地址
-- `quoteAmountsForLiquidity(tokenA, tokenB, liquidityDesired)`：按当前池价返回目标 LP liquidity 需要的两侧 token 数量
+- `quoteAmountsForLiquidity(tokenA, tokenB, liquidityDesired)`：按当前池价返回目标 LP liquidity 需要的两侧 token 数量；返回值带防低报取整补偿（锚定 `MemeverseSwapRouter.sol::quoteAmountsForLiquidity`）：以 `LiquidityAmounts.getAmountsForLiquidity` 的 floor 量为底，`liquidityDesired` 非零时按价格区间各 +1——`sqrtPriceX96 <= LiquidityQuote.sol::MIN_SQRT_PRICE_X96` 时 `amount0` +1，`LiquidityQuote.sol::MIN_SQRT_PRICE_X96 < sqrtPriceX96 < LiquidityQuote.sol::MAX_SQRT_PRICE_X96` 时两侧各 +1，`sqrtPriceX96 >= LiquidityQuote.sol::MAX_SQRT_PRICE_X96` 时 `amount1` +1，使报价不低报为达成 `liquidityDesired` 所需的 token 数量（conservative padding）。
 - `quoteExactAmountsForLiquidity(...)`：面向已初始化池，使用当前 `slot0` 为目标 liquidity 报价。
 - bootstrap 集成契约：Router 从 Launcher 提交的 desired budgets 执行，并把 actual execution / actual spend 返回给 Launcher 做 post-bootstrap accounting（集成真源不是 preview/equality）。
 - bootstrap 记账语义、auxiliary underspend 处置、unused bootstrap `uAsset` / `memecoin` 处置见 [docs/spec/verse/accounting.md](../verse/accounting.md) §3.2 与 [docs/spec/invariants.md](../invariants.md) INV-04；unused bootstrap `uAsset` 进入的 settlement dust reserve 结构与处置 home 在 [docs/spec/polend/core.md §6.7](../polend/core.md)。

@@ -47,6 +47,7 @@ swap 栈是显式例外：
 
 - 某些统一出口，如 `_transferOut`，带有基础重入保护
 - 上层模块在做外部转账时默认共享这个边界
+- 该重入保护仅在单次 `_transferOut` 调用内部持有——`_transferOut` 返回即释放锁（`_nonReentrantAfter` 复位），因此两次 `_transferOut` 之间的窗口不受此锁覆盖；跨出口的重入安全依赖调用方自身的 CEI 排序，而非这个 modifier
 
 因此读业务逻辑时，不能只看合约本身，还要意识到资金出口带着底层 guard。
 

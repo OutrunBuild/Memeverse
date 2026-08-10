@@ -56,8 +56,17 @@
 | `GlobalSettlementExecuted(uint256 indexed verseId,address indexed uAsset,uint256 verseDebt,uint256 recoveredUAsset,uint256 consumedSettlementDustReserve,uint256 settlementDustReserveAfter,uint256 residualUAsset,uint256 residualMemecoin)` | `POLend` | `executeGlobalSettlement` 成功完成 | 债务偿还、reserve 消耗后余额、residual 记账审计 | `[代码已证]` |
 | `RedeemPT(uint256 indexed verseId,address indexed from,address indexed to,uint256 ptAmount)` | `POLSplitter` | settle 后 PT 兑付 | PT 兑付流水索引 | `[代码已证]` |
 | `RedeemYT(uint256 indexed verseId,address indexed from,address indexed to,uint256 ytAmount,uint256 uAssetAmount,uint256 memecoinAmount)` | `POLSplitter` | settle 后 YT 兑付 | YT 兑付流水索引 | `[代码已证]` |
+| `VerseInitialized(uint256 indexed verseId,address indexed pt,address indexed yt)` | `POLSplitter` | `initializeVerse` 成功 | verseId↔PT/YT 地址映射锚点，索引 PT/YT 流通面与兑付事件的前提 | `[代码已证]` |
+| `Split(uint256 indexed verseId,address indexed user,uint256 polAmount,uint256 ptAmount,uint256 ytAmount)` | `POLSplitter` | `split` 成功 | per-verse POL 抵押品流入与 PT/YT 增发索引 | `[代码已证]` |
+| `Merge(uint256 indexed verseId,address indexed user,uint256 amount,uint256 polAmount)` | `POLSplitter` | `merge` 成功 | per-verse POL 抵押品流出与 PT/YT 回收索引 | `[代码已证]` |
+| `BackingRatioRecorded(uint256 indexed verseId,uint256 numerator,uint256 denominator)` | `POLSplitter` | `recordPTBackingRatio` 成功 | 每单位 PT 赎回价值参数记录索引；一次性写入（二次调用 revert） | `[代码已证]` |
+| `VerseSettled(uint256 indexed verseId,uint256 settlementUAsset,uint256 settlementMemecoin)` | `POLSplitter` | `settle` 成功 | 结算池终值锚点(settlementUAsset 为扣 pre-redeemed uAsset backing 后金额),settled 状态翻转索引 | `[代码已证]` |
 | `LeveragedGenesisWithCredit(uint256 indexed verseId,address indexed user,uint256 creditAmount)` | `POLend` | 用户在 Genesis 用 GenesisCredit 抵扣杠杆利息成功 | 杠杆创世 credit 抵扣参与与 credit 利息累计索引；`creditInterestPaid` 与 `market.totalCreditInterest` 同步累加 | `[代码已证]` |
 | `CreditBurned(uint256 indexed verseId,address indexed uAsset,uint256 totalCreditInterest)` | `POLend` | `finalizeLeveragedGenesis` 烧毁该 verse 托管的 GenesisCredit（量 = 该 verse `market.totalCreditInterest`） | 杠杆 finalize 的 GenesisCredit 销毁审计；承载 credit 部分证据（`CreditBurned.totalCreditInterest` 是 credit 部分；real 部分为 `totalLeveragedInterest - totalCreditInterest`，由 finalize 全额清扫至 `protocolTreasury`，二者合起来对应 `market.totalLeveragedInterest`） | `[代码已证]` |
+| `LendMarketRegistered(uint256 indexed verseId,address indexed uAsset,uint256 interestRate)` | `POLend` | `registerLendMarket` 成功注册 verse 杠杆市场 | 市场注册锚点：uAsset 绑定与注册时利率快照索引；后续 state 迁移起点 | `[代码已证]` |
+| `MarketRefundable(uint256 indexed verseId)` | `POLend` | `markRefundable` 把 Genesis 市场迁至 `Refund` 终态 | 失败 verse 退款资格翻转索引；`claimRefund` 触发前提 | `[代码已证]` |
+| `LeveragedGenesisFinalized(uint256 indexed verseId,address indexed uAsset,uint256 debt,uint256 realInterestSwept,uint256 creditBurned)` | `POLend` | `finalizeLeveragedGenesis` 把 Genesis 市场迁至 `Locked` 并锁债 | 成功 verse 锁债(debt mint)与 treasury 清扫审计；无条件发射(real-only 市场 `creditBurned==0`)；credit-only 市场 `realInterestSwept==0` | `[代码已证]` |
+| `LeveragedYTRecorded(uint256 indexed verseId,address indexed yt,uint256 totalLeveragedYT)` | `POLend` | `recordLeveragedYT` 记录锁定 verse 的 YT 与分发总量 | YT 绑定与 pro-rata 分发总量索引 | `[代码已证]` |
 | `ClaimRefund(uint256 indexed verseId,address indexed user,address indexed to,uint256 refundedAmount)` | `POLend` | `claimRefund` 在 Refund 终态把 real-uAsset 利息退回给用户 | Refund 终态的 real `uAsset` 退回流水索引；与 credit 部分 GenesisCredit 退回物理隔离；credit-only 参与者不触发（`realPaid==0`） | `[代码已证]` |
 | `CreditRefunded(uint256 indexed verseId,address indexed user,address indexed to,uint256 amount)` | `POLend` | `claimRefund` 在 Refund 终态把 GenesisCredit 托管余额退回给 credit 用户 | Refund 终态的 GenesisCredit 退回流水索引；与 real 部分 `uAsset` 退回物理隔离 | `[代码已证]` |
 | `CreditFactoryChanged(address indexed oldFactory,address indexed newFactory)` | `POLend` | `setCreditFactory` 替换 `GenesisCreditFactory` 地址指针 | credit 工厂地址替换审计；影响后续 `leveragedGenesisWithCredit` 按 `uAsset` 查 GenesisCredit 的路径 | `[代码已证]` |
@@ -104,6 +113,7 @@
 | `Transfer(address indexed from, address indexed to, uint256 value)` | `Memecoin` / `MemePol`（经 `OutrunERC20Init._update`，`src/common/token/OutrunERC20Init.sol::_update`） | mint 为 `Transfer(0x0, account)`、burn 为 `Transfer(account, 0x0)`、转账为 `Transfer(from, to)` | token 供给变更的见证事件；mint/burn 由零地址方向标识。可按 from/to 直接 filter |
 | `OFTSent(bytes32 indexed guid, uint32 dstEid, address indexed fromAddress, uint256 amountSentLD, uint256 amountReceivedLD)` | `Memecoin` / `MemePol`（经 `OutrunOFTCoreInit.sol::send`） | 源端跨链发出成功 | 源端跨链转出流水；可按 `fromAddress` 直接 filter |
 | `OFTReceived(bytes32 indexed guid, uint32 srcEid, address indexed toAddress, uint256 amountReceivedLD)` | `Memecoin` / `MemePol`（经 `OutrunOFTCoreInit.sol::_lzReceive`） | 目的端到账成功 | 目的端跨链到账流水；可按 `toAddress` 直接 filter |
+| `PoolIdSet(PoolId indexed oldPoolId, PoolId indexed newPoolId)` | `MemePol`（经 `setPoolId`，`src/token/MemePol.sol::setPoolId`） | launcher 设置/重设 pool id 时 | POL 池关联变更可观测。`setPoolId` 无 one-shot guard 可重设，每次写入均 emit；`oldPoolId` 为被覆盖的旧值，首次设置时为 `bytes32(0)`；`newPoolId` 为新值 |
 
 以上均为 `[代码已证]`。
 
@@ -142,6 +152,12 @@
   - `FacetUpdated`：`initialize` 时为初始 3 facet 绑定各 emit 一次 `FacetUpdated(role, address(0), facet)`（部署时建立基线，索引器可重建初始绑定）；此后 `setFacet(bytes32 role, address facet)` 成功后 emit，记录 swap / dynamicFee / settlement 三类 facet 地址替换（owner-level）。
 - Interoperation：`SetGasLimits`
 - ProxyDeployer：`SetQuorumNumerator`
+- 跨链适配层（`src/common/omnichain`，owner-level）：`PeerSet`、`SetLzEndpointIds`、`EnforcedOptionSet`、`MsgInspectorSet`、`PreCrimeSet`
+  - `PeerSet(uint32 eid, bytes32 peer)`：`OutrunOAppCoreInit::setPeer` 后触发，记录跨链可信 peer 路径变更（误配可致伪源链消息被接受）；覆盖 `Memecoin`/`MemePol`（OApp/OFT clone 系，经 `OutrunOAppInit` 继承）
+  - `SetLzEndpointIds(LzEndpointIdPair[] pairs)`：`LzEndpointRegistry::setLzEndpointIds` 批量更新 chainId↔endpointId 路由映射后触发
+  - `EnforcedOptionSet(EnforcedOptionParam[] enforcedOptions)`：`OutrunOAppOptionsType3Init::setEnforcedOptions` 批量更新跨链消息强制执行参数（type-3 options）后触发；覆盖 `Memecoin`/`MemePol`
+  - `MsgInspectorSet(address inspector)`：`OutrunOFTCoreInit::setMsgInspector` 更新出站消息拦截器地址/开关后触发；覆盖 `Memecoin`/`MemePol`
+  - `PreCrimeSet(address preCrimeAddress)`：`OutrunOAppPreCrimeSimulatorInit::setPreCrime` 更新 preCrime 模拟器接线后触发；覆盖 `Memecoin`/`MemePol`
 
 运维清理事件（均 `[代码已证]`）：
 
@@ -161,4 +177,4 @@
 ## 5. 确定性边界
 
 - 除明确标注为目标事件规格或 target-only 的条目外，本文只覆盖仓库 `src/**` 明确 `emit` 的事件。
-- 继承自 OpenZeppelin 的通用事件（如 `Paused/Unpaused`、`OwnershipTransferred`）存在，但未作为 Memeverse 业务主索引面展开（其中 `OwnershipTransferred` 由 `OutrunOwnableInit.sol::__OutrunOwnable_init` / `::transferOwnership` emit，覆盖使用 `OutrunOwnableInit` 的合约（如 OApp/OFT 等可升级合约）的 owner 迁移面；`SplitterToken` / `PrincipalToken` / `YieldToken` 不继承 `OutrunOwnableInit`，不 emit 该事件，不降级为业务主索引）。
+- 继承自 OpenZeppelin 的通用事件（如 `Paused/Unpaused`、`OwnershipTransferred`）存在，但未作为 Memeverse 业务主索引面展开（其中 `OwnershipTransferred` 由两个共享同一 ERC7201 owner 槽（`outrun.storage.Ownable`，`0x7f241041…f00`）但基类不同的 Outrun Ownable 家族 emit：`OutrunOwnableInit`（自定义 Initializable 基）由 `__OutrunOwnable_init` / `transferOwnership` emit，覆盖 OApp/OFT clone 系（最小代理 clone，不可升级）；`OutrunOwnableUpgradeable`（OZ Initializable 基）同样由 `__OutrunOwnable_init` / `transferOwnership` emit，覆盖 `MemeverseLauncher` / `MemeverseUniswapHook` / `POLend` / `POLSplitter`（UUPS 可升级）的 owner 迁移面；`SplitterToken` / `PrincipalToken` / `YieldToken` 不继承任一家族，不 emit 该事件，不降级为业务主索引）。

@@ -570,6 +570,8 @@ memecoinAmount = residualMemecoin * userInterestPaid / totalLeveragedInterest
 
 Settlement dust reserve 不属于用户级 floor allocation dust。它只在 `executeGlobalSettlement` 中按 `settlementDustStates[uAsset].reserve` 可用余额消耗，未消耗部分继续留在该 `uAsset` 全局 reserve 池中。
 
+该全局池无主动回收面：余额只增（`POLend.sol::fundSettlementDustReserve`）只减（bounded deficit 消耗），上限不可归零、下调不得低于当前 reserve（`POLend.sol::setMaxSettlementDustReserve`）；退役 uAsset 的未消耗余额永久滞留，唯一回收通道是协议升级。完整生命周期约束见 [core.md §6.7](core.md)。
+
 ## Dispatch
 
 ### 8. YieldDispatcher 分发路径
@@ -754,18 +756,18 @@ Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金�
 
 | 函数 | Caller | 状态要求 | 输入 / 零值检查 | 事件 / 配置语义 |
 | --- | --- | --- | --- | --- |
-| `registerLendMarket` | `Launcher` | market 未注册 | verse `uAsset` 必须有效，且 `settlementDustStates[uAsset].maxReserve > 0`；复制当前 `defaultInterestRate`，校验 `leveragedDebtFactor` 与利率约束 | 注册后利率固定 |
+| `registerLendMarket` | `Launcher` | market 未注册 | verse `uAsset` 必须有效，且 `settlementDustStates[uAsset].maxReserve > 0`；复制当前 `defaultInterestRate`，校验 `leveragedDebtFactor` 与利率约束 | 注册后利率固定;emit `LendMarketRegistered` |
 | `leveragedGenesis` | 用户 | Launcher verse 为 `Genesis`；market 为 `None / Genesis` | `interestAmount > 0`；该 `uAsset` 已完成全局 reserve 配置；参与地址为 `msg.sender`，无 user-address 输入；累计 `nextTotalLeveragedInterest -> previewDebt` 预检必须同时满足 `previewDebt <= rawDebtCap` 与 `totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` | `LeveragedGenesis` |
 | `leveragedGenesisWithCredit` | 用户 | Launcher verse 为 `Genesis`；market 为 `None / Genesis` | `creditAmount > 0`；该 `uAsset` 已完成全局 reserve 配置且在 `GenesisCreditFactory` 已部署对应 GenesisCredit（否则 `NoCreditForUAsset`）；参与地址为 `msg.sender`；累计 `nextTotalLeveragedInterest -> previewDebt` 预检同上（real + credit 合计吃 debt cap） | `LeveragedGenesisWithCredit` |
-| `markRefundable` | `Launcher` | market 为 `Genesis` | 无金额输入 | 状态改为 `Refund` |
-| `finalizeLeveragedGenesis` | `Launcher` | `Genesis -> Locked` 流程；market 为 `Genesis` | `totalLeveragedDebt > 0` | 状态改为 `Locked`，mint debt（基于合计 `totalLeveragedInterest`），真付部分 realInterest = totalLeveragedInterest - totalCreditInterest 全额转 `protocolTreasury`（credit 部分无 token 流入，跳过），burn 该 verse `totalCreditInterest` 对应的托管 GenesisCredit，emit `CreditBurned`。finalize 不读 `maxReserve`，reserve 配置由 `registerLendMarket` 在注册时强制 |
-| `recordLeveragedYT` | `Launcher` | market 为 `Locked` | `yt != address(0)`，`totalLeveragedYT > 0`，防重复 | 记录杠杆初始 `YT` |
+| `markRefundable` | `Launcher` | market 为 `Genesis` | 无金额输入 | 状态改为 `Refund`;emit `MarketRefundable` |
+| `finalizeLeveragedGenesis` | `Launcher` | `Genesis -> Locked` 流程；market 为 `Genesis` | `totalLeveragedDebt > 0` | 状态改为 `Locked`，mint debt（基于合计 `totalLeveragedInterest`），真付部分 realInterest = totalLeveragedInterest - totalCreditInterest 全额转 `protocolTreasury`（credit 部分无 token 流入，跳过），burn 该 verse `totalCreditInterest` 对应的托管 GenesisCredit，emit `CreditBurned`。另无条件 emit `LeveragedGenesisFinalized`(real-only 市场 `creditBurned==0`)。finalize 不读 `maxReserve`，reserve 配置由 `registerLendMarket` 在注册时强制 |
+| `recordLeveragedYT` | `Launcher` | market 为 `Locked` | `yt != address(0)`，`totalLeveragedYT > 0`，防重复 | 记录杠杆初始 `YT`;emit `LeveragedYTRecorded` |
 | `preRedeemPTFee` | `Launcher` | market 为 `Locked`，Splitter 未 settled | `ptAmount > 0`，`mintTo != address(0)`，converted `uAssetBacking > 0` | `PreRedeemPTFee`，增加 debt |
 | `burnPreRedeemedBacking` | `Splitter` | Splitter settle 流程 | `amount > 0`；`amount == preRedeemedPT.uAssetBacking` 由 `onlySplitter` 调用约束保证，不由 POLend 运行时校验 | 减少 debt |
 | `executeGlobalSettlement` | `Launcher` | `Locked -> Unlocked` 编排；market 为 `Locked` | 只处理一次；若 `recoveredUAsset < verseDebt`，缺口必须等于实际 `deficit`，且 `<= settlementDustStates[uAsset].reserve` | 状态改为 `Settled`，只扣减实际 reserve 消耗，emit `SettlementDustReserveConsumed` 与 `GlobalSettlementExecuted` |
 | `fundSettlementDustReserve` | 任意地址 | reserve 已配置；不受 pause 阻断 | `amount > 0`；非 `Launcher` 成功路径要求 `amount <= remaining capacity` | 注入该 `uAsset` 全局 settlement dust reserve，无 claim 权利 |
 | `claimRefund` | 用户 | market 为 `Refund` | `to != address(0)`，有未领取利息 | 标记 `refundClaimed` |
-| `claimLeveragedYT` | 用户 | market 为 `Locked / Settled` | `to != address(0)`，有未领取杠杆利息份额 | 标记 `leveragedYTClaimed` |
+| `claimLeveragedYT` | 用户 | market 为 `Locked / Settled` | `to != address(0)`，有未领取杠杆利息份额；四舍五入向下后 payout 可为 0 | 标记 `leveragedYTClaimed` |
 | `claimResidual` | 用户 | market 为 `Settled` | `to != address(0)`，有有效利息且未领取；四舍五入向下后 payout 可为 0 | 标记 `residualClaimed` |
 | `setProtocolTreasury` | owner | 任意 | `newTreasury != address(0)` | 仅影响未来杠杆利息 treasury 份额与 Launcher over-capacity funding excess 的接收地址 |
 | `setDefaultInterestRate` | owner | 任意 | `0 < newRate <= 1e18`；当前 `leveragedDebtFactor` 与 `newRate` 满足杠杆约束 | 仅影响未来注册 market |

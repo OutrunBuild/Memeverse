@@ -42,7 +42,9 @@ flowchart TD
     B --> B1{currency0 或 currency1 是否为 address(0)?}
     B1 -- 是 --> BX[revert NativeCurrencyUnsupported]
     B1 -- 否 --> C[准备 ERC20 输入资金]
-    C --> D[调用 PoolManager.swap]
+    C --> B2{recipient 是否为 address(0)?}
+    B2 -- 是 --> BY[revert InvalidRecipient]
+    B2 -- 否 --> D[调用 PoolManager.swap]
     D --> E[Hook.beforeSwap]
     E --> F[按原始用户请求一次选择动态费]
     F --> G[PoolManager 完成 swap]

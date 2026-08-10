@@ -102,6 +102,8 @@
 - 地址级替换、迁移或从零地址恢复不在当前规范内；如需支持，必须先给出显式迁移设计。`[代码已证]`
 - `SettlementDustInsufficient` 出现在回退交易上时，不会留下可用事件日志，不能按失败交易已发事件监控。keeper/monitor 应在目标区块状态用 `eth_call` 或 fork simulation 预执行 `MemeverseLauncher.changeStage(verseId)` 的 `Locked -> Unlocked` 路径；如需单独模拟内部结算步骤，可预执行 `POLend.executeGlobalSettlement(verseId)`。若模拟回退 `SettlementDustInsufficient(uint256 deficit,uint256 availableReserve)`，需先用 `POLend.getLendMarket(verseId).uAsset` 确认目标 uAsset，再计算 `topUpAmount = deficit - availableReserve`，对该 uAsset 完成 approve/transfer 后调用 `fundSettlementDustReserve(uAsset, topUpAmount)`，随后重试 settlement / `changeStage`。补资前还要检查 `settlementDustStates(uAsset)` 的容量：若 `topUpAmount` 超过剩余 capacity，非 Launcher 调用 `fundSettlementDustReserve` 会回退 `SettlementDustReserveExceeded(amount, capacity)`；此时应走告警、升级或配置处理，不能盲目重试。当前合约没有暴露完整 side-effect-free preview 来提前得出 `recoveredUAsset`，因为 settlement 会通过移除 LP、POL redemption、PT redemption 路径回收 uAsset。`[代码已证]`
 
+reserve 是单向池：`POLend.sol::fundSettlementDustReserve` 只增、`POLend.sol::executeGlobalSettlement` 的 bounded deficit 消耗只减，无主动取回路径；`POLend.sol::setMaxSettlementDustReserve` 不允许归零、下调不得低于当前 reserve。退役 uAsset 的未消耗 reserve 余额永久留在 `POLend`，不提供 sweep，唯一回收通道是协议升级。
+
 ### 3.8 unlock 后固定保护窗口语义
 
 - 正常 `Locked -> Unlocked` 路径在 `launcher` binding 指向真实 Launcher proxy 时，由该 Launcher 为既有非零 ERC-20 池写入固定 24 小时的 `publicSwapResumeTime` 保护窗口；窗口内不开放普通公开 swap，运维与 keeper 优先支持退出/结算。

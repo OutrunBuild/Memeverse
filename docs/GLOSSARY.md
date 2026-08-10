@@ -4,7 +4,7 @@
 - **uniqueId / verseId**：verse 的唯一标识；注册中心生成，launcher 作为主键使用。
 - **uAsset**：Genesis、preorder 与结算路径使用的资金 token；每个 verse 注册时确定，须在 RegistrationCenter.supportedUAssets 白名单内。
 - **Memecoin**：每个 verse 的主代币，可由 launcher 按规则 mint。
-- **POL (MemePol)**：流动性权益代币，代表与 memecoin 启动相关的权益与退出凭证。
+- **POL (MemePol)**：流动性权益代币，代表与 memecoin 启动相关的权益与退出凭证。name/symbol 命名约定为 `POL-` + verse name/symbol（如 `POL-MEME`），见 [docs/spec/protocol.md](spec/protocol.md)。
 - **Genesis**：募资阶段，允许 `genesis` 与 `preorder` 入金。
 - **flashGenesis**：达到最小募资即允许提前结束 Genesis 并进入 Locked 的开关。
 - **Refund**：募资失败后的退款阶段（终态）。

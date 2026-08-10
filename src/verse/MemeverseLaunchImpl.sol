@@ -127,6 +127,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         IMemecoin(memecoin).initialize(name, symbol, address(this), address(this));
         IPol(pol)
             .initialize(
+                // POL token name/symbol 固定使用 "POL-" + verse name/symbol 前缀命名约定（见 docs/spec/protocol.md）。
                 string(abi.encodePacked("POL-", name)),
                 string(abi.encodePacked("POL-", symbol)),
                 memecoin,

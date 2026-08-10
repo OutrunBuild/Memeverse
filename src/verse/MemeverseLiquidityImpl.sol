@@ -228,7 +228,11 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 mainPoolUAssetUsed,
         PoolId poolId
     ) internal returns (uint256 polUAssetUsed, uint256 polUsedForPolUAsset, address pt, address yt) {
+        // Protocol self-mint of the bootstrap POL supply (the POL raw amount backing the main pool): POL is
+        // minted to this contract rather than a user to seed the POL/uAsset and PT auxiliary pools below,
+        // before any user-facing POL minting (mintPOLToken).
         IPol(pol).mint(address(this), mainPoolPOLRawAmount);
+        // Bind the Uniswap pool deployed during bootstrap as this POL token's canonical pool.
         IPol(pol).setPoolId(poolId);
 
         (pt, yt) = IPOLSplitter(_polSplitter).getPTAndYT(verseId);
@@ -841,6 +845,9 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
      *      the input-non-zero check, POL burn, LP balance check, and unwrap/transfer. POLend also reaches this
      *      entry through the facade callback ABI. Under delegatecall `msg.sender` is the original caller (POL
      *      burner, LP/refund recipient). The 1:1 LP amount equals the burned POL amount by main-pool construction.
+     *      The POL burn is executed by the launcher proxy on the caller's behalf: callers must first approve the
+     *      launcher proxy as a POL spender for at least `amountInPOL`, or POL's `_spendAllowance` reverts with
+     *      `ERC20InsufficientAllowance`.
      */
     function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool unwrap)
         external

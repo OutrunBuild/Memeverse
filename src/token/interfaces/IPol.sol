@@ -1,4 +1,4 @@
-//SPDX-License-Identifier: GPL-3.0
+// SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -38,9 +38,19 @@ interface IPol is IERC20 {
         address delegate_
     ) external;
 
+    /// @notice Emitted when the launcher sets or resets the canonical pool id.
+    /// @dev oldPoolId is the overwritten value, bytes32(0) on first set; newPoolId is the new value.
+    ///      Both are indexed so consumers can filter by pool.
+    event PoolIdSet(PoolId indexed oldPoolId, PoolId indexed newPoolId);
+
     /**
      * @notice Sets the canonical Uniswap pool id used for liquidity accounting.
-     * @dev Intended to run once after initial liquidity pool deployment.
+     * @dev Launcher-only and resettable: there is no one-shot guard; each call overwrites the
+     *      previous value and emits `PoolIdSet(oldPoolId, newPoolId)`. In the current verse
+     *      lifecycle the launcher flow calls this at most once per POL token (the launcher's
+     *      verse stage machine gates the bootstrap deploy chain), but the contract itself
+     *      does not enforce this. The value is exposed for off-chain/integrator consumption;
+     *      no in-repo production code reads it.
      * @param poolId Uniswap V4 pool identifier.
      */
     function setPoolId(PoolId poolId) external;

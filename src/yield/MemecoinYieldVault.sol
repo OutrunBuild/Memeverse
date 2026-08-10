@@ -7,7 +7,8 @@ import {IMemecoin} from "../token/interfaces/IMemecoin.sol";
 import {OutrunNoncesInit} from "../common/token/OutrunNoncesInit.sol";
 import {IMemecoinYieldVault} from "./interfaces/IMemecoinYieldVault.sol";
 import {ISettleCompose} from "../common/omnichain/ISettleCompose.sol";
-import {OutrunSafeERC20, IERC20} from "./libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {OutrunERC20PermitInit} from "../common/token/OutrunERC20PermitInit.sol";
 import {OutrunERC20Init, OutrunERC20VotesInit} from "../common/token/extensions/governance/OutrunERC20VotesInit.sol";
 

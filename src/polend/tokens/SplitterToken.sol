@@ -3,6 +3,10 @@ pragma solidity ^0.8.35;
 
 import {OutrunERC20Init} from "../../common/token/OutrunERC20Init.sol";
 
+/// @title SplitterToken
+/// @notice Base ERC20 for a verse's split tokens (see PrincipalToken/YieldToken). Mint and burn
+///         are restricted to the deploying splitter (onlySplitter), which moves PT/YT supply to
+///         mirror the verse's POL collateral.
 contract SplitterToken is OutrunERC20Init {
     error PermissionDenied();
     error ZeroAddress();

@@ -23,7 +23,7 @@ import {
     GovernorVotesQuorumFractionUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesQuorumFractionUpgradeable.sol";
 
-import {OutrunSafeERC20} from "../yield/libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
 import {IVotes, IMemecoinDaoGovernor} from "./interfaces/IMemecoinDaoGovernor.sol";
 import {IGovernanceCycleIncentivizer} from "./interfaces/IGovernanceCycleIncentivizer.sol";
 

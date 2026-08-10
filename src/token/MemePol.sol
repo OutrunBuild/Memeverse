@@ -40,14 +40,19 @@ contract MemePol is IPol, OutrunOFTInit {
         __OutrunOFT_init(name_, symbol_, delegate_);
         __OutrunOwnable_init(delegate_);
 
+        // Defense in depth, mirroring the launcher facade's ZeroInput checks: zero links would
+        // permanently freeze minting and pool setup (no setters exist), so reject them at initialization time.
+        require(memecoin_ != address(0) && memeverseLauncher_ != address(0), ZeroInput());
         memecoin = memecoin_;
         memeverseLauncher = memeverseLauncher_;
     }
 
     /// @notice Records the Uniswap pool managed by this POL token.
-    /// @dev Only the launcher may set the pool id after liquidity deployment.
+    /// @dev Only the launcher may set the pool id after liquidity deployment. Not one-shot: the
+    ///      launcher may overwrite the value, and every write emits `PoolIdSet`.
     /// @param _poolId Pool identifier associated with POL liquidity.
     function setPoolId(PoolId _poolId) external override onlyMemeverseLauncher {
+        emit PoolIdSet(poolId, _poolId);
         poolId = _poolId;
     }
 

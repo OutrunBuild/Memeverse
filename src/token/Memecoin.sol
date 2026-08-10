@@ -10,6 +10,11 @@ import {OutrunOFTInit} from "../common/omnichain/oft/OutrunOFTInit.sol";
 contract Memecoin is IMemecoin, OutrunOFTInit {
     address public memeverseLauncher;
 
+    modifier onlyMemeverseLauncher() {
+        require(msg.sender == memeverseLauncher, PermissionDenied());
+        _;
+    }
+
     /**
      * @param _lzEndpoint The local LayerZero endpoint address.
      */
@@ -29,6 +34,9 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
         __OutrunOFT_init(name_, symbol_, _delegate);
         __OutrunOwnable_init(_delegate);
 
+        // Defense in depth, mirroring the launcher facade's ZeroInput checks: a zero launcher would
+        // permanently freeze minting (no setter exists), so reject it at initialization time.
+        require(_memeverseLauncher != address(0), ZeroInput());
         memeverseLauncher = _memeverseLauncher;
     }
 
@@ -36,9 +44,8 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
     /// @dev Only the configured launcher may mint.
     /// @param account Recipient of the newly minted tokens.
     /// @param amount Amount of tokens to mint.
-    function mint(address account, uint256 amount) external override {
+    function mint(address account, uint256 amount) external override onlyMemeverseLauncher {
         require(amount != 0, ZeroInput());
-        require(msg.sender == memeverseLauncher, PermissionDenied());
         _mint(account, amount);
     }
 

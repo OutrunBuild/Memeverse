@@ -8,12 +8,12 @@ interface IPOLSplitter {
         address pol;
         address memecoin;
         address uAsset;
+        bool settled;
         uint256 totalPOLCollateral;
         uint256 settlementUAsset;
         uint256 settlementMemecoin;
         uint256 ptBackingNumerator;
         uint256 ptBackingDenominator;
-        bool settled;
     }
 
     struct PreRedeemedState {
@@ -39,6 +39,12 @@ interface IPOLSplitter {
         uint256 uAssetAmount,
         uint256 memecoinAmount
     );
+
+    event VerseInitialized(uint256 indexed verseId, address indexed pt, address indexed yt);
+    event Split(uint256 indexed verseId, address indexed user, uint256 polAmount, uint256 ptAmount, uint256 ytAmount);
+    event Merge(uint256 indexed verseId, address indexed user, uint256 amount, uint256 polAmount);
+    event BackingRatioRecorded(uint256 indexed verseId, uint256 numerator, uint256 denominator);
+    event VerseSettled(uint256 indexed verseId, uint256 settlementUAsset, uint256 settlementMemecoin);
 
     function splitInfos(uint256 verseId)
         external

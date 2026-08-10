@@ -650,9 +650,14 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
         emit RedeemAndDistributeFees(verseId, govFee, memecoinFee, polFee, executorReward);
     }
 
-    /// @dev Intentionally omits `whenNotPaused`: users can always burn their own POL to exit the pool.
-    ///      POL is the caller's own asset — pausing this path would trap liquidity holders in an emergency.
-    ///      Protocol pathways (polSplitter / polend) also rely on this remaining unpaused for settlement.
+    /// @notice Redeems launcher-managed memecoin-side LP using POL, optionally unwrapping into underlying.
+    ///         Approve this launcher proxy as a POL spender first (the burn is executed by the proxy on the
+    ///         caller's behalf).
+    /// @dev Intentionally omits `whenNotPaused`: users can always redeem their POL to exit the pool (after a
+    ///      one-time approval of this launcher proxy as a POL spender, which the POL token never pauses). POL is
+    ///      the caller's own asset — pausing this path would trap liquidity holders in an emergency. Protocol
+    ///      pathways (polSplitter / polend) also rely on this remaining unpaused for settlement. The burn itself
+    ///      is executed by this proxy on the caller's behalf via the POL allowance, not by the caller directly.
     function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool unwrap)
         external
         override

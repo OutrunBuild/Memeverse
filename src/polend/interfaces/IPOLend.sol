@@ -109,6 +109,29 @@ interface IPOLend {
     ///      `finalizeLeveragedGenesis` (`CreditBurned`), or returned on the refund path (`claimRefund`, `CreditRefunded`).
     event LeveragedGenesisWithCredit(uint256 indexed verseId, address indexed user, uint256 creditAmount);
 
+    /// @notice Emitted when a verse's lend market is registered by the launcher.
+    /// @param verseId Verse identifier the market was registered for.
+    /// @param uAsset Universal asset backing the market.
+    /// @param interestRate Interest rate (1e18-scaled) applied to the market.
+    event LendMarketRegistered(uint256 indexed verseId, address indexed uAsset, uint256 interestRate);
+    /// @notice Emitted when a failed verse's market transitions to `Refund`, enabling `claimRefund`.
+    /// @param verseId Verse identifier whose market became refundable.
+    event MarketRefundable(uint256 indexed verseId);
+    /// @notice Emitted when a verse's leveraged genesis is finalized and its debt is locked.
+    /// @param verseId Verse identifier that was finalized.
+    /// @param uAsset Universal asset backing the market.
+    /// @param debt Total leveraged debt locked for the verse.
+    /// @param realInterestSwept Real-uAsset interest swept to the treasury.
+    /// @param creditBurned GenesisCredit interest burned at finalization.
+    event LeveragedGenesisFinalized(
+        uint256 indexed verseId, address indexed uAsset, uint256 debt, uint256 realInterestSwept, uint256 creditBurned
+    );
+    /// @notice Emitted when the YT token and its total supply are recorded for a locked verse.
+    /// @param verseId Verse identifier the YT was recorded for.
+    /// @param yt YT token address.
+    /// @param totalLeveragedYT Total YT to distribute pro-rata to leveraged participants.
+    event LeveragedYTRecorded(uint256 indexed verseId, address indexed yt, uint256 totalLeveragedYT);
+
     function pause() external;
 
     function unpause() external;

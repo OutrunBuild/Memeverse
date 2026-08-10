@@ -33,15 +33,11 @@ esac
 expected_dependencies=(
     forge-std
     openzeppelin-contracts-upgradeable
-    openzeppelin-foundry-upgrades
     devtools
     LayerZero-v2
     solidity-bytes-utils
-    flexible-voting
     solmate
-    v4-core
     v4-periphery
-    v4-hooks-public
 )
 
 prepare_submodule_worktree() {

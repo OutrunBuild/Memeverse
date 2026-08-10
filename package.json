@@ -4,48 +4,22 @@
   "author": "Jasonrale",
   "license": "GPL-3.0",
   "description": "[Gitbook](https://outrundao.gitbook.io/outrun/ \"OutrunDao Official Doc\")",
-  "main": "index.js",
   "directories": {
     "lib": "lib"
   },
   "scripts": {
-    "lint": "forge build",
+    "lint": "npx solhint --disc --noPoster -c solhint.config.js \"src/**/*.sol\" && npx solhint --disc --noPoster -c solhint-test.config.js \"test/**/*.sol\"",
     "build": "forge build",
     "test": "forge test",
     "gate:fast": "bash ./script/harness/gate.sh --profile fast",
-    "gate": "bash ./script/harness/gate.sh --profile fast",
     "gate:full": "bash ./script/harness/gate.sh --profile full",
     "gate:ci": "bash ./script/harness/gate.sh --profile ci",
     "gas:report": "forge test --gas-report"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
-    "@layerzerolabs/lz-definitions": "^3.1.2",
-    "@layerzerolabs/lz-evm-messagelib-v2": "^3.0.168",
-    "@layerzerolabs/lz-evm-protocol-v2": "^3.0.168",
-    "@layerzerolabs/lz-evm-v1-0.7": "^3.0.168",
-    "@layerzerolabs/lz-v2-utilities": "^3.0.168",
-    "@layerzerolabs/oapp-evm": "^0.4.1",
-    "@layerzerolabs/oft-evm": "^4.0.1",
-    "@layerzerolabs/solhint-config": "^3.0.168",
-    "@layerzerolabs/test-devtools-evm-foundry": "^8.0.1",
-    "@layerzerolabs/toolbox-foundry": "^0.1.13",
-    "@openzeppelin/contracts": "^5.6.1",
-    "@openzeppelin/contracts-upgradeable": "^5.6.1",
-    "@types/chai": "^5.2.3",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "^25.9.1",
-    "chai": "^6.2.2",
-    "dotenv": "^17.4.2",
-    "mocha": "^11.7.6",
-    "solhint": "^6.2.1",
-    "solidity-bytes-utils": "^0.8.4"
+    "solhint": "^6.2.1"
   },
   "engines": {
     "node": ">=18.16.0"
-  },
-  "dependencies": {
-    "@chainlink/contracts": "^1.5.0",
-    "solmate": "^6.8.0"
   }
 }

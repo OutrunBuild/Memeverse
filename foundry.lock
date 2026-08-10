@@ -5,29 +5,17 @@
   "lib/devtools": {
     "rev": "128b697838f4b0fd53ae748093fd66cc409ae5c4"
   },
-  "lib/flexible-voting": {
-    "rev": "8b58254267ab467ff2fd161c8e3340d5319426ad"
-  },
   "lib/forge-std": {
     "rev": "b3bc8b154382a75d0b0ef22d7fd4a0a5f0feee0e"
   },
   "lib/openzeppelin-contracts-upgradeable": {
     "rev": "2e9f42375b7750c06d4dc32fddd6baa88177203d"
   },
-  "lib/openzeppelin-foundry-upgrades": {
-    "rev": "cfd861bc18ef4737e82eae6ec75304e27af699ef"
-  },
   "lib/solidity-bytes-utils": {
     "rev": "fc502455bb2a7e26a743378df042612dd50d1eb9"
   },
   "lib/solmate": {
     "rev": "89365b880c4f3c786bdd453d4b8e8fe410344a69"
-  },
-  "lib/v4-core": {
-    "rev": "e50237c43811bd9b526eff40f26772152a42daba"
-  },
-  "lib/v4-hooks-public": {
-    "rev": "0ec65960e213d0bc38be91004c66d550a085c0dc"
   },
   "lib/v4-periphery": {
     "rev": "363226d9e1e2180b67bf6857023dbaad751010c5"

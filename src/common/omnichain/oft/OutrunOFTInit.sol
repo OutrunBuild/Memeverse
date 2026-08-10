@@ -30,6 +30,8 @@ abstract contract OutrunOFTInit is OutrunOFTCoreInit, OutrunERC20Init {
         __OutrunOFTCore_init(_delegate);
     }
 
+    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
+    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
     function __OFT_init_unchained() internal onlyInitializing {}
 
     /// @notice Exposes the underlying ERC20 token address for this OFT.

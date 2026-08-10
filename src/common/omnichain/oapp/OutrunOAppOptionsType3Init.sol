@@ -36,6 +36,8 @@ abstract contract OutrunOAppOptionsType3Init is IOAppOptionsType3, OutrunOwnable
      */
     function __OutrunOAppOptionsType3_init() internal onlyInitializing {}
 
+    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
+    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
     function __OutrunOAppOptionsType3_init_unchained() internal onlyInitializing {}
 
     /// @notice Exposes enforced type-3 options for a route and message type.
@@ -106,6 +108,9 @@ abstract contract OutrunOAppOptionsType3Init is IOAppOptionsType3, OutrunOwnable
      * @param _options The options to be checked.
      */
     function _assertOptionsType3(bytes calldata _options) internal pure virtual {
+        // @dev Guard against out-of-bounds calldata slice on empty/short options:
+        //      revert a typed error instead of a bare revert.
+        if (_options.length < 2) revert InvalidOptions(_options);
         uint16 optionsType = uint16(bytes2(_options[0:2]));
         if (optionsType != OPTION_TYPE_3) revert InvalidOptions(_options);
     }

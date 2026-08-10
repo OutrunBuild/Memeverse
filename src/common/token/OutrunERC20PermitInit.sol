@@ -42,6 +42,8 @@ abstract contract OutrunERC20PermitInit is OutrunERC20Init, IERC20Permit, Outrun
         __OutrunEIP712_init(_name, "1");
     }
 
+    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
+    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
     function __ERC20Permit_init_unchained(string memory) internal onlyInitializing {}
 
     /// @notice Sets allowance via an EIP-2612 signature.

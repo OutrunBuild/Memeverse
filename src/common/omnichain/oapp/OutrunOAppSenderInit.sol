@@ -8,7 +8,7 @@ import {
     MessagingReceipt
 } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
-import {OutrunSafeERC20} from "../../../yield/libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "../../token/OutrunSafeERC20.sol";
 import {OutrunOAppCoreInit} from "./OutrunOAppCoreInit.sol";
 
 /**

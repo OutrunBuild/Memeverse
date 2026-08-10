@@ -33,6 +33,10 @@ abstract contract OutrunEIP712Init is Initializable, IERC5267 {
     struct EIP712Storage {
         string _name;
         string _version;
+        // Cached hashes of the name/version strings, written once at initialization.
+        // chainId and verifyingContract are still read live in _buildDomainSeparator, so no invalidation is needed.
+        bytes32 _hashedName;
+        bytes32 _hashedVersion;
     }
 
     // keccak256(abi.encode(uint256(keccak256("outrun.storage.EIP712")) - 1)) & ~bytes32(uint256(0xff))
@@ -65,6 +69,11 @@ abstract contract OutrunEIP712Init is Initializable, IERC5267 {
         EIP712Storage storage $ = _getEIP712Storage();
         $._name = name;
         $._version = version;
+        // Cache through the virtual getters so overrides of _EIP712Name/_EIP712Version are honored;
+        // values are snapshotted at initialization, so overrides must return stable values after init
+        // (matching the documented name/version immutability).
+        $._hashedName = keccak256(bytes(_EIP712Name()));
+        $._hashedVersion = keccak256(bytes(_EIP712Version()));
     }
 
     /**
@@ -145,6 +154,8 @@ abstract contract OutrunEIP712Init is Initializable, IERC5267 {
      *
      * NOTE: This function reads from storage by default, but can be redefined to return a constant value if gas costs
      * are a concern.
+     * After initialization, the return value must stay constant: _EIP712NameHash() caches this value once at init, so
+     * a dynamic override would desync the signed on-chain domain from what eip712Domain() exposes.
      */
     function _EIP712Name() internal view virtual returns (string memory) {
         EIP712Storage storage $ = _getEIP712Storage();
@@ -156,6 +167,8 @@ abstract contract OutrunEIP712Init is Initializable, IERC5267 {
      *
      * NOTE: This function reads from storage by default, but can be redefined to return a constant value if gas costs
      * are a concern.
+     * After initialization, the return value must stay constant: _EIP712VersionHash() caches this value once at init,
+     * so a dynamic override would desync the signed on-chain domain from what eip712Domain() exposes.
      */
     function _EIP712Version() internal view virtual returns (string memory) {
         EIP712Storage storage $ = _getEIP712Storage();
@@ -163,12 +176,18 @@ abstract contract OutrunEIP712Init is Initializable, IERC5267 {
     }
 
     /// @dev The hash of the name parameter for the EIP712 domain.
+    /// The cached value is written once during initialization; chainId and verifyingContract still
+    /// participate live in _buildDomainSeparator, so no invalidation logic is needed.
     function _EIP712NameHash() internal view returns (bytes32) {
-        return keccak256(bytes(_EIP712Name()));
+        EIP712Storage storage $ = _getEIP712Storage();
+        return $._hashedName;
     }
 
     /// @dev The hash of the version parameter for the EIP712 domain.
+    /// The cached value is written once during initialization; chainId and verifyingContract still
+    /// participate live in _buildDomainSeparator, so no invalidation logic is needed.
     function _EIP712VersionHash() internal view returns (bytes32) {
-        return keccak256(bytes(_EIP712Version()));
+        EIP712Storage storage $ = _getEIP712Storage();
+        return $._hashedVersion;
     }
 }

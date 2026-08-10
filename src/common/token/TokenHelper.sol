@@ -3,7 +3,7 @@ pragma solidity ^0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {OutrunSafeERC20} from "../../yield/libraries/OutrunSafeERC20.sol";
+import {OutrunSafeERC20} from "./OutrunSafeERC20.sol";
 
 import {ReentrancyGuard} from "../access/ReentrancyGuard.sol";
 

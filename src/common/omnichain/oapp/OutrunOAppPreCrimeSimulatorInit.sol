@@ -16,7 +16,8 @@ import {OutrunOwnableInit} from "../../access/OutrunOwnableInit.sol";
  */
 abstract contract OutrunOAppPreCrimeSimulatorInit is IOAppPreCrimeSimulator, OutrunOwnableInit {
     struct OAppPreCrimeSimulatorStorage {
-        // The address of the preCrime implementation.
+        // preCrime = LayerZero 预执行安全检查：verifier 在消息真实投递前，在本链预模拟入站消息执行，
+        // 并把模拟结果与其它链的结果比对——若揭示恶意状态转移，则拦截该次真实投递。preCrime 实现地址存于此。
         address preCrime;
     }
 
@@ -36,6 +37,8 @@ abstract contract OutrunOAppPreCrimeSimulatorInit is IOAppPreCrimeSimulator, Out
      */
     function __OutrunOAppPreCrimeSimulator_init() internal onlyInitializing {}
 
+    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
+    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
     function __OutrunOAppPreCrimeSimulator_init_unchained() internal onlyInitializing {}
 
     /// @notice Reads the preCrime contract currently wired into the simulator.

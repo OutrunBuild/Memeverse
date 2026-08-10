@@ -30,6 +30,8 @@ abstract contract OutrunOAppInit is OutrunOAppSenderInit, OutrunOAppReceiverInit
         __OutrunOAppSender_init_unchained();
     }
 
+    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
+    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
     function __OutrunOApp_init_unchained() internal onlyInitializing {}
 
     /// @notice Exposes the sender and receiver implementation versions for this OApp.

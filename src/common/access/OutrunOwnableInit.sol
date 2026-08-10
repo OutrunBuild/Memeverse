@@ -4,7 +4,10 @@ pragma solidity ^0.8.35;
 import {Initializable} from "./Initializable.sol";
 
 /**
- * @dev Outrun's minimal-proxy-friendly Ownable implementation.
+ * @dev Outrun's minimal-proxy-friendly Ownable implementation. Ownership is never
+ * renounceable: there is no `renounceOwnership`, and both the initializer and
+ * `transferOwnership` revert on the zero address, so `owner()` never returns
+ * address(0) after initialization.
  */
 abstract contract OutrunOwnableInit is Initializable {
     /// @custom:storage-location erc7201:outrun.storage.Ownable
@@ -53,7 +56,7 @@ abstract contract OutrunOwnableInit is Initializable {
     }
 
     /// @notice Reads the address that currently holds ownership.
-    /// @dev Returns zero only after ownership has been renounced.
+    /// @dev The zero address is returned only before initialization; ownership cannot be renounced.
     /// @return ownerAddress Current owner address.
     function owner() public view virtual returns (address) {
         OwnableStorage storage $ = _getOwnableStorage();

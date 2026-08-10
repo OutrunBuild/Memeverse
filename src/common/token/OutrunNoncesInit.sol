@@ -29,6 +29,8 @@ abstract contract OutrunNoncesInit is Initializable {
 
     function __OutrunNonces_init() internal onlyInitializing {}
 
+    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
+    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
     function __OutrunNonces_init_unchained() internal onlyInitializing {}
 
     /// @notice Reads the next nonce that `owner` can spend.

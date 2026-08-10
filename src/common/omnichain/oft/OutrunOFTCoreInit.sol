@@ -94,6 +94,8 @@ abstract contract OutrunOFTCoreInit is
         __OutrunOAppOptionsType3_init();
     }
 
+    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
+    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
     function __OFTCore_init_unchained() internal onlyInitializing {}
 
     /// @notice Reads the optional outbound message inspector contract.

@@ -229,8 +229,10 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         uint256 unspecifiedDeltaAmount = params.amountSpecified < 0
             ? actualCurve.coreGrossOutput - finalSettlement.userNetOutput
             : finalSettlement.userInput - actualCurve.coreInput;
-        int128 callbackDelta = unspecifiedDeltaAmount.toInt128();
+        // Check before the cast: an out-of-range amount must revert with `AmountNotRepresentable`,
+        // not a generic `SafeCastOverflow` (mirrors the check-then-cast order in `beforeSwapLogic`).
         _revertIfFinalUserAmountsAreNotRepresentable(finalSettlement);
+        int128 callbackDelta = unspecifiedDeltaAmount.toInt128();
 
         // History advances only after actual core deltas pass the complete-fill and callback-bound checks.
         _updateAfterSwap(
@@ -511,8 +513,8 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         unchecked {
             // Crystallize accrued fees before any mint/burn changes the user's LP balance baseline.
             // Subtraction is safe: fee growth is monotonically non-decreasing, so fee*PerShare >= fee*Offset.
-            uint256 fee0Claimable = FullMath.mulDiv(balance, fee0PerShare - fee0Offset, FeeMath.FEE_GROWTH_Q128);
-            uint256 fee1Claimable = FullMath.mulDiv(balance, fee1PerShare - fee1Offset, FeeMath.FEE_GROWTH_Q128);
+            uint256 fee0Claimable = FeeMath.claimableFee(balance, fee0PerShare, fee0Offset);
+            uint256 fee1Claimable = FeeMath.claimableFee(balance, fee1PerShare, fee1Offset);
 
             if (fee0Claimable > 0) state.pendingFee0 += fee0Claimable;
             if (fee1Claimable > 0) state.pendingFee1 += fee1Claimable;
@@ -565,7 +567,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         if (effectiveSupply != 0) return effectiveSupply;
         // Gate delegated to SwapGuardMath (single source of truth). Reuse the same liquidity snapshot passed
         // to the quote; liquidity==0 means a drained pool, otherwise the stale cache is rejected.
-        SwapGuardMath.revertIfNoActiveLiquidityShares(liquidity);
+        SwapGuardMath.revertIfOrphanedLiquidity(liquidity);
         return 0;
     }
 

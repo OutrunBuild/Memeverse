@@ -43,6 +43,29 @@ contract MemeverseScript is BaseScript {
     uint160 internal constant MEMEVERSE_HOOK_FLAGS = 0x28cc;
     uint160 internal constant UNISWAP_V4_HOOK_FLAG_MASK = 0x3fff;
 
+    // CREATE3 artifact salt names — single source of truth shared by _getDeployed* and _deploy*.
+    // Each artifact address is keccak256(abi.encodePacked(SALT_NAME, nonce)); renaming a constant
+    // updates every get/deploy site atomically so the two sides cannot drift apart silently.
+    string internal constant SALT_MEMECOIN_IMPLEMENTATION = "MemecoinImplementation";
+    string internal constant SALT_MEMECOIN_POL_IMPLEMENTATION = "MemecoinPOLImplementation";
+    string internal constant SALT_MEMECOIN_YIELD_VAULT_IMPLEMENTATION = "MemecoinYieldVaultImplementation";
+    string internal constant SALT_MEMECOIN_GOVERNOR_IMPLEMENTATION = "MemecoinDaoGovernorImplementation";
+    string internal constant SALT_CYCLE_INCENTIVIZER_IMPLEMENTATION = "GovernanceCycleIncentivizerImplementation";
+    string internal constant SALT_MEMEVERSE_REGISTRATION_CENTER = "MemeverseRegistrationCenter";
+    string internal constant SALT_LZ_ENDPOINT_REGISTRY = "LzEndpointRegistry";
+    string internal constant SALT_MEMEVERSE_REGISTRAR = "MemeverseRegistrar";
+    string internal constant SALT_MEMEVERSE_PROXY_DEPLOYER = "MemeverseProxyDeployer";
+    string internal constant SALT_MEMEVERSE_LAUNCHER = "MemeverseLauncher";
+    string internal constant SALT_MEMEVERSE_LAUNCHER_IMPLEMENTATION = "MemeverseLauncherImplementation";
+    string internal constant SALT_YIELD_DISPATCHER = "YieldDispatcher";
+    string internal constant SALT_MEMEVERSE_OMNICHAIN_INTEROPERATION = "MemeverseOmnichainInteroperation";
+    string internal constant SALT_OMNICHAIN_MEMECOIN_STAKER = "OmnichainMemecoinStaker";
+    string internal constant SALT_POLEND = "POLend";
+    string internal constant SALT_POLEND_IMPLEMENTATION = "POLendImplementation";
+    string internal constant SALT_POLSPLITTER = "POLSplitter";
+    string internal constant SALT_POLSPLITTER_IMPLEMENTATION = "POLSplitterImplementation";
+    string internal constant SALT_GENESIS_CREDIT_FACTORY = "GenesisCreditFactory";
+
     address internal owner;
     address internal factory;
     address internal router;
@@ -198,100 +221,67 @@ contract MemeverseScript is BaseScript {
         // endpointIds[59141] = uint32(vm.envUint("LINEA_SEPOLIA_EID"));
     }
 
+    /// @dev Single CREATE3 salt derivation shared by _getDeployed* and _deploy*. `saltName` is one
+    ///      of the SALT_* constants above; `nonce` is the deployment nonce. Centralizing this keeps
+    ///      both sides byte-identical for the same artifact so a rename cannot desynchronize them.
+    function _saltFrom(string memory saltName, uint256 nonce) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(saltName, nonce));
+    }
+
+    /// @dev Logs the predicted CREATE3 address of one artifact. `deployer` is the account that will
+    ///      call IOutrunDeployer.deploy — `owner` for most artifacts, `_memeverseLauncherDeployCaller()`
+    ///      for Launcher/POLend/POLSplitter whose salts are namespaced under the deployer's msg.sender.
+    function _getDeployed(string memory saltName, address deployer, uint256 nonce) internal view {
+        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployer, _saltFrom(saltName, nonce));
+        console.log("%s deployed on %s", saltName, deployed);
+    }
+
     function _getDeployedImplementation(uint256 nonce) internal view {
-        bytes32 memecoinSalt = keccak256(abi.encodePacked("MemecoinImplementation", nonce));
-        bytes32 memecoinPOLSalt = keccak256(abi.encodePacked("MemecoinPOLImplementation", nonce));
-        bytes32 memecoinYieldVaultSalt = keccak256(abi.encodePacked("MemecoinYieldVaultImplementation", nonce));
-        bytes32 memecoinDaoGovernorSalt = keccak256(abi.encodePacked("MemecoinDaoGovernorImplementation", nonce));
-        bytes32 cycleIncentivizerSalt = keccak256(abi.encodePacked("GovernanceCycleIncentivizerImplementation", nonce));
-
-        address deployedMemecoinImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, memecoinSalt);
-        address deployedMemecoinPOLImplementation = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, memecoinPOLSalt);
-        address deployedMemecoinYieldVaultImplementation =
-            IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, memecoinYieldVaultSalt);
-        address deployedMemecoinDaoGovernorImplementation =
-            IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, memecoinDaoGovernorSalt);
-        address deployedCycleIncentivizerImplementation =
-            IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, cycleIncentivizerSalt);
-
-        console.log("MemecoinImplementation deployed on %s", deployedMemecoinImplementation);
-        console.log("MemecoinPOLImplementation deployed on %s", deployedMemecoinPOLImplementation);
-        console.log("MemecoinYieldVaultImplementation deployed on %s", deployedMemecoinYieldVaultImplementation);
-        console.log("MemecoinDaoGovernorImplementation deployed on %s", deployedMemecoinDaoGovernorImplementation);
-        console.log("GovernanceCycleIncentivizerImplementation deployed on %s", deployedCycleIncentivizerImplementation);
+        _getDeployed(SALT_MEMECOIN_IMPLEMENTATION, owner, nonce);
+        _getDeployed(SALT_MEMECOIN_POL_IMPLEMENTATION, owner, nonce);
+        _getDeployed(SALT_MEMECOIN_YIELD_VAULT_IMPLEMENTATION, owner, nonce);
+        _getDeployed(SALT_MEMECOIN_GOVERNOR_IMPLEMENTATION, owner, nonce);
+        _getDeployed(SALT_CYCLE_INCENTIVIZER_IMPLEMENTATION, owner, nonce);
     }
 
     function _getDeployedRegistrationCenter(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseRegistrationCenter", nonce));
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, salt);
-
-        console.log("MemeverseRegistrationCenter deployed on %s", deployed);
+        _getDeployed(SALT_MEMEVERSE_REGISTRATION_CENTER, owner, nonce);
     }
 
     function _getDeployedLzEndpointRegistry(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("LzEndpointRegistry", nonce));
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, salt);
-
-        console.log("LzEndpointRegistry deployed on %s", deployed);
+        _getDeployed(SALT_LZ_ENDPOINT_REGISTRY, owner, nonce);
     }
 
     function _getDeployedMemeverseRegistrar(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseRegistrar", nonce));
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, salt);
-
-        console.log("MemeverseRegistrar deployed on %s", deployed);
+        _getDeployed(SALT_MEMEVERSE_REGISTRAR, owner, nonce);
     }
 
     function _getDeployedMemeverseProxyDeployer(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseProxyDeployer", nonce));
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, salt);
-
-        console.log("MemeverseProxyDeployer deployed on %s", deployed);
+        _getDeployed(SALT_MEMEVERSE_PROXY_DEPLOYER, owner, nonce);
     }
 
     function _getDeployedMemeverseLauncher(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
-        address deployCaller = _memeverseLauncherDeployCaller();
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, salt);
-
-        console.log("MemeverseLauncher deployed on %s", deployed);
+        _getDeployed(SALT_MEMEVERSE_LAUNCHER, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedYieldDispatcher(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", nonce));
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, salt);
-
-        console.log("YieldDispatcher deployed on %s", deployed);
+        _getDeployed(SALT_YIELD_DISPATCHER, owner, nonce);
     }
 
     function _getDeployedMemeverseOmnichainInteroperation(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseOmnichainInteroperation", nonce));
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, salt);
-
-        console.log("MemeverseOmnichainInteroperation deployed on %s", deployed);
+        _getDeployed(SALT_MEMEVERSE_OMNICHAIN_INTEROPERATION, owner, nonce);
     }
 
     function _getDeployedOmnichainMemecoinStaker(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("OmnichainMemecoinStaker", nonce));
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(owner, salt);
-
-        console.log("OmnichainMemecoinStaker deployed on %s", deployed);
+        _getDeployed(SALT_OMNICHAIN_MEMECOIN_STAKER, owner, nonce);
     }
 
     function _getDeployedPOLend(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("POLend", nonce));
-        address deployCaller = _memeverseLauncherDeployCaller();
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, salt);
-
-        console.log("POLend deployed on %s", deployed);
+        _getDeployed(SALT_POLEND, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedPOLSplitter(uint256 nonce) internal view {
-        bytes32 salt = keccak256(abi.encodePacked("POLSplitter", nonce));
-        address deployCaller = _memeverseLauncherDeployCaller();
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, salt);
-
-        console.log("POLSplitter deployed on %s", deployed);
+        _getDeployed(SALT_POLSPLITTER, _memeverseLauncherDeployCaller(), nonce);
     }
 
     /**
@@ -299,9 +289,9 @@ contract MemeverseScript is BaseScript {
      */
 
     function _deployImplementation(uint256 nonce) internal {
-        bytes32 memecoinSalt = keccak256(abi.encodePacked("MemecoinImplementation", nonce));
-        bytes32 memecoinYieldVaultSalt = keccak256(abi.encodePacked("MemecoinYieldVaultImplementation", nonce));
-        bytes32 incentivizerSalt = keccak256(abi.encodePacked("GovernanceCycleIncentivizerImplementation", nonce));
+        bytes32 memecoinSalt = _saltFrom(SALT_MEMECOIN_IMPLEMENTATION, nonce);
+        bytes32 memecoinYieldVaultSalt = _saltFrom(SALT_MEMECOIN_YIELD_VAULT_IMPLEMENTATION, nonce);
+        bytes32 incentivizerSalt = _saltFrom(SALT_CYCLE_INCENTIVIZER_IMPLEMENTATION, nonce);
 
         address localEndpoint = endpoints[uint32(block.chainid)];
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
@@ -320,7 +310,7 @@ contract MemeverseScript is BaseScript {
     }
 
     function _deployMemecoinPOLImplementation(uint256 nonce) internal {
-        bytes32 memecoinPOLSalt = keccak256(abi.encodePacked("MemecoinPOLImplementation", nonce));
+        bytes32 memecoinPOLSalt = _saltFrom(SALT_MEMECOIN_POL_IMPLEMENTATION, nonce);
         address localEndpoint = endpoints[uint32(block.chainid)];
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
         bytes memory memecoinPOLCreationCode = abi.encodePacked(type(MemePol).creationCode, abi.encode(localEndpoint));
@@ -331,7 +321,7 @@ contract MemeverseScript is BaseScript {
     }
 
     function _deployMemecoinGovernorImplementation(uint256 nonce) internal {
-        bytes32 governorSalt = keccak256(abi.encodePacked("MemecoinDaoGovernorImplementation", nonce));
+        bytes32 governorSalt = _saltFrom(SALT_MEMECOIN_GOVERNOR_IMPLEMENTATION, nonce);
         address memecoinDaoGovernorImplementation =
             IOutrunDeployer(OUTRUN_DEPLOYER).deploy(governorSalt, type(MemecoinDaoGovernorUpgradeable).creationCode);
 
@@ -339,7 +329,7 @@ contract MemeverseScript is BaseScript {
     }
 
     function _deployRegistrationCenter(uint256 nonce) internal {
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseRegistrationCenter", nonce));
+        bytes32 salt = _saltFrom(SALT_MEMEVERSE_REGISTRATION_CENTER, nonce);
         address localEndpoint = endpoints[uint32(block.chainid)];
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
         bytes memory creationCode = abi.encodePacked(
@@ -381,7 +371,7 @@ contract MemeverseScript is BaseScript {
 
     function _deployLzEndpointRegistry(uint256 nonce) internal {
         bytes memory creationCode = abi.encodePacked(type(LzEndpointRegistry).creationCode, abi.encode(owner));
-        bytes32 salt = keccak256(abi.encodePacked("LzEndpointRegistry", nonce));
+        bytes32 salt = _saltFrom(SALT_LZ_ENDPOINT_REGISTRY, nonce);
         address lzEndpointRegistryAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
         uint256 length = omnichainIds.length;
@@ -420,7 +410,7 @@ contract MemeverseScript is BaseScript {
             creationBytecode = type(MemeverseRegistrarOmnichain).creationCode;
         }
 
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseRegistrar", nonce));
+        bytes32 salt = _saltFrom(SALT_MEMEVERSE_REGISTRAR, nonce);
         bytes memory creationCode = abi.encodePacked(creationBytecode, encodedArgs);
         address memeverseRegistrarAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
         console.log("MemeverseRegistrar deployed on %s", memeverseRegistrarAddr);
@@ -468,7 +458,7 @@ contract MemeverseScript is BaseScript {
             )
         );
 
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseProxyDeployer", nonce));
+        bytes32 salt = _saltFrom(SALT_MEMEVERSE_PROXY_DEPLOYER, nonce);
         address memeverseProxyDeployer = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
         console.log("MemeverseProxyDeployer deployed on %s", memeverseProxyDeployer);
@@ -480,14 +470,14 @@ contract MemeverseScript is BaseScript {
         address localEndpoint = endpoints[uint32(block.chainid)];
 
         // Predict POLend and POLSplitter proxy addresses via CREATE3 salt
-        bytes32 polendSalt = keccak256(abi.encodePacked("POLend", nonce));
+        bytes32 polendSalt = _saltFrom(SALT_POLEND, nonce);
         address polendProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, polendSalt);
-        bytes32 polSplitterSalt = keccak256(abi.encodePacked("POLSplitter", nonce));
+        bytes32 polSplitterSalt = _saltFrom(SALT_POLSPLITTER, nonce);
         address polSplitterProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, polSplitterSalt);
 
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
+        bytes32 salt = _saltFrom(SALT_MEMEVERSE_LAUNCHER, nonce);
         address predictedLauncherProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, salt);
-        bytes32 implementationSalt = keccak256(abi.encodePacked("MemeverseLauncherImplementation", nonce));
+        bytes32 implementationSalt = _saltFrom(SALT_MEMEVERSE_LAUNCHER_IMPLEMENTATION, nonce);
         address implementation =
             IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(MemeverseLauncher).creationCode);
 
@@ -537,15 +527,15 @@ contract MemeverseScript is BaseScript {
         address initialOwner = owner;
 
         // Predict Launcher and POLSplitter proxy addresses (not yet deployed)
-        bytes32 launcherSalt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
+        bytes32 launcherSalt = _saltFrom(SALT_MEMEVERSE_LAUNCHER, nonce);
         address predictedLauncherProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, launcherSalt);
-        bytes32 polSplitterSalt = keccak256(abi.encodePacked("POLSplitter", nonce));
+        bytes32 polSplitterSalt = _saltFrom(SALT_POLSPLITTER, nonce);
         address predictedPOLSplitterProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, polSplitterSalt);
 
         // Predict POLend proxy address and deploy implementation via CREATE3
-        bytes32 polendSalt = keccak256(abi.encodePacked("POLend", nonce));
+        bytes32 polendSalt = _saltFrom(SALT_POLEND, nonce);
         address predictedPolendProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, polendSalt);
-        bytes32 implementationSalt = keccak256(abi.encodePacked("POLendImplementation", nonce));
+        bytes32 implementationSalt = _saltFrom(SALT_POLEND_IMPLEMENTATION, nonce);
         address implementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(POLend).creationCode);
 
         // Build proxy creation code with predicted dependency addresses
@@ -573,11 +563,11 @@ contract MemeverseScript is BaseScript {
         require(launcherProxy != address(0), "ZERO_LAUNCHER_FOR_SPLITTER");
 
         // Predict POLSplitter proxy address
-        bytes32 polSplitterSalt = keccak256(abi.encodePacked("POLSplitter", nonce));
+        bytes32 polSplitterSalt = _saltFrom(SALT_POLSPLITTER, nonce);
         address predictedPOLSplitterProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, polSplitterSalt);
 
         // Deploy POLSplitter implementation via CREATE3
-        bytes32 implementationSalt = keccak256(abi.encodePacked("POLSplitterImplementation", nonce));
+        bytes32 implementationSalt = _saltFrom(SALT_POLSPLITTER_IMPLEMENTATION, nonce);
         address implementation =
             IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(POLSplitter).creationCode);
 
@@ -627,7 +617,7 @@ contract MemeverseScript is BaseScript {
         require(envEid <= type(uint32).max, "HOME_CHAIN_EID_OVERFLOW");
         uint32 homeChainEid = uint32(envEid);
 
-        bytes32 salt = keccak256(abi.encodePacked("GenesisCreditFactory", nonce));
+        bytes32 salt = _saltFrom(SALT_GENESIS_CREDIT_FACTORY, nonce);
         bytes memory code =
             abi.encodePacked(type(GenesisCreditFactory).creationCode, abi.encode(localEndpoint, homeChainEid, owner));
         address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, code);
@@ -850,6 +840,82 @@ contract MemeverseScript is BaseScript {
         _openSupportedUAssetsAfterReadiness(registrationCenter, swapRouter, hook);
     }
 
+    /// @notice One-call onboarding of a new uAsset across the four registration surfaces: launcher
+    ///      fund metadata, POLend settlement-dust reserve, optional GenesisCredit, and the
+    ///      RegistrationCenter whitelist. Generalizes the canonical UETH/UUSD readiness gates
+    ///      (_requireFundMetaDataReady / _requireReserveReady) to an arbitrary uAsset so a
+    ///      forgotten surface fails here at onboarding time instead of in a user-facing
+    ///      registerMemeverse revert.
+    /// @dev Fail-closed ordering: the whitelist is written LAST as the completion marker, so no
+    ///      registration for this uAsset can be accepted before every other surface is in place.
+    ///      Each step reads its surface back and asserts readiness before moving on; the call is
+    ///      owner-only via the broadcaster modifier, so a mid-way failure leaves the uAsset fully
+    ///      unregistered (whitelist never set). Standalone runs must provide the _loadReadinessEnv
+    ///      vars (OWNER, UUSD, UETH, MEMEVERSE_LAUNCHER, MEMEVERSE_REGISTRAR,
+    ///      MEMEVERSE_PROXY_DEPLOYER, MEMEVERSE_YIELD_DISPATCHER, OMNICHAIN_MEMECOIN_STAKER,
+    ///      POLEND, POLSPLITTER), plus MEMEVERSE_REGISTRATION_CENTER and, when withCredit is true,
+    ///      CREDIT_FACTORY_PROXY.
+    /// @param registrationCenter RegistrationCenter holding the whitelist (completion marker).
+    /// @param uAsset The new uAsset to onboard (cannot be zero).
+    /// @param minTotalFund Launcher minimum total fund for the uAsset.
+    /// @param fundBasedAmount Launcher fund-based amount for the uAsset.
+    /// @param maxReserve POLend settlement-dust max reserve cap for the uAsset.
+    /// @param withCredit Whether to deploy a GenesisCredit for the credit path.
+    /// @param creditName GenesisCredit name (ignored unless withCredit).
+    /// @param creditSymbol GenesisCredit symbol (ignored unless withCredit).
+    /// @param creditDelegate GenesisCredit delegate (ignored unless withCredit; must be non-zero).
+    function onboardUAsset(
+        address registrationCenter,
+        address uAsset,
+        uint256 minTotalFund,
+        uint256 fundBasedAmount,
+        uint128 maxReserve,
+        bool withCredit,
+        string calldata creditName,
+        string calldata creditSymbol,
+        address creditDelegate
+    ) public broadcaster {
+        _loadReadinessEnv();
+        require(deployer == owner, "SIGNER_NOT_OWNER");
+        require(uAsset != address(0), "ZERO_UASSET");
+        require(registrationCenter != address(0), "ZERO_REGISTRATION_CENTER");
+        _requireContractCode(MEMEVERSE_LAUNCHER, "LAUNCHER_CODE_NOT_READY");
+        _requireContractCode(POLEND, "POLEND_CODE_NOT_READY");
+        _requireContractCode(registrationCenter, "REGISTRATION_CENTER_CODE_NOT_READY");
+        // _loadScriptEnv hard-requires this var, so the canonical pin cannot be skipped.
+        address canonicalCenter = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
+        require(registrationCenter == canonicalCenter, "REGISTRATION_CENTER_MISMATCH");
+        require(_readAddress(MEMEVERSE_LAUNCHER, "owner()") == owner, "LAUNCHER_OWNER_NOT_READY");
+
+        // 1) Launcher fund metadata — registration reverts ZeroInput until this is set.
+        IMemeverseLauncher(MEMEVERSE_LAUNCHER).setFundMetaData(uAsset, minTotalFund, fundBasedAmount);
+        _requireFundMetaDataReady(uAsset, "FUND_METADATA_NOT_READY");
+
+        // 2) POLend settlement-dust reserve — registerLendMarket reverts InvalidConfig (same
+        //    registration tx, after token deploy) until this is set.
+        POLend(POLEND).setMaxSettlementDustReserve(uAsset, maxReserve);
+        _requireReserveReady(uAsset, "RESERVE_NOT_READY");
+
+        // 3) Optional GenesisCredit for the credit path (deployCredit is owner-only; per-uAsset
+        //    CREATE3 salt makes repeat deploys revert, so only deploy when absent).
+        if (withCredit) {
+            require(creditDelegate != address(0), "ZERO_CREDIT_DELEGATE");
+            address creditFactory =
+                CREDIT_FACTORY != address(0) ? CREDIT_FACTORY : vm.envOr("CREDIT_FACTORY_PROXY", address(0));
+            _requireContractCode(creditFactory, "CREDIT_FACTORY_CODE_NOT_READY");
+            require(_readAddress(creditFactory, "owner()") == owner, "CREDIT_FACTORY_OWNER_NOT_READY");
+            if (_readCreditOf(creditFactory, uAsset) == address(0)) {
+                GenesisCreditFactory(creditFactory).deployCredit(uAsset, creditName, creditSymbol, creditDelegate);
+            }
+            require(_readCreditOf(creditFactory, uAsset) != address(0), "CREDIT_NOT_READY");
+        }
+
+        // 4) RegistrationCenter whitelist LAST — completion marker; every surface above must
+        //    already be in place before registrations for this uAsset can be accepted.
+        IMemeverseRegistrationCenter(registrationCenter).setSupportedUAsset(uAsset, true);
+        require(_readSupportedUAsset(registrationCenter, uAsset), "SUPPORTED_UASSET_NOT_READY");
+    }
+
     function _requireDeploymentReady(address swapRouter, address hook) internal view {
         _requireContractCode(MEMEVERSE_LAUNCHER, "LAUNCHER_CODE_NOT_READY");
         _requireContractCode(MEMEVERSE_REGISTRAR, "REGISTRAR_CODE_NOT_READY");
@@ -1037,6 +1103,20 @@ contract MemeverseScript is BaseScript {
         return abi.decode(data, (uint256, uint256));
     }
 
+    function _readSupportedUAsset(address registrationCenter, address uAsset) internal view returns (bool supported) {
+        (bool success, bytes memory data) =
+            registrationCenter.staticcall(abi.encodeWithSignature("supportedUAssets(address)", uAsset));
+        require(success && data.length >= 32, "SUPPORTED_UASSET_NOT_READY");
+        supported = abi.decode(data, (bool));
+    }
+
+    function _readCreditOf(address creditFactory, address uAsset) internal view returns (address credit) {
+        (bool success, bytes memory data) =
+            creditFactory.staticcall(abi.encodeWithSignature("creditOf(address)", uAsset));
+        require(success && data.length >= 32, "CREDIT_OF_NOT_READY");
+        credit = abi.decode(data, (address));
+    }
+
     function _deployYieldDispatcher(uint256 nonce) internal {
         address localEndpoint = endpoints[uint32(block.chainid)];
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
@@ -1046,7 +1126,7 @@ contract MemeverseScript is BaseScript {
         bytes memory creationCode =
             abi.encodePacked(type(YieldDispatcher).creationCode, abi.encode(localEndpoint, MEMEVERSE_LAUNCHER));
 
-        bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", nonce));
+        bytes32 salt = _saltFrom(SALT_YIELD_DISPATCHER, nonce);
         address memeverseOFTDispatcher = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
         console.log("YieldDispatcher deployed on %s", memeverseOFTDispatcher);
@@ -1060,7 +1140,7 @@ contract MemeverseScript is BaseScript {
             abi.encode(owner, MEMEVERSE_COMMON_INFO, MEMEVERSE_LAUNCHER, OMNICHAIN_MEMECOIN_STAKER, 115000, 135000)
         );
 
-        bytes32 salt = keccak256(abi.encodePacked("MemeverseOmnichainInteroperation", nonce));
+        bytes32 salt = _saltFrom(SALT_MEMEVERSE_OMNICHAIN_INTEROPERATION, nonce);
         address staker = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
         console.log("MemeverseOmnichainInteroperation deployed on %s", staker);
@@ -1074,7 +1154,7 @@ contract MemeverseScript is BaseScript {
         bytes memory creationCode =
             abi.encodePacked(type(OmnichainMemecoinStaker).creationCode, abi.encode(localEndpoint));
 
-        bytes32 salt = keccak256(abi.encodePacked("OmnichainMemecoinStaker", nonce));
+        bytes32 salt = _saltFrom(SALT_OMNICHAIN_MEMECOIN_STAKER, nonce);
         address staker = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
         console.log("OmnichainMemecoinStaker deployed on %s", staker);

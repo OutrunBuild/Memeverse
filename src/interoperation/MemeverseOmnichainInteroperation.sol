@@ -48,6 +48,8 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         uint128 _omnichainStakingGasLimit
     ) Ownable(_owner) {
         require(_omnichainMemecoinStaker != address(0), ZeroAddress());
+        require(_lzEndpointRegistry != address(0), ZeroAddress());
+        require(_memeverseLauncher != address(0), ZeroAddress());
         LZ_ENDPOINT_REGISTRY = _lzEndpointRegistry;
         MEMEVERSE_LAUNCHER = _memeverseLauncher;
         OMNICHAIN_MEMECOIN_STAKER = _omnichainMemecoinStaker;
@@ -140,11 +142,15 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         // The refund quantity is derived from router-balance conservation (`_transferIn` pulled `amount`, `_debit` burnt
         // `amountSentLD`), so it uses `amountSentLD` (what was actually burnt), not `amountReceivedLD`. For the default
         // memecoin OFT `amountSentLD == amountReceivedLD` (`OutrunOFTCoreInit._debitView`); a future fee-taking OFT
-        // override that makes them differ would need this refund re-examined.
+        // override that makes them differ would need this refund re-examined. The `OmnichainMemecoinStaking` event
+        // below carries `amountSentLD` (actually burned/staked) and `remainder` (refunded), so indexers can verify
+        // `amountSentLD + remainder == amount` from a single event.
         uint256 remainder = amount - oftReceipt.amountSentLD;
         if (remainder != 0) _transferOut(memecoin, msg.sender, remainder);
 
-        emit OmnichainMemecoinStaking(rec.guid, msg.sender, receiver, memecoin, amount);
+        emit OmnichainMemecoinStaking(
+            rec.guid, msg.sender, receiver, memecoin, amount, oftReceipt.amountSentLD, remainder
+        );
     }
 
     /// @dev Pre-send guard for the remote staking path. OFT `_debitView`/`_removeDust` truncates the local-decimal
@@ -163,7 +169,20 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     }
 
     /// @notice Updates the gas limits used by remote staking sends.
-    /// @dev Only callable by the owner.
+    /// @dev Only callable by the owner. Both values are validated only for `> 0`; no minimum execution budget is
+    ///      enforced, so a value below the destination's actual execution cost permanently breaks that path:
+    ///      - `_oftReceiveGasLimit` too low: the LayerZero executor's delivery (gas-capped by this option) always
+    ///        runs out of gas in the governance-chain memecoin OFT `lzReceive` (mint). The source amount is already
+    ///        burned and there is no protocol-internal settle for the receive side (`settlePendingCompose` only
+    ///        covers the compose side); recovery is a permissionless manual re-delivery of the verified payload via
+    ///        the destination-chain `EndpointV2.lzReceive` with caller-provided gas (same class as the permissionless
+    ///        `lzCompose` re-drive in docs/operations.md §3.13) — funds are not lost, but stay undelivered until then.
+    ///      - `_omnichainStakingGasLimit` too low: the destination `lzCompose` runs out of gas; the beneficiary can
+    ///        still recover the bare amount via `settlePendingCompose` (no position is created) — UX degradation,
+    ///        not a loss.
+    ///      When adjusting, keep `_omnichainStakingGasLimit` at or above the benchmarked compose budget in
+    ///      docs/operations.md §3.13.2; that table only lists compose-side rows, so keep `_oftReceiveGasLimit` at or
+    ///      above a receive-side budget measured by the same methodology (see the §3.13.2 receive-side warning).
     /// @param _oftReceiveGasLimit OFT receive gas limit.
     /// @param _omnichainStakingGasLimit omnichain staking gas limit.
     function setGasLimits(uint128 _oftReceiveGasLimit, uint128 _omnichainStakingGasLimit) external override onlyOwner {

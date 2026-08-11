@@ -63,7 +63,9 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
 
         uint256 amount = OFTComposeMsgCodec.amountLD(message);
         // The 64-byte check bounds the schema shape only: a non-64-byte frame reverts this named error (CEI `Settled`
-        // write rolls back, guid stays releasable via `settlePendingCompose`); word content is resolved explicitly below.
+        // write rolls back). A non-64 frame with inner composeMsg >= 32 bytes (total >= 108) stays releasable via
+        // `settlePendingCompose`; an inner < 32-byte frame (total < 108) is a dead class rejected by both entrypoints
+        // with no recovery exit (operations.md §3.13.1). Word content is resolved explicitly below.
         // The length guard is equivalent to the former `composeMsg.length == 64` (composeMsg = message[76:], so its
         // length == message.length - 76); `message.length >= 76` is already required at the header guard above, so
         // this subtraction cannot underflow. Read the two tuple words straight from calldata at fixed offsets, instead

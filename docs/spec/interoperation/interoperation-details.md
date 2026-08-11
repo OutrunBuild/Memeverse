@@ -66,6 +66,7 @@
 - `msg.value` 必须为 0
 - 若 `yieldVault.code.length == 0`，交易直接回滚；本链 staking 不使用缺失 vault 的 fallback transfer
 - vault 存在时，直接调用 vault `deposit(amount, receiver)`，不经过 LayerZero
+- 本链分支对 verse vault 授无限额度（`MemeverseOmnichainInteroperation.sol::memecoinStaking` 本地分支 `_safeApproveInf(memecoin, yieldVault)`）——vault `deposit` 经 `transferFrom` 拉款的授权机制；与目标链 staker 的精确授权纪律相反（staker `lzCompose` 仅授精确 `amount`，不授无限额度，见 [layerzero-oapp-oft.md](layerzero-oapp-oft.md)）
 
 ### 4.2 异链治理
 
@@ -75,6 +76,8 @@
 - `msg.value` 必须精确匹配报价
 - memecoin 通过 OFT 发到治理链
 - `OmnichainMemecoinStaker` 在 compose 中完成最终 deposit / fallback transfer：vault 有 code 时调用 `deposit(amount, receiver)`，vault 无 code 时直接把到账数量转给 receiver
+- 非整数倍金额（`amount % decimalConversionRate != 0`）：OFT `send` 只烧掉截断后的 `amountSentLD`，同一交易内把未烧余数（`amount - amountSentLD`）经 `_transferOut` 退回 `msg.sender`（源链），无滞留；退款量以 `amountSentLD`（实际烧毁量，守恒推导）为准而非 `amountReceivedLD`——默认 memecoin OFT 两者相等（`OutrunOFTCoreInit.sol::_debitView`），未来 fee-taking OFT 使其相异时需重审
+- 亚尘金额（`amount < decimalConversionRate`，OFT 截断到零）在 `_transferIn` 之前即被 `_requireNonZeroRemoteDelivery` 以 `DustAmount()` 拒绝——被拒金额零资金移动、零跨链费损失
 
 ### 4.3 本链/异链失败矩阵
 
@@ -88,6 +91,17 @@
 | 异链 staking compose | vault 有 code | `lzCompose` 置 Settled（CEI）后完成 deposit；失败整体回滚，guid 保持 None 可重试。 |
 | 异链 staking compose | vault 有 code 但 `amount` 映射 0 份额 | `deposit` revert `ZeroSharesDeposit()`；资金由 staker（composer）托管、compose 消息滞留 endpoint 队列，`settlePendingCompose(token, guid, message)` 兜底结算，释放滞留资金给 message 编码的接收方。receiver==staker 帧除外：settle 因 `NotBeneficiary` 恒不可达（`msg.sender` 永不为 staker 合约自身），归自伤边界（见 operations.md §3.13.1「自伤自负」bullet）。staker 侧另对非零金额 deposit 返回值做非零校验（amount 门控、豁免零金额），vault 变体「返回 0 不 revert」同样在 staker 侧 revert ZeroSharesDeposit 并走同一兜底路径。(receiver==staker 帧仍归上句自伤边界、不适用兜底路径) |
 | 异链 staking compose | vault 无 code | 走 fallback，置 Settled（CEI）后直接转给 receiver；失败整体回滚，guid 保持 None 可重试。 |
+| 异链 staking 源链 | 亚尘金额（`amount < decimalConversionRate`，OFT 截断到零） | 前置 `DustAmount()` 回滚，先于 `_transferIn`，调用方代币零移动。 |
+
+### 4.4 阶段与 vault 部署状态
+
+跨链 staking 无 verse 阶段门控：`MemeverseOmnichainInteroperation.sol::memecoinStaking` 与 `::quoteMemecoinStaking` 的异链/远端分支均不检查 verse 阶段或 gov 链 vault 部署状态（本链分支的 vault-code 检查见 §4.1 与 §4.3）。compose 消息编码的 vault word 取源链本地 `verse.yieldVault`（`MemeverseOmnichainInteroperation.sol::_buildStakingSendParam` 编码 composeMsg；该字段的唯一赋值点 `MemeverseLaunchImpl.sol::_deployAndSetupMemeverse` 内 `verse.yieldVault = yieldVault` 仅在源链完成 Genesis→Locked 后执行）。`MemeverseLauncher.sol::changeStage` 为 per-chain、permissionless 的本地执行（无跨链同步），故 vault-absent fallback 的触发面包含两种情形：① 源链未完成 Genesis→Locked——compose 的 vault word 取源链本地 `verse.yieldVault`，此时为零地址，即使 gov 链 vault 已部署（部署顺序完全正确），远端 staking 仍静默降级；② gov 链未进入 Locked——gov 链仍在 Genesis 或进入 Refund 终态（Refund 后 vault 永不部署）时，其 yieldVault 未部署。两种情形下远端 staking 的 compose 均在 `OmnichainMemecoinStaker.sol::lzCompose` 命中 vault-absent fallback（含脏/零 vault word 处理），到账 memecoin 直接转给 receiver——非质押、无 vault 份额/投票权。`quoteMemecoinStaking` 仅返回 LZ fee，不反映目标链 vault 部署状态，调用方无法在发送前得知该降级。多链 verse 应确保 gov 链与所有可能发起 staking 的源链均先完成 Genesis→Locked，避免静默降级。
+
+### 4.5 金额截断、余量退款与源链事件语义
+
+异链 staking 的 OFT 发送把 `amountLD` 截断为 `decimalConversionRate` 的整数倍：源链实际烧毁额 = `amountSentLD`，目的链到账/质押额 = `amountReceivedLD`（默认实现两者相等，fee-taking OFT 例外及退款机制见 §4.2）。
+
+`OmnichainMemecoinStaking` 事件仅在异链分支 emit，字段语义：`amount` 为用户原始输入额；`amountSentLD` 为源链实际烧毁/质押额（截断后）；`remainder` 为同交易退款额。索引器/对账方核对「质押 + 退款」完整性直接使用 `amountSentLD + remainder == amount`，无需再依赖 OFT 的 `OFTSent` 事件或自行复算 rate。本链分支（§4.1）不 emit 本事件、不发生截断/退款。
 
 ## 5. 为什么要求 exact fee
 

@@ -292,6 +292,11 @@ contract MemeverseOmnichainInteroperationTest is Test {
         memecoin.mint(address(this), nonMultiple);
         memecoin.approve(address(interoperation), type(uint256).max);
 
+        // The mock reuses `nextGuid` (never incremented) as the send guid, so its current value is the emitted guid.
+        vm.expectEmit(true, true, true, true);
+        emit IMemeverseOmnichainInteroperation.OmnichainMemecoinStaking(
+            memecoin.nextGuid(), address(this), RECEIVER, address(memecoin), nonMultiple, 1e12, 1
+        );
         interoperation.memecoinStaking{value: 0.4 ether}(address(memecoin), RECEIVER, nonMultiple);
 
         // The 1-wei remainder was refunded to the caller; the contract holds nothing (no stranding).

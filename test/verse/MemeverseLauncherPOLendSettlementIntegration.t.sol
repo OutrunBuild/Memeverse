@@ -119,7 +119,8 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         //    CREATE2-mined flag-address proxy via the shared helper (replaces the former Testable
         //    subclass that bypassed `_validateProxyHookAddress`). hookOwner = address(this),
         //    treasury = TREASURY.
-        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY);
+        address hookProxy =
+            deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY, address(launcher));
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
@@ -162,11 +163,10 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         uAsset.approve(address(polend), 1e6);
         polend.fundSettlementDustReserve(address(uAsset), 1e6);
 
-        // 7. Hook wiring first: setMemeverseUniswapHook validates hook.launcher()==launcherProxy
-        //    while router is still zero (boundLauncher path), so the hook must bind the launcher
-        //    before the launcher reads it. setMemeverseSwapRouter then re-validates the full
+        // 7. Hook wiring: the launcher is bound to the hook at deploy (initialize), so
+        //    hook.launcher()==launcherProxy already holds. setMemeverseUniswapHook re-validates it
+        //    while router is still zero (boundLauncher path); setMemeverseSwapRouter then re-validates
         //    router.hook()==hook && hook.launcher()==launcher && hook.poolInitializer()==router.
-        hook.setLauncher(address(launcher));
         hook.setPoolInitializer(address(router));
 
         // 8. Launcher wiring.

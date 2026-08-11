@@ -132,7 +132,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         uint192 nextNonce = currentNonce + 1;
         uint64 endTime = uint64(endTimeRaw);
         uint64 unlockTime = uint64(endTimeRaw + MemeverseRegistrationLib.FIXED_LOCKUP_DURATION);
-        uint256 uniqueId = uint256(keccak256(abi.encodePacked(param.symbol, nextNonce, param.uAsset)));
+        uint256 uniqueId = MemeverseRegistrationLib.deriveUniqueId(param.symbol, nextNonce, param.uAsset);
         currentRegistration.uniqueId = uniqueId;
         currentRegistration.endTime = endTime;
         currentRegistration.nonce = nextNonce;

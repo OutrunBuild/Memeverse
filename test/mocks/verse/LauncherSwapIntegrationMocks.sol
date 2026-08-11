@@ -52,6 +52,8 @@ contract MockPOLendForSwapIntegration is MockPOLendForPreorderIntegration {
 contract MockLauncherSwapIntegrationProxyDeployer {
     address internal immutable predictedGovernor;
     address internal immutable predictedIncentivizer;
+    uint256 public lastProposalThreshold;
+    uint256 public lastMemecoinSupply;
 
     constructor(address _predictedGovernor, address _predictedIncentivizer) {
         predictedGovernor = _predictedGovernor;
@@ -81,14 +83,15 @@ contract MockLauncherSwapIntegrationProxyDeployer {
         address yieldVault,
         uint256 uniqueId,
         uint256 proposalThreshold
-    ) external view returns (address governor, address incentivizer) {
+    ) external returns (address governor, address incentivizer) {
         memecoinName;
         uAsset;
-        memecoin;
         pol;
         yieldVault;
         uniqueId;
-        proposalThreshold;
+        // Record the governance threshold inputs so tests can anchor the launcher's /50 formula (F-101).
+        lastProposalThreshold = proposalThreshold;
+        lastMemecoinSupply = MockIntegrationMemecoin(memecoin).totalSupply();
         return (predictedGovernor, predictedIncentivizer);
     }
 

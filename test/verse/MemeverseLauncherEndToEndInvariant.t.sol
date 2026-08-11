@@ -272,7 +272,8 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
         launcher = IMemeverseLauncher(launcherProxy);
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass + hand-rolled engine deployment).
-        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury);
+        address hookProxy =
+            deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury, address(launcher));
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
@@ -280,7 +281,6 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
             new MemeverseUniswapHookLens(IPoolManager(address(manager))),
             IPermit2(address(0xBEEF))
         );
-        hook.setLauncher(address(launcher));
         hook.setPoolInitializer(address(router));
         assertEq(address(router.hook()), address(hook), "router hook");
         assertEq(hook.launcher(), address(launcher), "hook launcher");
@@ -503,7 +503,8 @@ contract MemeverseLauncherRefundEndToEndInvariantTest is
         launcher = IMemeverseLauncher(launcherProxy);
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass + hand-rolled engine deployment).
-        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury);
+        address hookProxy =
+            deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury, address(launcher));
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
@@ -511,7 +512,6 @@ contract MemeverseLauncherRefundEndToEndInvariantTest is
             new MemeverseUniswapHookLens(IPoolManager(address(manager))),
             IPermit2(address(0xBEEF))
         );
-        hook.setLauncher(address(launcher));
         hook.setPoolInitializer(address(router));
 
         launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));

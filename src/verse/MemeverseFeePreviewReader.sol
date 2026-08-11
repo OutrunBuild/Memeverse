@@ -52,10 +52,14 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         require(verse.memecoin != address(0), IMemeverseLauncher.InvalidVerseId());
         require(verse.currentStage >= IMemeverseLauncher.Stage.Locked, IMemeverseLauncher.NotReachedLockedStage());
 
-        (memecoinFee, uAssetFee) = _previewPairFees(verse.memecoin, verse.uAsset);
-        address _polSplitter = IMemeverseLauncher(PROXY).getLauncherContracts().polSplitter;
-        address pt = IPOLSplitter(_polSplitter).getPT(verseId);
-        (uint256 govUAssetFee, uint256 govPTFee) = _previewGovFeeWithPending(verseId, verse, pt);
+        // Cache the launcher config bundle once and pass the cached fields down to helpers, instead of
+        // each helper re-fetching the same bundle (F-98: previously up to ~6 pulls of getLauncherContracts
+        // per quote). The proxy storage is immutable within a single staticcall frame, so caching is safe.
+        IMemeverseLauncher.LauncherContracts memory contracts = IMemeverseLauncher(PROXY).getLauncherContracts();
+        (memecoinFee, uAssetFee) = _previewPairFees(verse.memecoin, verse.uAsset, contracts.memeverseSwapRouter);
+        address pt = IPOLSplitter(contracts.polSplitter).getPT(verseId);
+        (uint256 govUAssetFee, uint256 govPTFee) =
+            _previewGovFeeWithPending(verseId, verse, pt, contracts.polSplitter, contracts.memeverseSwapRouter);
         uAssetFee += govUAssetFee + govPTFee;
     }
 
@@ -67,18 +71,24 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         uint32 govChainId = verse.omnichainIds[0];
         if (govChainId == block.chainid) return 0;
 
-        address uAsset = verse.uAsset;
-        (uint256 memecoinFee, uint256 mainUAssetFee) = _previewPairFees(verse.memecoin, uAsset);
-        (uint256 govFee,) = _splitExecutorReward(mainUAssetFee);
-
+        // Cache the launcher config bundle once and pass the cached fields down to helpers, instead of
+        // each helper re-fetching the same bundle (F-98: previously up to ~6+2 pulls of getLauncherContracts
+        // and getLauncherParameters per quote). The proxy storage is immutable within a single staticcall
+        // frame, so caching is safe.
         IMemeverseLauncher.LauncherContracts memory contracts = IMemeverseLauncher(PROXY).getLauncherContracts();
-        address _polSplitter = contracts.polSplitter;
-        address pt = IPOLSplitter(_polSplitter).getPT(verseId);
-        (uint256 govUAssetFee, uint256 govPTFee) = _previewGovFeeWithPending(verseId, verse, pt);
+        IMemeverseLauncher.LauncherParameters memory parameters = IMemeverseLauncher(PROXY).getLauncherParameters();
+
+        address uAsset = verse.uAsset;
+        (uint256 memecoinFee, uint256 mainUAssetFee) =
+            _previewPairFees(verse.memecoin, uAsset, contracts.memeverseSwapRouter);
+        (uint256 govFee,) = _splitExecutorReward(mainUAssetFee, parameters.executorRewardRate);
+
+        address pt = IPOLSplitter(contracts.polSplitter).getPT(verseId);
+        (uint256 govUAssetFee, uint256 govPTFee) =
+            _previewGovFeeWithPending(verseId, verse, pt, contracts.polSplitter, contracts.memeverseSwapRouter);
         govFee += govUAssetFee + govPTFee;
 
         uint32 govEndpointId = ILzEndpointRegistry(contracts.lzEndpointRegistry).lzEndpointIdOfChain(govChainId);
-        IMemeverseLauncher.LauncherParameters memory parameters = IMemeverseLauncher(PROXY).getLauncherParameters();
         bytes memory yieldDispatcherOptions = OptionsBuilder.newOptions()
             .addExecutorLzReceiveOption(parameters.oftReceiveGasLimit, 0)
             .addExecutorLzComposeOption(0, parameters.yieldDispatcherGasLimit, 0);
@@ -110,16 +120,18 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         }
     }
 
-    function _previewGovFeeWithPending(uint256 verseId, IMemeverseLauncher.Memeverse memory verse, address pt)
-        internal
-        view
-        returns (uint256 govUAssetFee, uint256 govPTFee)
-    {
+    function _previewGovFeeWithPending(
+        uint256 verseId,
+        IMemeverseLauncher.Memeverse memory verse,
+        address pt,
+        address polSplitter,
+        address swapRouter
+    ) internal view returns (uint256 govUAssetFee, uint256 govPTFee) {
         (uint256 pendingUAssetFee, uint256 pendingPTFee) =
             IMemeverseLauncher(PROXY).pendingAuxiliaryGovFeeStates(verseId);
 
         // Preview live auxiliary fees from POL/uAsset and PT/uAsset pools
-        (uint256 auxUAssetFee, uint256 auxPTFee) = _previewAuxiliaryGovFees(verseId, verse, pt);
+        (uint256 auxUAssetFee, uint256 auxPTFee) = _previewAuxiliaryGovFees(verseId, verse, pt, swapRouter);
 
         // Merge pending accumulated fees with live preview
         govUAssetFee = pendingUAssetFee + auxUAssetFee;
@@ -127,23 +139,23 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
 
         // Convert PT-denominated fee to uAsset so the caller can add it directly
         if (govPTFee != 0) {
-            govPTFee = IPOLSplitter(IMemeverseLauncher(PROXY).getLauncherContracts().polSplitter)
-                .previewPTToUAsset(verseId, govPTFee);
+            govPTFee = IPOLSplitter(polSplitter).previewPTToUAsset(verseId, govPTFee);
         }
     }
 
-    function _previewAuxiliaryGovFees(uint256 verseId, IMemeverseLauncher.Memeverse memory verse, address pt)
-        internal
-        view
-        returns (uint256 govUAssetFee, uint256 govPTFee)
-    {
-        (, uint256 polUAssetUAssetFee) = _previewPairFees(verse.pol, verse.uAsset);
+    function _previewAuxiliaryGovFees(
+        uint256 verseId,
+        IMemeverseLauncher.Memeverse memory verse,
+        address pt,
+        address swapRouter
+    ) internal view returns (uint256 govUAssetFee, uint256 govPTFee) {
+        (, uint256 polUAssetUAssetFee) = _previewPairFees(verse.pol, verse.uAsset, swapRouter);
         uint256 totalAuxiliaryUAssetFee = polUAssetUAssetFee;
         uint256 totalPTFee;
 
         if (pt != address(0)) {
-            (uint256 ptUAssetPTFee, uint256 ptUAssetUAssetFee) = _previewPairFees(pt, verse.uAsset);
-            (uint256 ptPolPTFee,) = _previewPairFees(pt, verse.pol);
+            (uint256 ptUAssetPTFee, uint256 ptUAssetUAssetFee) = _previewPairFees(pt, verse.uAsset, swapRouter);
+            (uint256 ptPolPTFee,) = _previewPairFees(pt, verse.pol, swapRouter);
             totalAuxiliaryUAssetFee += ptUAssetUAssetFee;
             totalPTFee = ptUAssetPTFee + ptPolPTFee;
         }
@@ -172,12 +184,11 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         );
     }
 
-    function _previewPairFees(address tokenA, address tokenB)
+    function _previewPairFees(address tokenA, address tokenB, address swapRouter)
         internal
         view
         returns (uint256 tokenAFee, uint256 tokenBFee)
     {
-        address swapRouter = IMemeverseLauncher(PROXY).getLauncherContracts().memeverseSwapRouter;
         (uint256 fee0, uint256 fee1) = IMemeverseSwapRouter(swapRouter).previewClaimableFees(tokenA, tokenB, PROXY);
         return _mapPairFees(tokenA, tokenB, fee0, fee1);
     }
@@ -192,10 +203,12 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
     }
 
     // Shared via MemeverseLauncherLib.splitExecutorReward; the distributor uses the same lib helper.
-    function _splitExecutorReward(uint256 uAssetFee) internal view returns (uint256 govFee, uint256 executorReward) {
-        return MemeverseLauncherLib.splitExecutorReward(
-            uAssetFee, IMemeverseLauncher(PROXY).getLauncherParameters().executorRewardRate
-        );
+    function _splitExecutorReward(uint256 uAssetFee, uint256 executorRewardRate)
+        internal
+        view
+        returns (uint256 govFee, uint256 executorReward)
+    {
+        return MemeverseLauncherLib.splitExecutorReward(uAssetFee, executorRewardRate);
     }
 
     // Shared via MemeverseLauncherLib.buildSendParamAndMessagingFee; the distributor uses the same lib helper.

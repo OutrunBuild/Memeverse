@@ -63,23 +63,7 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         override
         returns (uint256 lzFee)
     {
-        bytes memory message = abi.encode(param);
-        uint256 length = param.omnichainIds.length;
-        RegistrationGasLimit memory _registrationGasLimit = registrationGasLimit;
-        uint80 gasLimit = _registrationGasLimit.baseRegistrationGasLimit;
-        for (uint256 i = 0; i < length;) {
-            if (param.omnichainIds[i] == REGISTRATION_CENTER_CHAINID) {
-                gasLimit += _registrationGasLimit.localRegistrationGasLimit;
-            } else {
-                gasLimit += _registrationGasLimit.omnichainRegistrationGasLimit;
-            }
-            unchecked {
-                ++i;
-            }
-        }
-
-        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, value);
-        lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+        (,, lzFee) = _registrationGasOptions(param, value);
     }
 
     /// @notice Sends a registration request from a remote chain to the center chain.
@@ -92,23 +76,7 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         payable
         override
     {
-        bytes memory message = abi.encode(param);
-        uint256 length = param.omnichainIds.length;
-        RegistrationGasLimit memory _registrationGasLimit = registrationGasLimit;
-        uint80 gasLimit = _registrationGasLimit.baseRegistrationGasLimit;
-        for (uint256 i = 0; i < length;) {
-            if (param.omnichainIds[i] == REGISTRATION_CENTER_CHAINID) {
-                gasLimit += _registrationGasLimit.localRegistrationGasLimit;
-            } else {
-                gasLimit += _registrationGasLimit.omnichainRegistrationGasLimit;
-            }
-            unchecked {
-                ++i;
-            }
-        }
-
-        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, value);
-        uint256 lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
+        (bytes memory message, bytes memory options, uint256 lzFee) = _registrationGasOptions(param, value);
         require(msg.value >= lzFee, InsufficientLzFee());
 
         _lzSend(
@@ -144,5 +112,34 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
     {
         MemeverseParam memory param = abi.decode(_message, (MemeverseParam));
         _registerMemeverse(param);
+    }
+
+    /// @dev Builds the registrar-to-center message/options and quotes the native LayerZero fee. Single source
+    ///      shared by `quoteRegister` (pre-quote) and `registerAtCenter` (execute) so the fee told to the caller
+    ///      and the fee enforced at send always derive from one definition. `value` is the native-drop amount
+    ///      encoded into the receive options; `msg.value` (used by the caller to fund the send) is handled by
+    ///      `registerAtCenter`, not here.
+    function _registrationGasOptions(IMemeverseRegistrationCenter.RegistrationParam calldata param, uint128 value)
+        private
+        view
+        returns (bytes memory message, bytes memory options, uint256 lzFee)
+    {
+        message = abi.encode(param);
+        uint256 length = param.omnichainIds.length;
+        RegistrationGasLimit memory _registrationGasLimit = registrationGasLimit;
+        uint80 gasLimit = _registrationGasLimit.baseRegistrationGasLimit;
+        for (uint256 i = 0; i < length;) {
+            if (param.omnichainIds[i] == REGISTRATION_CENTER_CHAINID) {
+                gasLimit += _registrationGasLimit.localRegistrationGasLimit;
+            } else {
+                gasLimit += _registrationGasLimit.omnichainRegistrationGasLimit;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, value);
+        lzFee = _quote(REGISTRATION_CENTER_EID, message, options, false).nativeFee;
     }
 }

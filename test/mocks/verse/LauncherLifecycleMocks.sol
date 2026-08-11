@@ -1361,6 +1361,11 @@ contract MockOFTToken is MockERC20, IOFT {
     address public lastRefundAddress;
     uint256 public lastNativeFeePaid;
     uint256 public lastSendAmountLD;
+    /// @notice Last `SendParam.extraOptions` observed by `send`.
+    /// @dev Recorded verbatim so tests can assert the executor options (receive/compose gas limits) that the
+    ///      production settlement path encodes for the remote lzCompose execution; without this, an options-wiring
+    ///      regression ships with a green suite (F-100 test anchor).
+    bytes public lastSendOptions;
     uint256 public sendCallCount;
 
     constructor(string memory name_, string memory symbol_) MockERC20(name_, symbol_, 18) {}
@@ -1452,6 +1457,7 @@ contract MockOFTToken is MockERC20, IOFT {
         lastRefundAddress = refundAddress;
         lastNativeFeePaid = msg.value;
         lastSendAmountLD = sendParam.amountLD;
+        lastSendOptions = sendParam.extraOptions;
         sendCallCount++;
 
         receipt = MessagingReceipt({guid: bytes32("oft-guid"), nonce: 1, fee: fee});

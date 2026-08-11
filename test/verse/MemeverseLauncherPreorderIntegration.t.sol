@@ -81,7 +81,8 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
         // hookOwner = address(this), treasury = address(this).
-        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), address(this));
+        address hookProxy =
+            deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), address(this), address(launcher));
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
@@ -89,7 +90,6 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
             new MemeverseUniswapHookLens(IPoolManager(address(manager))),
             IPermit2(address(0xBEEF))
         );
-        hook.setLauncher(address(launcher));
         hook.setPoolInitializer(address(router));
 
         launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
@@ -220,14 +220,17 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
     ///      to Locked, and asserts the fixed 0.35% protocol fee plus the preorder memecoin vesting schedule.
     function _provideLiquiditySettleAndAssert(uint256 verseId) internal {
         IMemeverseLauncher.Memeverse memory verseBefore = launcher.getMemeverseByVerseId(verseId);
+        // Under C1 the launcher is bound to the hook at deploy (initialize), so the launcher proxy — not
+        // this contract — must drive `createPoolAndAddLiquidity` (router onlyLauncher). Fund the launcher
+        // with the three pool assets and act as it; LP tokens are still minted to this contract (recipient).
         vm.prank(address(launcher));
-        MockIntegrationLiquidProof(verseBefore.pol).mint(address(this), 300 ether);
-        pt.mint(address(this), 200 ether);
-        uAsset.mint(address(this), 300 ether);
+        MockIntegrationLiquidProof(verseBefore.pol).mint(address(launcher), 300 ether);
+        pt.mint(address(launcher), 200 ether);
+        uAsset.mint(address(launcher), 300 ether);
+        vm.startPrank(address(launcher));
         MockERC20(verseBefore.pol).approve(address(router), type(uint256).max);
         pt.approve(address(router), type(uint256).max);
         uAsset.approve(address(router), type(uint256).max);
-        hook.setLauncher(address(this));
         router.createPoolAndAddLiquidity(
             verseBefore.pol, address(uAsset), 100 ether, 100 ether, uint160(1 << 96), address(this), block.timestamp
         );
@@ -237,7 +240,7 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
         router.createPoolAndAddLiquidity(
             address(pt), verseBefore.pol, 50 ether, 50 ether, uint160(1 << 96), address(this), block.timestamp
         );
-        hook.setLauncher(address(launcher));
+        vm.stopPrank();
         uint256 treasuryUAssetBalanceBefore = uAsset.balanceOf(address(this));
 
         IMemeverseLauncher.Stage stage = launcher.changeStage(verseId);

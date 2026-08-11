@@ -120,7 +120,8 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
         // hookOwner = address(this), treasury = TREASURY.
-        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY);
+        address hookProxy =
+            deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY, address(launcher));
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
@@ -129,7 +130,6 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
             IPermit2(address(0))
         );
 
-        hook.setLauncher(address(launcher));
         hook.setPoolInitializer(address(router));
 
         launcher.setMemeverseUniswapHook(address(hook));
@@ -175,6 +175,27 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
         uAsset.approve(address(launcher), type(uint256).max);
 
         directSwapHelper = new DirectPoolManagerSwapHelper(manager);
+    }
+
+    function testDeployGovernanceComponents_ProposalThresholdIsTotalSupplyOverFifty() external {
+        // F-101 anchor: the launcher derives the governor proposal threshold as totalSupply / 50
+        // (MemeverseLaunchImpl.sol::_deployGovernanceComponents) and forwards it to the proxy
+        // deployer. The mock records the arguments it received during the lock flow, so this test
+        // pins the /50 formula at the launcher level.
+        IMemeverseLauncher.Memeverse memory verse = _lockVerseWithLiquidity();
+
+        assertGt(proxyDeployer.lastMemecoinSupply(), 0, "deployer recorded a non-zero memecoin supply");
+        assertEq(
+            proxyDeployer.lastMemecoinSupply(),
+            MockIntegrationMemecoin(verse.memecoin).totalSupply(),
+            "deployer saw the launcher memecoin supply"
+        );
+        assertEq(
+            proxyDeployer.lastProposalThreshold(),
+            proxyDeployer.lastMemecoinSupply() / 50,
+            "proposal threshold is memecoin total supply / 50"
+        );
+        assertEq(verse.governor, address(0xCAFE), "deployer result wired into the verse");
     }
 
     function testExecutePreorderSettlement_RealRouterHookManagerPath_AllowsBootstrapDust() external {

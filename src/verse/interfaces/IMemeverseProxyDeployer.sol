@@ -6,10 +6,10 @@ pragma solidity ^0.8.35;
  */
 interface IMemeverseProxyDeployer {
     /**
-     * @notice Predicts the deterministic yield vault proxy address for a verse id.
+     * @notice Predicts the deterministic yield vault clone address for a verse id.
      * @dev Uses the deployer's CREATE2 scheme without mutating state.
      * @param uniqueId Verse unique identifier.
-     * @return Predicted yield vault proxy address.
+     * @return Predicted yield vault clone address.
      */
     function predictYieldVaultAddress(uint256 uniqueId) external view returns (address);
 
@@ -26,26 +26,26 @@ interface IMemeverseProxyDeployer {
         returns (address governor, address incentivizer);
 
     /**
-     * @notice Deploys the memecoin proxy for a verse.
+     * @notice Deploys the memecoin clone for a verse.
      * @dev Reverts if the verse id is invalid or already consumed by deployment flow.
      * @param uniqueId Verse unique identifier.
-     * @return memecoin Deployed memecoin proxy address.
+     * @return memecoin Deployed memecoin clone address.
      */
     function deployMemecoin(uint256 uniqueId) external returns (address memecoin);
 
     /**
-     * @notice Deploys the POL proxy for a verse.
+     * @notice Deploys the POL clone for a verse.
      * @dev Reverts if required dependencies for the verse are not ready.
      * @param uniqueId Verse unique identifier.
-     * @return pol Deployed POL proxy address.
+     * @return pol Deployed POL clone address.
      */
     function deployPOL(uint256 uniqueId) external returns (address pol);
 
     /**
-     * @notice Deploys the yield vault proxy for a verse.
-     * @dev Deployment follows deterministic proxy salts keyed by verse id.
+     * @notice Deploys the yield vault clone for a verse.
+     * @dev Deployment follows deterministic clone salts keyed by verse id.
      * @param uniqueId Verse unique identifier.
-     * @return yieldVault Deployed yield vault proxy address.
+     * @return yieldVault Deployed yield vault clone address.
      */
     function deployYieldVault(uint256 uniqueId) external returns (address yieldVault);
 
@@ -54,9 +54,9 @@ interface IMemeverseProxyDeployer {
      * @dev Wires token addresses and governance thresholds into deployment payload.
      * @param memecoinName Governance display name derived from memecoin metadata.
      * @param uAsset Verse quote asset address.
-     * @param memecoin Deployed memecoin proxy address.
-     * @param pol Deployed POL proxy address.
-     * @param yieldVault Deployed yield vault proxy address.
+     * @param memecoin Deployed memecoin clone address.
+     * @param pol Deployed POL clone address.
+     * @param yieldVault Deployed yield vault clone address.
      * @param uniqueId Verse unique identifier.
      * @param proposalThreshold Governor proposal threshold.
      * @return governor Deployed governor proxy address.

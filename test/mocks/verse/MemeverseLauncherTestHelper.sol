@@ -34,8 +34,8 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
 
     // Storage layout mirrors MemeverseLauncherStorage (src/verse/MemeverseLauncher.sol:64-95).
     // Slot offsets below correspond to field positions in that struct.
-    // Memeverse sub-struct layout: slots 0-3 = string offsets, 4-9 = addresses,
-    //   10 = endTime|unlockTime, 11 = omnichainIds length, 12 = currentStage|flashGenesis.
+    // Memeverse sub-struct layout: slots 0-3 = string offsets, slot+4 = uAsset|currentStage|flashGenesis (packed),
+    //   slots 5-9 = addresses, 10 = endTime|unlockTime, 11 = omnichainIds length.
 
     bytes32 internal constant LAUNCHER_SLOT = 0xe4d68b4f0bdabf27c869795dba7c9a87fd97b24006928b28f58769be5bd8f500;
 
@@ -159,9 +159,12 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
         bool isRedeemed
     ) internal {
         bytes32 base = _nestedMappingSlot(OFF_USER_GENESIS, verseId, account);
-        _writeSlot(proxy, base, bytes32(genesisFund));
-        // slot+1: isRefunded (byte 0) | isRedeemed (byte 1)
-        _writeSlot(proxy, bytes32(uint256(base) + 1), bytes32(uint256((isRedeemed ? 256 : 0) | (isRefunded ? 1 : 0))));
+        // Packed single slot (per GenesisData): genesisFund uint128 (bytes 0-15) | isRefunded (byte 16) | isRedeemed (byte 17)
+        _writeSlot(
+            proxy,
+            base,
+            bytes32(genesisFund | (uint256(isRefunded ? 1 : 0) << 128) | (uint256(isRedeemed ? 1 : 0) << 136))
+        );
     }
 
     function setUserPreorderDataForTest(
@@ -256,7 +259,15 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
         bool flashGenesis
     ) internal {
         bytes32 base = _mappingSlot(OFF_MEMEVERSES, verseId);
-        _writeSlot(proxy, bytes32(uint256(base) + 4), bytes32(uint256(uint160(uAsset))));
+        // slot+4 packs uAsset (bytes 0-19), currentStage (byte 20), flashGenesis (byte 21) per F-89 layout.
+        _writeSlot(
+            proxy,
+            bytes32(uint256(base) + 4),
+            bytes32(
+                uint256(uint160(uAsset)) | (uint256(uint8(currentStage)) << 160)
+                    | (flashGenesis ? uint256(1) << 168 : 0)
+            )
+        );
         _writeSlot(proxy, bytes32(uint256(base) + 5), bytes32(uint256(uint160(memecoin))));
         _writeSlot(proxy, bytes32(uint256(base) + 6), bytes32(uint256(uint160(pol))));
         _writeSlot(proxy, bytes32(uint256(base) + 7), bytes32(uint256(uint160(yieldVault))));
@@ -268,9 +279,6 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
             bytes32(uint256(base) + 10),
             bytes32(uint256(uint128(endTime)) | (uint256(uint128(unlockTime)) << 128))
         );
-        // currentStage (bytes1) is in the LSB of slot+12, flashGenesis is bit 8
-        uint256 stageAndFlash = uint256(uint8(currentStage)) | (flashGenesis ? 256 : 0);
-        _writeSlot(proxy, bytes32(uint256(base) + 12), bytes32(stageAndFlash));
     }
 
     // ── Dynamic array fields ──

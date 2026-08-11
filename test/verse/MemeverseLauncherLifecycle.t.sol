@@ -5,6 +5,9 @@ import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
+
+using OptionsBuilder for bytes;
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
@@ -1690,6 +1693,14 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         assertEq(remoteMemecoin.lastSendDstEid(), 302);
         assertEq(remoteUAsset.lastNativeFeePaid(), 0.15 ether);
         assertEq(remoteMemecoin.lastNativeFeePaid(), 0.25 ether);
+        // The remote lzCompose execution gas is allocated solely by the encoded executor options, so the OFT sends
+        // must carry them verbatim. Literal gas limits (matching the setUp `initialize` args 10/11) are asserted
+        // instead of storage getters: reading the getters would silently follow a re-wiring to the wrong storage
+        // slot, defeating the anchor (F-100).
+        bytes memory expectedOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(115_000, 0)
+            .addExecutorLzComposeOption(0, 135_000, 0);
+        assertEq(remoteUAsset.lastSendOptions(), expectedOptions, "uAsset send must carry executor options");
+        assertEq(remoteMemecoin.lastSendOptions(), expectedOptions, "memecoin send must carry executor options");
         // Cross-chain fee distribution must route through OFT sends, never the local dispatcher
         // (remoteFeePathNeverUsesLocalDispatcher). A regression here would silently misroute fees.
         assertEq(dispatcher.composeCallCount(), 0, "remote path must not invoke local dispatcher");
@@ -2698,6 +2709,30 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         vm.prank(ALICE);
         vm.expectRevert(IMemeverseUniswapHook.TooMuchSlippage.selector);
         launcher.mintPOLToken(verseId, 10 ether, 12 ether, 0, 0, 5 ether, block.timestamp);
+    }
+
+    /// @notice Verifies auto-mode liquidity minting reverts TooMuchSlippage when the router settles zero LP.
+    /// @dev Auto mode (amountOutDesired = 0) forwards caller mins; with min = 0 the mock router returns the
+    /// stored (0, 0, 0) result as-is, so zero LP must surface the slippage error instead of reaching IPol.mint(0).
+    /// Also proves the failed mint rolls the whole tx back: ALICE keeps both input tokens.
+    function testMintPOLToken_AutoLiquidity_RevertsWhenZeroLiquidity() external {
+        uint256 verseId = 1;
+        _setLockedVerse(verseId);
+
+        uAsset.mint(ALICE, 10 ether);
+        memecoin.mint(ALICE, 12 ether);
+        _approveMintInputs(ALICE);
+        router.setAddLiquidityResult(address(uAsset), address(memecoin), 0, 0, 0);
+
+        uint256 uAssetBefore = uAsset.balanceOf(ALICE);
+        uint256 memecoinBefore = memecoin.balanceOf(ALICE);
+
+        vm.prank(ALICE);
+        vm.expectRevert(IMemeverseUniswapHook.TooMuchSlippage.selector);
+        launcher.mintPOLToken(verseId, 10 ether, 12 ether, 0, 0, 0, block.timestamp);
+
+        assertEq(uAsset.balanceOf(ALICE), uAssetBefore, "uAsset rolled back");
+        assertEq(memecoin.balanceOf(ALICE), memecoinBefore, "memecoin rolled back");
     }
 
     /// @notice Test mint poltoken with exact liquidity no refund path.

@@ -63,13 +63,13 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
     MockERC20 internal ptUAssetLp;
     MockERC20 internal ptPolLp;
 
-    function _deployHookProxy(IPoolManager manager_, address owner_, address treasury_)
+    function _deployHookProxy(IPoolManager manager_, address owner_, address treasury_, address launcher_)
         internal
         returns (MemeverseUniswapHook deployed)
     {
         // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
-        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
+        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_, launcher_);
         deployed = MemeverseUniswapHook(hookProxy);
     }
 
@@ -156,7 +156,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         _setLockedVerseReadyToUnlock(localLauncher, verseId);
         MockPoolManagerForRouterTest guardedManager = new MockPoolManagerForRouterTest();
         MemeverseUniswapHook guardedHook =
-            _deployHookProxy(IPoolManager(address(guardedManager)), address(this), address(1));
+            _deployHookProxy(IPoolManager(address(guardedManager)), address(this), address(1), address(localLauncher));
         MemeverseSwapRouter guardedRouter = new MemeverseSwapRouter(
             IPoolManager(address(guardedManager)),
             IMemeverseUniswapHook(address(guardedHook)),
@@ -164,7 +164,6 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
             IPermit2(address(0xBEEF))
         );
         PoolKey memory key = _hookPoolKey(address(guardedHook));
-        guardedHook.setLauncher(address(localLauncher));
         guardedHook.setPoolInitializer(address(this));
         guardedHook.authorizePoolInitialization(key, 79_228_162_514_264_337_593_543_950_336);
         guardedManager.initialize(key, 79_228_162_514_264_337_593_543_950_336);

@@ -26,6 +26,8 @@
 | `Locked` | `changeStage` | `currentTime <= unlockTime` | 保持 `Locked` | 不回退，仍发 `ChangeStage(Locked)` 事件 | 当前规则（代码已证） |
 | `Refund`/`Unlocked` | `changeStage` | 任意 | 回退 `ReachedFinalStage` | 无 | 当前规则（代码已证） |
 
+注：Genesis 行的 `minTotalFund` 取 `MemeverseLauncher.sol::changeStage` 执行时刻 `MemeverseLauncher.sol::fundMetaDatas` 的当前值（活读），非注册时值；owner 在 Genesis 期间变更 `MemeverseLauncher.sol::setFundMetaData` 会改变达标判断（Genesis→Locked / Genesis→Refund），为预期语义（详见 config-matrix.md §2 注）。
+
 ### 2.2 `flashGenesis` 子状态语义
 
 - `flashGenesis=false`：必须等到 `endTime` 后再判断是否进入 `Locked/Refund`。

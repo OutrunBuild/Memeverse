@@ -192,9 +192,17 @@ contract MemeverseLauncherSiblingDirectCall is Test {
         bytes32 launcherSlot = 0xe4d68b4f0bdabf27c869795dba7c9a87fd97b24006928b28f58769be5bd8f500;
         // memeverses[verseId] base slot = keccak256(verseId . slot+15)
         bytes32 verseBase = keccak256(abi.encode(verseId, bytes32(uint256(launcherSlot) + 15)));
-        // Field layout (per MemeverseLauncherStorage): slot+4 uAsset, slot+5 memecoin, slot+6 pol,
-        // slot+10 endTime|unlockTime (packed uint128), slot+11 omnichainIds length, slot+12 stage|flashGenesis.
-        vm.store(address(launcher), bytes32(uint256(verseBase) + 4), bytes32(uint256(uint160(address(uAsset)))));
+        // Field layout (per IMemeverseLauncher.Memeverse): slot+4 uAsset|currentStage|flashGenesis (packed),
+        // slot+5 memecoin, slot+6 pol, slot+10 endTime|unlockTime (packed uint128), slot+11 omnichainIds length.
+        // slot+4 packs uAsset (bytes 0-19), currentStage (byte 20, Genesis=0), flashGenesis (byte 21).
+        vm.store(
+            address(launcher),
+            bytes32(uint256(verseBase) + 4),
+            bytes32(
+                uint256(uint160(address(uAsset))) | (uint256(uint8(IMemeverseLauncher.Stage.Genesis)) << 160)
+                    | (uint256(1) << 168)
+            )
+        );
         vm.store(address(launcher), bytes32(uint256(verseBase) + 5), bytes32(uint256(uint160(address(memecoin)))));
         vm.store(address(launcher), bytes32(uint256(verseBase) + 6), bytes32(uint256(uint160(address(liquidProof)))));
         // endTime far in the future so the flashGenesis branch (not the time-expired branch) drives the lock.
@@ -205,8 +213,6 @@ contract MemeverseLauncherSiblingDirectCall is Test {
         bytes32 omnichainSlot = bytes32(uint256(verseBase) + 11);
         vm.store(address(launcher), omnichainSlot, bytes32(uint256(1)));
         vm.store(address(launcher), keccak256(abi.encode(omnichainSlot)), bytes32(uint256(uint32(block.chainid + 1))));
-        // currentStage (uint8) = 0 (Genesis) in LSB; flashGenesis = bit 8.
-        vm.store(address(launcher), bytes32(uint256(verseBase) + 12), bytes32(uint256(256)));
         // totalNormalFunds[verseId] = keccak256(verseId . slot+17)
         vm.store(
             address(launcher), keccak256(abi.encode(verseId, bytes32(uint256(launcherSlot) + 17))), bytes32(genesisFund)

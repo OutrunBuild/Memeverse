@@ -427,6 +427,9 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         if (totalFunds == 0) return;
 
         bool zeroForOne = Currency.unwrap(poolKey.currency0) == uAsset;
+        // Full-range limit is intentional: preorder settlement must fill the entire `totalFunds`, and completeness
+        // is enforced cross-file via ExactInputPartialFill (SettlementFacet.sol::settlementUnlockCallback) — this
+        // MIN/MAX is the v4 tick-range safety bound, not a slippage intent.
         uint160 sqrtPriceLimitX96 = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
         // Settlement goes through the hook's dedicated preorder-settlement path so preorder accounting stays isolated from public swap flow.
         BalanceDelta delta = IMemeverseUniswapHook(memeverseLauncherStorage.memeverseUniswapHook)
@@ -570,6 +573,10 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
                 address(this),
                 deadline
             );
+        // Auto mode has no LP-output floor of its own: with caller-supplied min=0 the router may settle 0 LP
+        // (dust budgets or extreme pool price), which would otherwise reach IPol.mint(0) and surface the
+        // misleading ZeroInput instead of a slippage error. Mirror the exact-mode guard's TooMuchSlippage.
+        if (amountOut == 0) revert IMemeverseUniswapHook.TooMuchSlippage();
     }
 
     function _mintPOLTokenWithExactLiquidity(

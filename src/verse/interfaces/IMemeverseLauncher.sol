@@ -49,6 +49,8 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         string uri; // Token icon uri
         string desc; // Description
         address uAsset; // Historical field name for the verse uAsset
+        Stage currentStage; // Current stage
+        bool flashGenesis; // Allowing the transition to the liquidity lock stage once the minimum funding requirement is met, without waiting for the genesis stage to end.
         address memecoin; // Omnichain memecoin address
         address pol; // POL token address
         address yieldVault; // Memecoin yield vault
@@ -57,8 +59,6 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         uint128 endTime; // End time of Genesis stage
         uint128 unlockTime; // UnlockTime of liquidity
         uint32[] omnichainIds; // ChainIds of the token's omnichain(EVM),The first chainId is main governance chain
-        Stage currentStage; // Current stage
-        bool flashGenesis; // Allowing the transition to the liquidity lock stage once the minimum funding requirement is met, without waiting for the genesis stage to end.
     }
 
     /// @notice Storage struct. When adding fields in upgrades, append only at the end.
@@ -69,7 +69,11 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
 
     /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     struct GenesisData {
-        uint256 genesisFund; // The amount of uAsset user has contributed to the genesis fund
+        // uint128 narrows safely because `_genesis` rejects any deposit whose projected total genesis funds
+        // exceeds MemeverseLauncherLib.MAX_SUPPORTED_TOTAL_GENESIS_FUNDS (= uint128.max) before this field is
+        // written, capping a single user's accumulated genesisFund at uint128.max. If that cap is ever widened
+        // beyond uint128.max, this field MUST be widened too — otherwise `uint128(amountInUAsset)` silently truncates.
+        uint128 genesisFund; // The amount of uAsset user has contributed to the genesis fund
         bool isRefunded; // Whether the user has refunded the uAsset contribution
         bool isRedeemed; // Whether the user has redeemed the POL liquidity
     }

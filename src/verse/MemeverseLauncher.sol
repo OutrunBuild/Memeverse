@@ -820,7 +820,10 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
     ///         deposits, and adaptive stage transitions.
     /// @dev Only callable by the owner. `registerMemeverse` / `genesis` / `preorder` / `changeStage`
     ///      delegatecall this sibling, so a zero address would delegatecall into address(0) and burn the call;
-    ///      reject it explicitly here.
+    ///      reject it explicitly here. When rotating (not initial wiring), the new implementation must
+    ///      inherit `DelegatecallOnly`, match the `IMemeverseLaunchImpl` ABI, and keep the shared
+    ///      `outrun.storage.MemeverseLauncher` storage layout; these are owner responsibilities
+    ///      (see docs/spec/upgradeability.md §2.3) — none of that is checkable on-chain.
     /// @param impl The MemeverseLaunchImpl sibling address.
     function setLaunchImpl(address impl) external override onlyOwner {
         require(impl != address(0), ZeroInput());
@@ -831,7 +834,10 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
     /// @notice Set the MemeverseSettlementImpl sibling address used to run fee collection and distribution.
     /// @dev Only callable by the owner. `redeemAndDistributeFees` and the Locked->Unlocked branch of
     ///      `changeStage` delegatecall this sibling, so a zero address would delegatecall into address(0)
-    ///      and burn the call; reject it explicitly here.
+    ///      and burn the call; reject it explicitly here. When rotating (not initial wiring), the new
+    ///      implementation must inherit `DelegatecallOnly`, match the `IMemeverseSettlementImpl` ABI, and
+    ///      keep the shared `outrun.storage.MemeverseLauncher` storage layout; these are owner
+    ///      responsibilities (see docs/spec/upgradeability.md §2.3) — none of that is checkable on-chain.
     /// @param impl The MemeverseSettlementImpl sibling address.
     function setSettlementImpl(address impl) external override onlyOwner {
         require(impl != address(0), ZeroInput());
@@ -851,7 +857,11 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
 
     /// @notice Set the MemeverseLiquidityImpl sibling implementation invoked via delegatecall for POL minting.
     /// @dev Only callable by the owner. `mintPOLToken` delegatecalls this sibling, so a zero address
-    ///      would delegatecall into address(0) and burn the call; reject it explicitly here.
+    ///      would delegatecall into address(0) and burn the call; reject it explicitly here. When rotating
+    ///      (not initial wiring), the new implementation must inherit `DelegatecallOnly`, match the
+    ///      `IMemeverseLiquidityImpl` ABI, and keep the shared `outrun.storage.MemeverseLauncher` storage
+    ///      layout; these are owner responsibilities (see docs/spec/upgradeability.md §2.3) — none of that
+    ///      is checkable on-chain.
     /// @param impl The MemeverseLiquidityImpl sibling address.
     function setLiquidityImpl(address impl) external override onlyOwner {
         require(impl != address(0), ZeroInput());
@@ -936,7 +946,14 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
 
     /**
      * @notice Set the yield dispatcher contract.
-     * @dev Only callable by the owner.
+     * @dev Only callable by the owner. Only a non-zero check is enforced; cross-chain address
+     *      consistency is a deployment convention, not a contract invariant. In a multichain
+     *      deployment this address is the OFT `SendParam.to` for cross-chain fee distribution
+     *      (`MemeverseSettlementImpl._sendRedeemedFeesCrossChain` via
+     *      `MemeverseLauncherLib.buildSendParamAndMessagingFee`), delivered on the governance chain.
+     *      The source-chain value stored here must equal the governance chain's actual
+     *      YieldDispatcher address; a mismatch routes fees to a wrong/empty address with no
+     *      recovery path (fail-closed, no third-party theft).
      * @param _yieldDispatcher - Address of the yield dispatcher contract.
      */
     function setYieldDispatcher(address _yieldDispatcher) external override onlyOwner {
@@ -963,7 +980,7 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
         require(
             _fundBasedAmount <= MAX_FUND_BASED_AMOUNT, FundBasedAmountTooHigh(_fundBasedAmount, MAX_FUND_BASED_AMOUNT)
         );
-        // Derived virtual buffer V = minTotalFund * fundBasedAmount * 7 / 1000 must round up to >= 1,
+        // Derived virtualAssets = minTotalFund * fundBasedAmount * 7 / 1000 must round up to >= 1,
         // else MemecoinYieldVault.initialize reverts ZeroVirtualAssets() and governance-chain deploy DoSs.
         // Boundary: 142*7=994 -> 0 (rejected); 143*7=1001 -> 1 (accepted).
         require(MemeverseLauncherLib.virtualAssetsBuffer(_minTotalFund, _fundBasedAmount) > 0, VirtualAssetsTooLow());

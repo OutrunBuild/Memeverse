@@ -50,6 +50,14 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     uint256 public maxTreasurySpendRatio;
     uint256 public upgradeSupermajorityRatio;
 
+    /// @dev minQuorumNumerator is a percentage of the memecoin supply (denominator 100,
+    /// applied in deployGovernorAndIncentivizer as totalSupply() * minQuorumNumerator / 100).
+    /// Values above 100 demand more than 100% of the supply to reach quorum, which would
+    /// permanently brick the deployed governor: _minQuorum is frozen at init with no setter,
+    /// and the only upgrade path (_authorizeUpgrade) is gated by the very governance that
+    /// would be paralyzed.
+    error InvalidMinQuorumNumerator();
+
     modifier onlyMemeverseLauncher() {
         require(msg.sender == memeverseLauncher, PermissionDenied());
         _;
@@ -76,6 +84,9 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         governorImplementation = _governorImplementation;
         incentivizerImplementation = _incentivizerImplementation;
         quorumNumerator = _quorumNumerator;
+        // Constructor and setter enforce the same range: >0 and <=100. See InvalidMinQuorumNumerator.
+        require(_minQuorumNumerator != 0, ZeroInput());
+        require(_minQuorumNumerator <= 100, InvalidMinQuorumNumerator());
         minQuorumNumerator = _minQuorumNumerator;
         bootstrapPeriod = _bootstrapPeriod;
         maxTreasurySpendRatio = _maxTreasurySpendRatio;
@@ -217,10 +228,12 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     }
 
     /// @notice Updates the min quorum numerator used for future governor deployments.
-    /// @dev Does not retroactively modify already deployed governors.
+    /// @dev Does not retroactively modify already deployed governors. The numerator is bounded to <= 100
+    /// (percent of supply); see InvalidMinQuorumNumerator.
     /// @param _minQuorumNumerator New min quorum numerator value.
     function setMinQuorumNumerator(uint256 _minQuorumNumerator) external override onlyOwner {
         require(_minQuorumNumerator != 0, ZeroInput());
+        require(_minQuorumNumerator <= 100, InvalidMinQuorumNumerator());
 
         minQuorumNumerator = _minQuorumNumerator;
 

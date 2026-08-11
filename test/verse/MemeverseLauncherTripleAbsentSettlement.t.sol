@@ -115,7 +115,8 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
         launcher = MemeverseLauncher(launcherProxy);
 
         // 4. Real Hook + Router.
-        address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY);
+        address hookProxy =
+            deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY, address(launcher));
         hook = MemeverseUniswapHook(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
@@ -168,8 +169,7 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
         setPolSplitterForTest(launcherProxy, address(splitter));
         polend.setMaxSettlementDustReserve(address(uAsset), type(uint128).max);
 
-        // 8. Hook + launcher wiring.
-        hook.setLauncher(address(launcher));
+        // 8. Launcher is bound to the hook at deploy (initialize); wire the pool initializer here.
         hook.setPoolInitializer(address(router));
         launcher.setMemeverseUniswapHook(address(hook));
         launcher.setMemeverseSwapRouter(address(router));

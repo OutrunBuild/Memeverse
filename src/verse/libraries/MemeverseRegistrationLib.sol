@@ -61,4 +61,14 @@ library MemeverseRegistrationLib {
             }
         }
     }
+
+    /// @notice Derives the canonical verse id from a registration's symbol, nonce, and fundraising token.
+    /// @dev Single source of truth for the registration subtree so the center-chain write
+    ///      (`MemeverseRegistrationCenter.registration`) and the local pre-quote
+    ///      (`MemeverseRegistrarAtLocal.quoteRegister`) compute the same id. `nonce` is the post-increment
+    ///      value (i.e. `currentNonce + 1`); both call sites pass the same value they used to inline.
+    ///      Compiles inline into each caller, so there is no storage/external-read concern.
+    function deriveUniqueId(string memory symbol, uint192 nonce, address uAsset) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(symbol, nonce, uAsset)));
+    }
 }

@@ -531,6 +531,43 @@ contract MemeverseProxyDeployerTest is Test {
         assertEq(deployer.minQuorumNumerator(), 50);
     }
 
+    /// @notice Regression for F-93: setter rejects min quorum numerator above 100.
+    ///         A value >100 is a percent of total supply and makes governance quorum permanently
+    ///         unreachable, so both the upper boundary (100) and lower boundary (1) must pass
+    ///         while anything above the cap reverts with `InvalidMinQuorumNumerator`.
+    function testSetMinQuorumNumeratorRejectsAboveUpperBound() external {
+        vm.prank(OWNER);
+        vm.expectRevert(MemeverseProxyDeployer.InvalidMinQuorumNumerator.selector);
+        deployer.setMinQuorumNumerator(101);
+
+        vm.prank(OWNER);
+        deployer.setMinQuorumNumerator(100);
+        assertEq(deployer.minQuorumNumerator(), 100);
+
+        vm.prank(OWNER);
+        deployer.setMinQuorumNumerator(1);
+        assertEq(deployer.minQuorumNumerator(), 1);
+    }
+
+    /// @notice Regression for F-93: constructor enforces the same >0 && <=100 range as the setter.
+    function testConstructorRejectsMinQuorumNumeratorAboveUpperBound() external {
+        vm.expectRevert(MemeverseProxyDeployer.InvalidMinQuorumNumerator.selector);
+        new MemeverseProxyDeployer(
+            OWNER,
+            LAUNCHER,
+            address(memecoinImplementation),
+            address(polImplementation),
+            address(vaultImplementation),
+            address(governorImplementation),
+            address(incentivizerImplementation),
+            25, // _quorumNumerator
+            101, // _minQuorumNumerator (above the 100 cap)
+            7 days,
+            1000,
+            6000
+        );
+    }
+
     /// @notice Test set bootstrap period only owner and rejects zero.
     function testSetBootstrapPeriodOnlyOwnerAndRejectsZero() external {
         vm.prank(OTHER);

@@ -153,6 +153,9 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
             uint32 remoteEndpointId = ILzEndpointRegistry(_lzEndpointRegistry).lzEndpointIdOfChain(omnichainId);
             require(remoteEndpointId != 0, IMemeverseLauncher.InvalidOmnichainId(omnichainId));
 
+            // Peer = LOCAL token address. This assumes a same-address multichain deployment: every chain deploys
+            // memecoin/POL with the same clone salt (uniqueId) and the same implementation address, so local ==
+            // remote. Implementation-address drift across chains makes LayerZero's OnlyPeer reject messages permanently.
             IOAppCore(memecoin).setPeer(remoteEndpointId, bytes32(uint256(uint160(memecoin))));
             IOAppCore(pol).setPeer(remoteEndpointId, bytes32(uint256(uint160(pol))));
         }
@@ -192,7 +195,9 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         }
 
         memeverseLauncherStorage.totalNormalFunds[verseId] = normalFunds + amountInUAsset;
-        memeverseLauncherStorage.userGenesisData[verseId][user].genesisFund += amountInUAsset;
+        // The aggregate cap check above bounds projected total genesis funds (hence this deposit's
+        // amountInUAsset) at uint128.max, so the narrowing cast cannot truncate. See GenesisData.genesisFund.
+        memeverseLauncherStorage.userGenesisData[verseId][user].genesisFund += uint128(amountInUAsset);
 
         _transferIn(verse.uAsset, msg.sender, amountInUAsset);
 
@@ -390,7 +395,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         if (govChainId == block.chainid) {
             // On the governance chain we deploy concrete contracts immediately because fee distribution will target them locally.
             yieldVault = IMemeverseProxyDeployer(_proxyDeployer).deployYieldVault(verseId);
-            // Size the permanent virtual buffer V from the per-uAsset fund metadata: 0.7% of the minimum
+            // Size the permanent virtual buffer from the per-uAsset fund metadata: 0.7% of the minimum
             // main-pool memecoin provision (spec §4). registerMemeverse already enforces both fields are non-zero.
             IMemeverseLauncher.FundMetaData storage _meta = memeverseLauncherStorage.fundMetaDatas[uAsset];
             uint256 _virtualAssets = MemeverseLauncherLib.virtualAssetsBuffer(_meta.minTotalFund, _meta.fundBasedAmount);

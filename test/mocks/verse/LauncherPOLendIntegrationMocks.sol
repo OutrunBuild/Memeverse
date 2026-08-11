@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {BurnableMockERC20Base} from "../common/BurnableMockERC20Base.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -17,21 +18,15 @@ import {IPOLend} from "../../../src/polend/interfaces/IPOLend.sol";
 import {IPOLSplitter} from "../../../src/polend/interfaces/IPOLSplitter.sol";
 import {IMemeverseUniswapHook} from "../../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 
-contract MockMemecoinForPOLendIntegration is MockERC20 {
+contract MockMemecoinForPOLendIntegration is BurnableMockERC20Base {
     address public memeverseLauncher;
-    uint256 public burnedAmount;
 
-    constructor(address launcher_) MockERC20("MEME", "MEME", 18) {
+    constructor(address launcher_) BurnableMockERC20Base("MEME", "MEME", 18, BurnMode.Accumulate) {
         memeverseLauncher = launcher_;
     }
 
     function mint(address to, uint256 amount) public override {
         _mint(to, amount);
-    }
-
-    function burn(uint256 amount) external {
-        burnedAmount += amount;
-        _burn(msg.sender, amount);
     }
 
     function initialize(string calldata, string calldata, address, address) external {}

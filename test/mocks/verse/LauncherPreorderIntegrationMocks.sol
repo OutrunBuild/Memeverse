@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {BurnableMockERC20Base} from "../common/BurnableMockERC20Base.sol";
 
 import {IPOLend} from "../../../src/polend/interfaces/IPOLend.sol";
 
@@ -144,11 +145,11 @@ contract MockPOLSplitterForPreorderIntegration {
 
 /// @notice Memecoin stand-in for the launcher integration tests.
 /// @dev Mint is launcher-gated so only the launcher can issue the post-settlement supply.
-contract MockIntegrationMemecoin is MockERC20 {
+contract MockIntegrationMemecoin is BurnableMockERC20Base {
     address public memeverseLauncher;
     mapping(uint32 eid => bytes32 peer) public peers;
 
-    constructor() MockERC20("Mock Meme", "MMEME", 18) {}
+    constructor() BurnableMockERC20Base("Mock Meme", "MMEME", 18, BurnMode.ZeroGuard) {}
 
     /// @notice Test helper for initialize.
     /// @param _name See implementation.
@@ -176,13 +177,6 @@ contract MockIntegrationMemecoin is MockERC20 {
         require(msg.sender == memeverseLauncher, "not launcher");
         require(amount != 0, "zero");
         super.mint(account, amount);
-    }
-
-    /// @notice Test helper for burn.
-    /// @param amount See implementation.
-    function burn(uint256 amount) external {
-        require(amount != 0, "zero");
-        super.burn(msg.sender, amount);
     }
 }
 

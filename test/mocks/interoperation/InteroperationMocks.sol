@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {BurnableMockERC20Base} from "../common/BurnableMockERC20Base.sol";
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import {
     IOFT,
@@ -13,7 +14,6 @@ import {
     OFTFeeDetail
 } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
-import {IBurnable} from "../../../src/common/interfaces/IBurnable.sol";
 import {IMemeverseLauncher} from "../../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {OmnichainMemecoinStaker} from "../../../src/interoperation/OmnichainMemecoinStaker.sol";
 import {IOmnichainMemecoinStaker} from "../../../src/interoperation/interfaces/IOmnichainMemecoinStaker.sol";
@@ -39,12 +39,12 @@ contract AttackStakerToken {
 ///      no longer tracks a token-side executed-status flag. The transfer failure switch and the mid-call Released
 ///      probe pin the settlePendingCompose rollback-retry contract and its CEI write order (Released written
 ///      before the outward transfer).
-contract MockStakerComposeToken is MockERC20, IBurnable {
+contract MockStakerComposeToken is BurnableMockERC20Base {
     bool public transferRevert;
     address public composeProbeStaker;
     bytes32 public composeProbeGuid;
 
-    constructor() MockERC20("Memecoin", "MEME", 18) {}
+    constructor() BurnableMockERC20Base("Memecoin", "MEME", 18, BurnMode.Plain) {}
 
     /// @notice Set whether transfers should revert.
     function setTransferRevert(bool transferRevert_) external {
@@ -79,12 +79,6 @@ contract MockStakerComposeToken is MockERC20, IBurnable {
             );
         }
         return super.transfer(to, amount);
-    }
-
-    /// @notice Burn.
-    /// @param amount See implementation.
-    function burn(uint256 amount) external {
-        _burn(msg.sender, amount);
     }
 }
 

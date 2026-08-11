@@ -69,8 +69,8 @@ contract MockPoolManagerForRouterTest {
     /// @param data Encoded callback payload.
     /// @return result Raw callback return data.
     function unlock(bytes calldata data) external returns (bytes memory result) {
-        // 生产 CallbackData 已无 payer 字段；router 始终用自身余额 settle，
-        // 因此记录 unlock 发起方作为 lastUnlockPayer 的语义代理。
+        // Production CallbackData no longer has a payer field; the router always settles from
+        // its own balance, so record the unlock initiator as a semantic proxy for lastUnlockPayer.
         lastUnlockCallbackPayer = msg.sender;
         unlocked = true;
         result = IUnlockCallback(msg.sender).unlockCallback(data);

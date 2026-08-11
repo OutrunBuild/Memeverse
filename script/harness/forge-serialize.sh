@@ -31,7 +31,7 @@ if ! flock -n 9; then
     # their users) can see the call is still queued, not frozen. Killed once the
     # lock is acquired so it never overlaps forge's own output.
     (
-        exec 9>&-  # 心跳子shell 关闭继承的锁fd: 不持锁文件 ofl, 避免其存活时阻止主进程的锁释放
+        exec 9>&-  # heartbeat subshell closes the inherited lock fd: it holds no ofl on the lock file, so its survival cannot block the main process from releasing the lock.
         elapsed=0
         while true; do
             sleep 60
@@ -42,8 +42,9 @@ if ! flock -n 9; then
     heartbeat=$!
     flock 9
     kill "$heartbeat" 2>/dev/null || true
-    # 不 wait: 心跳子shell 已 exec 9>&- 不持锁fd, 异步退出由 init 回收;
-    # wait 反而有持锁期间被 SIGTERM 未生效的子shell 拖住的风险(持锁死锁)
+    # Do NOT wait: the heartbeat subshell has run exec 9>&- so it holds no lock fd; it exits
+    # asynchronously and is reaped by init. Calling wait instead risks being blocked by a
+    # subshell that caught an ineffective SIGTERM while the lock was held (a hold-lock deadlock).
 fi
 
 exec forge "$@"

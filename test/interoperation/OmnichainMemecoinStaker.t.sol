@@ -991,7 +991,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
     ///         fallback `_transferOut(memecoin, address(0), 0)` early-returns before the token's zero-address guard
     ///         (TokenHelper._transferOut), the CEI Settled write sticks, and no funds move.
     /// @dev Pins the zero-amount x receiver==0 sub-class of the §3.13.1 receiver==0 boundary: the doc's unconditional
-    ///      "receiver==0 恒 revert、不收敛" assertion holds only for non-zero amounts.
+    ///      "receiver==0 always reverts, never converges" assertion holds only for non-zero amounts.
     function testLzComposeZeroAmountZeroReceiverUndeployedVaultConvergesToSettled() external {
         bytes32 guid = bytes32("zero-amount-zero-recv-undeployed");
         bytes memory message = _stakeMessage(0, RECEIVER, address(0), address(0x1234));
@@ -1046,7 +1046,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
     ///         contract assumes ABI compliance of an arbitrary forged address. The whole lzCompose reverts (CEI
     ///         `Settled` write rolled back, guid back to `None`, endpoint queue pinned), but the beneficiary can
     ///         still recover via `settlePendingCompose` — settle never reads the vault word and always
-    ///         `_transferOut` pushes. Pins operations.md §3.13.1's "vault 有 code 但 asset() 缺失" boundary row.
+    ///         `_transferOut` pushes. Pins operations.md §3.13.1's "vault has code but asset() is missing" boundary row.
     /// @dev The mock is `MockInteroperationYieldVault` (test/mocks): a vault-shaped contract with code and a
     ///      `deposit` entry but no `asset()` selector and no fallback, so the high-level STATICCALL falls to
     ///      solc's empty-data revert path. `vm.expectRevert(bytes(""))` pins the empty revert data — a named
@@ -1083,7 +1083,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
 
     /// @notice A message-named vault whose `asset()` actively reverts propagates the callee's own error instead of
     ///         `TokenVaultMismatch`: same opaque-failure class as the asset-less vault (operations.md §3.13.1
-    ///         "asset() 不可读" boundary row, revert sub-class) — lzCompose reverts, CEI rollback leaves the guid
+    ///         "asset() unreadable" boundary row, revert sub-class) — lzCompose reverts, CEI rollback leaves the guid
     ///         `None`, and the beneficiary recovers via `settlePendingCompose` (which never reads the vault word).
     function testLzComposeRevertingAssetVaultRevertsAndRemainsSettlable() external {
         RevertingAssetVault revertingVault = new RevertingAssetVault();

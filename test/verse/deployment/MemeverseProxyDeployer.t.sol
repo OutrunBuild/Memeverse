@@ -1007,8 +1007,9 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         scriptHarness.requireDeploymentReadyHarness(readySwapRouter, readySwapHook);
     }
 
-    // readiness 校验 POLend.creditFactory() 指向有 code 的合约（POLEND_CREDIT_FACTORY_NOT_READY）。
-    // 该检查在 reserve/sibling 检查之前，接好全部依赖后把 creditFactory 置空，应即回退。
+    // readiness check: POLend.creditFactory() must point to a contract with code (POLEND_CREDIT_FACTORY_NOT_READY).
+    // This check runs before the reserve/sibling checks; after wiring all dependencies, blanking creditFactory
+    // should revert immediately.
     function testRequireDeploymentReadyRevertsWhenPolendCreditFactoryHasNoCode() external {
         MockReadinessLauncher readyLauncher =
             _configureReadyDependencies(address(0), address(0), address(0), address(0));

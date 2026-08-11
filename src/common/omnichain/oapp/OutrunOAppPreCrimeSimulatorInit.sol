@@ -16,8 +16,11 @@ import {OutrunOwnableInit} from "../../access/OutrunOwnableInit.sol";
  */
 abstract contract OutrunOAppPreCrimeSimulatorInit is IOAppPreCrimeSimulator, OutrunOwnableInit {
     struct OAppPreCrimeSimulatorStorage {
-        // preCrime = LayerZero 预执行安全检查：verifier 在消息真实投递前，在本链预模拟入站消息执行，
-        // 并把模拟结果与其它链的结果比对——若揭示恶意状态转移，则拦截该次真实投递。preCrime 实现地址存于此。
+        // preCrime = LayerZero pre-execution safety check: before a message is actually
+        // delivered, the verifier pre-simulates the inbound message execution on this chain
+        // and compares the result with other chains' results — if it reveals a malicious
+        // state transition, the real delivery is blocked. The preCrime implementation
+        // address is stored here.
         address preCrime;
     }
 

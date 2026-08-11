@@ -1614,7 +1614,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     /// @notice E2E: the `ComposeSent` log emitted by `sendCompose` during a real OFT `_lzReceive` carries the exact
     ///         payload `settlePendingCompose` must be given — decoding the log and copying its `message` field VERBATIM
     ///         (no re-encoding, no OFTComposeMsgCodec.encode) settles the compose, anchoring the ops runbook's
-    ///         "原样拷贝 message 字段" step (operations.md §3.13).
+    ///         "copy the message field verbatim" step (operations.md §3.13).
     /// @dev Chains the runbook recovery: `lzReceive` → `sendCompose` writes the queue and emits `ComposeSent`
     ///      (from = the OFT, to = the dispatcher, message = the OFTComposeMsgCodec payload), and `settlePendingCompose`
     ///      proves delivery against keccak256(that payload). Re-encoding the payload from parts instead of copying the
@@ -2212,7 +2212,7 @@ contract UnsafeUninitializedProxy is ERC1967Proxy {
 ///         the revert-pin class (a uAsset whose `burn` reverts → the whole settle call
 ///         reverts, queue pinned, no convergence signal) and the silent false-report class (a uAsset whose `burn`
 ///         is an empty no-op → settle "succeeds" with burnedAtDispatcher=true while nothing moves). Both classes are
-///         documented in operations.md §3.13 (结算失败类 (b) / fallback 吸收类) but previously had zero test
+///         documented in operations.md §3.13 (settle-failure class (b) / fallback-absorb class) but previously had zero test
 ///         anchoring: every existing EOA-burn test drives MEMECOIN frames, so the UASSET branch of
 ///         `_settle`'s `receiver.code.length == 0` path was untested for both terminal classes.
 contract YieldDispatcherUAssetEoaBranchTest is ComposerEndpointFixture {
@@ -2240,7 +2240,7 @@ contract YieldDispatcherUAssetEoaBranchTest is ComposerEndpointFixture {
     /// @dev UASSET×EOA is the missing half of the EOA-burn revert-pin coverage: the existing burn-revert tests
     ///      (testLzComposeAllowsRetryAfterFailedBurnAndBlocksReplayAfterSuccess and its settle mirror) drive
     ///      MEMECOIN frames, and the UASSET EOA branch reaches the same `IBurnable(token).burn(amount)` call only
-    ///      because the tokenType does not select the contract path. This is the operations.md §3.13 结算失败类 (b)
+    ///      because the tokenType does not select the contract path. This is the operations.md §3.13 settle-failure class (b)
     ///      class: the uAsset's burn reverts (owner-only/absent burn), the settle-fail rollback-retry contract
     ///      applies, and the guid must stay resolvable for the documented retry.
     function testUAssetEoaReceiverBurnRevertPinsQueueOnBothEntries() external {
@@ -2281,7 +2281,7 @@ contract YieldDispatcherUAssetEoaBranchTest is ComposerEndpointFixture {
     ///         while the token balance never moves.
     /// @dev UASSET×EOA is the missing half of the silent false-report coverage: the existing EOA-burn success tests
     ///      all drive MEMECOIN frames against MockDispatcherComposeToken's real `_burn`. This is the operations.md
-    ///      §3.13 fallback 吸收类 class: a token whose burn absorbs the call (空实现 burn) makes the dispatcher's
+    ///      §3.13 fallback-absorb class: a token whose burn absorbs the call (no-op burn) makes the dispatcher's
     ///      burnedAtDispatcher flag a false report — the funds are neither destroyed nor credited to the receiver, and the
     ///      mutex write converges the endpoint as if settlement succeeded. A mint anchors the zero-movement
     ///      assertion: the dispatcher holds the full minted balance, and the no-op burn still succeeds regardless

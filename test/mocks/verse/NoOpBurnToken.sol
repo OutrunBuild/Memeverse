@@ -5,7 +5,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {BurnableMockERC20Base} from "../common/BurnableMockERC20Base.sol";
 
 /// @notice MockERC20-style token whose single-arg `burn(uint256)` is a NO-OP (empty body: no `_burn`, no balance
-///         movement), mirroring the "fallback 吸收 / 空实现 burn" uAsset class in the dispatcher's EOA-settle branch.
+///         movement), mirroring the "fallback absorbs / no-op burn" uAsset class in the dispatcher's EOA-settle branch.
 /// @dev The dispatcher's `IBurnable(token).burn(amount)` call succeeds and `burnedAtDispatcher` reports true while nothing
 ///      moves — the silent false-report terminal class documented in operations.md §3.13, used by
 ///      YieldDispatcherUAssetEoaBranchTest. The inherited solmate `MockERC20.burn(address,uint256)` two-arg

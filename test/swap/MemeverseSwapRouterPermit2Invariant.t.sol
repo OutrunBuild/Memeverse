@@ -2,21 +2,22 @@
 pragma solidity ^0.8.35;
 
 /// @title Permit2 router treasury accounting invariant
-/// @notice 该测试对 Permit2 router 的三个入口（regular swap、public-swap-marker swap、
-///         以及 spoof public-swap 尝试）进行不变量模糊测试，断言 treasury 的 token0 余额始终
-///         等于各 handler 累计的 per-call 余额差之和。该不变量实际保护的是 treasury 会计
-///         一致性：确保没有 handler 之外的路径向 treasury 转账。
-/// @dev 已知灵敏度边界（刻意记录，非缺陷）：
-///      handler 的 expected treasury fee 通过 `balanceOf(treasury) - treasuryBefore` 累加得到。
-///      由于 treasury 初值为 0，且 handler 外无任何路径向其注资，顶层 invariant
-///      `balanceOf(treasury) == Σ(delta)` 退化为数学恒等式。因此它对系统性 fee 错误
-///      （如错误的 `FeeMath.PROTOCOL_FEE_SHARE_BPS` 常量，或共享的
-///      `OrdinarySwapMath.deriveFeeSplit -> FeeMath.splitFeeBps` 公式错误）零敏感——
-///      quote 路径与执行路径共用同一套 fee math，错误会同步偏移而不被察觉。
-///      per-call 的 `assertEq(treasuryDelta, quote.estimatedProtocolFeeAmount)` 同样只覆盖
-///      quote 与执行路径的分歧，无法捕捉共享 fee math 的错误。
-///      fee 金额正确性的实际保护层由硬编码金额单测承担：
-///      `test/swap/MemeverseSwapRouter.t.sol` 与 `test/swap/FeeMath.t.sol`。
+/// @notice Invariant fuzz test over the Permit2 router's three entrypoints (regular swap,
+///         public-swap-marker swap, and spoof public-swap attempts), asserting the treasury's
+///         token0 balance always equals the sum of per-call balance deltas accumulated by each
+///         handler. This invariant really protects treasury accounting consistency: ensuring no
+///         path outside the handlers transfers funds into the treasury.
+/// @dev Known sensitivity boundary (intentionally recorded, not a defect):
+///      each handler's expected treasury fee is accumulated from `balanceOf(treasury) - treasuryBefore`.
+///      Because the treasury starts at 0 and no path outside the handlers funds it, the top-level
+///      invariant `balanceOf(treasury) == Σ(delta)` degenerates into a mathematical identity, so it
+///      is blind to systemic fee errors (e.g. a wrong `FeeMath.PROTOCOL_FEE_SHARE_BPS` constant, or
+///      a shared `OrdinarySwapMath.deriveFeeSplit -> FeeMath.splitFeeBps` formula bug) — quote and
+///      execution paths share the same fee math, so errors shift both in lockstep and go unnoticed.
+///      The per-call `assertEq(treasuryDelta, quote.estimatedProtocolFeeAmount)` likewise only covers
+///      divergence between the quote and execution paths and cannot catch shared fee-math errors.
+///      Actual coverage of fee-amount correctness is borne by hardcoded-amount unit tests:
+///      `test/swap/MemeverseSwapRouter.t.sol` and `test/swap/FeeMath.t.sol`.
 import {Test} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
@@ -103,7 +104,7 @@ contract Permit2AccountingHandler is Test {
         assertLt(delta.amount0(), 0, "regular delta0");
         assertGt(delta.amount1(), 0, "regular delta1");
 
-        // 自引用：expected 累加实际 treasury 余额差，对系统性 fee 错误零敏感（见文件头灵敏度边界说明）。
+        // Self-referential: expected accumulates the actual treasury balance delta, blind to systemic fee errors (see the sensitivity-boundary note in the file header).
         expectedRegularTreasuryFee += token0.balanceOf(treasury) - treasuryBefore;
         lastExpectedPermitAmount = amount;
         _assertLastPermitPull(amount);
@@ -138,7 +139,7 @@ contract Permit2AccountingHandler is Test {
         assertLt(delta.amount0(), 0, "marker delta0");
         assertGt(delta.amount1(), 0, "marker delta1");
 
-        // 自引用：expected 累加实际 treasury 余额差，对系统性 fee 错误零敏感（见文件头灵敏度边界说明）。
+        // Self-referential: expected accumulates the actual treasury balance delta, blind to systemic fee errors (see the sensitivity-boundary note in the file header).
         expectedMarkerTreasuryFee += token0.balanceOf(treasury) - treasuryBefore;
         lastExpectedPermitAmount = amount;
         _assertLastPermitPull(amount);
@@ -236,7 +237,7 @@ contract Permit2SpoofHandler is Test {
             assertGt(delta.amount1(), 0, "spoof delta1");
             uint256 treasuryDelta = token0.balanceOf(treasury) - treasuryBefore;
             assertEq(treasuryDelta, quote.estimatedProtocolFeeAmount, "spoof fee");
-            // 自引用：累加实际 treasury 余额差（见文件头灵敏度边界说明）。
+            // Self-referential: accumulates the actual treasury balance delta (see the sensitivity-boundary note in the file header).
             expectedSpoofTreasuryFee += treasuryDelta;
         } catch {}
         hook.endAccountSession();

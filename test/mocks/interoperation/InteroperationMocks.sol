@@ -394,7 +394,7 @@ contract MockInteroperationOFT is MockERC20, IOFT {
 ///         (`require(IMemecoinYieldVault(yieldVault).asset() == memecoin, TokenVaultMismatch())`) only emits its
 ///         named error when the message-named callee implements `asset()` AND returns a readable word; a
 ///         reverting `asset()` propagates the callee's own error instead — the same opaque-failure class as an
-///         asset-less vault (operations.md §3.13.1 "asset() 不可读" boundary row, revert sub-class).
+///         asset-less vault (operations.md §3.13.1 "asset() unreadable" boundary row, revert sub-class).
 /// @dev Attacker-style mock: a self-harm frame may name ANY code-bearing contract as the vault word, so a
 ///      contract whose `asset()` reverts is a legitimate member of the forged-vault family.
 contract RevertingAssetVault {

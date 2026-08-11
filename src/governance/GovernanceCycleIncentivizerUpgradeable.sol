@@ -45,7 +45,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         onlyInitializing
     {
         governanceCycleIncentivizerStorage._currentCycleId = 1;
-        governanceCycleIncentivizerStorage._rewardRatio = 5000;
+        governanceCycleIncentivizerStorage._rewardRatio = 2500; // 25% default treasury->reward split (RATIO = 10000)
         uint128 startTime = uint128(block.timestamp);
         uint128 endTime = uint128(block.timestamp + CYCLE_DURATION);
         governanceCycleIncentivizerStorage._cycles[1].startTime = startTime;
@@ -58,7 +58,8 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         for (uint256 i = 0; i < length;) {
             address token = initTreasuryTokens[i];
             // Initialization has no Governor execution context, so only governance-time registration notifies it.
-            _registerTreasuryToken(token);
+            // Seed the emitted CycleStarted balances from the same value written to storage, mirroring finalizeCurrentCycle.
+            balances[i] = _registerTreasuryToken(token);
             unchecked {
                 ++i;
             }
@@ -394,6 +395,28 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
     }
 
     /**
+     * @notice Reconciles the current cycle treasury ledger with the governor's actual token holdings.
+     * @dev Pure ledger action: no token transfer occurs, and any caller may call it (permissionless). This
+     * is safe because the synced value is deterministically derived from the governor's actual ERC20
+     * balance and the previous cycle unclaimed reward reserve — the caller cannot inject or inflate it. The
+     * function takes no amount argument because it reads the governor's ERC20 balance itself, removing
+     * the error surface of manual rebooking. Conservation G = T + R holds (G = governor custody
+     * balance, T = current cycle treasury ledger, R = previous cycle unclaimed reward reserve
+     * `_cycles[_currentCycleId - 1].rewardBalances[token]`); this function resets T to max(G - R, 0).
+     * When R >= G the ledger is set to 0: a sync cannot heal a custody shortfall.
+     * @param token - The treasury token address to reconcile
+     */
+    function syncTreasuryBalance(address token) external override {
+        require(token != address(0), ZeroInput());
+        require(governanceCycleIncentivizerStorage._treasuryTokens[token], NonTreasuryToken());
+
+        (uint256 synced, uint128 _currentCycleId) = _computeSyncedTreasuryBalance(token);
+        governanceCycleIncentivizerStorage._cycles[_currentCycleId].treasuryBalances[token] = synced;
+
+        emit TreasuryBalanceSynced(_currentCycleId, token, synced);
+    }
+
+    /**
      * @notice Finalizes the current cycle and starts the next cycle.
      * @dev Rolls leftover rewards forward, snapshots treasury lists, and computes the new reward balances.
      */
@@ -608,12 +631,24 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         emit RewardRatioUpdated(oldRatio, newRatio);
     }
 
-    function _registerTreasuryToken(address token) internal {
+    /**
+     * @dev Registers a treasury token and seeds its ledger balance.
+     * @notice Seeds the ledger at registration time with max(G - R, 0): G is the governor-held ERC20
+     * balance and R is the previous cycle unclaimed reward reserve, matching the syncTreasuryBalance
+     * formula so conservation G = T + R holds in the domain G >= R; when R >= G the seed saturates at
+     * 0 and the ledger over-records R - G (reward reserve exceeding governor custody). During
+     * initialization the governor holds zero tokens and cycle zero has no reward reserve, so the seed
+     * is zero.
+     * @param token - The token address
+     * @return synced - The seeded treasury balance written to storage (returned so the init path can
+     * emit it in CycleStarted, mirroring finalizeCurrentCycle).
+     */
+    function _registerTreasuryToken(address token) internal returns (uint256 synced) {
+        uint128 _currentCycleId;
+        (synced, _currentCycleId) = _computeSyncedTreasuryBalance(token);
         governanceCycleIncentivizerStorage._treasuryTokenList.push(token);
         governanceCycleIncentivizerStorage._treasuryTokens[token] = true;
-        governanceCycleIncentivizerStorage._cycles[governanceCycleIncentivizerStorage._currentCycleId].treasuryBalances[
-            token
-        ] = IERC20(token).balanceOf(address(this));
+        governanceCycleIncentivizerStorage._cycles[_currentCycleId].treasuryBalances[token] = synced;
 
         emit TreasuryTokenRegistered(token);
     }
@@ -643,6 +678,26 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
                 ++i;
             }
         }
+    }
+
+    /**
+     * @dev Computes the synced treasury balance for a token: governor custody balance minus the previous
+     * cycle unclaimed reward reserve, saturated at zero. Shared by syncTreasuryBalance and
+     * _registerTreasuryToken so the max(G - R, 0) ledger formula cannot drift between the two sites.
+     * @param token - The token address
+     * @return synced - The computed treasury balance for the current cycle
+     * @return currentCycleId - The active cycle id
+     */
+    function _computeSyncedTreasuryBalance(address token)
+        internal
+        view
+        returns (uint256 synced, uint128 currentCycleId)
+    {
+        // External read first so a reentrant finalize cannot target a stale cycle.
+        uint256 governorBalance = IERC20(token).balanceOf(governanceCycleIncentivizerStorage._governor);
+        currentCycleId = governanceCycleIncentivizerStorage._currentCycleId;
+        uint256 unclaimedReserve = governanceCycleIncentivizerStorage._cycles[currentCycleId - 1].rewardBalances[token];
+        synced = governorBalance >= unclaimedReserve ? governorBalance - unclaimedReserve : 0;
     }
 
     /**

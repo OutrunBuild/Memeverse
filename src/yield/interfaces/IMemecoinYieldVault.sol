@@ -38,10 +38,10 @@ interface IMemecoinYieldVault is IERC20 {
     ///      permanent virtual buffer used to dampen exchange-rate inflation.
     /// @param name Share token name.
     /// @param symbol Share token symbol.
-    /// @param yieldDispatcher Address allowed to re-accumulate remote yield.
+    /// @param yieldDispatcher Address treated as the canonical remote-yield source.
     /// @param asset Underlying memecoin address.
     /// @param verseId Verse id associated with this vault.
-    /// @param virtualAssets Permanent virtual buffer V added symmetrically to the share/asset sides of every
+    /// @param virtualAssets Permanent virtual buffer added symmetrically to the share/asset sides of every
     ///        conversion; sized by the launcher at 0.7% of the minimum main-pool memecoin provision.
     function initialize(
         string calldata name,
@@ -108,6 +108,9 @@ interface IMemecoinYieldVault is IERC20 {
     error MaxRedeemRequestsReached();
 
     error RedeemAmountOverflowed(uint256 assets);
+
+    /// @dev totalAssets must stay representable in the governance asset checkpoint's uint208 storage.
+    error TotalAssetsOverflowed(uint256 totalAssets);
 
     error NotSelfRedemption();
 

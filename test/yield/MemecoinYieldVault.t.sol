@@ -610,6 +610,27 @@ contract MemecoinYieldVaultTest is Test {
         );
     }
 
+    /// @notice A no-code (EOA/empty contract) `dispatcher` reverts OPAQUELY at the vault's abi.decode — not
+    ///         `ComposeSettlementFailed`.
+    /// @dev Pins the documented class claim (operations.md §3.13 / reAccumulateYields comment): a recovery caller
+    ///      who mistakes the dispatcher for an EOA/empty contract gets EMPTY revert data, not any named error —
+    ///      the sibling of the dirty-high-bits class above. `ComposeSettlementFailed` is only reachable when the
+    ///      dispatcher HAS code and returns a zero amount. vm.expectRevert(bytes("")) is exact for empty revert
+    ///      data in this Foundry version (a named error fails the expectation), so the form is load-bearing.
+    function testReAccumulateYieldsNoCodeDispatcherRevertsOpaque() external {
+        MockComposeAsset composeAsset = new MockComposeAsset();
+        (MemecoinYieldVault composeVault,,) = _deployComposeVaultWithDispatcher(address(composeAsset));
+
+        bytes32 guid = keccak256("compose-guid");
+        bytes memory message = _buildMemecoinComposeMessage(address(composeVault), 5 ether);
+
+        // The vault gates pass (message is well-formed), then the high-level call to the code-less address
+        // succeeds with empty returndata and the strict decode of the uint256 return reverts with EMPTY revert
+        // data — pinning that this class does NOT revert ComposeSettlementFailed (or any named error).
+        vm.expectRevert(bytes(""));
+        composeVault.reAccumulateYields(address(0xE0A), guid, message);
+    }
+
     /// @notice A zero-amount 120-byte frame reverts `ZeroInput` before the tuple-shape guard runs.
     /// @dev Pins the guard order in `settlePendingCompose`: `require(amount != 0, ZeroInput())` precedes the
     ///      `composeMsg.length >= 64` guard, so a short-tuple frame with amountLD = 0 fails `ZeroInput` — NOT
@@ -784,6 +805,48 @@ contract MemecoinYieldVaultTest is Test {
         vm.prank(ATTACKER);
         vm.expectRevert(abi.encodeWithSelector(IMemecoinYieldVault.RedeemAmountOverflowed.selector, previewAssets));
         overflowVault.requestRedeem(type(uint128).max, ATTACKER);
+    }
+
+    /// @notice Yield pushing totalAssets past type(uint208).max reverts the named TotalAssetsOverflowed error
+    ///         instead of SafeCast's opaque overflow revert in the governance checkpoint write.
+    /// @dev F-109 defense-in-depth: the asset checkpoint stores uint208, so the new require in _accumulateYield
+    ///      pins the bound. Seed shares first (else the yield would hit the burn-on-empty branch), pin totalAssets
+    ///      at the cap via vm.store, then a 1-wei yield increments past it and the require fires.
+    function test_AccumulateYieldsRevertsWhenTotalAssetsExceedsUint208() external {
+        vm.prank(ATTACKER);
+        vault.deposit(1, ATTACKER);
+        assertEq(vault.totalSupply(), 1, "fixture: shares outstanding so yield is absorbed, not burned");
+
+        // Slot 2 = totalAssets (regular storage, after yieldDispatcher and asset).
+        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(type(uint208).max)));
+
+        asset.mint(ATTACKER, 1 ether);
+        vm.prank(ATTACKER);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemecoinYieldVault.TotalAssetsOverflowed.selector, uint256(type(uint208).max) + 1)
+        );
+        vault.accumulateYields(1);
+    }
+
+    /// @notice A deposit pushing totalAssets past type(uint208).max reverts the named TotalAssetsOverflowed error
+    ///         before minting.
+    /// @dev Same uint208 bound as the yield path, enforced in _deposit before _mint. totalSupply and totalAssets
+    ///      are both pinned at the cap so the rate stays 1:1 and the 1-wei deposit maps to 1 share (bypassing the
+    ///      ZeroSharesDeposit rounding guard), then the increment crosses the bound and the require fires.
+    function test_DepositRevertsWhenTotalAssetsExceedsUint208() external {
+        // Slot 2 = totalAssets; ERC20_STORAGE_LOCATION + 2 = totalSupply (same slots as the uint192 overflow test).
+        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(type(uint208).max)));
+        vm.store(
+            address(vault),
+            bytes32(0xae36c519e2a406a79e4c05a9c40dc957f3757904fff7f6a4d18b68c3b12f9302),
+            bytes32(uint256(type(uint208).max))
+        );
+
+        vm.prank(ATTACKER);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemecoinYieldVault.TotalAssetsOverflowed.selector, uint256(type(uint208).max) + 1)
+        );
+        vault.deposit(1, ATTACKER);
     }
 
     /// @notice Verifies permit and delegateBySig consume the same nonce sequence on the vault.
@@ -1327,6 +1390,81 @@ contract MemecoinYieldVaultTest is Test {
         uint256 shares = vault.deposit(2, VICTIM);
 
         assertEq(shares, 1, "2 wei maps to 1 share at the fixture rate");
+    }
+
+    /// @notice Pins the F-144 round-trip loss in the residual state (S=0, A=500 wei, V=1): a 1000-wei
+    ///         deposit mints 1 share but redeems only 750 wei, leaving 250 wei ownerless in totalAssets.
+    /// @dev Both conversions are floor-floor mulDiv (MemecoinYieldVault.sol::_convertToShares /
+    ///      _convertToAssets). With S=0 and V=1 the pre-deposit rate is 1 share per 501 wei, so 1000 wei
+    ///      rounds down to 1 share and the rate jump to 2 shares per 1501 wei prices that share at 750 wei
+    ///      at redemption. The 250 wei gap stays in totalAssets with zero totalSupply, unredeemable by any
+    ///      share. ZeroSharesDeposit fires only when shares == 0, so the deposit succeeds here and does not
+    ///      bound this loss. The older "~1 wei round-trip loss" characterization holds only near rate == 1;
+    ///      F-144 pins the rate-scaled domain, so exact amounts (750/250) must break this test if the
+    ///      rounding semantics change.
+    function test_RoundTripLossInResidualState() external {
+        // Pin the exact F-144 state: virtualAssets at slot 4, totalAssets at slot 2, totalSupply at the
+        // ERC20 storage location (same slots as the uint192/uint208 overflow tests).
+        vm.store(address(vault), bytes32(uint256(4)), bytes32(uint256(1)));
+        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(500)));
+        vm.store(
+            address(vault),
+            bytes32(0xae36c519e2a406a79e4c05a9c40dc957f3757904fff7f6a4d18b68c3b12f9302),
+            bytes32(uint256(0))
+        );
+
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(1000, ATTACKER);
+        assertEq(shares, 1, "1000 wei maps to 1 share at the residual-state rate");
+        assertEq(vault.totalAssets(), 1500, "fixture: post-deposit assets");
+
+        vm.prank(ATTACKER);
+        uint256 queued = vault.requestRedeem(1, ATTACKER);
+        assertEq(queued, 750, "1 share redeems 750 wei at the post-deposit rate");
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(ATTACKER);
+        assertEq(vault.executeRedeem(), 750, "executeRedeem pays the queued 750 wei");
+
+        // 250 wei remains ownerless: zero supply means no share can ever redeem it.
+        assertEq(vault.totalSupply(), 0, "fixture: all shares burned");
+        assertEq(vault.totalAssets(), 750, "250 wei round-trip loss stays in totalAssets");
+    }
+
+    /// @notice Pins the F-144 round-trip loss in a high-rate state (S=1, A=1000 wei, V=1): a 1000-wei
+    ///         deposit mints 1 share but redeems only 667 wei, leaving 333 wei unredeemable.
+    /// @dev Rate-scaled counterpart of the residual-state pin: with rate 2 shares per 1001 wei the deposit
+    ///      maps to floor(1000 * 2 / 1001) = 1 share, and the post-deposit rate of 2 shares per 2001 wei
+    ///      prices that share at floor(2001 / 3) = 667 wei. Exact amounts (667/333) are asserted so any
+    ///      change to the floor-floor rounding or to conversion at post-deposit state breaks this test.
+    function test_RoundTripLossInHighRateState() external {
+        // Pin the exact F-144 state: virtualAssets at slot 4, totalAssets at slot 2, totalSupply at the
+        // ERC20 storage location.
+        vm.store(address(vault), bytes32(uint256(4)), bytes32(uint256(1)));
+        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(1000)));
+        vm.store(
+            address(vault),
+            bytes32(0xae36c519e2a406a79e4c05a9c40dc957f3757904fff7f6a4d18b68c3b12f9302),
+            bytes32(uint256(1))
+        );
+
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(1000, ATTACKER);
+        assertEq(shares, 1, "1000 wei maps to 1 share at the high-rate state");
+        assertEq(vault.totalAssets(), 2000, "fixture: post-deposit assets");
+
+        vm.prank(ATTACKER);
+        uint256 queued = vault.requestRedeem(1, ATTACKER);
+        assertEq(queued, 667, "1 share redeems 667 wei at the post-deposit rate");
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(ATTACKER);
+        assertEq(vault.executeRedeem(), 667, "executeRedeem pays the queued 667 wei");
+
+        // 333 wei of the deposit is unredeemable: it remains in totalAssets beyond the remaining
+        // share's value (floor(1 * 1334 / 2) = 667 wei of backing).
+        assertEq(vault.totalSupply(), 1, "fixture: one share remains");
+        assertEq(vault.totalAssets(), 1333, "333 wei round-trip loss stays in totalAssets");
     }
 
     /// @notice Verifies accumulateYields(0) leaves totalAssets and checkpoints unchanged.

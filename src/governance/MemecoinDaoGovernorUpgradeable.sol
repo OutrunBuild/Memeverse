@@ -90,8 +90,8 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
      * @dev Wires the OpenZeppelin governor mixins and stores the incentivizer address.
      * @param _name The governor's name exposed to off-chain tooling.
      * @param _token The vote token used for proposals and voting.
-     * @param _votingDelay Blocks between proposal creation and the start of voting.
-     * @param _votingPeriod Blocks for which voting remains open.
+     * @param _votingDelay Voting delay in governor clock units (seconds under the vault's timestamp clock).
+     * @param _votingPeriod Voting period in governor clock units (seconds under the vault's timestamp clock).
      * @param _proposalThreshold Minimum voting power required to propose.
      * @param _quorumNumerator Fractional quorum numerator for governance decisions.
      * @param _governanceCycleIncentivizer Address of the incentivizer that tracks cycle rewards.
@@ -140,17 +140,18 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         return super.votingPeriod();
     }
 
-    /// @notice Exposes the quorum required for a proposal snapshot at `blockNumber`.
-    /// @dev Delegates to the quorum-fraction extension configured during initialization.
-    /// @param blockNumber Snapshot block used for the quorum calculation.
+    /// @notice Exposes the quorum required for a proposal snapshot at `timepoint`.
+    /// @dev Delegates to the quorum-fraction extension configured during initialization. The governor clock is
+    ///      delegated to the vote token (yield vault), so `timepoint` is a timestamp, not a block number.
+    /// @param timepoint Snapshot timepoint (governor clock = vault timestamp) used for the quorum calculation.
     /// @return Required quorum amount.
-    function quorum(uint256 blockNumber)
+    function quorum(uint256 timepoint)
         public
         view
         override(GovernorUpgradeable, GovernorVotesQuorumFractionUpgradeable)
         returns (uint256)
     {
-        return Math.max(super.quorum(blockNumber), memecoinDaoGovernorStorage._minQuorum);
+        return Math.max(super.quorum(timepoint), memecoinDaoGovernorStorage._minQuorum);
     }
 
     /// @notice Exposes the minimum voting power required to create a proposal.
@@ -190,9 +191,11 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         return memecoinDaoGovernorStorage._maxTreasurySpendRatio;
     }
 
-    /// @notice Returns the vote ratio required for proposals that include a Governor self-call.
-    /// @dev The ratio is expressed in basis points with denominator 10000. It applies when any proposal target is
-    ///      this Governor and compares `forVotes / (forVotes + againstVotes + abstainVotes)`.
+    /// @notice Returns the vote ratio required for proposals that target the Governor (self-call) or the paired
+    ///         incentivizer.
+    /// @dev The ratio is expressed in basis points with denominator 10000. It applies when any proposal target is this
+    ///      Governor (a self-call) or the paired governance cycle incentivizer, and compares
+    ///      `forVotes / (forVotes + againstVotes + abstainVotes)`.
     function upgradeSupermajorityRatio() external view returns (uint256) {
         return memecoinDaoGovernorStorage._upgradeSupermajorityRatio;
     }
@@ -337,15 +340,18 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         uint256 targetsLength = targets.length;
         memecoinDaoGovernorStorage._executionOperationCount = targetsLength;
 
-        // Layer 4: self-call requires supermajority
-        bool isSelfCall = false;
+        // Layer 4: a governor self-call OR an incentivizer target both require the upgrade supermajority. The
+        // incentivizer is gated because a swapped implementation can move governor treasury via disburseReward,
+        // bypassing the per-execution treasury cap that only runs inside this function.
+        address incentivizer = address(memecoinDaoGovernorStorage._governanceCycleIncentivizer);
+        bool requiresUpgradeSupermajority = false;
         for (uint256 i = 0; i < targetsLength; ++i) {
-            if (targets[i] == address(this)) {
-                isSelfCall = true;
+            if (targets[i] == address(this) || targets[i] == incentivizer) {
+                requiresUpgradeSupermajority = true;
                 break;
             }
         }
-        if (isSelfCall) {
+        if (requiresUpgradeSupermajority) {
             (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = proposalVotes(proposalId);
             uint256 totalVotes = forVotes + againstVotes + abstainVotes;
             require(

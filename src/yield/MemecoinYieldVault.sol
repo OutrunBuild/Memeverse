@@ -31,9 +31,16 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     ///      `to` field, never here.
     address public yieldDispatcher;
     address public asset;
+    /// @dev Total managed assets. Implicit upper bound type(uint208).max: the governance asset checkpoint stores
+    ///      uint208 (OutrunVotesInit), so the TotalAssetsOverflowed require in _accumulateYield/_deposit keeps it
+    ///      representable — practically unreachable given the launcher-gated memecoin supply. Residual boundary: a
+    ///      single increment of 2^256 − totalAssets or more panics at the checked addition before the require runs
+    ///      (Panic(0x11)), so TotalAssetsOverflowed covers overshoots below that threshold only; the gap is ~48
+    ///      orders of magnitude beyond the 2^208 bound and unreachable, documented so error-name monitoring knows
+    ///      the boundary.
     uint256 public totalAssets;
     uint256 public verseId;
-    /// @dev Permanent virtual buffer V used by the share/asset conversion helpers. Set once at
+    /// @dev Permanent virtual buffer used by the share/asset conversion helpers. Set once at
     ///      initialization; sized by the launcher at 0.7% of the minimum main-pool memecoin provision.
     uint256 public virtualAssets;
 
@@ -47,7 +54,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     /// @param _yieldDispatcher Address treated as the canonical remote-yield source.
     /// @param _asset Underlying memecoin address.
     /// @param _verseId Verse id associated with this vault.
-    /// @param _virtualAssets Permanent virtual buffer V. Must be non-zero so the `+V` conversion guards can
+    /// @param _virtualAssets Permanent virtual buffer. Must be non-zero so the `+virtualAssets` conversion guards can
     ///        never divide by zero and actually dampen the rate; sized by the launcher (spec §4).
     function initialize(
         string calldata _name,
@@ -119,7 +126,11 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     ///      plus the original compose `message`, reconstructable from the same `ComposeSent` log. `settlePendingCompose`
     ///      re-derives delivery against `composeQueue(token, dispatcher, guid, 0)`. This entry also verifies that the
     ///      message's inner receiver is this vault (revert `NotComposeBeneficiary`) and that the settlement released
-    ///      a non-zero amount (revert `ComposeSettlementFailed`).
+    ///      a non-zero amount (revert `ComposeSettlementFailed`). A no-code `dispatcher` (EOA/empty contract) is not
+    ///      pre-checked: the high-level call succeeds with empty returndata, so the strict `abi.decode` of the
+    ///      uint256 return reverts with EMPTY revert data — no named error, and error-name monitoring must not
+    ///      expect `ComposeSettlementFailed` for this class (operations.md §3.13; verify the address was sourced
+    ///      from the endpoint's `ComposeSent` event `to` field).
     /// @param dispatcher YieldDispatcher that the stuck compose was delivered to (ComposeSent `to`).
     /// @param guid LayerZero guid.
     /// @param message The original compose payload.
@@ -155,6 +166,10 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
             IMemecoin(asset).burn(yield);
         } else {
             totalAssets += yield;
+
+            // The governance asset checkpoint stores uint208; revert with a named error instead of SafeCast's
+            // SafeCastOverflowedUintDowncast revert if the bound is ever crossed (defense-in-depth, see totalAssets NatSpec).
+            require(totalAssets <= type(uint208).max, TotalAssetsOverflowed(totalAssets));
 
             _writeTotalAssetCheckpoint(totalAssets);
 
@@ -247,7 +262,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     function _convertToShares(uint256 assets, uint256 latestTotalAssets) internal view returns (uint256) {
-        // A permanent virtual buffer V (= virtualAssets = virtualSupply) is added symmetrically to the
+        // A permanent virtual buffer (`virtualAssets` = `virtualSupply`) is added symmetrically to the
         // share and asset sides. It dampens exchange-rate inflation from donations/yield because an
         // attacker must outlay ~V in unbacked assets to move the rate by 1 unit of share. See spec §4.
         return Math.mulDiv(assets, totalSupply() + virtualAssets, latestTotalAssets + virtualAssets);
@@ -261,6 +276,8 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     function _deposit(address sender, address receiver, uint256 assets, uint256 shares) internal {
         IERC20(asset).safeTransferFrom(sender, address(this), assets);
         totalAssets += assets;
+        // Same uint208 checkpoint bound as _accumulateYield; revert before minting (see totalAssets NatSpec).
+        require(totalAssets <= type(uint208).max, TotalAssetsOverflowed(totalAssets));
         _mint(receiver, shares);
 
         emit Deposit(sender, receiver, assets, shares);
@@ -274,7 +291,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @dev Converts raw past votes to asset-denominated using historical totalAssets checkpoint and the
-    ///      permanent virtual buffer V (spec §4).
+    ///      permanent virtual buffer (spec §4).
     function _convertPastVotes(uint256 rawPastVotes, uint256 rawPastTotalSupply, uint256 pastTotalAssets)
         internal
         view
@@ -286,7 +303,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @dev Converts raw past total supply to asset-denominated using historical totalAssets checkpoint and
-    ///      the permanent virtual buffer V (spec §4).
+    ///      the permanent virtual buffer (spec §4).
     function _convertPastTotalSupply(uint256 rawPastTotalSupply, uint256 pastTotalAssets)
         internal
         view

@@ -706,6 +706,9 @@ contract VaultGovernorIntegrationTest is Test {
     // Matches VIRTUAL_ASSETS in test/yield/MemecoinYieldVault.t.sol so asset-denominated vote
     // assertions stay comparable across the two suites.
     uint256 internal constant VIRTUAL_ASSETS = 100 ether;
+    uint256 internal constant FULL_MEMECOIN_SUPPLY = 1_000 ether;
+    uint256 internal constant PROPOSAL_THRESHOLD = FULL_MEMECOIN_SUPPLY / 50;
+    uint256 internal constant MIN_QUORUM = FULL_MEMECOIN_SUPPLY * 10 / 100;
 
     MemecoinDaoGovernorUpgradeable internal governor;
     MemecoinYieldVault internal vault;
@@ -719,7 +722,7 @@ contract VaultGovernorIntegrationTest is Test {
         vault = MemecoinYieldVault(Clones.clone(address(vaultImpl)));
         vault.initialize("Staked MEME", "sMEME", ATTACKER, address(asset), 1, VIRTUAL_ASSETS);
 
-        asset.mint(ATTACKER, 1_000 ether);
+        asset.mint(ATTACKER, FULL_MEMECOIN_SUPPLY);
         vm.prank(ATTACKER);
         asset.approve(address(vault), type(uint256).max);
 
@@ -735,10 +738,10 @@ contract VaultGovernorIntegrationTest is Test {
                     IVotes(address(vault)),
                     uint48(100), // votingDelay in seconds — governor adopts the vault's timestamp clock
                     uint32(100), // votingPeriod in seconds
-                    100 ether, // proposalThreshold
-                    10, // quorumNumerator (10 bp = 0.1%)
+                    PROPOSAL_THRESHOLD, // full-supply proposal threshold (2%)
+                    50, // quorumNumerator (50% of asset-denominated historical supply)
                     address(incentivizer),
-                    uint256(0), // minQuorum
+                    MIN_QUORUM, // full-supply minimum quorum floor (10%)
                     uint256(0), // bootstrapPeriod
                     uint256(1000), // maxTreasurySpendRatio
                     uint256(6000) // upgradeSupermajorityRatio
@@ -748,11 +751,9 @@ contract VaultGovernorIntegrationTest is Test {
         governor = MemecoinDaoGovernorUpgradeable(payable(address(proxy)));
     }
 
-    /// @notice A sub-threshold staker can propose and reach quorum after yield lifts votes over the threshold.
-    /// @dev 60 raw shares are below the 100-ether threshold; under V=100, yielding 60 only lifts
-    ///      asset-denominated votes to 82.5 (60 * (120+100)/(60+100)), still below 100. So yield 200 lifts
-    ///      votes to 60 * (260+100)/(60+100) = 135 via the vault's IVotes views, which the governor reads at
-    ///      clock()-1. Pre-fix, votes stayed at raw 60 and propose reverted GovernorInsufficientProposerVotes.
+    /// @notice Yield can lift vault votes above the full-supply quorum floor.
+    /// @dev 60 raw shares start below the 100-ether quorum floor. Under V=100, yielding 200
+    ///      prices them at 60 * (260+100)/(60+100) = 135 asset-votes, so the full-supply floor is met.
     function testProposeAndQuorumSucceedAfterYieldLiftsVotes() external {
         vm.warp(1000);
         vm.prank(ATTACKER);
@@ -770,7 +771,7 @@ contract VaultGovernorIntegrationTest is Test {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _payload();
         vm.prank(ATTACKER);
         uint256 proposalId = governor.propose(targets, values, calldatas, "post-yield");
-        assertTrue(proposalId != 0, "propose succeeded once yield crossed threshold");
+        assertTrue(proposalId != 0, "propose succeeded once yield crossed the quorum floor");
 
         // Full lifecycle: vote reaches quorum and the proposal Succeeds.
         vm.warp(3101); // past proposalSnapshot (clock@propose + votingDelay = 3000 + 100)
@@ -783,22 +784,38 @@ contract VaultGovernorIntegrationTest is Test {
         );
     }
 
-    /// @notice Without yield, votes stay below threshold and propose reverts.
-    /// @dev Negative control: 60 shares price to 60 asset-votes at the 1:1 rate, below the 100 threshold.
+    /// @notice A small vault position stays below the full-supply proposal threshold.
+    /// @dev Negative control: 10 shares price to 10 asset-votes at the 1:1 rate, below the 20 threshold.
     function testProposeRevertsWhenVotesBelowThreshold() external {
+        vm.warp(1000);
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+        vm.prank(ATTACKER);
+        vault.delegate(ATTACKER);
+
+        vm.warp(1001); // clock()-1 = 1000 reads the deposit checkpoint (10 asset-votes)
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _payload();
+        vm.prank(ATTACKER);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IGovernor.GovernorInsufficientProposerVotes.selector, ATTACKER, 10 ether, PROPOSAL_THRESHOLD
+            )
+        );
+        governor.propose(targets, values, calldatas, "below-threshold");
+    }
+
+    /// @notice Production parameters remain anchored to the full memecoin supply.
+    function testProductionParametersKeepFullSupplyThresholds() external {
+        assertEq(governor.proposalThreshold(), PROPOSAL_THRESHOLD);
+
         vm.warp(1000);
         vm.prank(ATTACKER);
         vault.deposit(60 ether, ATTACKER);
         vm.prank(ATTACKER);
         vault.delegate(ATTACKER);
 
-        vm.warp(1001); // clock()-1 = 1000 reads the deposit checkpoint (60 asset-votes)
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _payload();
-        vm.prank(ATTACKER);
-        vm.expectRevert(
-            abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, ATTACKER, 60 ether, 100 ether)
-        );
-        governor.propose(targets, values, calldatas, "below-threshold");
+        vm.warp(1001);
+        assertEq(governor.quorum(1000), MIN_QUORUM);
     }
 
     function _payload()

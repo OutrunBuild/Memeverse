@@ -9,6 +9,7 @@ import {IGovernanceCycleIncentivizer} from "../../src/governance/interfaces/IGov
 import {GovernanceCycleIncentivizerUpgradeable} from "../../src/governance/GovernanceCycleIncentivizerUpgradeable.sol";
 import {MockIncentivizerGovernor} from "../mocks/governance/GovernanceMocks.sol";
 import {ReentrantRewardToken} from "../mocks/governance/ReentrantRewardToken.sol";
+import {ReentrantBalanceOfToken} from "../mocks/governance/ReentrantBalanceOfToken.sol";
 import {GovernanceCycleIncentivizerUpgradeableV2} from "../mocks/upgrade/GovernanceCycleIncentivizerUpgradeableV2.sol";
 
 contract GovernanceCycleIncentivizerUpgradeableTest is Test {
@@ -44,7 +45,7 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         bytes32 cycleSlot = bytes32(uint256(0x99c67075de64491849821c50466dd705dae8bfdda77a190b7f78ed5af150e100));
         bytes32 cycleBefore = vm.load(address(governedIncentivizer), cycleSlot);
         // _rewardRatio is the low 128 bits of the packed slot (_currentCycleId occupies the high 128 bits);
-        // the initializer seeds it to 5000.
+        // the initializer seeds it to 2500.
         uint128 expectedRewardRatio = uint128(uint256(cycleBefore));
 
         vm.prank(OTHER);
@@ -84,7 +85,7 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         ) = incentivizer.metaData();
 
         assertEq(currentCycleId, 1);
-        assertEq(rewardRatio, 5000);
+        assertEq(rewardRatio, 2500);
         assertEq(governorAddress, address(governor));
         assertEq(treasuryTokenList.length, 1);
         assertEq(treasuryTokenList[0], address(tokenA));
@@ -115,6 +116,9 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         vm.startPrank(address(governor));
         incentivizer.registerTreasuryToken(address(tokenB));
         incentivizer.registerRewardToken(address(tokenA));
+        // Registration seeded tokenB's ledger from the governor-held 40 ether; custody must grow by the
+        // same amount before the income is booked so the fixture ledger matches custody (G = T).
+        tokenB.mint(address(governor), 40 ether);
         incentivizer.recordTreasuryIncome(address(tokenA), 100 ether);
         incentivizer.recordTreasuryIncome(address(tokenB), 40 ether);
         incentivizer.accumCycleVotes(address(this), 100);
@@ -136,14 +140,14 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         assertEq(rewardTokens.length, 1);
         assertEq(rewards.length, 1);
         assertEq(rewardTokens[0], address(tokenA));
-        assertEq(rewards[0], 50 ether);
+        assertEq(rewards[0], 25 ether);
 
         (address[] memory remainingTokens, uint256[] memory remainingRewards) =
             incentivizer.getRemainingClaimableRewards();
         assertEq(remainingTokens.length, 1);
         assertEq(remainingRewards.length, 1);
         assertEq(remainingTokens[0], address(tokenA));
-        assertEq(remainingRewards[0], 50 ether);
+        assertEq(remainingRewards[0], 25 ether);
     }
 
     /// @notice Test governance registration guards and token lists.
@@ -193,6 +197,48 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         vm.prank(address(governor));
         vm.expectRevert(IGovernanceCycleIncentivizer.OutOfMaxTokensLimit.selector);
         incentivizer.registerTreasuryToken(address(overflowToken));
+    }
+
+    /// @notice Test treasury registration seeds the ledger from governor custody, not incentivizer-held tokens.
+    function testRegisterTreasuryTokenExcludesIncentivizerHeldBalanceFromLedger() external {
+        tokenB.mint(address(incentivizer), 100 ether);
+
+        vm.prank(address(governor));
+        incentivizer.registerTreasuryToken(address(tokenB));
+
+        assertEq(incentivizer.getTreasuryBalance(1, address(tokenB)), 0);
+    }
+
+    /// @notice Test treasury registration seeds the ledger with the governor-held balance when no reward reserve exists.
+    function testRegisterTreasuryTokenSeedsLedgerWithGovernorBalanceWhenNoRewardReserve() external {
+        tokenB.mint(address(governor), 100 ether);
+
+        vm.prank(address(governor));
+        incentivizer.registerTreasuryToken(address(tokenB));
+
+        assertEq(incentivizer.getTreasuryBalance(1, address(tokenB)), 100 ether);
+    }
+
+    /// @notice Test re-registering a treasury token seeds the ledger minus the previous cycle reward reserve.
+    function testReRegisterTreasuryTokenSeedsLedgerMinusPreviousCycleRewardReserve() external {
+        tokenB.mint(address(governor), 100 ether);
+        vm.startPrank(address(governor));
+        incentivizer.registerTreasuryToken(address(tokenB));
+        incentivizer.registerRewardToken(address(tokenB));
+        incentivizer.accumCycleVotes(address(this), 100);
+        vm.stopPrank();
+
+        // Finalizing splits the 100 ether seeded ledger 75/25: 25 ether reward reserve (R) is parked in
+        // cycle 1 while the governor still holds the full 100 ether (G).
+        vm.warp(block.timestamp + incentivizer.CYCLE_DURATION());
+        incentivizer.finalizeCurrentCycle();
+
+        vm.prank(address(governor));
+        incentivizer.unregisterTreasuryToken(address(tokenB));
+        vm.prank(address(governor));
+        incentivizer.registerTreasuryToken(address(tokenB));
+
+        assertEq(incentivizer.getTreasuryBalance(2, address(tokenB)), 75 ether);
     }
 
     /// @notice Test register reward token rejects zero input and duplicate token.
@@ -296,6 +342,116 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         incentivizer.recordTreasuryAssetSpend(address(tokenA), OTHER, 1 ether);
     }
 
+    // testSyncTreasuryBalanceRequiresGovernance removed: syncTreasuryBalance is now permissionless
+    // (see test/governance/SyncTreasuryBalancePermissionless.t.sol for permissionless coverage).
+
+    /// @notice Test sync treasury balance rejects zero input and unregistered tokens.
+    function testSyncTreasuryBalanceRejectsZeroInputAndUnregisteredToken() external {
+        vm.prank(address(governor));
+        vm.expectRevert(IGovernanceCycleIncentivizer.ZeroInput.selector);
+        incentivizer.syncTreasuryBalance(address(0));
+
+        vm.prank(address(governor));
+        vm.expectRevert(IGovernanceCycleIncentivizer.NonTreasuryToken.selector);
+        incentivizer.syncTreasuryBalance(address(tokenB));
+    }
+
+    /// @notice Test sync credits a direct governor donation into the current cycle ledger.
+    function testSyncTreasuryBalanceCreditsDirectGovernorDonation() external {
+        tokenA.mint(address(governor), 100 ether);
+
+        vm.prank(address(governor));
+        incentivizer.syncTreasuryBalance(address(tokenA));
+
+        assertEq(incentivizer.getTreasuryBalance(1, address(tokenA)), 100 ether);
+    }
+
+    /// @notice Test sync subtracts the previous cycle unclaimed reward reserve from the synced ledger.
+    function testSyncTreasuryBalanceSubtractsPreviousCycleRewardReserve() external {
+        tokenA.mint(address(governor), 100 ether);
+        vm.startPrank(address(governor));
+        incentivizer.registerRewardToken(address(tokenA));
+        incentivizer.recordTreasuryIncome(address(tokenA), 100 ether);
+        incentivizer.accumCycleVotes(address(this), 100);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + incentivizer.CYCLE_DURATION());
+        incentivizer.finalizeCurrentCycle();
+
+        // A direct donation to the governor after finalization bypasses the ledger; sync books it
+        // net of the 25 ether cycle-1 reward reserve: 130 - 25 = 105.
+        tokenA.mint(address(governor), 30 ether);
+
+        vm.prank(address(governor));
+        incentivizer.syncTreasuryBalance(address(tokenA));
+
+        assertEq(incentivizer.getTreasuryBalance(2, address(tokenA)), 105 ether);
+    }
+
+    /// @notice Test sync saturates the ledger to zero when the reward reserve exceeds governor custody.
+    function testSyncTreasuryBalanceSaturatesToZeroWhenReserveExceedsGovernorBalance() external {
+        tokenA.mint(address(governor), 100 ether);
+        vm.startPrank(address(governor));
+        incentivizer.registerRewardToken(address(tokenA));
+        incentivizer.recordTreasuryIncome(address(tokenA), 100 ether);
+        incentivizer.accumCycleVotes(address(this), 100);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + incentivizer.CYCLE_DURATION());
+        incentivizer.finalizeCurrentCycle();
+
+        // The governor spends custody down to 20 ether, below the 25 ether unclaimed reward reserve.
+        vm.prank(address(governor));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        tokenA.transfer(OTHER, 80 ether);
+
+        vm.prank(address(governor));
+        incentivizer.syncTreasuryBalance(address(tokenA));
+
+        assertEq(incentivizer.getTreasuryBalance(2, address(tokenA)), 0);
+    }
+
+    /// @notice Test sync emits the treasury balance synced event with the cycle, token, and synced balance.
+    function testSyncTreasuryBalanceEmitsEvent() external {
+        tokenA.mint(address(governor), 100 ether);
+
+        // Full-field expectation: cycle, token, and synced balance must all match the ledger write.
+        vm.expectEmit();
+        emit IGovernanceCycleIncentivizer.TreasuryBalanceSynced(1, address(tokenA), 100 ether);
+        vm.prank(address(governor));
+        incentivizer.syncTreasuryBalance(address(tokenA));
+
+        assertEq(incentivizer.getTreasuryBalance(1, address(tokenA)), 100 ether);
+    }
+
+    /// @notice Test a balanceOf that mutates state cannot reenter during sync.
+    /// @dev The governor custody read goes through the view-qualified IERC20.balanceOf, which compiles to
+    /// STATICCALL. The mock's balanceOf attempts an SSTORE (clearing its reenter switch) before any finalize
+    /// callback, so the whole sync must revert: the view declaration itself makes reentrant state mutation
+    /// impossible. Do not remove the view qualifier to "support" this scenario.
+    function testSyncTreasuryBalanceRevertsWhenTokenBalanceReadMutatesState() external {
+        ReentrantBalanceOfToken reentrantToken = new ReentrantBalanceOfToken();
+        reentrantToken.mint(address(governor), 100 ether);
+        reentrantToken.setIncentivizer(address(incentivizer));
+
+        // Register with the switch off so the registration seed read succeeds.
+        vm.prank(address(governor));
+        incentivizer.registerTreasuryToken(address(reentrantToken));
+
+        vm.warp(block.timestamp + incentivizer.CYCLE_DURATION() + 1);
+        reentrantToken.setReenter(true);
+
+        vm.expectRevert();
+        vm.prank(address(governor));
+        incentivizer.syncTreasuryBalance(address(reentrantToken));
+
+        // The reentrant finalize never ran: the cycle is untouched and the ledger still holds the
+        // 100 ether seed booked at registration.
+        assertEq(incentivizer.currentCycleId(), 1);
+        assertEq(incentivizer.getTreasuryBalance(1, address(reentrantToken)), 100 ether);
+        assertFalse(reentrantToken.callbackAttempted());
+    }
+
     /// @notice Test finalize current cycle distributes rewards and starts next cycle.
     function testFinalizeCurrentCycleDistributesRewardsAndStartsNextCycle() external {
         tokenA.mint(address(governor), 100 ether);
@@ -311,9 +467,9 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         incentivizer.finalizeCurrentCycle();
 
         assertEq(incentivizer.currentCycleId(), 2);
-        assertEq(incentivizer.getClaimableReward(address(0x1), address(tokenA)), 20 ether);
-        assertEq(incentivizer.getClaimableReward(address(0x2), address(tokenA)), 30 ether);
-        assertEq(incentivizer.getTreasuryBalance(2, address(tokenA)), 50 ether);
+        assertEq(incentivizer.getClaimableReward(address(0x1), address(tokenA)), 10 ether);
+        assertEq(incentivizer.getClaimableReward(address(0x2), address(tokenA)), 15 ether);
+        assertEq(incentivizer.getTreasuryBalance(2, address(tokenA)), 75 ether);
     }
 
     /// @notice Test finalize current cycle reverts before end and carries undistributed rewards forward.
@@ -373,15 +529,20 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
     }
 
     /// @notice Test claim reward distributes every registered reward token pro rata.
-    function testClaimRewardDistributesMultipleRewardTokensProRata() external {
+    function testClaimRewardDistributesMultipleTokensProRata() external {
         tokenA.mint(address(governor), 100 ether);
         tokenB.mint(address(governor), 200 ether);
 
         vm.startPrank(address(governor));
         incentivizer.registerRewardToken(address(tokenA));
+        // Registration seeds tokenB's ledger from the governor-held 200 ether, so income on top
+        // yields a 400 ether cycle treasury (seed 200 + recorded income 200).
         incentivizer.registerTreasuryToken(address(tokenB));
         incentivizer.registerRewardToken(address(tokenB));
         incentivizer.recordTreasuryIncome(address(tokenA), 100 ether);
+        // Matching custody growth for the booked income: seed 200 + income 200 with the governor
+        // holding 400 ether keeps the ledger consistent (G = T).
+        tokenB.mint(address(governor), 200 ether);
         incentivizer.recordTreasuryIncome(address(tokenB), 200 ether);
         incentivizer.accumCycleVotes(address(this), 40);
         incentivizer.accumCycleVotes(OTHER, 60);
@@ -393,16 +554,16 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         (address[] memory tokens, uint256[] memory rewards) = incentivizer.getClaimableReward(address(this));
         assertEq(tokens.length, 2);
         assertEq(rewards.length, 2);
-        assertEq(rewards[0], 20 ether);
+        assertEq(rewards[0], 10 ether);
         assertEq(rewards[1], 40 ether);
 
         uint256 tokenABefore = tokenA.balanceOf(address(this));
         uint256 tokenBBefore = tokenB.balanceOf(address(this));
         incentivizer.claimReward();
 
-        assertEq(tokenA.balanceOf(address(this)) - tokenABefore, 20 ether);
+        assertEq(tokenA.balanceOf(address(this)) - tokenABefore, 10 ether);
         assertEq(tokenB.balanceOf(address(this)) - tokenBBefore, 40 ether);
-        assertEq(incentivizer.getRemainingClaimableRewards(address(tokenA)), 30 ether);
+        assertEq(incentivizer.getRemainingClaimableRewards(address(tokenA)), 15 ether);
         assertEq(incentivizer.getRemainingClaimableRewards(address(tokenB)), 60 ether);
     }
 
@@ -412,8 +573,13 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         reentrantToken.mint(address(governor), 100 ether);
 
         vm.startPrank(address(governor));
+        // Registration seeds the ledger from the governor-held 100 ether, so income on top yields a
+        // 200 ether cycle treasury (seed 100 + recorded income 100) and a 50 ether reward pool.
         incentivizer.registerTreasuryToken(address(reentrantToken));
         incentivizer.registerRewardToken(address(reentrantToken));
+        // Matching custody growth for the booked income: seed 100 + income 100 leaves the governor
+        // holding 200 ether, so the 50 ether payout after finalize leaves 150 ether in custody.
+        reentrantToken.mint(address(governor), 100 ether);
         incentivizer.recordTreasuryIncome(address(reentrantToken), 100 ether);
         incentivizer.accumCycleVotes(address(reentrantToken), 100);
         vm.stopPrank();
@@ -429,7 +595,7 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         assertTrue(reentrantToken.callbackAttempted());
         assertFalse(reentrantToken.callbackSucceeded());
         assertEq(reentrantToken.balanceOf(address(reentrantToken)), 50 ether);
-        assertEq(reentrantToken.balanceOf(address(governor)), 50 ether);
+        assertEq(reentrantToken.balanceOf(address(governor)), 150 ether);
         assertEq(incentivizer.getUserVotesCount(address(reentrantToken), 1), 0);
         assertEq(incentivizer.getRemainingClaimableRewards(address(reentrantToken)), 0);
     }
@@ -451,7 +617,7 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         vm.warp(block.timestamp + incentivizer.CYCLE_DURATION());
         incentivizer.finalizeCurrentCycle();
 
-        uint256 rewardPool = income * 5000 / incentivizer.RATIO();
+        uint256 rewardPool = income * 2500 / incentivizer.RATIO();
         assertEq(
             incentivizer.getClaimableReward(address(this), address(tokenA)),
             rewardPool * userVotes / (userVotes + otherVotes)
@@ -475,11 +641,11 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         incentivizer.claimReward();
         uint256 afterBalance = tokenA.balanceOf(address(this));
 
-        assertEq(afterBalance - beforeBalance, 50 ether);
+        assertEq(afterBalance - beforeBalance, 25 ether);
         assertEq(incentivizer.getRemainingClaimableRewards(address(tokenA)), 0);
         assertEq(governor.lastRewardToken(), address(tokenA));
         assertEq(governor.lastRewardTo(), address(this));
-        assertEq(governor.lastRewardAmount(), 50 ether);
+        assertEq(governor.lastRewardAmount(), 25 ether);
     }
 
     /// @notice Test claim reward reverts without votes and supports partial rewards across users.
@@ -506,8 +672,8 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         incentivizer.claimReward();
         uint256 claimed = tokenA.balanceOf(address(this)) - before;
 
-        assertEq(claimed, 20 ether);
-        assertEq(incentivizer.getRemainingClaimableRewards(address(tokenA)), 30 ether);
+        assertEq(claimed, 10 ether);
+        assertEq(incentivizer.getRemainingClaimableRewards(address(tokenA)), 15 ether);
     }
 
     /// @notice Test claim reward clears votes even when rounded reward is zero.
@@ -546,8 +712,8 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         incentivizer.updateRewardRatio(10001);
 
         vm.prank(address(governor));
-        incentivizer.updateRewardRatio(2500);
+        incentivizer.updateRewardRatio(3000);
         (, uint128 rewardRatio,,,) = incentivizer.metaData();
-        assertEq(rewardRatio, 2500);
+        assertEq(rewardRatio, 3000);
     }
 }

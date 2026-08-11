@@ -172,6 +172,17 @@ interface IGovernanceCycleIncentivizer {
     function recordTreasuryAssetSpend(address token, address to, uint256 amount) external;
 
     /**
+     * @notice Reconciles the active cycle treasury ledger with the governor's actual token holdings.
+     * @dev Pure ledger action (no token transfer) callable by any account (permissionless); the synced
+     * value is deterministically derived from the governor's ERC20 balance and the previous cycle reward
+     * reserve, so it is not caller-controllable. Reads the governor's ERC20 balance itself, so no amount
+     * argument can be misbooked. Resets the cycle ledger to max(governorBalance -
+     * previousCycleUnclaimedRewardReserve, 0).
+     * @param token Treasury token address to reconcile.
+     */
+    function syncTreasuryBalance(address token) external;
+
+    /**
      * @notice Finalizes the current cycle and opens the next one.
      * @dev Settles reward pools, snapshots balances, and advances cycle id.
      */
@@ -259,6 +270,8 @@ interface IGovernanceCycleIncentivizer {
     event TreasuryAssetSpendRecorded(
         uint256 indexed cycleId, address indexed token, address indexed receiver, uint256 amount
     );
+
+    event TreasuryBalanceSynced(uint256 indexed cycleId, address indexed token, uint256 balance);
 
     event AccumCycleVotes(uint256 indexed cycleId, address indexed user, uint256 votes);
 

@@ -36,6 +36,23 @@
 
 失败要点：symbol 未解锁、uAsset 未支持、`msg.value` 不足、目标链 endpointId 未配置。`[代码已证]`
 
+#### 3.1.1 新 uAsset 冷启动（onboarding）
+
+新 uAsset 接入需要四个登记面，顺序敏感；统一入口为部署脚本 `MemeverseScript.s.sol::onboardUAsset`（代码轮实现，本 checklist 先定义顺序语义），脚本按 fail-closed 顺序写入并在每步后断言，任一漏配在部署/注册前失败，而不是用户注册时才 revert。
+
+1. launcher 面：`MemeverseLauncher.sol::setFundMetaData`（onlyOwner，入参校验 `ZeroInput` / `FundBasedAmountTooHigh` / `VirtualAssetsTooLow`）。漏配 → 注册路径 `MemeverseLaunchImpl.sol::registerMemeverse` 在 `fundMetaData.minTotalFund/fundBasedAmount` 为 0 时 revert `ZeroInput`，注册事务注册前 fail-fast。`[代码已证]`
+2. POLend 面：`POLend.sol::setMaxSettlementDustReserve`（onlyOwner；`maxReserve == 0` 被 setter 以 `ZeroInput` 拒绝，其"未配置"哨兵语义由 `POLend.sol::registerLendMarket` / `_debtCapacity` / `fundSettlementDustReserve` 复用，不存在"已配置但禁用"状态）。漏配 → `POLend.sol::registerLendMarket` revert `InvalidConfig`，该调用发生在 `MemeverseLaunchImpl.sol::registerMemeverse` 内 token 部署之后、同一条注册事务里，整笔事务（含已部署 token 克隆）原子回滚，可干净重试。`[代码已证]`
+3. 可选 credit 面：`GenesisCreditFactory.sol::deployCredit`（onlyOwner，per-uAsset CREATE3，同 uAsset 重复部署 revert）——仅启用 credit path 时执行。漏配 → `POLend.sol::leveragedGenesisWithCredit` revert `NoCreditForUAsset`，普通 genesis 路径不受影响。`[代码已证]`
+4. center 面（**最后**开启，完成标志）：`MemeverseRegistrationCenter.sol::setSupportedUAsset(uAsset, true)`（onlyOwner）。漏配 → 注册参数校验 `MemeverseRegistrationCenter.sol::_registrationParamValidation` 在 `supportedUAssets[uAsset]` 未配置时 revert `InvalidUAsset`，注册直接被拒；前三步 readiness 断言通过前不得开启。`[代码已证]`
+
+补充说明：
+
+- 四个面全是 onlyOwner setter，无任何自动接线，遗漏只能在部署/注册时暴露；注册事务是单事务原子回滚（token 克隆一并回滚），可干净重试，无残留状态。
+- 脚本 readiness 断言复用 canonical 对（UETH/UUSD）已验证的 `_requireFundMetaDataReady` / `_requireReserveReady` 语义，泛化到任意 uAsset；`setMaxSettlementDustReserve` 此前无任何脚本调用，是冷启动漏配的高发面。
+- credit 面（`deployCredit`）与费分发 revert 无因果：费分发要求的是治理 incentivizer 的 treasury token 登记（`GovernanceCycleIncentivizerUpgradeable.sol::recordTreasuryIncome` revert `NonTreasuryToken`），属独立第五个登记面，不在本 checklist 顺序内。
+- 18-dec 约束：credit path 只支持 `uAsset.decimals() == 18`（`deployCredit` revert `InvalidUAssetDecimals`）。
+- `setFundMetaData` 为全局活读配置：注册后可继续由 owner 调整，调整立即影响所有已注册未 `Locked`（Genesis 期）verse 的启动门槛、铸币比、V 缓冲与 POLend 杠杆上限（方向非单调：调高 `minTotalFund` 使 launch gate 变严但扩大杠杆上限）；变更前需评估 pending verse 影响。已 `Locked` verse 不受影响。
+
 ### 3.2 阶段推进（keeper 高频）
 
 入口：`MemeverseLauncher.changeStage(verseId)`。  
@@ -86,13 +103,13 @@
 
 ### 3.6 Swap/LP 运维配置
 
-- Hook owner 可改：`treasury`、protocol fee 币种支持、`launcher`、launch fee 衰减参数。
+- Hook owner 可改：`treasury`、protocol fee 币种支持、launch fee 衰减参数。
 - Hook owner 可通过 `setLpTokenImplementation` 替换 LP token 克隆模板，但替换仅影响后续新建的 pool。已部署 pool 的 LP token 是 EIP-1167 minimal proxy（clone），实现地址在部署时固化，无法迁移或升级。如果旧 LP 实现被发现漏洞，已部署池的 LP token 永久运行旧代码，只能引导流动性迁移到新池。这是 clone 模式的固有局限性，非 bug。`[代码已证]`
 - 公开 swap 始终使用正常费率路径：`feeBps = max(current launch fee, dynamic fee, FEE_BASE_BPS)`；dynamic fee 故障通过 `setFacet(DYNAMIC_FEE_FACET_ROLE, newAddr)` 升级/修复处理，不提供 bypass mode。`[代码已证]`
 - Launcher owner 配置 router / hook 时，会同时校验 `router.hook()==hook`、`hook.launcher()==launcher`、`hook.poolInitializer()==router`，配置不一致会直接拒绝；其中 `memeverseUniswapHook` 仅允许首次设置。`[代码已证]`
-- Hook owner 在配置完成后仍可 retarget `launcher`；这是接受的同一 trust boundary 内运维能力，不否定 set-time 三重校验的必要性。`[代码已证]`
+- `launcher` 由 hook `initialize` 一次性固化（initializer write-once），不可 retarget，与 set-time 三重校验共同保证 binding 一致。`[代码已证]`
 - `createPoolAndAddLiquidity(...)` 的 `onlyLauncher` 是有意设计；建池要求 `Launcher -> Router` 调用链，并要求 Hook 的 `poolInitializer` 授权 Router。部署或配置变更后必须复核：`launcher.memeverseSwapRouter()==router`、`launcher.memeverseUniswapHook()==hook`、`router.hook()==hook`、`hook.launcher()==launcher`、`hook.poolInitializer()==router`；`Genesis -> Locked` 建池前也会做 launch-time preflight 复核，避免配置漂移到运行建池时才失败。`[代码已证]`
-- Launcher pause 不会直接阻断 `changeStage(...)` 驱动的建池，因为 `changeStage(...)` 不是 `whenNotPaused`；但 Hook 的 `launcher` retarget 或 Router/Hook/Initializer 配置漂移会阻断后续新池创建。`[代码已证]`
+- Launcher pause 不会直接阻断 `changeStage(...)` 驱动的建池，因为 `changeStage(...)` 不是 `whenNotPaused`；但 Router/Hook/Initializer 配置漂移会阻断后续新池创建（`launcher` binding 由 initialize 固化，运行时不可偏离）。`[代码已证]`
 
 ### 3.7 POLend / POLSplitter 运维边界
 
@@ -106,10 +123,9 @@ reserve 是单向池：`POLend.sol::fundSettlementDustReserve` 只增、`POLend.
 
 ### 3.8 unlock 后固定保护窗口语义
 
-- 正常 `Locked -> Unlocked` 路径在 `launcher` binding 指向真实 Launcher proxy 时，由该 Launcher 为既有非零 ERC-20 池写入固定 24 小时的 `publicSwapResumeTime` 保护窗口；窗口内不开放普通公开 swap，运维与 keeper 优先支持退出/结算。
-- Hook owner 没有直接设置 resume time 的入口；但 owner 可将可变 `launcher` retarget 至受控地址，该 launcher 可覆写既有非零 ERC-20 池的 resume time：写 `0` 清除阻断，写过去或当前时间解除或缩短窗口，写未来时间延长窗口或阻断公开 swap。
-- 该覆写能力与 launcher retarget 同属 Hook owner trust boundary，不属于普通无权限调用者或普通 Swap fee 运维的暂停权限。
-- 若 `launcher` binding 被 retarget 至不同于真实 Launcher proxy 的地址，真实 Launcher 在保护时间写入处不满足 `onlyLauncher`，正常 `Locked -> Unlocked` 以 `Unauthorized` 整笔回滚；调用 `changeStage` 前必须恢复真实 Launcher binding。
+- 正常 `Locked -> Unlocked` 路径由 initialize 固化的绑定 Launcher 为既有非零 ERC-20 池写入固定 24 小时 `publicSwapResumeTime` 保护窗口；窗口内不开放普通公开 swap，运维与 keeper 优先支持退出/结算。
+- `launcher` 由 hook initialize 固化不可 retarget，resume time 写入仅正常 Locked→Unlocked 路径由真实 Launcher 执行。
+- launcher 由 initialize 固化，无 retarget 可能，无需恢复操作。
 
 ### 3.9 Proxy 升级操作步骤
 
@@ -478,6 +494,31 @@ cast call $GOVERNOR_PROXY "votingPeriod()(uint256)" --rpc-url $RPC
 cast call $GOVERNOR_PROXY "proposalThreshold()(uint256)" --rpc-url $RPC
 # 返回预期提案门槛，证明发起提案所需投票权正确。
 
+# 提案创建前：Governor 的 propose 使用 clock() - 1 做 proposer 门槛检查。
+GOVERNOR_CLOCK="$(cast call $GOVERNOR_PROXY "clock()(uint48)" --rpc-url $RPC --json | jq -r '.[0]')"
+PROPOSER_TIMEPOINT=$((GOVERNOR_CLOCK - 1))
+cast call $YIELD_VAULT "getPastVotes(address,uint256)(uint256)" $PROPOSER $PROPOSER_TIMEPOINT --rpc-url $RPC
+# 返回值必须不小于 proposalThreshold；这里使用 proposer timepoint，而非 proposal voting snapshot。
+
+# 提案已创建后，先把 proposal id 放入 PROPOSAL_ID，再读取它的投票 snapshot。
+: "${PROPOSAL_ID:?set PROPOSAL_ID to an existing proposal id}"
+PROPOSAL_SNAPSHOT="$(cast call $GOVERNOR_PROXY "proposalSnapshot(uint256)(uint256)" $PROPOSAL_ID --rpc-url $RPC --json | jq -r '.[0]')"
+CURRENT_CLOCK="$(cast call $GOVERNOR_PROXY "clock()(uint48)" --rpc-url $RPC --json | jq -r '.[0]')"
+if (( PROPOSAL_SNAPSHOT >= CURRENT_CLOCK )); then
+  printf 'proposal snapshot is not past: %s >= %s\n' "$PROPOSAL_SNAPSHOT" "$CURRENT_CLOCK" >&2
+  exit 1
+fi
+
+# 仅在 proposal snapshot 已成为 past timepoint 后查询 quorum 与历史总票基数。
+cast call $YIELD_VAULT "getPastTotalSupply(uint256)(uint256)" $PROPOSAL_SNAPSHOT --rpc-url $RPC
+# 返回值必须达到 Governor 的 quorum 下限；低于该值时动态 quorum 也会被固定 minQuorum 覆盖。
+
+cast call $GOVERNOR_PROXY "quorum(uint256)(uint256)" $PROPOSAL_SNAPSHOT --rpc-url $RPC
+# 确认实际 quorum（动态资产票权与固定全量供给下限的较大值）。
+
+# 部署后不按 vault 当前余额比例换算治理门槛。当前策略是完整 memecoin 供给提供安全分母、
+# vault 质押资产提供投票权；vault 票权达到门槛前，治理处于未准备状态。
+
 cast call $GOVERNOR_PROXY "governanceCycleIncentivizer()(address)" --rpc-url $RPC
 # 返回 Incentivizer proxy 地址，证明 Governor 指向正确的激励合约。
 
@@ -600,11 +641,41 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
 #### `deployCredit(uAsset, name, symbol, delegate)` 流程
 
 - owner-only；`uAsset != address(0)`。
+- `delegate != address(0)`：delegate 是 GenesisCredit 初始 owner / LayerZero admin delegate；零值调 `deployCredit` 直接 revert `ZeroDelegate()`（零 delegate 时构造链由 OZ Ownable v5 构造器零地址校验先于 OAppCore 触发 revert，入口校验保证 fail-fast 与清晰错误）。
 - `uAsset.decimals() == 18`：GenesisCredit 固定 18 decimals，credit path 要求 credit 与 `uAsset` 同 raw-unit 口径；非 18-dec `uAsset` 调 `deployCredit` 直接 revert `InvalidUAssetDecimals`，部署前运维必须核验该 `uAsset` decimals。
 - CREATE3 部署 GenesisCredit（ERC20+OFT），初始化 `name / symbol / delegate`。
 - 成功后返回（或可经 `creditOf(uAsset)` 读到）GenesisCredit 地址；同 `uAsset` 重复部署 revert（salt consumed）。
 - 部署后须把目标链设为 peer（OFT `setPeer`），否则跨链桥 revert。
 - OFT 精度决策：`decimals() = 18`（全链恒定，跨链不变）；`sharedDecimals()` 用默认 6，禁止覆写为 18（否则单笔跨链上限骤降到 18.4 单位）。
+
+#### 执行模板（cast）
+
+```bash
+# 1) 按需部署 per-uAsset GenesisCredit（GenesisCreditFactory owner 私钥）
+#    $CREDIT_FACTORY = 脚本部署输出，或 cast call $POLEND_PROXY "creditFactory()(address)" 读回
+#    name/symbol 取值：符号约定 "cr" + uAsset symbol（如 crUUSD）；$UASSET 必须 18-dec，
+#    非 18-dec revert InvalidUAssetDecimals；$DELEGATE = credit 初始 owner / LZ admin delegate
+#    （零地址会在 GenesisCredit 构造时 revert OwnableInvalidOwner(0)——OZ Ownable v5 先于
+#    LZ OAppCore 的 InvalidDelegate 检查触发；home 链上它就是 setMerkleRoot 操作方）
+cast send $CREDIT_FACTORY "deployCredit(address,string,string,address)" \
+  $UASSET "cr<SYMBOL>" "cr<SYMBOL>" $DELEGATE \
+  --rpc-url $RPC --private-key $FACTORY_OWNER_KEY
+
+# 部署后核验：creditOf(uAsset) 返回 GenesisCredit 地址（同 uAsset 重复部署 revert，salt consumed）
+cast call $CREDIT_FACTORY "creditOf(address)(address)" $UASSET --rpc-url $RPC
+
+# 2) 各链把本链 credit 的对端 peer 指向目标链实际 creditOf(localUAsset)（credit owner 私钥）
+#    $CREDIT_ADDR = 上一步本链 creditOf(localUAsset) 返回值；$REMOTE_EID = 目标链 LayerZero
+#    endpoint id（部署 env endpoints[chainid] 同名值，可 cast call <目标链 endpoint> "eid()(uint32)" 核验）；
+#    $REMOTE_CREDIT_ADDR = 目标链 creditOf(localUAsset) 实际地址（须在目标链部署该 uAsset credit
+#    后、用目标链 RPC 查询，cast call $REMOTE_CREDIT_FACTORY "creditOf(address)(address)" $UASSET；
+#    uAsset 跨链同址是部署前提、非合约强制——目标链 uAsset 地址不同时须改用目标链地址查询，
+#    否则返回 0 且 setPeer 到 bytes32(0) 等于删除 peer，运行时才 NoPeer 暴露），不得复用本链地址；
+#    A↔B 双向互通须两链各自执行一次 setPeer
+cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
+  $(cast to-bytes32 $REMOTE_CREDIT_ADDR) \
+  --rpc-url $RPC --private-key $CREDIT_OWNER_KEY
+```
 
 #### `homeChainEid` 部署参数护栏
 
@@ -614,8 +685,9 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
   2. 部署后链上复核：脚本 re-read factory 的 `homeChainEid()` 并 assert 等于 env 值（防构造参数打包/顺序错误，**不**防 env 本身填错）。
   3. 日志人工对照：脚本打印 `homeChainEid` 与 `localEid`（localEid 为 best-effort，无 fork simulate 时退化为 `<unavailable>`），运维据此判定 home/remote 关系。
 - 部署后人工对照（runbook）：home 链日志须 `homeChainEid == localEid`；remote 链日志须 `homeChainEid != localEid`。任一链不符合则立即停手，已部署 factory 作废重部。
-- 第二道防线（运维纪律）：`setMerkleRoot` 仅在 home 实例调用；远程实例 `merkleRoot` 恒为 `bytes32(0)`，即便门控因 `homeChainEid` 误配在远程成立，`claim` 路径对零 root 仍 revert `InvalidProof`。此纪律是 homechain-only claim 设计的隐式防线，不得破坏。
+- 第二道防线（运维纪律）：`setMerkleRoot` 仅在 home 实例调用；远程实例 `merkleRoot` 恒为 `bytes32(0)`，即便门控因 `homeChainEid` 误配在远程成立，`claim` 路径对零 root 仍 revert `InvalidProof`。此纪律是 homechain-only claim 设计的隐式防线，不得破坏。（`setMerkleRoot` 在 home 实例可重复调用；此纪律约束的是调用位置，不是调用次数。）
 - 部署路径唯一性：`GenesisCreditFactory` 必须仅经 `_deployGenesisCreditFactory` 部署，运维不得带外手动 `new GenesisCreditFactory(...)`——手动部署绕过上述全部护栏（单一来源 / re-check / 日志），会引入双铸风险。若因故必须带外部署，必须人工完成等价校验：构造参数 `homeChainEid_` 取规范 home eid、部署后 `cast call <factory> homeChainEid()` 核对、`cast call <endpoint> eid()` 对照 home/remote 关系。
+- 合约侧 fail-fast：factory 构造时 `homeChainEid_ == 0` 直接 revert `ZeroHomeChainEid`（immutable 零值会让该 factory 所有 credit 的 claim 恒 revert `NotHomeChain`，无链上修复手段，只能换新 factory + `POLend.setCreditFactory` 迁移）。脚本 `require(envEid != 0)`（`ZERO_HOME_CHAIN_EID`）之上再叠加合约防线。该合约防线仅覆盖零 eid 误配；非零但错误的 eid 仍须人工等价校验（见上条部署路径唯一性）。
 
 #### `setMerkleRoot` 配置
 
@@ -627,8 +699,14 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
 #### home 链运维要点
 
 - home 链是 Ethereum 主网；GenesisCredit 的 merkle claim 单点写入发生在这里。
-- 运维发布 merkle root 前必须核验链下快照（claimer 列表 + 分配额）正确性，root 一旦写入、credit 被 claim 后不可撤销。
+- 运维发布 merkle root 前必须核验链下快照（claimer 列表 + 分配额）正确性；已 claim 的 credit 不可撤销（合约无 clawback 路径），但 root 本身可由 home 链 owner 在 claim 发生后多次 `setMerkleRoot` 替换/清空（生命周期语义见下文）。
 - 目标链的 GenesisCredit 是 OFT 接收端，不持有可 claim 的 merkle root；用户在 home 链 claim 后把 token 经 OFT `send` 到目标链即可在目标链使用。
+- root 生命周期语义（与「写入一次」的直觉相反，均经代码核验）：
+  - `GenesisCredit.sol::setMerkleRoot` 可被 home 链 owner 任意多次调用（替换或清空为 `bytes32(0)`），无 one-shot 守卫、无链门控（`onlyOwner` 即全部限制）。
+  - 已 claim 用户永久锁定原分配：`claimed` 守卫先于 proof 校验（`GenesisCredit.sol::claim` 中 `require(claimed[msg.sender] == 0)` 先于 `MerkleProof.verifyCalldata`），即使新树给更大分配也无法补领。
+  - 未领取用户旧 proof 在新 root 下失效（孤儿化）；迁移路径 = 在新树中重新包含该用户，无协议内迁移机制。
+  - root 清空为 `bytes32(0)` 等于全局禁用剩余 claim（任何 proof 对零 root 恒 `InvalidProof`）；`MerkleRootSet` 事件无旧值参数（`IGenesisCredit` 事件签名仅 `bytes32 merkleRoot`），树版本追踪只能外部记录。
+  - 轮换属于正常运维操作（修正快照、扩展空投），勿按「写入一次」假设不可变。
 
 ### 3.13 跨链 compose 失败的人工重试（YieldDispatcher）
 
@@ -644,7 +722,7 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
   - 注：该条件可经 endpoint 的 `LzComposeAlert` 事件提前感知：`lzComposeAlert` 为公开 permissionless 入口，`reason` 字段携带失败原因字节——OOG 等耗尽型失败时被调帧 returndata 为空、`reason` 为 0x。该入口免许可、事件可被任意地址伪造，仅作告警信号，投递/失败证明仍以 composeQueue 哈希匹配 / `ComposeDelivered` 为准。
 - `settlePendingCompose` 调用过但交易 revert（如调用者给的 gas 不足），资金仍在 dispatcher
 - UASSET 路径：`receiveTreasuryIncome` 内部 `recordTreasuryIncome` 要求 token 已注册为 treasury token，分两种情况：
-  - 金额非零但 token 未注册 → revert `NonTreasuryToken`——配置时序问题，先完成 token 注册（治理路径）再重试，可恢复。**注意治理周期延迟**：`registerTreasuryToken` 为 `onlyGovernance`（`GovernanceCycleIncentivizerUpgradeable.sol`），唯一路径是治理提案；生产 governor 无 timelock extension、`votingDelay=1 days` + `votingPeriod=1 weeks`（`src/verse/deployment/MemeverseProxyDeployer.sol:188-189`），故从提交提案到执行完成需约 8 天。提案执行前 token 仍未注册（`_treasuryTokens[token]` 仍 false），此窗口内任何 settle 重试恒 revert `NonTreasuryToken`，属预期而非恢复失败——资金仍滞留 dispatcher、重试幂等可无限次执行（见下方「为什么失败后直接重试即可恢复」），须待提案执行完成后再重试
+  - 金额非零但 token 未注册 → revert `NonTreasuryToken`——配置时序问题，先完成 token 注册（治理路径）再重试，可恢复。**注意治理周期延迟**：`registerTreasuryToken` 为 `onlyGovernance`（`GovernanceCycleIncentivizerUpgradeable.sol`），唯一路径是治理提案；生产 governor 无 timelock extension、`votingDelay=1 days` + `votingPeriod=1 weeks`（`MemeverseProxyDeployer.sol::deployGovernorAndIncentivizer`），故从提交提案到执行完成需约 8 天。提案执行前 token 仍未注册（`_treasuryTokens[token]` 仍 false），此窗口内任何 settle 重试恒 revert `NonTreasuryToken`，属预期而非恢复失败——资金仍滞留 dispatcher、重试幂等可无限次执行（见下方「为什么失败后直接重试即可恢复」），须待提案执行完成后再重试
   - 零金额（amountLD=0）→ revert `ZeroInput`——settle 路径上该 revert 由 `YieldDispatcher.sol::settlePendingCompose` 自身的 `ZeroInput` 检查在到达 governor 前先抛出（`recordTreasuryIncome` 内同为 `ZeroInput` 先于 `NonTreasuryToken`，selector 一致），注册 token 无法修复；经 settle 不可收敛，但 lzCompose 路径经 `_settle` 零金额短路在到达 recordTreasuryIncome 前即收敛（收敛矩阵见下方边界条目）
 - MEMECOIN 路径：`accumulateYields` 因 gas/时序等外部原因失败
 
@@ -666,7 +744,7 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
   - 结算失败类（可解析、非零金额，但结算恒失败——消费守卫未覆盖、队列不收敛的自伤边界）：以下子类经 `lzCompose`/ `settlePendingCompose` 两入口结算恒失败——`_settle` revert 使 CEI 的 `Settled`/ `Released` 写入随整笔交易回滚、`composeStates` 恒 `None`、endpoint 队列槽永久停留 `keccak256(message)`（`ComposeDelivered` 永不触发、executor 重试恒失败），无任何恢复出口（settle 重跑同一 `_settle` 同 revert；协议不提供 owner 回收入口）——(d) 除外：槽位保持 `None`，治理侧修复 incentivizer 指针后重试可恢复，见下（governor 无指针 setter，修复途径为 onlyGovernance 的治理 UUPS 升级）；资金滞留 dispatcher：(a) 合约 receiver 有 code 但不实现 `accumulateYields`/ `receiveTreasuryIncome` 且无 fallback（如 receiver = memecoin token 自身）——`_settleToContract` 回调恒 revert（solc 0.8.x 语义：有 code、无匹配 selector、无 fallback 的调用 revert）；(b) EOA receiver + 无 caller-callable 单参 `burn(uint256)` 的 token（外部 uAsset 类）——EOA 分支 `IBurnable(token).burn(amount)` 恒 revert；(c) MEMECOIN 帧 receiver = 真实 vault 但 `asset()` ≠ 投递 token——绑定层拦截：`_settleToContract` MEMECOIN 分支在 approve 前 `require(IMemecoinYieldVault(receiver).asset() == token, TokenVaultMismatch())`（与 staker 同 selector），伪造 (fakeToken, realVault) 帧在资金移动前具名 revert（本轮 code writer 同步落地）；错误从拉取处 `ERC20InsufficientAllowance` 变为 approve 前 `TokenVaultMismatch`，绑定关闭该类、防御不再依赖"dispatcher 对该 vault 自身 asset 存在预存授权"的授权不变量。仍属结算失败/不收敛（本条首句 CEI 语义不变：revert 回滚 `Settled`、endpoint 队列不收敛）；(d) receiver = 真实 governor 但 `_governanceCycleIncentivizer` 指针损坏——`recordTreasuryIncome` 恒 revert（与"token 未注册"的 `NonTreasuryToken` 在重试流程中不可区分，但注册无法修复）。子类 (a)-(c) 仅自伤可达（协议发送端恒编码 governor/vault；持币人经 permissionless OFT `send` 自行构造），与畸形/零金额/自引用类同哲学：资金滞留 dispatcher 属接受的自伤边界，只能从发送端杜绝；(d) 的暴露帧与真实协议帧同构、仅在指针损坏前提下触发，修复路径是治理侧修复指针而非发送端杜绝。另注：与「超长帧类」条目的交集——>64 字节可解析帧若 receiver 属本类 (a)-(d)，兜底结算同样恒失败（超长帧可恢复性仅对结算成功类成立）。solc 0.8.x 高调 void 调用（`burn`/ `recordTreasuryIncome`）对无代码目标（EOA/address(0)/precompile/空 runtime）经 EXTCODESIZE 前置检查直接 revert（非静默 no-op）；仅「有 code 且 fallback 放行未知 selector」或空实现回调的目标静默成功（见下一条）。`[代码已证]`
   - fallback 吸收类（静默成功、零资金移动）：合约 receiver 有 code 且 fallback 放行未知 selector（或空实现回调），`_settleToContract` 的 approve+pull 回调"成功"返回但 receiver 从不 `transferFrom` 拉取 → dispatcher 照常 emit `OFTProcessed`/ `ComposeSettled`（burnedAtDispatcher=false）并终态化槽位（`Settled`/ `Released`），资金永久滞留 dispatcher、残留精确 allowance、无恢复出口——对账若按「false=已转账」会误判；`burnedAtDispatcher=false` 仅表示已发起 approve+pull，不保证实际拉取。EOA 分支同类：token 有 code 且 fallback 放行 `burn` selector（或空实现 burn）→ `burnedAtDispatcher=true` 假报、零销毁。仅自伤可达。`test/mocks/verse/AttackComposeToken.sol` 不再为此类实证：该 mock 的 `asset()` 恒为 `address(0)`，MEMECOIN 帧将其命名为 receiver 时在绑定处（approve 前）即被拦截（`asset()` 永不等于投递 token，revert `TokenVaultMismatch`），不达回调；吸收类现仅对 UASSET 帧（无绑定分支，receiver 为 no-op `receiveTreasuryIncome` 合约）或 `asset()` 自洽（`asset() == 投递 token`）的 absorbing 合约 receiver 实证。`[代码已证]`
   - 伪造帧事件语义：`ComposeSettled`/ `OFTProcessed` 的 `token` 键不保证是真实桥接 token——endpoint `MessagingComposer.sendCompose` 免许可、按 `msg.sender` 键控，任何人可写自己的队列槽；permissionless `settlePendingCompose` 对该槽仍可走通结算，但伪造 settle 成功仅当 MEMECOIN 帧的合约 receiver 分支满足绑定（receiver 为自洽假 vault：`asset() == 攻击者 token`、空回调 no-op，攻击者无需持有/桥接任何代币）——该分支 receiver 为真实 vault 或未实现 `asset()` 的合约时经绑定校验 revert（真实 vault 具名 `TokenVaultMismatch`；无 `asset()` 合约对该调用的空数据 revert），不再"任意攻击者 token + 空回调即可成功"；绑定只存在于 MEMECOIN 合约 receiver 分支，另两处例外仍可伪造成功（无资金移动、零影响、语义不变）：(a) EOA receiver 分支（receiver 无 code → `IBurnable(token).burn(amount)`，攻击者自有 token 实现 no-op `burn(uint256)` 时成功）；(b) UASSET 帧（假 governor 实现 no-op `receiveTreasuryIncome` 时成功）；可零成本伪造 `ComposeSettled(guid, 攻击者token, 自洽假vault, 任意amount, burnedAtDispatcher)`（amount 可至 `uint256.max`；无资金移动；真实槽不受影响——msg.sender 键控使攻击者无法在真实 token 键下写槽）。对账/告警须按已知 token 地址过滤该事件。`[代码已证]`
-  - receiver == address(0) 销毁类（EOA-burn 真实价值销毁，自伤，与 §3.13.1 staker 同帧 revert-pin 分叉）：当 composeMsg 的 receiver 解码为干净零 word（`_parseCompose` L170-172 放行：`0 >> 160 == 0`、parseable=true、enum 在范围、`0 ≠ address(this)` 故不进自引用守卫 L98）、金额非零时，`lzCompose`/`settlePendingCompose` 两入口均直达 `_settle` 的 EOA 分支（L215 `if (receiver.code.length == 0)`——EVM 中 `EXTCODESIZE(address(0)) == 0`，故 receiver=0 被当作普通 EOA）执行 `IBurnable(token).burn(amount)`（L216）。与上述「结算失败类 (b)」（EOA + 无 burn 的 token → burn revert）的区别：本类的 token 实现了 caller-callable 单参 `burn(uint256)`（memecoin），burn 成功而非 revert。amount>0 子档（销毁、总供应量 −X）：对 memecoin 触发真实销毁（`Memecoin.sol:48-50` `burn(amount)` → `_burn(msg.sender, amount)` → `_update(msg.sender, address(0), amount)`，`Transfer(to=0)`、跨链总供应量下降 X），槽位→`Settled`（lzCompose）/ `Released`（settle）、emit `OFTProcessed`/`ComposeSettled`（`burnedAtDispatcher=true`）、endpoint 状态机收敛（`ComposeDelivered`）——**与 §3.13.1 staker 同一自伤帧的语义相反**：staker 对 receiver=0 非零金额帧经零地址守卫 revert（fallback 分支 `_transferOut(memecoin,0,amount)` 触发 `ERC20InvalidReceiver`、vault 有 code 分支经 `ZeroSharesDeposit`/`ERC20InvalidReceiver`），CEI 回滚、资金滞留 staker 托管、总供应量不变、endpoint 队列 pin（不收敛）。即同一自伤帧在两 composer 呈现「销毁 vs 滞留」两种不可逆终态：dispatcher 销毁后无任何可对账的余额（资金从总供应量抹除、无恢复面），staker 滞留可对账余额但同样无 owner 回收入口。amount==0 子档（收敛、与 staker 一致）：`_settle` L214 零金额短路（`Settled` + emit `OFTProcessed(amount=0, burnedAtDispatcher=false)`、endpoint 收敛），与 §3.13.1 staker 零金额 × receiver=0 子档（fallback `TokenHelper.sol:39` 早退、vault `MemecoinYieldVault.sol:168` 早退、endpoint 收敛）行为一致。对账指引：dispatcher 侧 receiver=0 非零金额帧须结合底层 token `Transfer(to=0)` 与总供应量变化核对销毁，**不能按 §3.13.1 staker 的滞留语义去 dispatcher 余额找代币**（已被 burn、余额为 0、`burnedAtDispatcher=true`）。可达性：仅 permissionless OFT 直接 `send` 自伤（协议发送端 `MemeverseOmnichainInteroperation.memecoinStaking:87` guard `receiver != address(0)`、`MemeverseSettlementImpl` 恒编码 `verse.governor`/`verse.yieldVault`，正常用户路径不可达）。行为由 `testLzComposeBurnsZeroReceiver`（`test/verse/YieldDispatcher.t.sol:527`，断言 `lastBurnAmount()==amount`、`balanceOf(dispatcher)==0`）与 `testSettlePendingComposeBurnsForEoaReceiver`（同文件 :971）钉住。`[代码已证]`
+  - receiver == address(0) 销毁类（EOA-burn 真实价值销毁，自伤，与 §3.13.1 staker 同帧 revert-pin 分叉）：当 composeMsg 的 receiver 解码为干净零 word（`_parseCompose` 放行：`0 >> 160 == 0`、parseable=true、enum 在范围、`0 ≠ address(this)` 故不进`lzCompose` 的自引用守卫）、金额非零时，`lzCompose`/`settlePendingCompose` 两入口均直达 `_settle` 的 EOA 分支（`if (receiver.code.length == 0)`——EVM 中 `EXTCODESIZE(address(0)) == 0`，故 receiver=0 被当作普通 EOA）执行 `IBurnable(token).burn(amount)`。与上述「结算失败类 (b)」（EOA + 无 burn 的 token → burn revert）的区别：本类的 token 实现了 caller-callable 单参 `burn(uint256)`（memecoin），burn 成功而非 revert。amount>0 子档（销毁、总供应量 −X）：对 memecoin 触发真实销毁（`Memecoin.sol::burn` `burn(amount)` → `_burn(msg.sender, amount)` → `_update(msg.sender, address(0), amount)`，`Transfer(to=0)`、跨链总供应量下降 X），槽位→`Settled`（lzCompose）/ `Released`（settle）、emit `OFTProcessed`/`ComposeSettled`（`burnedAtDispatcher=true`）、endpoint 状态机收敛（`ComposeDelivered`）——**与 §3.13.1 staker 同一自伤帧的语义相反**：staker 对 receiver=0 非零金额帧经零地址守卫 revert（fallback 分支 `_transferOut(memecoin,0,amount)` 触发 `ERC20InvalidReceiver`、vault 有 code 分支经 `ZeroSharesDeposit`/`ERC20InvalidReceiver`），CEI 回滚、资金滞留 staker 托管、总供应量不变、endpoint 队列 pin（不收敛）。即同一自伤帧在两 composer 呈现「销毁 vs 滞留」两种不可逆终态：dispatcher 销毁后无任何可对账的余额（资金从总供应量抹除、无恢复面），staker 滞留可对账余额但同样无 owner 回收入口。amount==0 子档（收敛、与 staker 一致）：`_settle` 零金额短路（`Settled` + emit `OFTProcessed(amount=0, burnedAtDispatcher=false)`、endpoint 收敛），与 §3.13.1 staker 零金额 × receiver=0 子档（fallback `TokenHelper.sol::_transferOut` 早退、vault `MemecoinYieldVault.sol::deposit` 早退、endpoint 收敛）行为一致。对账指引：dispatcher 侧 receiver=0 非零金额帧须结合底层 token `Transfer(to=0)` 与总供应量变化核对销毁，**不能按 §3.13.1 staker 的滞留语义去 dispatcher 余额找代币**（已被 burn、余额为 0、`burnedAtDispatcher=true`）。可达性：仅 permissionless OFT 直接 `send` 自伤（协议发送端 `MemeverseOmnichainInteroperation.sol::memecoinStaking` guard `receiver != address(0)`、`MemeverseSettlementImpl` 恒编码 `verse.governor`/`verse.yieldVault`，正常用户路径不可达）。行为由 `YieldDispatcher.t.sol::testLzComposeBurnsZeroReceiver`（断言 `lastBurnAmount()==amount`、`balanceOf(dispatcher)==0`）与 `YieldDispatcher.t.sol::testSettlePendingComposeBurnsForEoaReceiver` 钉住。`[代码已证]`
 
 人工重试步骤：
 
@@ -674,7 +752,7 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
 
 1. 定位滞留 `message`：拉取目标链 endpoint 的 `ComposeSent` 事件（`to` = YieldDispatcher、`from` = asset OFT、`index` = 0），链下解码 data 区后按 `guid` 匹配，原样拷贝 `message` 字段（布局见 [docs/spec/interoperation/layerzero-oapp-oft.md §4](spec/interoperation/layerzero-oapp-oft.md)）。注意：`ComposeSent` 的 `guid`/`to`/`from`/`index` 字段均非 indexed，raw RPC `eth_getLogs` 无法按这些字段做 topic 过滤，只能按事件签名（topic0）拉取后在链下匹配 guid（或改用解码型索引器如 The Graph）。
 2. 以足够 gas 调用 `reAccumulateYields(dispatcher, guid, message)`（MEMECOIN，`dispatcher` 为步骤 1 中 ComposeSent 事件的 `to`）或 `YieldDispatcher.settlePendingCompose(asset, guid, message)`（通用）。两个入口均 permissionless（任何地址可调，结算目标由 message 编码决定，与调用者身份无关），且均**非 payable**——附带 `msg.value` 会 EVM 层 revert（无资金滞留，与步骤 4 的 payable `lzCompose` 风险 profile 不同）
-3. 成功信号：`ComposeSettled(guid, token, receiver, tokenType, amount, burnedAtDispatcher)`（`tokenType` 为消息解码的结算类型：MEMECOIN→vault / UASSET→governor）且 `composeStates[token][guid] == Released`；`burnedAtDispatcher=true` 表示 EOA receiver 分支执行了 burn 调用——实际销毁仅对实现 caller-callable 单参 `burn(uint256)` 的 token（memecoin）成立；对无单参 burn 的 uAsset 该分支恒 revert（事件不发，见上方「结算失败类」边界）；对 fallback 吸收型 token 可能静默成功而无销毁（burnedAtDispatcher=true 假报）。`false` 仅表示已发起 approve+pull 给合约 receiver（vault/governor），不保证实际拉取（fallback 吸收型 receiver 零移动）——对账时以此区分 burn 与转账，但 burnedAtDispatcher=false 仅表示 dispatcher 发起了转账动作：空 vault 的 MEMECOIN 结算在 vault 内部直接销毁（无 vault 事件），对账须结合底层 token Transfer(to=0) 核对销毁；失败则交易回滚、状态不变，查明原因（gas 不足 / token 未注册）后重试；`reAccumulateYields` 入口另有入口级失败：message 内层 receiver ≠ 本 vault → `NotComposeBeneficiary`；message <108 字节 → `ComposeMessageTooShort`；dispatcher 返回零金额（壳/空实现 dispatcher）→ `ComposeSettlementFailed`；dispatcher 无代码（EOA/空合约）→ 空数据 revert（无具名错误，核对地址是否取自 ComposeSent 事件 `to`）；误传 staker 地址：真实 staking message → `NotComposeBeneficiary`（内层 receiver=staking 用户 ≠ vault，入口门先触发）、yield message → `NotDelivered`（staker 队列槽空）；`NotBeneficiary` 仅直连 `OmnichainMemecoinStaker.settlePendingCompose` 时出现（§3.13.1）（特例：内层 receiver 恰为 vault 的 staking 帧会经 staker settle 裸转至 vault——staker 的 msg.sender==receiver 被 vault 自洽满足，金额限发送者自身 amountLD、资金惰性滞留 vault，属自伤类）
+3. 成功信号：`ComposeSettled(guid, token, receiver, tokenType, amount, burnedAtDispatcher)`（`tokenType` 为消息解码的结算类型：MEMECOIN→vault / UASSET→governor）且 `composeStates[token][guid] == Released`；`burnedAtDispatcher=true` 表示 EOA receiver 分支执行了 burn 调用——实际销毁仅对实现 caller-callable 单参 `burn(uint256)` 的 token（memecoin）成立；对无单参 burn 的 uAsset 该分支恒 revert（事件不发，见上方「结算失败类」边界）；对 fallback 吸收型 token 可能静默成功而无销毁（burnedAtDispatcher=true 假报）。`false` 仅表示已发起 approve+pull 给合约 receiver（vault/governor），不保证实际拉取（fallback 吸收型 receiver 零移动）——对账时以此区分 burn 与转账，但 burnedAtDispatcher=false 仅表示 dispatcher 发起了转账动作：空 vault 的 MEMECOIN 结算在 vault 内部直接销毁（无 vault 事件），对账须结合底层 token Transfer(to=0) 核对销毁；失败则交易回滚、状态不变，查明原因（gas 不足 / token 未注册）后重试；`reAccumulateYields` 入口另有入口级失败（按代码守卫执行序排列）：message <108 字节 → `ComposeMessageTooShort`；message 内层 receiver ≠ 本 vault → `NotComposeBeneficiary`；dispatcher 无代码（EOA/空合约）→ 空数据 revert（无具名错误，核对地址是否取自 ComposeSent 事件 `to`）；dispatcher 返回零金额（壳/空实现 dispatcher）→ `ComposeSettlementFailed`；误传 staker 地址：真实 staking message → `NotComposeBeneficiary`（内层 receiver=staking 用户 ≠ vault，入口门先触发）、yield message → `NotDelivered`（staker 队列槽空）；`NotBeneficiary` 仅直连 `OmnichainMemecoinStaker.settlePendingCompose` 时出现（§3.13.1）（特例：内层 receiver 恰为 vault 的 staking 帧会经 staker settle 裸转至 vault——staker 的 msg.sender==receiver 被 vault 自洽满足，金额限发送者自身 amountLD、资金惰性滞留 vault，属自伤类）
 4. 终态核验（可选但建议）：确认目标链 endpoint 的 `composeQueue` 槽位已收敛到 `RECEIVED_MESSAGE_HASH`（`ComposeDelivered` 事件已触发）——executor 若仍在重试窗口会自行收敛；若已放弃，任何人可用步骤 1 拷贝的 `message`（`index` = 0）调用 endpoint 的 `MessagingComposer.lzCompose`（permissionless、校验 `composeQueue[from][to][guid][index]` 与 `message` 哈希一致）驱动同一终态化，队列槽归位终态、executor 停止重试。调用时 `from` 传步骤 1 ComposeSent 事件的 `from`（资产 OFT 地址）、`to` 传 composer 地址（即步骤 1 的 `to` = YieldDispatcher）、`guid` 传步骤 1 匹配值、`index` = 0、`extraData` 传空——`from` 是校验键的一部分，误传非 OFT 地址会恒 revert `LZ_ComposeNotFound`。**调用时 `msg.value` 必须为 0**：`MessagingComposer.lzCompose` 为 payable 且把 `msg.value` 全额转发给 composer 的 payable `lzCompose`（`ILayerZeroComposer(_to).lzCompose{value: msg.value}`），而 `YieldDispatcher`/`OmnichainMemecoinStaker` 的 `lzCompose` 从不消费/退还 value、两合约均无 native 取回入口（无 receive/fallback/withdraw/sweep，协议不提供 onlyOwner 兜底）——误带或按 executor 惯例附带 value 将永久滞留 composer 余额。**此步骤仅当步骤 3 已成功（`composeStates==Released`）后执行**：若步骤 3 失败（`composeStates==None`）且失败原因已消除（如 UASSET token 完成治理注册），重驱动 endpoint `lzCompose` 会走**正常结算路径**（置 `Settled` + emit `OFTProcessed`、资金按 message 编码 receiver 释放、方向不变）而非仅收敛——`Settled` 为终态，此后步骤 2/3 的 settle 入口恒 revert `AlreadyResolved`，步骤 3 的 `Released`+`ComposeSettled` 成功判据永久不可达；该时序下应改回步骤 2/3 重试，勿直接执行本步骤。若重驱动 revert `LZ_ComposeNotFound`（`composeQueue` 槽已为 `RECEIVED_MESSAGE_HASH`，`keccak256(message) != RECEIVED`），表示槽已收敛到终态（已由 executor 或先前驱动执行），原子无害、无需再驱动。此步骤只补齐 endpoint 状态机终态，不改变资金结果（前提是不带 `msg.value` 且步骤 3 已成功；资金已在步骤 3 兜底结算释放）。
 
 边界：
@@ -715,13 +793,15 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
 
 跨 composer 判定：dispatcher 侧对内容可解析的 >64 帧两入口一致结算（尾部忽略，见 §3.13），staker 侧 `lzCompose` 保持 ==64 严格拒绝（CEI 回滚、槽 `None`、受益人可经 settle ≥32 恢复裸币）——跨 composer 判定不一致为有意保留（staker 建仓需 `(receiver, yieldVault)` 双字段；dispatcher 兜底=重跑正向完整结算），监控/对账须按 composer 区分可观测类：dispatcher >64 帧发 `OFTProcessed`/`ComposeSettled`，staker >64 帧 `lzCompose` revert `MalformedComposeMsg`（无事件、槽 `None`）。
 - 边界（部分拉取/0 拉取 vault，余量滞留自伤有界）：消息指名的 vault 在 deposit 内只拉取部分（或 0）金额但返回非零份额时，`lzCompose` 照常置 `Settled` 并 emit `OmnichainMemecoinStakingProcessed(guid, memecoin, yieldVault, receiver, amount)`——amount 为投递金额、不保证实际拉取额，对账须以 vault 侧余额/事件变动为准；未被拉取的余量滞留 staker 托管且无恢复出口（槽 `Settled` 封死 `settlePendingCompose` 的 `AlreadyResolved`）。staker 侧在 deposit 后已清零精确 approve 残留（`_safeApprove(..., 0)`），此类 vault 无法借残留额度事后盗取他人滞留资金；单笔拉取有界于该 compose 金额，vault 与 receiver 均为发送者自选（自伤自负，协议不设防），与「自引用帧」「receiver==0」同哲学。`[代码已证]`
-- 边界（receiver == address(0)，自伤永久锁死）：当某笔跨链 staking compose 的 `message` 内层 composeMsg 解码出的 `receiver` 恰为 `address(0)`（协议发送端 `MemeverseOmnichainInteroperation.memecoinStaking:86` 已 guard `receiver != address(0)`，故正常用户路径不可达；仅持币人经 permissionless OFT `send` 自行伪造 encode(address(0), vault) 的 composeMsg 才会进入 staker 队列，属自伤），该笔资金（非零金额帧）**零出口、永久滞留 staker 托管**：(1) `settlePendingCompose` 的 `require(msg.sender == receiver, NotBeneficiary())` 对 receiver=0 恒不可满足——EVM 中 `msg.sender` 永不为 `address(0)`，故该 auth 永久 revert；(2) 先声明：该断言仅对非零金额帧成立；amount > 0 子档：fallback 分支 `_transferOut(memecoin, 0, amount)` 经外部 `transfer(0)` 触发 `OutrunERC20Init._transfer` 零地址守卫（`ERC20InvalidReceiver`）；vault 有 code 分支 `deposit(amount, 0)` 先经 `_convertToShares`——金额映射 0 份额（大 vault + 尘额桥接）时先 revert `ZeroSharesDeposit`（先于零地址守卫），映射非零份额时才经 `_mint` 零账户守卫 revert `ERC20InvalidReceiver`。两类均整体回滚：跨链供应量从未减少、CEI `Settled` 写入回滚、guid 回 `None`、endpoint 无限重试恒 revert（不收敛）；amount == 0 子档：fallback 分支 `_transferOut(memecoin, 0, 0)` 在 TokenHelper.sol:39 早退（先于零地址守卫）、vault 有 code 且 `asset()` 匹配分支的 `deposit(0, address(0))` 在 MemecoinYieldVault.sol:168 早退（先于 `_convertToShares` 与 `_mint`）——两子路径均无资金移动、`Settled` 保留、emit `OmnichainMemecoinStakingProcessed`、endpoint 收敛 `ComposeDelivered`（与 §3.13 零金额收敛契约一致）；命名 `asset()` 不匹配真实 vault 的零金额 × receiver=0 帧仍先 revert `TokenVaultMismatch`（该守卫无金额检查、先于 deposit）、CEI 回滚不收敛；链下监控对零金额 × receiver=0 帧（vault 无 code 或 `asset()` 匹配子档）应归零金额收敛类，不应按本条目矩阵判「永久锁死」；(3) 与畸形 composeMsg 自伤边界（上一条）同源，协议**不为此提供 onlyOwner 回收入口**。唯一恢复路径是从发送端杜绝：用户经 `memecoinStaking` 正常入口发送时 `receiver != address(0)` 已被 guard，不会触发。`[代码已证]`
+- 边界（receiver == address(0)，自伤永久锁死）：当某笔跨链 staking compose 的 `message` 内层 composeMsg 解码出的 `receiver` 恰为 `address(0)`（协议发送端 `MemeverseOmnichainInteroperation.sol::memecoinStaking` 已 guard `receiver != address(0)`，故正常用户路径不可达；仅持币人经 permissionless OFT `send` 自行伪造 encode(address(0), vault) 的 composeMsg 才会进入 staker 队列，属自伤），该笔资金（非零金额帧）**零出口、永久滞留 staker 托管**：(1) `settlePendingCompose` 的 `require(msg.sender == receiver, NotBeneficiary())` 对 receiver=0 恒不可满足——EVM 中 `msg.sender` 永不为 `address(0)`，故该 auth 永久 revert；(2) 先声明：该断言仅对非零金额帧成立；amount > 0 子档：fallback 分支 `_transferOut(memecoin, 0, amount)` 经外部 `transfer(0)` 触发 `OutrunERC20Init.sol::_transfer` 零地址守卫（`ERC20InvalidReceiver`）；vault 有 code 分支 `deposit(amount, 0)` 先经 `_convertToShares`——金额映射 0 份额（大 vault + 尘额桥接）时先 revert `ZeroSharesDeposit`（先于零地址守卫），映射非零份额时才经 `_mint` 零账户守卫 revert `ERC20InvalidReceiver`。两类均整体回滚：跨链供应量从未减少、CEI `Settled` 写入回滚、guid 回 `None`、endpoint 无限重试恒 revert（不收敛）；amount == 0 子档：fallback 分支 `_transferOut(memecoin, 0, 0)` 在 TokenHelper.sol::_transferOut 早退（先于零地址守卫）、vault 有 code 且 `asset()` 匹配分支的 `deposit(0, address(0))` 在 MemecoinYieldVault.sol::deposit 早退（先于 `_convertToShares` 与 `_mint`）——两子路径均无资金移动、`Settled` 保留、emit `OmnichainMemecoinStakingProcessed`、endpoint 收敛 `ComposeDelivered`（与 §3.13 零金额收敛契约一致）；命名 `asset()` 不匹配真实 vault 的零金额 × receiver=0 帧仍先 revert `TokenVaultMismatch`（该守卫无金额检查、先于 deposit）、CEI 回滚不收敛；链下监控对零金额 × receiver=0 帧（vault 无 code 或 `asset()` 匹配子档）应归零金额收敛类，不应按本条目矩阵判「永久锁死」；(3) 与畸形 composeMsg 自伤边界（上一条）同源，协议**不为此提供 onlyOwner 回收入口**。唯一恢复路径是从发送端杜绝：用户经 `memecoinStaking` 正常入口发送时 `receiver != address(0)` 已被 guard，不会触发。`[代码已证]`
 - 边界（receiver 为 staker 自身地址或任意非零地址，自伤自负）：自引用帧不再被守卫拦截——receiver 填 staker 自身地址（或任意非零地址）时，fallback 分支自转 no-op、vault 有 code 分支份额 mint 给该 receiver，均照常置 `Settled` + emit `OmnichainMemecoinStakingProcessed`、endpoint 收敛，与把 receiver 填成任意无出口地址（如 0xdead）同责，协议不设防；仅保留 receiver == `address(0)`（响亮 revert、槽 pinned，见上条）与 receiver 高位脏（`ComposeRejected` 消费）两条硬边界，发送者自选 receiver、自伤自负。另：receiver==staker 且 vault 有 code 时走 deposit 分支，若 deposit revert（如份额向下取整为 0 的 `ZeroSharesDeposit`、伪造 vault 的 `TokenVaultMismatch`、恶意 vault 主动 revert），CEI 的 `Settled` 写入随交易回滚、槽回 `None`、endpoint 队列永久 pending（executor 恒重试恒失败），settle 兜底不可达（`NotBeneficiary` 对 receiver==staker 恒不可满足——`msg.sender` 永不为 staker 合约自身）——归入文档化的「结算失败类」自伤边界（见 §3.13），协议不设防。`[代码已证]`
 - 边界（receiver 为合约，恢复入口要求其自身可发起调用）：`settlePendingCompose` 的 `require(msg.sender == receiver, NotBeneficiary())`（`OmnichainMemecoinStaker.sol::settlePendingCompose`）要求 receiver **自身**发起调用，故合约 receiver 能否兜底恢复取决于其是否具备自调用路径——可自调用合约（Safe 类智能钱包经 owner 授权执行、vault 等实现相关调用面的合约）可正常 settle；无任意调用路径的合约（无 owner 可触发函数的托管/锁定合约等）在 `lzCompose` 永久失败类（如 `ZeroSharesDeposit`，见本节「适用时机」首条）下 settle 恒 `NotBeneficiary`、资金滞留 staker 托管、零恢复出口（协议无 onlyOwner 回收入口）——与 §3.13「结算失败类」(a)（dispatcher 侧合约 receiver 无回调实现 → 结算恒失败）同哲学。正向路径不受影响：合约 receiver 在 `lzCompose` 建仓（vault `deposit` mint 份额）与 vault 缺失 fallback（`_transferOut` 直转）两分支均正常。运维识别滞留后按本节约定通知接收人本人执行时，须先确认该 receiver 具备自调用能力；不具备者归自伤边界（发送者自选 receiver，只能从发送端选择上杜绝，与「自伤自负」条目同哲学），协议不提供代办或代执行入口。`[代码已证]`
 
 #### 3.13.2 compose 执行 gas 预算与最小推荐值
 
 跨链 compose 的执行 gas 预算由发送端 compose options 注入（staking 路径 `addExecutorLzComposeOption(0, omnichainStakingGasLimit, 0)`，`MemeverseOmnichainInteroperation`；yield 路径 `addExecutorLzComposeOption(0, yieldDispatcherGasLimit, 0)`，`MemeverseSettlementImpl`）。该预算必须覆盖目标链 `lzCompose` 主体（endpoint 哈希校验 + RECEIVED sentinel 写入之后、成功事件之前的全部开销）外加 endpoint wrapper 固定开销 + EVM 21k intrinsic + tx calldata + 首触地址/槽的冷访问附加费；若配低于实际峰值，目标链 `lzCompose` 恒 OOG、executor 重试恒失败、endpoint 队列 pin，受益人被迫走 §3.13/§3.13.1 settle 兜底（staker 恒裸币不建仓、yield 路径 permissionless）成为常态而非异常——无资金损失，但 UX 降级。
+
+与 compose 面不同，**receive 面没有 settle 兜底**：staking 发送路径的 receive 预算由 `addExecutorLzReceiveOption(oftReceiveGasLimit, 0)`（`MemeverseOmnichainInteroperation`，`_buildStakingSendParam`）注入，覆盖治理链 memecoin OFT `lzReceive`（mint）主体；若配低于实际峰值，executor 投递恒 OOG、重试恒失败、endpoint 队列 pin——源链 OFT `_debit` 已 burn、目标链未 mint，且 `settlePendingCompose` / `reAccumulateYields` 只覆盖 compose 面（消息未送达时 compose 不会入队），协议内无自动恢复、无 settle 兜底；**但资金不丢失**——投递本身免许可：`EndpointV2.lzReceive` 无调用者限制（option gas 仅封顶 executor 尝试，`Executor` 调用处注入、链上不强制），任何人可持消息字节（源链 `PacketSent` 事件）以自己的 tx gas 调 `EndpointV2.sol::lzReceive(origin, receiver, guid, message, extraData)` 完成 OFT `lzReceive`（mint + sendCompose；调用时 `msg.value` 必须为 0——`EndpointV2.lzReceive` 会把 value 全额转发给 OFT 的 payable `lzReceive`，OFT 不消费/退还、无 native 取回入口，误带永久滞留，同 §3.13 步骤 4 value 警示），与 §3.13 免许可 `lzCompose` 重驱动同类（同一 (receiver, srcEid, sender) 路径上已通过 DVN 验证的消息可按任意次序投递——`_clearPayload` 仅要求把 `lazyInboundNonce` 前推到目标 nonce 时区间内消息的 payload hash 槽均非空（未验证即槽为空），先投后序会把 lazy 前推、前序之后仍可投递；`LZ_InvalidNonce` 只在区间内存在 payload hash 槽为空的 nonce（即该消息从未验证）时触发，与投递次序无关；被消费（含 OApp `clear`）的消息已随 lazy 前推至区间外，重投只 revert `LZ_PayloadHashNotFound`）。故误配后果 = 滞留至人工介入（可用性/运维负担），非永久丢失。`setGasLimits` 对两参仅校验 `> 0`、不设最小执行预算，故调低 `oftReceiveGasLimit` 属 owner 误配类风险：任何下调必须按与本节相同的实测方法论留足余量（正向路径 receive 主体 + endpoint wrapper 固定开销 + EVM 21k intrinsic + calldata + 冷访问尾；本表仅列 compose 面实测，receive 面主体须按同法另行测量后再定值），不得以低于该和的量配置。yield 路径 receive 预算（`MemeverseLauncher.setGasLimits` 第一参，`MemeverseSettlementImpl` 的 `addExecutorLzReceiveOption`）同构、同样无兜底；其 compose 面（第二参）OOG 则可经 §3.13 settle 恢复（yield 路径 permissionless），无资金损失。
 
 最小推荐值以下表实测为基准。测量由 `test/interoperation/LzComposeGasBenchmark.t.sol`（`gasleft()` 前后差，仅计 `lzCompose` 主体、不计 endpoint wrapper）给出，采用**暖状态模型**：基准测试在测量前对 vault/governor 做一次预结算以把生产中长期暖的存储槽（`totalAssets`、checkpoint、share 余额、allowance、dispatcher 托管余额）预热至 EIP-2929 暖价，被测 guid 的 compose-state 槽保持新建（与生产每个 guid 仅 resolve 一次一致）。直接对全新 clone vault 测量会因冷槽附加费高估约 3.4×（staker deposit 分支冷测 ~268k vs 暖测 ~79k，268/79≈3.4），故必须按暖状态读数。
 
@@ -735,14 +815,16 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
 
 保真度注（dispatcher 行 vs staker 行）：staker deposit 行用**真实** `MemecoinYieldVault` minimal-proxy clone 测量，主体 gas 准确反映生产（`deposit` 内部 `_writeTotalAssetCheckpoint` + `_mint` 全计入）。dispatcher 三行用 **mirror mock receiver**（`GasVault.accumulateYields`/`GasGovernor.receiveTreasuryIncome` 仅做 `transferFrom` + 轻量记账，见 `test/interoperation/LzComposeGasBenchmark.t.sol`），**不含**真实 vault 的 `_accumulateYield` → `_writeTotalAssetCheckpoint`（OZ checkpoint push：length SLOAD + 数据 SSTORE + clock SLOAD + SafeCast，约 +25-35k）与真实 governor 的 `recordTreasuryIncome` 外部转发到 incentivizer（2×require + SLOAD + SSTORE + emit，约 +15-25k）。故 dispatcher 行是 mock 下界，真实 dispatcher 主体比表中高约该量；即便按保守上沿（MEMECOIN ~96k / UASSET ~85k）仍 < 135000 默认预算，结论不变。若需 dispatcher 行直接反映生产，可后续把 mirror mock 换成真实 vault + 真实 governor（需 incentivizer fixture）重测。
 
-部署 readiness：脚本默认值（`omnichainStakingGasLimit`=135000、`yieldDispatcherGasLimit`=135000）在暖状态下均覆盖实测主体（含 dispatcher 行 mock 下界的保守上沿修正）且有舒适余量，**当前默认无需上调**。运行时调参两入口均 onlyOwner：staking 路径 `MemeverseOmnichainInteroperation.setGasLimits(_, omnichainStakingGasLimit)`、yield 路径 `MemeverseLauncher.setGasLimits(_, yieldDispatcherGasLimit)`——若未来代码改动使某分支主体接近预算上限（基准测试 `assertLt` 失败即信号），经对应入口上调部署 gas 值，不得在未重测下放宽上限。本表数字随代码变更重测后更新。
+部署 readiness：脚本默认值（`omnichainStakingGasLimit`=135000、`yieldDispatcherGasLimit`=135000）在暖状态下均覆盖实测主体（含 dispatcher 行 mock 下界的保守上沿修正）且有舒适余量，**当前默认无需上调**。运行时调参两入口均 onlyOwner：staking 路径 `MemeverseOmnichainInteroperation.setGasLimits`（第一参 `oftReceiveGasLimit` 为 receive 面预算——调低无协议内兜底、消息滞留需免许可手工重放投递恢复，见本节上方警告；第二参 `omnichainStakingGasLimit` 为 compose 面预算）、yield 路径 `MemeverseLauncher.setGasLimits`（第一参 receive 面同构无兜底；第二参 `yieldDispatcherGasLimit` 为 compose 面预算）——若未来代码改动使某分支主体接近预算上限（基准测试 `assertLt` 失败即信号），经对应入口上调部署 gas 值，不得在未重测下放宽上限。本表数字随代码变更重测后更新。
 
 边界（自伤 forge 路径的不可信 `asset()` 消耗面）：staker deposit 分支的 `asset()` STATICCALL 位于协议发送端恒编码真实 `verse.yieldVault` 的正向路径，故正常跨链 staking 不可达不可信 vault；但持币人经 permissionless OFT `send` 自伤伪造（命名任意有 code 合约为 vault word）可达——此时被命名合约的 `asset()` 在 EIP-150 下经 STATICCALL 最多转发 63/64 剩余 gas、可耗尽后以 OOG 失败。该面**不可由任何静态 gas 快照给出上界**（消耗由被命名合约控制），已作为自伤类边界记录于 §3.13.1「命名 vault 有 code 但 `asset()` 不可读」条目；恢复面不受损（`settlePendingCompose` 从不读 vault word、恒 `_transferOut` push）。脚本默认预算的余量覆盖正向路径（vault 协议控制，`asset()` 恒为真实 vault 的轻量 view）；该自伤对抗面不构成跨用户风险（自伤发送者只能困住自己的钱），故最小推荐值不为该面额外上调，部署方亦不应据此下调。
 
 ## 4. 治理周期相关操作语义
 
 - `finalizeCurrentCycle()` 是对外开放入口，时间到即可执行，不要求 `onlyGovernance`。`[代码已证]`
-- `claimReward()`、`accumCycleVotes()`、token 注册/注销、reward ratio 修改等由 governor 路径调用（`onlyGovernance`）。`[代码已证]`
+- `syncTreasuryBalance()` 是对外开放的整额对账入口，把当前周期 treasury ledger 重设为 `max(governor 实际托管余额 - 上一周期未领 reward 储备, 0)`；synced 值由真值确定性导出，调用者无法控制，不转移 token，不要求 `onlyGovernance`。`[代码已证]`
+- `claimReward()` 是用户自领入口，以 `msg.sender` 为 reward owner，不要求 `onlyGovernance`。`[代码已证]`
+- `accumCycleVotes()`、token 注册/注销、reward ratio 修改等由 governor 路径调用（`onlyGovernance`）。`[代码已证]`
 
 ## 5. 观察与告警建议（最小集）
 

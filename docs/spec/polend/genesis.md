@@ -128,6 +128,8 @@ debtCap = min(rawDebtCap, MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - totalNormalFunds)
 totalLeveragedDebt <= debtCap
 ```
 
+`minTotalFund` 经 `MemeverseLauncher.sol::getDebtCapBaseByVerseId` 按交易实时读取当前配置（活读，非注册时快照）；Genesis 期间 owner 变更 `MemeverseLauncher.sol::setFundMetaData` 立即改变杠杆债务上限（调高 `minTotalFund` 扩大上限、调低收窄），为预期语义。
+
 `leveragedDebtFactor` 是全局杠杆债务上限系数，所有 verse 共享，不是单用户倍数。对单个 verse 而言，factor 推导出的原始杠杆债务上限为 `fullPrecisionMulDiv(leveragedDebtFactor, max(totalNormalFunds, minTotalFund), 1e18)`，实际有效上限还必须受 aggregate genesis funds 剩余容量限制。
 
 约束：`fullPrecisionMulDiv(leveragedDebtFactor, interestRate, 1) >= 1e36`。该条件是纯杠杆创世独立达到成功门槛的前提。`leveragedDebtFactor` 无独立下限，只与 `interestRate` 联合约束。market 注册在复制当前默认配置前校验该约束；全局配置 setter 也必须保持同一约束，保证后续注册可用。

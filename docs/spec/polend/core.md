@@ -466,8 +466,10 @@ GenesisCredit 侧（permissionless，home-chain 限定）：
 
 GenesisCreditFactory 侧（owner-only 部署）：
 
-- `ZeroAddress()`：构造时 `lzEndpoint_` 为零地址（`owner_` 由 OZ Ownable 内部零地址校验，`homeChainEid_` 为值类型无零值语义）。
+- `ZeroAddress()`：构造时 `lzEndpoint_` 为零地址（`owner_` 由 OZ Ownable 内部零地址校验）。
+- `ZeroHomeChainEid()`：构造时 `homeChainEid_ == 0`。`homeChainEid` 是 `claim` 的 home-chain 门控参数（immutable，部署后无法修正），零值会使该 factory 部署的所有 credit 的 claim 恒 revert `NotHomeChain(0)`（airdrop 永久关闭），构造时 fail-fast。
 - `ZeroUAsset()`：`deployCredit` 时 `uAsset == address(0)`。
+- `ZeroDelegate()`：`deployCredit` 时 `delegate == address(0)`。delegate 是 GenesisCredit 初始 owner / LayerZero admin delegate，零值时构造链由 OZ Ownable v5 构造器零地址校验先于 OAppCore 的 delegate 检查 revert `OwnableInvalidOwner(address(0))`；入口校验使失败清晰化（否则 owner 看到的是晦涩的 CREATE3 `INITIALIZATION_FAILED`）。
 - `AlreadyDeployed()`：`deployCredit` 时该 `uAsset` 已部署（`registry[uAsset] != address(0)`）。
 - `InvalidUAssetDecimals(uint8 actual, uint8 expected=18)`：`deployCredit` 时 `uAsset.decimals() != 18`。credit 固定 18-dec，raw-unit 1:1 记账才成立（与 POLend 侧 `CreditDecimalsMismatch` 呼应）。
 

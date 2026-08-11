@@ -79,11 +79,11 @@ Do not override policy or gate evidence with natural-language guesses.
 - Inline trivial single-use logic unless extraction clearly improves comprehension.
 - Solidity style and best practices live in `.claude/rules/` (`solidity-contracts.md` for `src/`, `solidity-tests.md` for `test/`, `solidity-scripts.md` for `script/`). Claude Code auto-loads them by scope when editing `.sol` files (no manual read needed); Pi does the same when the project-level `.pi/extensions/claude-rules.ts` loader is installed — otherwise it does not auto-load them. Codex and ZCode do not auto-load them, so when working in those tools, or in Pi without the loader, you MUST lazy-load them yourself: before writing or modifying Solidity, use the Read tool to read only the rule file matching the file type you are about to touch (`src/**` → solidity-contracts.md, `test/**` → solidity-tests.md, `script/**` → solidity-scripts.md). Do NOT preemptively read all three — read only the relevant one at the moment you start editing Solidity, treat its content as mandatory instructions, and do not restate it in replies. Follow them when writing or modifying Solidity code.
 
-## Spec 文档代码引用约定
+## 文档代码引用约定
 
-- docs/spec/ 下所有规格文档引用代码时，写 `文件.sol::函数` 或 `文件.sol` 形式（如 `MemeverseLaunchImpl.sol::_deployAndInitializeVerseTokens`）。
-- 禁止在 spec 文档中写代码行号（如 `MemeverseLaunchImpl.sol:130-131`）：行号随代码演化漂移，会让文档锚点失真；函数名/symbol 才是稳定锚点。
-- 新增或修改 spec 文档时必须遵守；审查 spec 文档时把违反该约定作为 minor 级 finding。
+- docs/ 下除 review/ 子目录外所有文档引用代码时，写 `文件.sol::函数` 或 `文件.sol` 形式（如 `MemeverseLaunchImpl.sol::_deployAndInitializeVerseTokens`）。
+- 禁止在这些文档中写代码行号（如 `MemeverseLaunchImpl.sol:130-131`）：行号随代码演化漂移，会让文档锚点失真；函数名/symbol 才是稳定锚点。
+- 新增或修改这些文档时必须遵守；审查这些文档时把违反该约定作为 minor 级 finding。
 
 ## Test Code Rules
 

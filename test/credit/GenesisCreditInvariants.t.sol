@@ -458,4 +458,17 @@ contract GenesisCreditInvariants is StdInvariant, Test {
             handler.totalResidualClaimedUAsset(), handler.sumSettledResidualUAsset(), "residual bound on happy path"
         );
     }
+
+    /// @dev Canary proving the credit-interest lifecycle is reachable end-to-end through the
+    ///      handler. Guards against a vacuity regression on the credit dimension: the two credit
+    ///      invariants (escrow covers outstanding credit, leveraged >= credit) hold trivially at
+    ///      zero, so a broken leveragedGenesisWithCredit guard would otherwise pass silently.
+    function test_CreditLifecycleReachable() external {
+        handler.addCreditInterest(0, 10 ether); // VERSE_A, ACTOR_A pays 10 GenesisCredit
+        assertGt(handler.totalCreditA(), 0, "credit interest accrued");
+        assertGt(handler.creditEscrowBalance(), 0, "credit escrowed before finalize");
+        handler.finalizeVerse(0); // Genesis -> Locked, burns escrowed credit
+        assertGt(handler.totalCreditA(), 0, "credit interest survives finalize");
+        assertEq(handler.creditEscrowBalance(), 0, "escrowed credit burned at finalize");
+    }
 }

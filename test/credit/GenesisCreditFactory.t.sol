@@ -130,10 +130,30 @@ contract GenesisCreditFactoryTest is Test {
         factory.deployCredit(address(uAsset), "Credit", "CRT", delegate);
     }
 
+    /// @notice A zero-address delegate is rejected up front (the GenesisCredit constructor chain
+    ///         would also reject it via OZ Ownable v5's zero-owner check, but with an obscure
+    ///         nested failure after the CREATE3 attempt; the entry check fails fast and keeps
+    ///         the failure reason meaningful).
+    function test_RevertWhen_DeployCreditZeroDelegate() public {
+        vm.expectRevert(IGenesisCreditFactory.ZeroDelegate.selector);
+        factory.deployCredit(address(uAsset), "Credit", "CRT", address(0));
+
+        // Entry validation reverts before CREATE3: nothing is deployed or registered.
+        assertEq(factory.creditOf(address(uAsset)), address(0), "nothing registered after revert");
+        assertEq(factory.predictCredit(address(uAsset)).code.length, 0, "no orphan proxy at predicted address");
+    }
+
     /// @notice Constructing the factory with a zero-address endpoint reverts.
     function test_RevertWhen_ConstructWithZeroEndpoint() public {
         vm.expectRevert(IGenesisCreditFactory.ZeroAddress.selector);
         new GenesisCreditFactory(address(0), HOME_CHAIN_EID, address(this));
+    }
+
+    /// @notice Constructing the factory with a zero home-chain eid reverts (immutable config
+    ///         landmine: a zero eid would make every credit's claim permanently revert NotHomeChain).
+    function test_RevertWhen_ConstructWithZeroHomeChainEid() public {
+        vm.expectRevert(IGenesisCreditFactory.ZeroHomeChainEid.selector);
+        new GenesisCreditFactory(address(endpoint), 0, address(this));
     }
 
     /// @notice A credit produced by the factory behaves like a standalone GenesisCredit: setMerkleRoot,

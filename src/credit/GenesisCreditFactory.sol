@@ -31,7 +31,7 @@ contract GenesisCreditFactory is IGenesisCreditFactory, Ownable {
     uint32 public immutable homeChainEid;
 
     /// @notice Registry of already-deployed credit tokens keyed by uAsset; address(0) means not deployed.
-    mapping(address => address) public registry;
+    mapping(address => address) private registry;
 
     /// @notice Construct the factory, baking the LayerZero endpoint, home-chain eid, and owner
     ///         into immutable state that every deployed credit token inherits.
@@ -40,6 +40,9 @@ contract GenesisCreditFactory is IGenesisCreditFactory, Ownable {
     /// @param owner_ Initial owner of this factory (gates deployCredit).
     constructor(address lzEndpoint_, uint32 homeChainEid_, address owner_) Ownable(owner_) {
         require(lzEndpoint_ != address(0), ZeroAddress());
+        // Zero eid would bake a permanently reverting claim gate (endpoint.eid() != 0 on every
+        // real chain) into every credit this factory deploys; fail fast at construction.
+        require(homeChainEid_ != 0, ZeroHomeChainEid());
         lzEndpoint = lzEndpoint_;
         homeChainEid = homeChainEid_;
     }
@@ -52,6 +55,7 @@ contract GenesisCreditFactory is IGenesisCreditFactory, Ownable {
         returns (address credit)
     {
         require(uAsset != address(0), ZeroUAsset());
+        require(delegate != address(0), ZeroDelegate());
         require(registry[uAsset] == address(0), AlreadyDeployed());
 
         // GenesisCredit is fixed at 18 decimals, so credit-path raw-unit 1:1 accounting only holds

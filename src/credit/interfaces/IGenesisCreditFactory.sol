@@ -18,6 +18,12 @@ interface IGenesisCreditFactory {
     /// @notice Reverts when the factory is constructed with a zero-address endpoint.
     error ZeroAddress();
 
+    /// @notice Reverts when the factory is constructed with a zero home-chain eid.
+    error ZeroHomeChainEid();
+
+    /// @notice Reverts when `deployCredit` is called with a zero-address delegate.
+    error ZeroDelegate();
+
     /// @notice Reverts when `deployCredit` is called for a uAsset whose decimals are not 18.
     /// @dev GenesisCredit is fixed at 18 decimals; credit-path raw-unit 1:1 accounting only holds
     ///      when the uAsset is also 18 decimals. Non-18-dec uAssets must not get a GenesisCredit.
@@ -29,8 +35,9 @@ interface IGenesisCreditFactory {
     event CreditDeployed(address indexed uAsset, address indexed credit);
 
     /// @notice Deploys a new GenesisCredit for `uAsset` via CREATE3.
-    /// @dev Reverts with `AlreadyDeployed()` if a credit already exists for `uAsset`, and
-    ///      `ZeroUAsset()` when `uAsset` is the zero address. Deployment is deterministic CREATE3
+    /// @dev Reverts with `AlreadyDeployed()` if a credit already exists for `uAsset`,
+    ///      `ZeroUAsset()` when `uAsset` is the zero address, and `ZeroDelegate()` when `delegate`
+    ///      is the zero address. Deployment is deterministic CREATE3
     ///      where the factory self-inlines CREATE3 (deployer = factory itself), so the resulting
     ///      address matches `predictCredit(uAsset)`. The GenesisCredit constructor runs in-line;
     ///      no initialize step.

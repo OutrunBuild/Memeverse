@@ -46,6 +46,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     error ExistingHookOwnerMismatch(address hook, address expectedOwner, address actualOwner);
     error ExistingHookTreasuryMismatch(address hook, address expectedTreasury, address actualTreasury);
     error ExistingHookPoolManagerMismatch(address hook, address expectedPoolManager, address actualPoolManager);
+    error ExistingHookLauncherMismatch(address hook, address expectedLauncher, address actualLauncher);
     error ExistingHookImplementationMismatch(
         address hook, address expectedImplementation, address actualImplementation
     );
@@ -84,6 +85,7 @@ contract DeployMemeverseHookProxy is BaseScript {
         address hookOwner;
         address hookTreasury;
         IPoolManager poolManager;
+        address hookLauncher;
         address lpTokenImplementation;
         address swapFacet;
         address dynamicFeeFacet;
@@ -128,7 +130,8 @@ contract DeployMemeverseHookProxy is BaseScript {
     ///        4. Settlement facet (stateless bytecode, binds PoolManager immutably)
     ///        5. Hook implementation (stateless bytecode, binds PoolManager immutably)
     ///        6. Hook proxy — initialized with (hookOwner, hookTreasury, lpTokenImplementation, swapFacet,
-    ///           dynamicFeeFacet, settlementFacet). The hook proxy address is the real Uniswap hook address.
+    ///           dynamicFeeFacet, settlementFacet, hookLauncher). The hook proxy address is the real Uniswap
+    ///           hook address; `hookLauncher` is bound write-once via `initialize` (no retarget path).
     ///
     ///      The facets are plain contracts (not proxies) and carry no hook-binding state. Each facet's
     ///      `onlyViaRouter` guard uses an immutable self-address (`__self`) baked at construction, so
@@ -150,12 +153,14 @@ contract DeployMemeverseHookProxy is BaseScript {
         IPoolManager poolManager = IPoolManager(vm.envAddress("POOL_MANAGER"));
         address hookOwner = vm.envAddress("HOOK_OWNER");
         address hookTreasury = vm.envAddress("HOOK_TREASURY");
+        address hookLauncher = vm.envAddress("MEMEVERSE_LAUNCHER");
         _requireNoZeroAddress(hookOwner);
         _requireNoZeroAddress(hookTreasury);
+        _requireNoZeroAddress(hookLauncher);
         _requireNoZeroAddress(address(outrunDeployer));
         _requirePoolManagerCode(poolManager);
 
-        return _executeDeployment(outrunDeployer, deployer, poolManager, hookOwner, hookTreasury, nonce);
+        return _executeDeployment(outrunDeployer, deployer, poolManager, hookOwner, hookTreasury, hookLauncher, nonce);
     }
 
     /// @notice Deploys the implementation and a mined UUPS proxy through OutrunDeployer.
@@ -171,6 +176,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     /// @param poolManager Uniswap v4 pool manager stored as immutable in the hook implementation and each facet.
     /// @param hookOwner Owner used for proxy initialization.
     /// @param hookTreasury Treasury used for proxy initialization.
+    /// @param hookLauncher Launcher bound at proxy initialization (write-once via initialize).
     /// @param nonce Deployment version nonce, incremented for each new deploy.
     /// @return result All deployed addresses: hook impl/proxy, LP token impl, and the 3 facets.
     function deployHookProxy(
@@ -179,6 +185,7 @@ contract DeployMemeverseHookProxy is BaseScript {
         IPoolManager poolManager,
         address hookOwner,
         address hookTreasury,
+        address hookLauncher,
         uint256 nonce
     ) public returns (DeploymentResult memory result) {
         if (msg.sender != deployerNamespace) {
@@ -186,9 +193,12 @@ contract DeployMemeverseHookProxy is BaseScript {
         }
         _requireNoZeroAddress(hookOwner);
         _requireNoZeroAddress(hookTreasury);
+        _requireNoZeroAddress(hookLauncher);
         _requirePoolManagerCode(poolManager);
 
-        return _executeDeployment(outrunDeployer, deployerNamespace, poolManager, hookOwner, hookTreasury, nonce);
+        return _executeDeployment(
+            outrunDeployer, deployerNamespace, poolManager, hookOwner, hookTreasury, hookLauncher, nonce
+        );
     }
 
     /// @notice Shared deployment body invoked by both `run(uint256)` and `deployHookProxy(...)`.
@@ -201,10 +211,12 @@ contract DeployMemeverseHookProxy is BaseScript {
         IPoolManager poolManager,
         address hookOwner,
         address hookTreasury,
+        address hookLauncher,
         uint256 nonce
     ) internal returns (DeploymentResult memory result) {
-        (bytes32 proxySalt, address selectedProxy, bool reuseExistingProxy) =
-            _selectProxySalt(outrunDeployer, deployerNamespace, nonce, hookOwner, hookTreasury, poolManager);
+        (bytes32 proxySalt, address selectedProxy, bool reuseExistingProxy) = _selectProxySalt(
+            outrunDeployer, deployerNamespace, nonce, hookOwner, hookTreasury, poolManager, hookLauncher
+        );
         _requireUsableHookOwner(hookOwner, selectedProxy);
         if (reuseExistingProxy) {
             result.hookProxy = selectedProxy;
@@ -234,9 +246,10 @@ contract DeployMemeverseHookProxy is BaseScript {
             lpTokenImpl,
             swapFacet,
             dynamicFeeFacet,
-            settlementFacet
+            settlementFacet,
+            hookLauncher
         );
-        // Resolve owner/treasury/poolManager from the just-deployed proxy; reuse the 5 addresses
+        // Resolve owner/treasury/poolManager/launcher from the just-deployed proxy; reuse the 5 addresses
         // returned by the deploy helpers above.
         // The deploy path does NOT run `_validateExistingImplementationCodehashes` (no same-nonce reuse), so
         // code existence + poolManager immutables are checked separately via `_validateDeployedArtifactCode`.
@@ -251,7 +264,7 @@ contract DeployMemeverseHookProxy is BaseScript {
             dynamicFeeFacet: dynamicFeeFacet,
             settlementFacet: settlementFacet
         });
-        _validateExistingDeployment(proxy, actual, expectedDeployed, hookOwner, hookTreasury, poolManager);
+        _validateExistingDeployment(proxy, actual, expectedDeployed, hookOwner, hookTreasury, poolManager, hookLauncher);
         _validateDeployedArtifactCode(actual, poolManager);
 
         result.hookImplementation = hookImpl;
@@ -363,6 +376,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     /// @param hookOwner Owner expected on a reusable hook proxy.
     /// @param hookTreasury Treasury expected on a reusable hook proxy.
     /// @param poolManager PoolManager expected on a reusable hook and its facets.
+    /// @param hookLauncher Launcher expected on a reusable hook proxy (write-once, init-bound under C1).
     /// @return proxy Selected proxy address used by deployHookProxy/run.
     function getPredictedProxy(
         IOutrunDeployer outrunDeployer,
@@ -370,9 +384,12 @@ contract DeployMemeverseHookProxy is BaseScript {
         uint256 nonce,
         address hookOwner,
         address hookTreasury,
-        IPoolManager poolManager
+        IPoolManager poolManager,
+        address hookLauncher
     ) public view returns (address proxy) {
-        (, proxy,) = _selectProxySalt(outrunDeployer, deployerNamespace, nonce, hookOwner, hookTreasury, poolManager);
+        (, proxy,) = _selectProxySalt(
+            outrunDeployer, deployerNamespace, nonce, hookOwner, hookTreasury, poolManager, hookLauncher
+        );
     }
 
     /// @notice Mines the nonce-scoped hook proxy salt used by deployHookProxy/run.
@@ -383,7 +400,8 @@ contract DeployMemeverseHookProxy is BaseScript {
         uint256 nonce,
         address hookOwner,
         address hookTreasury,
-        IPoolManager poolManager
+        IPoolManager poolManager,
+        address expectedHookLauncher
     ) internal view returns (bytes32 salt, address proxy, bool reuseExistingProxy) {
         // Expected artifact addresses are only needed when an occupied proxy candidate must be checked
         // for same-nonce reuse. Pure-fresh success never loads them here. They are packed into a single
@@ -431,7 +449,9 @@ contract DeployMemeverseHookProxy is BaseScript {
             // silently skipping the candidate — a candidate that already passed implementation + codehash
             // checks yet mismatches on owner/treasury/poolManager/facet binding is a tampered deployment
             // and must stop here, not continue searching. Not reverting == all fields match == reusable.
-            _validateExistingDeployment(proxy, actual, expected, hookOwner, hookTreasury, poolManager);
+            _validateExistingDeployment(
+                proxy, actual, expected, hookOwner, hookTreasury, poolManager, expectedHookLauncher
+            );
             return (salt, proxy, true);
         }
 
@@ -642,7 +662,8 @@ contract DeployMemeverseHookProxy is BaseScript {
         address lpTokenImplementation,
         address swapFacet,
         address dynamicFeeFacet,
-        address settlementFacet
+        address settlementFacet,
+        address launcher_
     ) internal returns (address proxy) {
         // Detect if the CREATE3 minimal proxy was already deployed for this salt
         // (e.g. a previous run's inner CREATE failed). The salt is permanently consumed
@@ -653,7 +674,7 @@ contract DeployMemeverseHookProxy is BaseScript {
 
         bytes memory initializeData = abi.encodeCall(
             MemeverseUniswapHook.initialize,
-            (hookOwner, hookTreasury, lpTokenImplementation, swapFacet, dynamicFeeFacet, settlementFacet)
+            (hookOwner, hookTreasury, lpTokenImplementation, swapFacet, dynamicFeeFacet, settlementFacet, launcher_)
         );
         bytes memory creationCode = proxyCreationCode(implementation, initializeData);
 
@@ -728,6 +749,7 @@ contract DeployMemeverseHookProxy is BaseScript {
         actual.hookOwner = hook.owner();
         actual.hookTreasury = hook.treasury();
         actual.poolManager = hook.poolManager();
+        actual.hookLauncher = hook.launcher();
 
         actual.lpTokenImplementation = lpTokenImplementation;
         actual.swapFacet = swapFacet;
@@ -746,7 +768,8 @@ contract DeployMemeverseHookProxy is BaseScript {
         ExpectedArtifacts memory expected,
         address expectedHookOwner,
         address expectedHookTreasury,
-        IPoolManager expectedPoolManager
+        IPoolManager expectedPoolManager,
+        address expectedHookLauncher
     ) internal pure {
         if (actual.implementation != expected.hookImplementation) {
             revert ExistingHookImplementationMismatch(proxy, expected.hookImplementation, actual.implementation);
@@ -763,6 +786,12 @@ contract DeployMemeverseHookProxy is BaseScript {
 
         if (address(actual.poolManager) != address(expectedPoolManager)) {
             revert ExistingHookPoolManagerMismatch(proxy, address(expectedPoolManager), address(actual.poolManager));
+        }
+
+        // Launcher is init-bound and write-once under C1 (structurally like poolManager), so a same-nonce
+        // reuse must match it too — otherwise a stale/wrong MEMEVERSE_LAUNCHER env is silently accepted.
+        if (actual.hookLauncher != expectedHookLauncher) {
+            revert ExistingHookLauncherMismatch(proxy, expectedHookLauncher, actual.hookLauncher);
         }
 
         if (actual.lpTokenImplementation != expected.lpTokenImplementation) {

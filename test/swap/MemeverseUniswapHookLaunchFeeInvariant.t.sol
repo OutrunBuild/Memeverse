@@ -352,13 +352,13 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
     address internal settlementRecipient;
     DirectPreorderSettlementHandler internal handler;
 
-    function _deployRouterHookProxy(IPoolManager manager_, address owner_, address treasury_)
+    function _deployRouterHookProxy(IPoolManager manager_, address owner_, address treasury_, address launcher_)
         internal
         returns (MemeverseUniswapHook deployed)
     {
         // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
         // `_validateProxyHookAddress` and facet bindings are exercised.
-        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
+        address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_, launcher_);
         deployed = MemeverseUniswapHook(hookProxy);
     }
 
@@ -369,7 +369,13 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
         settlementRecipient = makeAddr("settlementRecipient");
         token0 = new MockERC20("Token0", "TK0", 18);
         token1 = new MockERC20("Token1", "TK1", 18);
-        hook = _deployRouterHookProxy(IPoolManager(address(manager)), address(this), treasury);
+        // Predict the handler address so the hook can bind it as launcher at initialize (write-once under C1).
+        // Nonce path: deployHookAtFlagAddress consumes 6 sender nonces (5 CREATE: LP impl + 3 facets + hook
+        // impl, + 1 nonce increment from the CREATE2'd ERC1967Proxy — both CREATE and CREATE2 increment the
+        // sender nonce per EIP-1014) + 1 CREATE for the Lens below == handler is the 8th contract, created at
+        // nonce N+7, so predict at currentNonce + 7.
+        address predictedHandler = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 7);
+        hook = _deployRouterHookProxy(IPoolManager(address(manager)), address(this), treasury, predictedHandler);
         lens = new MemeverseUniswapHookLens(IPoolManager(address(manager)));
 
         key = PoolKey({
@@ -390,7 +396,6 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
         hook.setProtocolFeeCurrency(key.currency0, true);
 
         handler = new DirectPreorderSettlementHandler(hook, key, token0, token1, address(this), settlementRecipient);
-        hook.setLauncher(address(handler));
         token0.mint(address(handler), 1_000_000 ether);
         token1.mint(address(handler), 1_000_000 ether);
         handler.approveHook();

@@ -104,9 +104,12 @@ contract DeployMemeverseHookProxyHarness is DeployMemeverseHookProxy {
         uint256 nonce,
         address hookOwner,
         address hookTreasury,
-        IPoolManager poolManager
+        IPoolManager poolManager,
+        address hookLauncher
     ) external view returns (bytes32 salt, address proxy, bool reuseExistingProxy) {
-        return _selectProxySalt(outrunDeployer, deployerNamespace, nonce, hookOwner, hookTreasury, poolManager);
+        return _selectProxySalt(
+            outrunDeployer, deployerNamespace, nonce, hookOwner, hookTreasury, poolManager, hookLauncher
+        );
     }
 }
 
@@ -117,6 +120,7 @@ contract DeployMemeverseHookProxyTest is Test {
     address internal constant HOOK_OWNER = address(0x1002);
     address internal constant HOOK_TREASURY = address(0x1003);
     address internal constant DEPLOYER_NAMESPACE = address(0x1004);
+    address internal constant HOOK_LAUNCHER = address(0x1005);
 
     // Same constant as DeployMemeverseHookProxy — solmate CREATE3 minimal proxy bytecode hash.
     bytes32 internal constant CREATE3_PROXY_BYTECODE_HASH = keccak256(hex"67363d3d37363d34f03d5260086018f3");
@@ -181,7 +185,8 @@ contract DeployMemeverseHookProxyTest is Test {
             1,
             HOOK_OWNER,
             HOOK_TREASURY,
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            HOOK_LAUNCHER
         );
         DeployMemeverseHookProxy.DeploymentResult memory r = _deployHookProxyForTest();
         MemeverseUniswapHook hook = MemeverseUniswapHook(r.hookProxy);
@@ -223,6 +228,7 @@ contract DeployMemeverseHookProxyTest is Test {
         vm.setEnv("POOL_MANAGER", vm.toString(POOL_MANAGER));
         vm.setEnv("HOOK_OWNER", vm.toString(HOOK_OWNER));
         vm.setEnv("HOOK_TREASURY", vm.toString(HOOK_TREASURY));
+        vm.setEnv("MEMEVERSE_LAUNCHER", vm.toString(HOOK_LAUNCHER));
         vm.setEnv("DEPLOYMENT_NONCE", vm.toString(deploymentNonce));
         script.setUp();
 
@@ -247,6 +253,7 @@ contract DeployMemeverseHookProxyTest is Test {
         assertEq(r.swapFacet, expectedSwapFacet);
         assertEq(r.dynamicFeeFacet, expectedDynamicFeeFacet);
         assertEq(r.settlementFacet, expectedSettlementFacet);
+        assertEq(MemeverseUniswapHook(r.hookProxy).launcher(), HOOK_LAUNCHER, "hook launcher bound at deploy");
         assertGt(r.hookProxy.code.length, 0);
         assertEq(outrunDeployer.getDeployed(deploymentSender, expectedHookImplSalt), expectedHookImpl);
         assertEq(outrunDeployer.getDeployed(deploymentSender, expectedLpTokenImplSalt), expectedLpTokenImpl);
@@ -272,7 +279,8 @@ contract DeployMemeverseHookProxyTest is Test {
             nonce,
             HOOK_OWNER,
             HOOK_TREASURY,
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            HOOK_LAUNCHER
         );
 
         _deployExpectingRevert(abi.encodeWithSelector(UNUSABLE_HOOK_OWNER_SELECTOR, selectedProxy), selectedProxy);
@@ -295,6 +303,7 @@ contract DeployMemeverseHookProxyTest is Test {
             IPoolManager(POOL_MANAGER),
             HOOK_OWNER,
             HOOK_TREASURY,
+            HOOK_LAUNCHER,
             1
         );
 
@@ -348,6 +357,7 @@ contract DeployMemeverseHookProxyTest is Test {
             IPoolManager(POOL_MANAGER),
             HOOK_OWNER,
             HOOK_TREASURY,
+            HOOK_LAUNCHER,
             nonce
         );
     }
@@ -370,6 +380,22 @@ contract DeployMemeverseHookProxyTest is Test {
             IPoolManager(POOL_MANAGER),
             hookOwner,
             HOOK_TREASURY,
+            HOOK_LAUNCHER,
+            1
+        );
+    }
+
+    /// @dev Variant for tests that pass a non-default hookLauncher (e.g. launcher mismatch on reuse).
+    function _deployExpectingRevert(bytes memory encodedError, address hookOwner, address hookLauncher) internal {
+        vm.prank(address(script));
+        vm.expectRevert(encodedError);
+        script.deployHookProxy(
+            IOutrunDeployer(address(outrunDeployer)),
+            address(script),
+            IPoolManager(POOL_MANAGER),
+            hookOwner,
+            HOOK_TREASURY,
+            hookLauncher,
             1
         );
     }
@@ -451,6 +477,23 @@ contract DeployMemeverseHookProxyTest is Test {
         );
     }
 
+    /// @notice A same-nonce reuse that supplies a different launcher is rejected.
+    /// @dev The launcher is init-bound and write-once under C1, so `_validateExistingDeployment` reverts
+    ///      `ExistingHookLauncherMismatch` when the caller-supplied launcher differs from the on-chain binding
+    ///      (a stale/wrong MEMEVERSE_LAUNCHER env must not be silently accepted on reuse).
+    function testSameNonceReuseRejectsExistingHookLauncherMismatch() external {
+        DeployMemeverseHookProxy.DeploymentResult memory r = _deployHookProxyForTest();
+        _setExpectedImplementationCodehashes(r.hookProxy);
+        address stranger = address(0xB0B0);
+        _deployExpectingRevert(
+            abi.encodeWithSelector(
+                DeployMemeverseHookProxy.ExistingHookLauncherMismatch.selector, r.hookProxy, stranger, HOOK_LAUNCHER
+            ),
+            HOOK_OWNER,
+            stranger
+        );
+    }
+
     /// @notice A reused proxy whose on-chain owner slot was rewritten to the proxy's own address
     ///         (self-ownership) is rejected on the reuse path because it would brick UUPS upgrades.
     /// @dev `_validateExistingDeployment` checks `_requireUsableHookOwner(actual.hookOwner, proxy)` before
@@ -498,6 +541,7 @@ contract DeployMemeverseHookProxyTest is Test {
             IPoolManager(POOL_MANAGER),
             HOOK_OWNER,
             HOOK_TREASURY,
+            HOOK_LAUNCHER,
             2
         );
 
@@ -537,7 +581,8 @@ contract DeployMemeverseHookProxyTest is Test {
             nonce,
             HOOK_OWNER,
             HOOK_TREASURY,
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            HOOK_LAUNCHER
         );
 
         DeployMemeverseHookProxy.DeploymentResult memory r = _deployHookProxyForTest(nonce);
@@ -557,7 +602,8 @@ contract DeployMemeverseHookProxyTest is Test {
             nonce,
             HOOK_OWNER,
             HOOK_TREASURY,
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            HOOK_LAUNCHER
         );
 
         DeployMemeverseHookProxy.DeploymentResult memory r = _deployHookProxyForTest(nonce);
@@ -579,7 +625,8 @@ contract DeployMemeverseHookProxyTest is Test {
             1,
             HOOK_OWNER,
             HOOK_TREASURY,
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            HOOK_LAUNCHER
         );
         bytes32 hashedSalt = keccak256(abi.encodePacked(address(script), salt));
         address create3Proxy = keccak256(
@@ -605,7 +652,8 @@ contract DeployMemeverseHookProxyTest is Test {
             nonce,
             HOOK_OWNER,
             HOOK_TREASURY,
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            HOOK_LAUNCHER
         );
         address hookCreate3Proxy = _create3ProxyAddress(address(script), hookProxySalt);
         vm.etch(hookCreate3Proxy, hex"01");
@@ -694,7 +742,8 @@ contract DeployMemeverseHookProxyTest is Test {
             1,
             HOOK_OWNER,
             HOOK_TREASURY,
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            HOOK_LAUNCHER
         );
         (, address hookImpl) =
             script.exposedComputeHookImpl(IOutrunDeployer(address(outrunDeployer)), address(script), 1);
@@ -793,6 +842,7 @@ contract DeployMemeverseHookProxyTest is Test {
             IPoolManager(POOL_MANAGER),
             HOOK_OWNER,
             HOOK_TREASURY,
+            HOOK_LAUNCHER,
             1
         );
     }

@@ -114,7 +114,13 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
         // ── 2. Real v4 PoolManager + real flag-address hook diamond ──
         manager = deployRealPoolManager();
         vm.label(address(manager), "RealPoolManager");
-        address hookProxy = deployHookAtFlagAddress(manager, address(this), address(this));
+        // FakeLauncher is created next (step 3) and the hook must bind it as launcher at initialize
+        // (write-once under C1). Predict its address: deployHookAtFlagAddress consumes 6 sender nonces
+        // (5 CREATE: LP impl + 3 facets + hook impl, + 1 nonce increment from the CREATE2'd ERC1967Proxy —
+        // both CREATE and CREATE2 increment the sender nonce per EIP-1014), so FakeLauncher is the 7th
+        // contract, created at nonce N+6.
+        address predictedFakeLauncher = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 6);
+        address hookProxy = deployHookAtFlagAddress(manager, address(this), address(this), predictedFakeLauncher);
         hook = MemeverseUniswapHook(hookProxy);
         vm.label(hookProxy, "HookProxy");
 
@@ -156,8 +162,7 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
         // Mature both pools past the launch-fee decay window so dynamic fees settle to their floor.
         vm.warp(block.timestamp + 900);
 
-        // ── 6. Bind hook launcher + rebate rate + real Router + Lens + ordinary settler ──
-        hook.setLauncher(address(fakeLauncher));
+        // ── 6. Rebate rate + real Router + Lens + ordinary settler (launcher already bound at deploy) ──
         hook.setReferrerRebateBps(REFERRER_REBATE_BPS);
         router =
             new MemeverseYTFlashSwapRouter(manager, IMemeverseUniswapHook(hookProxy), IPOLSplitter(address(splitter)));

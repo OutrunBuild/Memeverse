@@ -133,14 +133,13 @@ PoolManager 传入 `afterSwap` 的 `BalanceDelta` 是实际核心 delta：它决
 - Hook owner 可改：
  - `treasury`
  - protocol fee 币种支持
- - `launcher`
  - `defaultLaunchFeeConfig`
- - 以上为非穷举子集；Hook owner 完整 onlyOwner setter 清单（含 `setReferrerRebateBps` / `setPoolInitializer` / `setLpTokenImplementation` / `setFacet` 等共 8 项）以 [docs/spec/access-control.md](../access-control.md) §3 边界矩阵 MemeverseUniswapHook 行为唯一来源。
+ - 以上为非穷举子集；Hook owner 完整 onlyOwner setter 清单（含 `setReferrerRebateBps` / `setPoolInitializer` / `setLpTokenImplementation` / `setFacet` 等共 7 项）以 [docs/spec/access-control.md](../access-control.md) §3 边界矩阵 MemeverseUniswapHook 行为唯一来源。
 - Launcher owner 配置 router / hook 时的 set-time 三重校验与 launcher 侧 `memeverseUniswapHook` write-once 约束见 [docs/spec/invariants.md](../invariants.md) INV-04（权限视角见 [docs/spec/access-control.md](../access-control.md) §5）。
-- Hook owner 在配置完成后仍可 retarget `launcher`；这是接受的同一 trust boundary 内配置权，不视为额外越权模型。
+- `launcher` 由 hook `initialize` 一次性固化（initializer write-once），不可 retarget，不视为额外越权模型。
 - Router 的 `hook/permit2` 为构造不可变参数。
 - 建池可用性依赖 router/hook/launcher 五个配置指针同时一致（含 INV-04 三重校验），`Genesis -> Locked` launch-time preflight 复核与完整约束见 [docs/spec/invariants.md](../invariants.md) INV-04。
-- Launcher pause 不会直接阻断 `changeStage(...)` 驱动的建池，因为 `changeStage(...)` 不是 `whenNotPaused`；但 Hook `launcher` retarget、Router/Hook 指针不一致或 `poolInitializer` 漂移会阻断新池创建。
+- Launcher pause 不会直接阻断 `changeStage(...)` 驱动的建池，因为 `changeStage(...)` 不是 `whenNotPaused`；但 Router/Hook 指针不一致或 `poolInitializer` 漂移会阻断新池创建（`launcher` binding 由 initialize 固化，运行时不可偏离）。
 
 `[代码已证]`
 

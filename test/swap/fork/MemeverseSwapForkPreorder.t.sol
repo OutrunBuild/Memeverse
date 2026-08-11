@@ -15,9 +15,8 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
 
     function setUp() public {
         _setUpBase(IPermit2(address(0)));
-        // executePreorderSettlement is launcher-only and pulls input via transferFrom(msg.sender),
-        // so this contract must be the launcher and must approve the hook.
-        _hook().setLauncher(address(this));
+        // executePreorderSettlement is launcher-only and pulls input via transferFrom(msg.sender);
+        // the fork base deploys this contract as the launcher, so just approve the hook here.
         token0.approve(address(_hook()), type(uint256).max);
         token1.approve(address(_hook()), type(uint256).max);
     }

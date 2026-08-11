@@ -69,7 +69,6 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
             tickSpacing: 200,
             hooks: IHooks(address(hook))
         });
-        hook.setLauncher(address(this));
         hook.setPoolInitializer(address(this));
         hook.authorizePoolInitialization(key, SQRT_PRICE_1_1);
         manager.initialize(key, SQRT_PRICE_1_1);

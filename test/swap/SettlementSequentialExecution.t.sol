@@ -43,7 +43,6 @@ contract SettlementSequentialExecutionTest is Test, HookStorageHelper {
 
         address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
         hook = MemeverseUniswapHook(hookProxy);
-        hook.setLauncher(address(this));
 
         hook.setPoolInitializer(address(this));
         inputToken.approve(address(hook), type(uint256).max);

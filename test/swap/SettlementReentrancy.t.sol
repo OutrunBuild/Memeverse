@@ -55,10 +55,10 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
         token0.mint(address(this), 1_000_000 ether);
         token1.mint(address(this), 1_000_000 ether);
 
+        // The 3-arg deployHookAtFlagAddress binds the launcher to this test contract at initialize;
+        // settlement entry is launcher-gated.
         address hookProxy = deployHookAtFlagAddress(IPoolManager(address(mockManager)), address(this), treasury);
         hook = MemeverseUniswapHook(hookProxy);
-        // Settlement entry is launcher-gated; the test contract acts as the launcher.
-        hook.setLauncher(address(this));
 
         key = _dynamicPoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)));
         poolId = key.toId();

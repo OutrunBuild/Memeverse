@@ -57,7 +57,6 @@ contract SettlementReentrancyRealV4Test is Test, HookStorageHelper {
 
         address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
         hook = MemeverseUniswapHook(hookProxy);
-        hook.setLauncher(address(this));
         hook.setPoolInitializer(address(this));
 
         token0.approve(address(hook), type(uint256).max);

@@ -96,7 +96,7 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
     ///        N+3: SettlementFacet(manager)
     ///        N+4: MemeverseUniswapHook impl (manager)
     ///      then CREATE2-mined UUPS hook proxy initialized with the Router signature
-    ///      `(owner, treasury, lpTokenImpl, swapFacet, dynamicFeeFacet, settlementFacet)`. The proxy initCode
+    ///      `(owner, treasury, lpTokenImpl, swapFacet, dynamicFeeFacet, settlementFacet, launcher)`. The proxy initCode
     ///      embeds the hook impl address plus all four pointer addresses (LP impl + 3 facets), every one of which
     ///      is a CREATE address precomputed up front, so the CREATE2 salt can be mined before any facet deploys.
     ///      `initialize` re-validates each facet shares this hook's PoolManager via `_requireFacetPoolManager`.
@@ -105,8 +105,9 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
     /// @param manager Uniswap v4 pool manager shared by the hook and every facet (immutable-bound).
     /// @param hookOwner Initial hook owner (typically the test contract).
     /// @param treasury Treasury set at initialize.
+    /// @param launcher Launcher bound write-once at initialize (post-unlock public-swap protection).
     /// @return hookProxy Address of the deployed hook proxy (carries flag bits).
-    function deployHookAtFlagAddress(IPoolManager manager, address hookOwner, address treasury)
+    function deployHookAtFlagAddress(IPoolManager manager, address hookOwner, address treasury, address launcher)
         internal
         returns (address hookProxy)
     {
@@ -127,7 +128,8 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
                 address(lpTokenImplementation),
                 predictedSwapFacet,
                 predictedDynamicFeeFacet,
-                predictedSettlementFacet
+                predictedSettlementFacet,
+                launcher
             )
         );
         bytes memory proxyInitCode =
@@ -167,6 +169,17 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
         require(address(proxy) == predictedProxy, "CREATE2 proxy drifted");
 
         return address(proxy);
+    }
+
+    /// @notice Convenience overload that binds the launcher to the deploying test contract (`address(this)`).
+    /// @dev Most tests act as the launcher themselves; this keeps those call sites unchanged while the
+    ///      4-arg overload is used when a different launcher binding is required. `address(this)` is the
+    ///      inheriting test contract because this helper is `internal`.
+    function deployHookAtFlagAddress(IPoolManager manager, address hookOwner, address treasury)
+        internal
+        returns (address hookProxy)
+    {
+        return deployHookAtFlagAddress(manager, hookOwner, treasury, address(this));
     }
 
     // ── Seed methods ──

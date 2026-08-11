@@ -241,7 +241,6 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
             address(guardedHook), Currency.wrap(address(token0)), Currency.wrap(address(token1))
         );
 
-        guardedHook.setLauncher(address(this));
         guardedHook.setPoolInitializer(address(this));
         guardedHook.authorizePoolInitialization(guardedKey, SQRT_PRICE_1_1);
         guardedManager.initialize(guardedKey, SQRT_PRICE_1_1);

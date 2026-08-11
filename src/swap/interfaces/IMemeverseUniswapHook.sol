@@ -199,11 +199,6 @@ interface IMemeverseUniswapHook is IImmutableState {
     /// @return Settlement facet pointer.
     function settlementFacet() external view returns (address);
 
-    /// @notice Updates the launcher consulted for public-swap protection.
-    /// @dev Implementations are expected to restrict this to an admin or owner role.
-    /// @param launcher_ New launcher binding.
-    function setLauncher(address launcher_) external;
-
     /// @notice Updates the router authorized to initialize hook-managed pools.
     /// @dev Implementations are expected to restrict this to an admin or owner role.
     /// @param initializer New authorized initializer router.

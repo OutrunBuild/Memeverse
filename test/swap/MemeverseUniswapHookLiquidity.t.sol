@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -252,8 +253,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     }
 
     function testPublicSwapResumeTime_RevertsForNativeCurrencyInEitherPosition() external {
-        hook.setLauncher(address(this));
-
         vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
         hook.setPublicSwapResumeTime(address(0), address(token1), 1);
 
@@ -268,7 +267,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     ) external {
         tokenA = address(uint160(bound(uint160(tokenA), 1, type(uint160).max)));
         tokenB = address(uint160(bound(uint160(tokenB), 1, type(uint160).max)));
-        hook.setLauncher(address(this));
 
         PoolId expectedPoolId = MemeversePoolKeyLib.hookPoolKey(tokenA, tokenB, address(hook)).toId();
         hook.setPublicSwapResumeTime(tokenA, tokenB, resumeTime);
@@ -282,8 +280,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @notice Verifies hook-local protection state is keyed only by `PoolId`.
     /// @dev The unlock gate uses canonical PoolId state without token-pair guessing or launcher verdict helpers.
     function testPublicSwapResumeTime_StoresPerPoolWithoutAffectingOtherPools() external {
-        hook.setLauncher(address(this));
-
         PoolKey memory secondKey =
             _dynamicPoolKey(Currency.wrap(address(new MockERC20("Token2", "TK2", 18))), Currency.wrap(address(token1)));
         PoolId secondPoolId = secondKey.toId();
@@ -308,8 +304,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @notice Verifies hook-local protection can be cleared by writing zero.
     /// @dev `0` is the canonical "no active post-unlock public-swap protection" value.
     function testPublicSwapResumeTime_CanBeClearedBackToZero() external {
-        hook.setLauncher(address(this));
-
         (bool setOk, bytes memory setData) =
             _setPublicSwapResumeTime(address(token0), address(token1), uint40(block.timestamp + 2 hours));
         assertTrue(setOk, string(setData));
@@ -323,8 +317,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     }
 
     function testPublicSwapResumeTime_StoresAndReadsResumeTime() external {
-        hook.setLauncher(address(this));
-
         uint40 resumeTime = uint40(block.timestamp + 1 hours);
         (bool setOk, bytes memory setData) = _setPublicSwapResumeTime(address(token0), address(token1), resumeTime);
         assertTrue(setOk, string(setData));
@@ -739,7 +731,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         (address lpToken,,) = hook.poolInfo(poolId);
         vm.mockCallRevert(lpToken, abi.encodeWithSelector(TOTAL_SUPPLY_SELECTOR), bytes("unexpected totalSupply"));
 
-        hook.setLauncher(address(this));
         token1.mint(address(mockManager), 1_000_000 ether);
 
         hook.executePreorderSettlement(
@@ -1186,7 +1177,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     function testExecutePreorderSettlement_RevertsWhenExactInputPartiallyFills() external {
         _addLiquidity();
         hook.setProtocolFeeCurrency(key.currency0, true);
-        hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
         // The seed is a public swap and needs a session; the settlement below is a hook self-call and does not.
         hook.beginAccountSession();
@@ -1257,8 +1247,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @notice Verifies preorder settlement can only be initiated by the bound launcher.
     function testExecutePreorderSettlement_RevertsWhenCallerNotLauncher() external {
         hook.setProtocolFeeCurrency(key.currency0, true);
-        hook.setLauncher(address(0xABCD));
 
+        // The shared hook binds this contract as launcher at deploy; prank as a non-launcher to trip the guard.
+        vm.prank(address(0xABCD));
         vm.expectRevert(IMemeverseUniswapHook.Unauthorized.selector);
         hook.executePreorderSettlement(
             IMemeverseUniswapHook.PreorderSettlementParams({
@@ -1272,7 +1263,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     function testExecutePreorderSettlement_RevertsWhenPairUsesNativeCurrency() external {
         PoolKey memory nativeKey = _dynamicPoolKey(CurrencyLibrary.ADDRESS_ZERO, Currency.wrap(address(token1)));
         hook.setProtocolFeeCurrency(key.currency0, true);
-        hook.setLauncher(address(this));
 
         vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
         hook.executePreorderSettlement(
@@ -1297,7 +1287,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
             hooks: IHooks(address(uninitializedHook))
         });
         uninitializedHook.setProtocolFeeCurrency(uninitializedKey.currency0, true);
-        uninitializedHook.setLauncher(address(this));
 
         vm.expectRevert(IMemeverseUniswapHook.PoolNotInitialized.selector);
         uninitializedHook.executePreorderSettlement(
@@ -1316,7 +1305,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         _addLiquidity();
         // currency1 is the output currency for zeroForOne=true swaps.
         hook.setProtocolFeeCurrency(key.currency1, true);
-        hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
         // Mint output tokens to the mock manager so it can pay out the swap result.
         token1.mint(address(mockManager), 1_000_000 ether);
@@ -1350,7 +1338,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         _addLiquidity();
         // Output-side protocol fee so expected fee is non-zero and the mismatch branch is live.
         hook.setProtocolFeeCurrency(key.currency1, true);
-        hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
         token1.mint(address(mockManager), 1_000_000 ether);
 
@@ -1366,15 +1353,11 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         );
     }
 
-    /// @notice Verifies owner launch-fee and launcher setters update state and reject invalid inputs.
-    /// @dev Covers the launch scheduler plus explicit launcher binding configuration surface.
-    function testOwnerSetters_UpdateLaunchFeeConfigAndLauncher() external {
-        vm.expectRevert(IMemeverseUniswapHook.ZeroAddress.selector);
-        hook.setLauncher(address(0));
-
-        hook.setLauncher(address(0xD00D));
-        assertEq(hook.launcher(), address(0xD00D), "launcher");
-
+    /// @notice Verifies the owner launch-fee setter updates state and rejects invalid inputs.
+    /// @dev Covers the launch scheduler configuration surface. The launcher binding is write-once at
+    ///      initialize under C1 (covered by testInitialize_RevertsWhenLauncherZero); there is no runtime
+    ///      launcher setter.
+    function testOwnerSetters_UpdateLaunchFeeConfig() external {
         vm.expectRevert(IMemeverseUniswapHook.ZeroValue.selector);
         hook.setDefaultLaunchFeeConfig(
             IDynamicFeeFacet.LaunchFeeConfig({startFeeBps: 5000, minFeeBps: 100, decayDurationSeconds: 0})
@@ -1453,7 +1436,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         // Configure the settlement path: evil as the input-side fee currency, this contract as launcher,
         // and a public-swap-block window so the reentrant swap fails closed and deterministically.
         hook.setProtocolFeeCurrency(Currency.wrap(address(evil)), true);
-        hook.setLauncher(address(this));
         _setPublicSwapResumeTime(address(evil), address(token1), uint40(block.timestamp + 1 hours));
         evil.approve(address(hook), type(uint256).max);
         // Fund the output currency so the settlement callback can pay token1 out.
@@ -1522,8 +1504,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     ///      authorization lives on the implementation (`_authorizeUpgrade`, onlyOwner), so the owner can drive the
     ///      upgrade directly through the proxy without a ProxyAdmin.
     function testOwnerCanUpgradeAndPreserveStorage() external {
-        MemeverseUniswapHook initialized = _deployHookProxy(address(this), address(0xFEE));
-        initialized.setLauncher(address(0xD00D));
+        MemeverseUniswapHook initialized = MemeverseUniswapHook(
+            deployHookAtFlagAddress(IPoolManager(address(mockManager)), address(this), address(0xFEE), address(0xD00D))
+        );
         initialized.setPoolInitializer(address(0xBEEF));
 
         // Snapshot the V1-set storage through the V1 getters while V1 is still live.
@@ -1584,6 +1567,20 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         address eoaTarget = address(0xDEAD);
         vm.expectRevert(abi.encodeWithSelector(IMemeverseUniswapHook.UpgradeTargetCodeNotReady.selector, eoaTarget));
         MemeverseUniswapHook(address(initialized)).upgradeToAndCall(eoaTarget, "");
+    }
+
+    /// @notice Verifies initialize rejects a zero launcher binding (C1 write-once launcher invariant).
+    /// @dev The launcher zero-check is the first check in initialize, so a single reverting proxy CREATE
+    ///      (with dummy non-zero facets) exercises it without the multi-step deployHookAtFlagAddress path
+    ///      (whose preceding sub-calls would consume vm.expectRevert).
+    function testInitialize_RevertsWhenLauncherZero() external {
+        MemeverseUniswapHook hookImpl = new MemeverseUniswapHook(IPoolManager(address(1)));
+        bytes memory initData = abi.encodeCall(
+            MemeverseUniswapHook.initialize,
+            (address(this), address(this), address(1), address(1), address(1), address(1), address(0))
+        );
+        vm.expectRevert(IMemeverseUniswapHook.ZeroAddress.selector);
+        new ERC1967Proxy(address(hookImpl), initData);
     }
 
     function testConstructorRevertsWhenPoolManagerIsZero() external {

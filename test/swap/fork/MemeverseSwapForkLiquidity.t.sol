@@ -195,7 +195,6 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         newToken.approve(address(router), type(uint256).max);
         otherToken.approve(address(router), type(uint256).max);
 
-        _hook().setLauncher(address(this));
         // authorizePoolInitialization is called BY the router; it requires msg.sender == poolInitializer,
         // so point poolInitializer at the router.
         _hook().setPoolInitializer(address(router));
@@ -210,7 +209,7 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
     /// @dev createPoolAndAddLiquidity is launcher-only (router onlyLauncher modifier). A non-launcher
     ///      caller is rejected at the router entry (not V4-wrapped).
     function test_RevertWhen_CreatePool_NonLauncher() external {
-        _hook().setLauncher(address(this)); // this is the launcher; attacker != launcher
+        // The fork base deploys this contract as the launcher; attacker != launcher.
         address attacker = makeAddr("attacker");
         vm.prank(attacker);
         vm.expectRevert(IMemeverseSwapRouter.UnauthorizedLauncher.selector);

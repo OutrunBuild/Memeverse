@@ -200,10 +200,9 @@ abstract contract MemeverseSwapForkBase is Test, HookStorageHelper {
     }
 
     /// @dev Blocks public swaps through the production setter instead of writing storage directly.
-    ///      The test contract becomes the launcher so the onlyLauncher guard and pool-key derivation
-    ///      are exercised on the real hook path.
+    ///      The test contract is the launcher (bound at deploy), so the onlyLauncher guard and pool-key
+    ///      derivation are exercised on the real hook path.
     function _blockPublicSwap(uint256 futureTimestamp) internal {
-        _hook().setLauncher(address(this));
         _hook().setPublicSwapResumeTime(address(token0), address(token1), uint40(futureTimestamp));
     }
 

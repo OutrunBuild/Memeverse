@@ -167,7 +167,8 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
                 address(lpImpl),
                 address(swapFacet),
                 address(dynFacet),
-                address(settlementFacet)
+                address(settlementFacet),
+                address(this)
             );
     }
 

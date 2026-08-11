@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {VmSafe} from "forge-std/Vm.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -141,7 +142,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
 
         key = _dynamicPoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)));
         poolId = key.toId();
-        hook.setLauncher(address(this));
         hook.setPoolInitializer(address(this));
         hook.authorizePoolInitialization(key, SQRT_PRICE_1_1);
         manager.initialize(key, SQRT_PRICE_1_1);
@@ -252,11 +252,17 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         });
     }
 
-    /// @notice Verifies explicit launcher binding rejects the zero address.
-    /// @dev Launch settlement authorization depends only on the launcher binding.
-    function testSetLauncher_RevertsOnZeroAddress() external {
+    /// @notice Verifies initialize rejects a zero launcher binding (C1 write-once launcher invariant).
+    /// @dev The launcher zero-check is the first check in initialize, so a single reverting proxy CREATE
+    ///      (with dummy non-zero facets) exercises it without the multi-step deploy path.
+    function testInitialize_RevertsWhenLauncherZero() external {
+        MemeverseUniswapHook hookImpl = new MemeverseUniswapHook(IPoolManager(address(1)));
+        bytes memory initData = abi.encodeCall(
+            MemeverseUniswapHook.initialize,
+            (address(this), address(this), address(1), address(1), address(1), address(1), address(0))
+        );
         vm.expectRevert(IMemeverseUniswapHook.ZeroAddress.selector);
-        hook.setLauncher(address(0));
+        new ERC1967Proxy(address(hookImpl), initData);
     }
 
     /// @notice Verifies swaps reject pool keys wired to a different hook address.
@@ -506,7 +512,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             address(guardedHook), Currency.wrap(address(token0)), Currency.wrap(address(token1))
         );
 
-        guardedHook.setLauncher(address(this));
         guardedHook.setPoolInitializer(address(this));
         guardedHook.authorizePoolInitialization(guardedKey, SQRT_PRICE_1_1);
         guardedManager.initialize(guardedKey, SQRT_PRICE_1_1);
@@ -541,7 +546,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     function testSwap_PublicProtectionWindowBlocksUntilResumeTime() external {
         _setProtocolFeeCurrency(key.currency0);
         _matureLaunchWindow();
-        hook.setLauncher(address(this));
 
         uint40 resumeTime = uint40(block.timestamp + 24 hours);
         (bool setOk, bytes memory setData) =
@@ -605,7 +609,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             address(guardedHook), Currency.wrap(address(otherToken)), Currency.wrap(address(token1))
         );
 
-        guardedHook.setLauncher(address(this));
         guardedHook.setPoolInitializer(address(this));
         guardedHook.authorizePoolInitialization(blockedKey, SQRT_PRICE_1_1);
         guardedManager.initialize(blockedKey, SQRT_PRICE_1_1);
@@ -667,7 +670,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     function testExecutePreorderSettlement_RevertsWhenCallerIsNotLauncher() external {
         _setProtocolFeeCurrency(key.currency0);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
-        hook.setLauncher(address(this));
 
         vm.prank(alice);
         vm.expectRevert(IMemeverseUniswapHook.Unauthorized.selector);
@@ -686,7 +688,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _setProtocolFeeCurrency(key.currency0);
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
         uint256 treasury0Before = token0.balanceOf(treasury);
-        hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
 
         IMemeverseUniswapHook.SwapQuote memory quoteAtLaunch = router.quoteSwap(
@@ -713,7 +714,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     /// @dev The treasury/output balances should match a single 35 bps output fee on the post-LP-fee swap output.
     function testExecutePreorderSettlement_OutputSideProtocolFeeCollectedExactlyOnce() external {
         _setProtocolFeeCurrency(key.currency1);
-        hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
 
         uint256 sender1Before = token1.balanceOf(address(this));
@@ -743,7 +743,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         hook.setDefaultLaunchFeeConfig(
             IDynamicFeeFacet.LaunchFeeConfig({startFeeBps: 4000, minFeeBps: 300, decayDurationSeconds: 900})
         );
-        hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
 
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
@@ -766,7 +765,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     /// @dev The immediate follow-up quote should observe carried short/volatility state, not a pristine fee engine.
     function testExecutePreorderSettlement_UpdatesDynamicFeeStateAndSubsequentQuote() external {
         _setProtocolFeeCurrency(key.currency0);
-        hook.setLauncher(address(this));
         hook.setDefaultLaunchFeeConfig(
             IDynamicFeeFacet.LaunchFeeConfig({startFeeBps: 100, minFeeBps: 100, decayDurationSeconds: 1})
         );
@@ -843,7 +841,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         );
         DirectProtectedSwapCaller directCaller = new DirectProtectedSwapCaller(guardedManager);
 
-        guardedHook.setLauncher(address(this));
         guardedHook.setPoolInitializer(address(this));
         guardedHook.authorizePoolInitialization(guardedKey, SQRT_PRICE_1_1);
         guardedManager.initialize(guardedKey, SQRT_PRICE_1_1);
@@ -1814,8 +1811,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         tokenB.mint(address(this), 1_000_000 ether);
         tokenA.approve(address(router), type(uint256).max);
         tokenB.approve(address(router), type(uint256).max);
-        hook.setLauncher(alice);
 
+        // The shared hook binds this contract as launcher at deploy; prank as a non-launcher to trip the guard.
+        vm.prank(alice);
         vm.expectRevert(UNAUTHORIZED_LAUNCHER_SELECTOR);
         router.createPoolAndAddLiquidity(
             address(tokenA), address(tokenB), 100 ether, 100 ether, SQRT_PRICE_1_1, address(this), block.timestamp

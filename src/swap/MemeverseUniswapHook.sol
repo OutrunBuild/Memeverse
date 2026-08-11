@@ -115,23 +115,30 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
     /// @dev The proxy address is the real Uniswap hook address, so hook permission flags are validated
     ///      here. Facets reject direct CALLs via an immutable self-address guard (`__self`), independent of
     ///      Router storage; no hook self-address is stored for the facet guard.
+    ///
+    ///      The `launcher` is bound here exactly once and never retargeted (there is no `setLauncher`):
+    ///      the OZ `initializer` modifier makes this write-once, mirroring the launcher-side write-once
+    ///      hook binding (`setMemeverseUniswapHook` + back-pointer check). A retargetable launcher binding
+    ///      would let an owner orphan the launcher and permanently lock every `onlyLauncher` verse flow.
     /// @param initialOwner Initial owner authorized to configure and upgrade the Router.
     /// @param treasury_ Treasury receiving protocol fees.
     /// @param lpTokenImplementation_ Clone implementation used for pool LP tokens.
     /// @param swapFacet_ Facet holding the v4 swap callback logic.
     /// @param dynamicFeeFacet_ Facet holding the dynamic fee quote and realized-state logic.
     /// @param settlementFacet_ Facet holding the preorder settlement entry and unlock callback.
+    /// @param launcher_ Launcher consulted for post-unlock public-swap protection; write-once via this initializer.
     function initialize(
         address initialOwner,
         address treasury_,
         address lpTokenImplementation_,
         address swapFacet_,
         address dynamicFeeFacet_,
-        address settlementFacet_
+        address settlementFacet_,
+        address launcher_
     ) external initializer {
         if (
             treasury_ == address(0) || lpTokenImplementation_ == address(0) || swapFacet_ == address(0)
-                || dynamicFeeFacet_ == address(0) || settlementFacet_ == address(0)
+                || dynamicFeeFacet_ == address(0) || settlementFacet_ == address(0) || launcher_ == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -149,6 +156,9 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
         _memeverseUniswapHookStorage.swapFacet = swapFacet_;
         _memeverseUniswapHookStorage.dynamicFeeFacet = dynamicFeeFacet_;
         _memeverseUniswapHookStorage.settlementFacet = settlementFacet_;
+        // Launcher is write-once: bound here and never retargeted (no setLauncher), mirroring the
+        // launcher-side write-once hook binding so onlyLauncher flows can never be orphaned.
+        _memeverseUniswapHookStorage.launcher = launcher_;
         // Emit initial facet bindings so indexers/subgraphs tracking FacetUpdated observe
         // deployment-time bindings. address(0) denotes the initial oldFacet value.
         emit FacetUpdated(SWAP_FACET_ROLE, address(0), swapFacet_);
@@ -156,6 +166,7 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
         emit FacetUpdated(SETTLEMENT_FACET_ROLE, address(0), settlementFacet_);
         emit TreasuryUpdated(address(0), treasury_);
         emit LPTokenImplementationUpdated(address(0), lpTokenImplementation_);
+        emit LauncherUpdated(address(0), launcher_);
         _memeverseUniswapHookStorage.defaultLaunchFeeConfig = IDynamicFeeFacet.LaunchFeeConfig({
             startFeeBps: DEFAULT_LAUNCH_START_FEE_BPS,
             minFeeBps: DEFAULT_LAUNCH_MIN_FEE_BPS,
@@ -981,17 +992,6 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
         if (currency.isAddressZero()) revert NativeCurrencyUnsupported();
         _memeverseUniswapHookStorage.supportedProtocolFeeCurrencies[Currency.unwrap(currency)] = supported;
         emit ProtocolFeeCurrencySupportUpdated(currency, supported);
-    }
-
-    /// @notice Sets the launcher consulted for post-unlock public-swap protection.
-    /// @dev Only callable by the owner. Zero address is rejected to avoid accidental fail-open reconfiguration.
-    /// @param launcher_ The launcher binding used for `isPublicSwapAllowed` checks.
-    function setLauncher(address launcher_) external override onlyOwner {
-        if (launcher_ == address(0)) revert ZeroAddress();
-
-        address oldLauncher = _memeverseUniswapHookStorage.launcher;
-        _memeverseUniswapHookStorage.launcher = launcher_;
-        emit LauncherUpdated(oldLauncher, launcher_);
     }
 
     /// @notice Sets the router authorized to initialize hook-managed pools.

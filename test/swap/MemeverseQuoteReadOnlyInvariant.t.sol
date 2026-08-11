@@ -153,7 +153,6 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
 
     /// @notice A non-zero direct quote observes the same active public-swap pause as execution.
     function testQuoteSwapFeeWithContext_NonZeroAmountRejectsActivePublicSwapPause() external {
-        hook.setLauncher(address(this));
         hook.setPublicSwapResumeTime(address(token0), address(token1), uint40(block.timestamp + 1 hours));
         SwapParams memory params =
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1});
@@ -204,7 +203,6 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
 
     /// @notice Zero direct quote skips liquidity and raw-limit validation and remains read-only.
     function testQuoteSwapFeeWithContext_ZeroAmountAllowsZeroContext() external {
-        hook.setLauncher(address(this));
         hook.setPublicSwapResumeTime(address(token0), address(token1), uint40(block.timestamp + 1 hours));
         SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: 0, sqrtPriceLimitX96: 0});
         uint256[9] memory beforeQuote = _snapshotFeeState(poolId);

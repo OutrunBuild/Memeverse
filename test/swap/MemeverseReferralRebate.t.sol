@@ -223,7 +223,6 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
     ///      The price limit is the tight preorder bound (1% below SQRT_PRICE_1_1) used elsewhere.
     function testPreorderSettlement_DoesNotAccrueRebate() external {
         uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
-        hook.setLauncher(address(this));
         token0.approve(address(hook), type(uint256).max);
 
         // Sanity: a normal public swap with this referrer WOULD accrue rebate (the path this test guards).

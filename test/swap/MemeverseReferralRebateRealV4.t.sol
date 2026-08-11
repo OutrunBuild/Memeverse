@@ -245,9 +245,9 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
     ///         so the callback only settles input + takes output to the recipient and never enters the
     ///         output-fee take branch.
     function test_PreorderSettlement_InputFee_Succeeds_OnRealV4() public {
-        // Foundry re-runs setUp() before every test function, so this and the fee switch below do not
-        // leak into the shared swap tests. Self-authorize here because settlement is onlyLauncher-gated.
-        hook.setLauncher(address(this));
+        // Foundry re-runs setUp() before every test function, so the fee switch below does not
+        // leak into the shared swap tests. This contract is the launcher (bound at deploy), so
+        // settlement is authorized.
 
         uint256 recipientToken1Before = token1.balanceOf(address(this));
 
@@ -271,9 +271,9 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
     ///         CurrencyNotSettled at unlock exit — exactly the path the mock PoolManager does not catch,
     ///         which is the core incremental value of this guard.
     function test_PreorderSettlement_OutputFee_Succeeds_OnRealV4() public {
-        // Foundry re-runs setUp() before every test function, so this and the fee switch below do not
-        // leak into the shared swap tests. Self-authorize here because settlement is onlyLauncher-gated.
-        hook.setLauncher(address(this));
+        // Foundry re-runs setUp() before every test function, so the fee switch below does not
+        // leak into the shared swap tests. This contract is the launcher (bound at deploy), so
+        // settlement is authorized.
 
         // Route the protocol fee to the output currency (token1) so the callback hits the output-fee
         // take branch (SettlementFacet: poolManager.take(outputCurrency, treasury, fee)).

@@ -106,6 +106,71 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return _convertToAssets(shares, totalAssets);
     }
 
+    /// @notice Converts an asset amount to vault shares at the current rate.
+    /// @dev Reuses the internal floor conversion with the `virtualAssets` buffer, sharing the same
+    ///      baseline as `previewDeposit`/`previewRedeem`.
+    /// @param assets Amount of underlying asset to convert.
+    /// @return shares Shares equivalent at the current rate.
+    function convertToShares(uint256 assets) external view override returns (uint256) {
+        return _convertToShares(assets, totalAssets);
+    }
+
+    /// @notice Converts a vault share amount to underlying assets at the current rate.
+    /// @dev Reuses the internal floor conversion with the `virtualAssets` buffer.
+    /// @param shares Amount of vault shares to convert.
+    /// @return assets Asset equivalent at the current rate.
+    function convertToAssets(uint256 shares) external view override returns (uint256) {
+        return _convertToAssets(shares, totalAssets);
+    }
+
+    /// @notice Maximum assets a single deposit could accept for `receiver`.
+    /// @dev The vault imposes no deposit cap, so this is the unbounded sentinel.
+    /// @return maxAssets Unbounded upper bound.
+    function maxDeposit(address) external pure override returns (uint256) {
+        return type(uint256).max;
+    }
+
+    /// @notice Maximum shares a single mint could accept for `receiver`.
+    /// @dev The vault imposes no mint cap, so this is the unbounded sentinel.
+    /// @return maxShares Unbounded upper bound.
+    function maxMint(address) external pure override returns (uint256) {
+        return type(uint256).max;
+    }
+
+    /// @notice Maximum assets `owner` could withdraw given current share holdings.
+    /// @dev Asset value of `owner`'s full share balance at the current rate.
+    /// @param owner Account whose redeemable assets are queried.
+    /// @return maxAssets Asset value of `owner`'s full share balance.
+    function maxWithdraw(address owner) external view override returns (uint256) {
+        return _convertToAssets(balanceOf(owner), totalAssets);
+    }
+
+    /// @notice Maximum shares `owner` could redeem given current share holdings.
+    /// @dev Returns `balanceOf(owner)`. Shares are burned at `requestRedeem` enqueue time, so an owner
+    ///      can request their full balance; the assets arrive after `REDEEM_DELAY`. This is an intentional
+    ///      departure from EIP-4626's maxRedeem timelock clause (see spec §6.2).
+    /// @param owner Account whose redeemable shares are queried.
+    /// @return maxShares `owner`'s full share balance.
+    function maxRedeem(address owner) external view override returns (uint256) {
+        return balanceOf(owner);
+    }
+
+    /// @notice Previews the asset cost of minting exactly `shares`.
+    /// @dev Rounds up (ceil) — EIP-4626 requires the deposit to cost no fewer than this amount.
+    /// @param shares Amount of vault shares to mint.
+    /// @return assets Underlying asset amount needed.
+    function previewMint(uint256 shares) external view override returns (uint256) {
+        return _convertToAssetsCeil(shares, totalAssets);
+    }
+
+    /// @notice Previews the shares that must be burned to release exactly `assets`.
+    /// @dev Rounds up (ceil) — EIP-4626 requires redeeming no fewer shares than this amount.
+    /// @param assets Underlying asset amount to release.
+    /// @return shares Vault shares that would be burned.
+    function previewWithdraw(uint256 assets) external view override returns (uint256) {
+        return Math.mulDiv(assets, totalSupply() + virtualAssets, totalAssets + virtualAssets, Math.Rounding.Ceil);
+    }
+
     /// @notice Pulls new yield into the vault and updates share pricing.
     /// @dev Burns the supplied yield if no shares exist yet, preventing the first depositor from capturing it.
     /// @param yield Amount of underlying asset contributed as yield.
@@ -198,6 +263,28 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return shares;
     }
 
+    /// @notice Mints exactly `shares` to `receiver` by pulling the needed assets from the caller.
+    /// @dev Shares-first deposit. `assets` is rounded up (ceil) to protect the vault so existing
+    ///      shareholders are never diluted by an under-paying mint. Reuses `_deposit` (pull + mint +
+    ///      uint208 guard + Deposit event) and writes the `totalAssets` checkpoint so the paired
+    ///      governance invariant holds. The caller (`msg.sender`) pays the assets, mirroring `deposit`;
+    ///      there is no operator-allowance path.
+    /// @param shares Amount of vault shares to mint.
+    /// @param receiver Recipient of the minted shares.
+    /// @return assets Underlying assets pulled from the caller.
+    function mint(uint256 shares, address receiver) external override returns (uint256 assets) {
+        // Zero-share mint carries no value; returning early avoids redundant transfers, mint, and
+        // checkpoint writes. Preserves the ERC-4626 round-trip: previewMint(0) == mint(0) == 0.
+        if (shares == 0) return 0;
+        // Ceil the asset pull so the vault is never short-changed: the caller pays one wei more rather
+        // than one wei less. virtualAssets is non-zero from initialize, so assets > 0 whenever shares > 0.
+        assets = _convertToAssetsCeil(shares, totalAssets);
+        _deposit(msg.sender, receiver, assets, shares);
+        _writeTotalAssetCheckpoint(totalAssets);
+
+        return assets;
+    }
+
     /// @notice Burns shares and queues a delayed redemption for `receiver`.
     /// @dev Self-redemption only: `receiver` must equal `msg.sender` so no one can fill another
     ///      account's queue. The queued asset amount is fixed at request time and later unlocked by `executeRedeem`.
@@ -273,6 +360,18 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return Math.mulDiv(shares, latestTotalAssets + virtualAssets, totalSupply() + virtualAssets);
     }
 
+    function _convertToAssetsCeil(uint256 shares, uint256 latestTotalAssets) internal view returns (uint256) {
+        // Ceil counterpart of `_convertToAssets`, used by previewMint/mint so the vault never under-prices
+        // a shares→assets conversion (EIP-4626 "no fewer than" for mint).
+        return Math.mulDiv(shares, latestTotalAssets + virtualAssets, totalSupply() + virtualAssets, Math.Rounding.Ceil);
+    }
+
+    /// @dev Shared pull-and-mint core for `deposit` and `mint`. Safety assumption: `asset` is a
+    ///      hook-free ERC-20. The `safeTransferFrom` interaction runs BEFORE the `totalAssets`/`_mint`
+    ///      effects (interaction-before-effects), so reentrancy safety relies on the asset having no
+    ///      transfer hook that could reenter while this vault state is stale. The bound memecoin
+    ///      (OutrunOFTInit) has no transfer hook, so this is not exploitable today; binding any
+    ///      hook-bearing token here requires a fresh reentrancy review (and likely a reentrancy guard).
     function _deposit(address sender, address receiver, uint256 assets, uint256 shares) internal {
         IERC20(asset).safeTransferFrom(sender, address(this), assets);
         totalAssets += assets;

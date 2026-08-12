@@ -146,6 +146,35 @@ V2 当前没有即时赎回 underlying，而是：
 
 这个模型的目的，是降低 flash 攻击和瞬时套利对 vault 的影响。
 
+### 6.1 ERC-4626 接口面对齐
+
+为支持外部聚合器报价与按份额存款，`MemecoinYieldVault.sol` 将新增 9 个公共函数，签名逐字节匹配 EIP-4626；但合约**不**继承 `IERC4626`、**不**补 `supportsInterface`（即不声称经 ERC-165 实现 ERC-4626 接口）。
+
+只读视图（view）：
+
+- `convertToShares(uint256 assets) → shares`：复用现有内部换算（向下取整 floor + `virtualAssets` 缓冲，见 §4.1），基线与 `MemecoinYieldVault.sol::previewDeposit`（`MemecoinYieldVault.sol::_convertToShares`）一致。
+- `convertToAssets(uint256 shares) → assets`：复用现有内部换算（floor + 缓冲），基线与 `MemecoinYieldVault.sol::previewRedeem`（`MemecoinYieldVault.sol::_convertToAssets`）一致。
+- `maxDeposit(address) → type(uint256).max`：无存款上限。
+- `maxMint(address) → type(uint256).max`。
+- `maxWithdraw(address owner) → convertToAssets(balanceOf(owner))`。
+- `maxRedeem(address owner) → balanceOf(owner)`。
+- `previewMint(uint256 shares) → assets`：**向上取整**（`Math.mulDiv` Ceil），满足 EIP-4626「no fewer than」约束（铸出指定份额所需资产不少于返回值）。
+- `previewWithdraw(uint256 assets) → shares`：**向上取整**（Ceil），满足 EIP-4626「no fewer than」约束（提出指定资产所需份额不少于返回值）。
+
+写操作：
+
+- `mint(uint256 shares, address receiver) → assets`：复用 `MemecoinYieldVault.sol::_deposit`，assets 向上取整（与 `previewMint` 同基线），在同调用内写 `totalAssets` checkpoint（见 [docs/spec/invariants.md INV-26](../invariants.md)），emit 现有 `Deposit` 事件（签名已与 ERC-4626 标准 `Deposit` 逐字节一致，见 [docs/spec/events.md §2.5](../events.md)）。`mint` 与 `deposit` 同为 permissionless 入口（见 [docs/spec/access-control.md §3](../access-control.md)）：从 `msg.sender` 拉取 asset、把份额铸给任意 `receiver`，票权归属与 `deposit` 一致（见 §2.2）。
+
+### 6.2 ERC-4626 语义偏离声明
+
+本 vault **不声称完整 ERC-4626 合规**。与标准 ERC-4626 即时赎回模型的有意分歧逐条说明如下：
+
+1. `redeem` / `withdraw` 标准 selector **不实现**。取款沿用 §6 的自定义延迟队列：`MemecoinYieldVault.sol::requestRedeem` → 等 `MemecoinYieldVault.sol::REDEEM_DELAY`（`1 days`）→ `MemecoinYieldVault.sol::executeRedeem`。这是防闪电贷存取套利的第二道防线（`virtualAssets` 缓冲是第一道，见 §4.2），**不可删**；模型类似 Lido 提款队列。
+2. `maxRedeem(owner)` 返回 `balanceOf(owner)`，**不**返回 EIP-4626 timelock 条款要求的 limited value。理由：`REDEEM_DELAY` 是「到账延迟」而非「赎回额度限制」——份额在 `requestRedeem` 入队时即烧，owner 可全额申请赎回（受 §6.2.4 队列/单笔上限约束，常态下成立），只是资产 1 天后才到账。这是对 EIP-4626 `maxRedeem` timelock 条款的有意偏离。
+3. `previewWithdraw` / `maxWithdraw` 是**孤儿报价视图**：vault 无标准 `withdraw` 入口，只有 redeem 语义的 `requestRedeem`（shares→assets）。这两个函数仅供外部聚合器报价，其描述的操作无对应标准入口。
+4. 实际赎回另受 `MemecoinYieldVault.sol::MAX_REDEEM_REQUESTS`（每账户队列 5 笔上限）与单笔 `uint192` 上限约束，这是现有防 griefing / 防溢出机制，不在 ERC-4626 标准范围内。因此 `maxRedeem` / `maxWithdraw` 是**余额推导的高报上界**：两者无条件返回 `balanceOf(owner)` 及其资产折算，队列满或单笔超 `uint192` 时可能高于当前实际可入队的量，`requestRedeem` 会以 `MaxRedeemRequestsReached` / `RedeemAmountOverflowed` revert；集成方不得把 max* 当作可入队量的保证（EIP-4626「MUST NOT be higher than the actual maximum that would be accepted」为此未满足）。
+5. 综上，本 vault 只提供只读视图 + `mint` 的部分兼容，供外部聚合器报价与存款；不提供标准 `redeem` / `withdraw` 即时赎回语义。
+
 ## 7. Governor Treasury 语义
 
 `registerTreasuryToken` 必须在不可嵌套的 Governor `_executeOperations` 中作为唯一 operation 执行（`registration-only`，即只完成 token 注册/确认）；同一次 execution 不得再包含该 token 的支出、direct ERC20 target 或其他 operation。Incentivizer 完成注册后会回调 Governor 的 registration confirmation；该回调要求 execution 正在进行且 operation count 为 1，所以注册必须是 standalone operation。

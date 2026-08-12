@@ -1723,7 +1723,7 @@ contract MemecoinYieldVaultTest is Test {
         // Runbook chain hop 1: the OFT minted the bridged amount to the payload's sendTo (the dispatcher).
         assertEq(oft.balanceOf(dispatcherAddr), amount, "OFT minted the bridged amount to the dispatcher");
 
-        // Take the settle payload VERBATIM from the ComposeSent log (the runbook's "原样拷贝 message 字段" step); it
+        // Take the settle payload VERBATIM from the ComposeSent log (the runbook's "copy the message field verbatim" step); it
         // hashes to the queue slot verifySettle reads.
         bytes memory settleMessage;
         bool found;
@@ -1875,7 +1875,337 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(
             composeAsset.balanceOf(ATTACKER),
             attackerBalanceBefore + lockedAssets,
-            "attacker receives the full queued amount after window closes"
+            "attacker received the full queued amount after window closes"
         );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // ERC-4626 conversion / preview / mint interface
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    /// @notice convertToShares/convertToAssets share the floor + V-buffer baseline of preview paths.
+    /// @dev Verified both at the initial rate and after yield moves the rate, so the baseline equality
+    ///      cannot regress when totalAssets/totalSupply drift apart.
+    function test_ConvertToSharesAndAssetsMatchPreviewBaseline() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+
+        // Initial rate (1:1 with the V buffer): the two view pairs must agree exactly.
+        assertEq(vault.convertToShares(20 ether), vault.previewDeposit(20 ether), "shares baseline at 1:1");
+        assertEq(vault.convertToAssets(20 ether), vault.previewRedeem(20 ether), "assets baseline at 1:1");
+
+        // Move the rate with third-party yield and re-check at the drifted rate.
+        asset.mint(YIELD_SOURCE, 5 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 5 ether);
+        vault.accumulateYields(5 ether);
+        vm.stopPrank();
+
+        assertEq(vault.convertToShares(7 ether), vault.previewDeposit(7 ether), "shares baseline after yield");
+        assertEq(vault.convertToAssets(7 ether), vault.previewRedeem(7 ether), "assets baseline after yield");
+    }
+
+    /// @notice maxDeposit/maxMint report the unbounded sentinel for any receiver.
+    function test_MaxDepositAndMaxMintAreUnbounded() external {
+        assertEq(vault.maxDeposit(ATTACKER), type(uint256).max, "maxDeposit unbounded");
+        assertEq(vault.maxMint(ATTACKER), type(uint256).max, "maxMint unbounded");
+        // The vault imposes no receiver-specific cap, so even the zero address reports unbounded.
+        assertEq(vault.maxDeposit(address(0)), type(uint256).max, "maxDeposit unbounded for zero address");
+        assertEq(vault.maxMint(address(0)), type(uint256).max, "maxMint unbounded for zero address");
+    }
+
+    /// @notice maxRedeem(owner) tracks balanceOf(owner) across deposits and transfers.
+    function test_MaxRedeemEqualsBalanceOfOwner() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+        assertEq(vault.maxRedeem(ATTACKER), vault.balanceOf(ATTACKER), "maxRedeem == balance after deposit");
+
+        // Transfer moves shares, and maxRedeem must follow the new balances one-to-one.
+        vm.prank(ATTACKER);
+        vault.transfer(VICTIM, 4 ether);
+        assertEq(vault.maxRedeem(ATTACKER), 6 ether, "maxRedeem == sender balance after transfer");
+        assertEq(vault.maxRedeem(VICTIM), 4 ether, "maxRedeem == receiver balance after transfer");
+    }
+
+    /// @notice maxWithdraw(owner) equals convertToAssets(balanceOf(owner)) and previewRedeem(balanceOf).
+    function test_MaxWithdrawMatchesConvertToAssetsOfBalance() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+        // Yield pushes the rate above 1:1 so the asset value differs from the raw share count.
+        asset.mint(YIELD_SOURCE, 5 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 5 ether);
+        vault.accumulateYields(5 ether);
+        vm.stopPrank();
+
+        uint256 bal = vault.balanceOf(ATTACKER);
+        assertEq(vault.maxWithdraw(ATTACKER), vault.convertToAssets(bal), "maxWithdraw == convertToAssets(balance)");
+        assertEq(vault.maxWithdraw(ATTACKER), vault.previewRedeem(bal), "maxWithdraw == previewRedeem(balance)");
+    }
+
+    /// @notice A full redemption queue leaves maxRedeem/maxWithdraw over-reporting: both still quote
+    ///         the balance-derived value even though requestRedeem now reverts.
+    /// @dev Locks the deliberate EIP-4626 departure (spec §6.2.2/§6.2.4): max* report the full share
+    ///      balance / its asset value, not the queue-limited amount actually queueable right now, so an
+    ///      integrator sizing "redeem maxRedeem" always reverts until a request matures.
+    function test_MaxRedeemAndMaxWithdrawOverreportWhenQueueFull() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+
+        // Fill the 5-entry queue with 1-ether requests; each request burns its shares immediately.
+        for (uint256 i = 0; i < vault.MAX_REDEEM_REQUESTS(); i++) {
+            vm.prank(ATTACKER);
+            vault.requestRedeem(1 ether, ATTACKER);
+        }
+        assertEq(vault.balanceOf(ATTACKER), 5 ether, "five 1-ether requests burned half the balance");
+
+        // Queue full: max* still quote the full remaining balance and its asset value...
+        assertEq(vault.maxRedeem(ATTACKER), 5 ether, "maxRedeem == balance despite full queue");
+        assertEq(vault.maxWithdraw(ATTACKER), vault.convertToAssets(5 ether), "maxWithdraw == asset value of balance");
+        // ...but the only redemption entry reverts until a request matures.
+        vm.prank(ATTACKER);
+        vm.expectRevert(IMemecoinYieldVault.MaxRedeemRequestsReached.selector);
+        vault.requestRedeem(5 ether, ATTACKER);
+    }
+
+    /// @notice previewMint/previewWithdraw round up (ceil), per EIP-4626's no-fewer-than rule.
+    /// @dev Constructs a non-divisible rate (deposit 10, yield 5, V=100) and checks both the floor
+    ///      is strictly below the ceil and the result equals a hand-computed ceilDiv.
+    function test_PreviewMintAndPreviewWithdrawRoundUp() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+        asset.mint(YIELD_SOURCE, 5 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 5 ether);
+        vault.accumulateYields(5 ether);
+        vm.stopPrank();
+
+        uint256 sup = vault.totalSupply() + VIRTUAL_ASSETS;
+        uint256 ast = vault.totalAssets() + VIRTUAL_ASSETS;
+
+        // previewMint: assets needed for 7 shares. Non-divisible at this rate.
+        uint256 shares = 7 ether;
+        uint256 numMint = shares * ast;
+        uint256 floorMint = numMint / sup;
+        uint256 ceilMint = (numMint + sup - 1) / sup;
+        assertGt(numMint % sup, 0, "previewMint fixture must be non-divisible");
+        assertEq(vault.previewMint(shares), ceilMint, "previewMint ceilDiv");
+        assertGt(ceilMint, floorMint, "previewMint strictly above floor");
+
+        // previewWithdraw: shares needed to release 7 assets. Non-divisible at this rate.
+        uint256 assets = 7 ether;
+        uint256 numWd = assets * sup;
+        uint256 floorWd = numWd / ast;
+        uint256 ceilWd = (numWd + ast - 1) / ast;
+        assertGt(numWd % ast, 0, "previewWithdraw fixture must be non-divisible");
+        assertEq(vault.previewWithdraw(assets), ceilWd, "previewWithdraw ceilDiv");
+        assertGt(ceilWd, floorWd, "previewWithdraw strictly above floor");
+    }
+
+    /// @notice EIP-4626 round-trip bounds hold: mint→deposit within [s, s+1]; withdraw→mint ≥ a (ceil-ceil).
+    /// @dev The withdraw→mint pair is the legal within-pair property: both conversions round up (ceil),
+    ///      so converting assets→shares→assets never underestimates the original assets. The previous
+    ///      withdraw→redeem (ceil then floor) assertion was invalid: at this fixture's rate (23/22) a
+    ///      22-wei target yields backToAssets = 23 > 22.
+    function test_PreviewRoundTripBounds() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+        asset.mint(YIELD_SOURCE, 5 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 5 ether);
+        vault.accumulateYields(5 ether);
+        vm.stopPrank();
+
+        uint256 shares = 7 ether;
+        uint256 assetsForShares = vault.previewMint(shares);
+        uint256 backToShares = vault.previewDeposit(assetsForShares);
+        // mint→deposit recovers at least the requested shares and at most one extra (ceil then floor).
+        assertGe(backToShares, shares, "round-trip mint->deposit >= shares");
+        assertLe(backToShares, shares + 1, "round-trip mint->deposit <= shares + 1");
+
+        uint256 assets = 7 ether;
+        uint256 sharesForAssets = vault.previewWithdraw(assets);
+        uint256 backToAssets = vault.previewMint(sharesForAssets);
+        // withdraw→mint is ceil-ceil: the round-trip never underestimates the original assets.
+        assertGe(backToAssets, assets, "round-trip withdraw->mint >= assets (ceil-ceil)");
+    }
+
+    /// @notice mint(0) is a no-op; mint(s) mints exactly s shares, pulls previewMint(s) assets, emits
+    ///         Deposit(sender=msg.sender, owner=receiver), and writes the totalAssets checkpoint.
+    function test_MintBehaviorZeroNonzeroEventAndCheckpoint() external {
+        // mint(0) returns 0, pulls nothing, and writes no checkpoint.
+        uint256 attackerAssetBefore = asset.balanceOf(ATTACKER);
+        uint256 ckptLenBefore = vault.getTotalAssetsCheckpointLen();
+        vm.prank(ATTACKER);
+        uint256 zeroAssets = vault.mint(0, RECEIVER);
+        assertEq(zeroAssets, 0, "mint(0) returns 0");
+        assertEq(asset.balanceOf(ATTACKER), attackerAssetBefore, "mint(0) pulls no asset");
+        assertEq(vault.getTotalAssetsCheckpointLen(), ckptLenBefore, "mint(0) writes no checkpoint");
+
+        // mint(s) at a warped timepoint: assets pulled == previewMint(s), receiver gets exactly s shares.
+        uint256 shares = 10 ether;
+        uint256 expectedAssets = vault.previewMint(shares);
+        vm.warp(100);
+        vm.expectEmit(true, true, false, true);
+        emit IMemecoinYieldVault.Deposit(ATTACKER, RECEIVER, expectedAssets, shares);
+        vm.prank(ATTACKER);
+        uint256 assets = vault.mint(shares, RECEIVER);
+        assertEq(assets, expectedAssets, "mint pulls previewMint(shares) assets");
+        assertEq(vault.balanceOf(RECEIVER), shares, "receiver owns exactly the minted shares");
+
+        // Checkpoint captured the mint at T=100: past total supply reflects the post-mint asset value.
+        vm.warp(300);
+        assertEq(vault.getPastTotalSupply(100), shares, "checkpoint records minted asset-denominated supply");
+    }
+
+    /// @notice deposit(previewMint(s)) returns no more shares than s (mint rounds assets up, deposit
+    ///         rounds shares down).
+    function test_MintAndDepositAreSymmetric() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+        // Yield pushes the rate above 1:1 so the asymmetric rounding is observable.
+        asset.mint(YIELD_SOURCE, 5 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 5 ether);
+        vault.accumulateYields(5 ether);
+        vm.stopPrank();
+
+        uint256 shares = 7 ether;
+        uint256 assets = vault.previewMint(shares);
+        vm.prank(VICTIM);
+        uint256 depositShares = vault.deposit(assets, VICTIM);
+        assertLe(depositShares, shares, "deposit(mint(s)) <= s");
+    }
+
+    /// @notice mint pulls exactly previewMint(shares) assets at a non-1:1 rate (ceil, not floor).
+    /// @dev deposit + third-party yield push the rate above 1; at this non-divisible fixture the ceil
+    ///      pull is strictly greater than the floor, so the exact-pull assertion only passes if mint
+    ///      uses _convertToAssetsCeil. test_MintBehaviorZeroNonzeroEventAndCheckpoint mints at the
+    ///      fresh 1:1 rate where floor == ceil, so it cannot distinguish the two rounding directions.
+    function test_MintPullsCeilAssetsAtNonUnitRate() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+        asset.mint(YIELD_SOURCE, 5 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 5 ether);
+        vault.accumulateYields(5 ether);
+        vm.stopPrank();
+
+        uint256 shares = 7 ether;
+        uint256 expectedAssets = vault.previewMint(shares);
+        uint256 sup = vault.totalSupply() + VIRTUAL_ASSETS;
+        uint256 ast = vault.totalAssets() + VIRTUAL_ASSETS;
+        assertGt((shares * ast) % sup, 0, "fixture must be non-divisible");
+        assertGt(expectedAssets, (shares * ast) / sup, "ceil pull strictly above floor");
+
+        vm.prank(VICTIM);
+        uint256 assets = vault.mint(shares, VICTIM);
+        assertEq(assets, expectedAssets, "mint pulls exactly previewMint(shares)");
+        assertEq(vault.balanceOf(VICTIM), shares, "receiver owns exactly the minted shares");
+    }
+
+    /// @notice Fuzzes previewMint/previewWithdraw rounding direction against manual ceilDiv.
+    function testFuzz_PreviewMintAndPreviewWithdrawRoundUp(
+        uint96 initialAssets,
+        uint96 yieldAssets,
+        uint96 shares,
+        uint96 assets
+    ) external {
+        initialAssets = uint96(bound(initialAssets, 1 ether, 1_000 ether));
+        yieldAssets = uint96(bound(yieldAssets, 1 ether, 1_000 ether));
+        shares = uint96(bound(shares, 1, 1_000 ether));
+        assets = uint96(bound(assets, 1, 1_000 ether));
+
+        vm.prank(ATTACKER);
+        vault.deposit(initialAssets, ATTACKER);
+
+        asset.mint(YIELD_SOURCE, yieldAssets);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), type(uint256).max);
+        vault.accumulateYields(yieldAssets);
+        vm.stopPrank();
+
+        uint256 sup = vault.totalSupply() + VIRTUAL_ASSETS;
+        uint256 ast = vault.totalAssets() + VIRTUAL_ASSETS;
+
+        uint256 numMint = uint256(shares) * ast;
+        uint256 ceilMint = (numMint + sup - 1) / sup;
+        assertEq(vault.previewMint(shares), ceilMint, "fuzz previewMint ceilDiv");
+
+        uint256 numWd = uint256(assets) * sup;
+        uint256 ceilWd = (numWd + ast - 1) / ast;
+        assertEq(vault.previewWithdraw(assets), ceilWd, "fuzz previewWithdraw ceilDiv");
+    }
+
+    /// @notice Regression guard for the red-team TA >= TS premise the round-trip upper bound relies on.
+    /// @dev With rate >= 1 (maintained by deposit/yield/mint), assets-per-share stays >= 1 so
+    ///      totalAssets cannot fall below totalSupply. NOTE: this guard cannot distinguish a floor-pull
+    ///      mint (rate >= 1 already implies floor(s*r) >= s, so TA >= TS holds either way). The mint
+    ///      rounding direction is pinned by test_MintPullsCeilAssetsAtNonUnitRate.
+    function test_TotalAssetsGteTotalSupplyAfterDepositYieldAndMints() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER); // TA = TS = 10 ether
+        assertGe(vault.totalAssets(), vault.totalSupply(), "TA >= TS after deposit");
+
+        asset.mint(YIELD_SOURCE, 5 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 5 ether);
+        vault.accumulateYields(5 ether); // TA = 15, TS = 10
+        vm.stopPrank();
+        assertGe(vault.totalAssets(), vault.totalSupply(), "TA >= TS after yield");
+
+        vm.prank(VICTIM);
+        vault.mint(10 ether, VICTIM);
+        assertGe(vault.totalAssets(), vault.totalSupply(), "TA >= TS after first mint");
+
+        vm.prank(ATTACKER);
+        vault.mint(5 ether, ATTACKER);
+        assertGe(vault.totalAssets(), vault.totalSupply(), "TA >= TS after second mint");
+    }
+
+    /// @notice mint and requestRedeem each write a checkpoint and both pair consistently with the
+    ///         votes checkpoint system across the two entry points (INV-26 cross-entry pairing).
+    /// @dev Mirrors testRequestRedeemImmediatelyRemovesVotes but enters via `mint` instead of `deposit`,
+    ///      then redeems via `requestRedeem`, asserting the asset-denominated total supply and the
+    ///      self-delegated votes agree at each entry's own timepoint.
+    function test_MintThenRequestRedeemCheckpointPairsAcrossBoth() external {
+        vm.warp(100);
+        vm.prank(ATTACKER);
+        vault.mint(10 ether, ATTACKER);
+        vm.prank(ATTACKER);
+        vault.delegate(ATTACKER);
+
+        vm.warp(200);
+        vm.prank(ATTACKER);
+        vault.requestRedeem(5 ether, ATTACKER);
+
+        vm.warp(300);
+        // mint's checkpoint at T=100: 10 shares at the 1:1 fixture rate, so asset-denominated supply = 10 ether.
+        assertEq(vault.getPastTotalSupply(100), 10 ether, "mint checkpoint total supply at T1");
+        assertEq(vault.getPastVotes(ATTACKER, 100), 10 ether, "mint checkpoint votes pair with total at T1");
+        // requestRedeem's checkpoint at T=200: half the shares burned, so both total supply and votes = 5 ether.
+        assertEq(vault.getPastTotalSupply(200), 5 ether, "requestRedeem checkpoint total supply at T2");
+        assertEq(vault.getPastVotes(ATTACKER, 200), 5 ether, "requestRedeem checkpoint votes pair with total at T2");
+    }
+
+    /// @notice A mint pushing totalAssets past type(uint208).max reverts the named TotalAssetsOverflowed
+    ///         error before minting.
+    /// @dev Same uint208 bound as the deposit path, enforced in _deposit before _mint. totalAssets and
+    ///      totalSupply are both pinned at the cap so the rate stays 1:1 and minting 1 share pulls exactly
+    ///      1 asset (ceil(1 * (cap+V)/(cap+V)) = 1), then the increment crosses the bound and the require fires.
+    function test_MintRevertsWhenTotalAssetsExceedsUint208() external {
+        // Slot 2 = totalAssets; ERC20_STORAGE_LOCATION + 2 = totalSupply (same slots as the deposit overflow test).
+        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(type(uint208).max)));
+        vm.store(
+            address(vault),
+            bytes32(0xae36c519e2a406a79e4c05a9c40dc957f3757904fff7f6a4d18b68c3b12f9302),
+            bytes32(uint256(type(uint208).max))
+        );
+
+        vm.prank(ATTACKER);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemecoinYieldVault.TotalAssetsOverflowed.selector, uint256(type(uint208).max) + 1)
+        );
+        vault.mint(1, ATTACKER);
     }
 }

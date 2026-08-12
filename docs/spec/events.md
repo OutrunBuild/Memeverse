@@ -147,6 +147,8 @@
 
 **`AccumulateYields` 的空仓静默面**：非零收益且 `totalSupply() == 0` 时 `MemecoinYieldVault.sol::_accumulateYield` 直接 burn 收益、不发本事件，对账须以底层 token 的 `Transfer(to=0)` 核对销毁；`yield == 0` 时 `_accumulateYield` 早退（不 burn、不 emit、账本不变），任何仓态下均无本事件；dispatcher 结算路径的对应提示见本表 `OFTProcessed` / `ComposeSettled` 行与 [governance-yield-details.md §5](governance/governance-yield-details.md)。
 
+**`Deposit` 与 ERC-4626 对齐、不新增 `Withdraw`**：现有 `IMemecoinYieldVault.sol::Deposit`（`Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)`）签名已与 ERC-4626 标准 `Deposit` 逐字节一致；新增 `MemecoinYieldVault.sol::mint` 复用同一事件，不新增 `Deposit` 变体。不实现即时 `redeem` / `withdraw`，故**不新增** ERC-4626 标准 `Withdraw` 事件；现有 `RedeemRequested` / `RedeemExecuted` 两段式事件继续描述延迟赎回语义（见 [governance-yield-details.md §6](governance/governance-yield-details.md)）。
+
 ### 2.6 组件部署（MemeverseProxyDeployer）
 
 verse 组件部署阶段（Launcher `Locked` → 部署治理组件）由 `MemeverseProxyDeployer` 发出的部署信号，是索引器建立 verse 组件地址映射与部署监控面的关键锚点：

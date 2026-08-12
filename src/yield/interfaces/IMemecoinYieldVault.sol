@@ -33,6 +33,50 @@ interface IMemecoinYieldVault is IERC20 {
     /// @return assets Underlying asset amount that would be redeemed.
     function previewRedeem(uint256 shares) external view returns (uint256 assets);
 
+    /// @notice Converts an asset amount to vault shares at the current rate.
+    /// @dev Reuses the internal floor conversion with the `virtualAssets` buffer, sharing the same
+    ///      baseline as `previewDeposit`/`previewRedeem`.
+    /// @param assets Amount of underlying asset to convert.
+    /// @return shares Shares equivalent at the current rate.
+    function convertToShares(uint256 assets) external view returns (uint256 shares);
+
+    /// @notice Converts a vault share amount to underlying assets at the current rate.
+    /// @dev Reuses the internal floor conversion with the `virtualAssets` buffer.
+    /// @param shares Amount of vault shares to convert.
+    /// @return assets Asset equivalent at the current rate.
+    function convertToAssets(uint256 shares) external view returns (uint256 assets);
+
+    /// @notice Maximum assets a single deposit could accept for `receiver`.
+    /// @return maxAssets Unbounded upper bound; the vault imposes no deposit cap.
+    function maxDeposit(address receiver) external view returns (uint256 maxAssets);
+
+    /// @notice Maximum shares a single mint could accept for `receiver`.
+    /// @return maxShares Unbounded upper bound; the vault imposes no mint cap.
+    function maxMint(address receiver) external view returns (uint256 maxShares);
+
+    /// @notice Maximum assets `owner` could withdraw given current share holdings.
+    /// @return maxAssets Asset value of `owner`'s full share balance at the current rate.
+    function maxWithdraw(address owner) external view returns (uint256 maxAssets);
+
+    /// @notice Maximum shares `owner` could redeem given current share holdings.
+    /// @dev Returns `balanceOf(owner)`. Shares are burned at `requestRedeem` enqueue time, so an owner
+    ///      can request their full balance; the assets arrive after `REDEEM_DELAY`. This is an intentional
+    ///      departure from EIP-4626's maxRedeem timelock clause (see spec §6.2).
+    /// @return maxShares `owner`'s full share balance.
+    function maxRedeem(address owner) external view returns (uint256 maxShares);
+
+    /// @notice Previews the asset cost of minting exactly `shares`.
+    /// @dev Rounds up (ceil) — EIP-4626 requires the deposit to cost no fewer than this amount.
+    /// @param shares Amount of vault shares to mint.
+    /// @return assets Underlying asset amount needed.
+    function previewMint(uint256 shares) external view returns (uint256 assets);
+
+    /// @notice Previews the shares that must be burned to release exactly `assets`.
+    /// @dev Rounds up (ceil) — EIP-4626 requires redeeming no fewer shares than this amount.
+    /// @param assets Underlying asset amount to release.
+    /// @return shares Vault shares that would be burned.
+    function previewWithdraw(uint256 assets) external view returns (uint256 shares);
+
     /// @notice Initializes the yield vault proxy.
     /// @dev Wires ERC20 share metadata, the yield dispatcher, the verse-specific underlying asset, and the
     ///      permanent virtual buffer used to dampen exchange-rate inflation.
@@ -76,6 +120,15 @@ interface IMemecoinYieldVault is IERC20 {
     /// @param receiver Recipient of the minted vault shares.
     /// @return shares Shares minted for the deposit.
     function deposit(uint256 assets, address receiver) external returns (uint256 shares);
+
+    /// @notice Mints exactly `shares` to `receiver` by pulling the needed assets from the caller.
+    /// @dev Shares-first deposit: `assets` is rounded up (ceil) to protect the vault so existing
+    ///      shareholders are never diluted by an under-paying mint. The caller (`msg.sender`) pays the
+    ///      assets, mirroring `deposit`; there is no operator-allowance path. A zero-share mint returns 0.
+    /// @param shares Amount of vault shares to mint.
+    /// @param receiver Recipient of the minted shares.
+    /// @return assets Underlying assets pulled from the caller.
+    function mint(uint256 shares, address receiver) external returns (uint256 assets);
 
     /// @notice Queues a redemption request subject to the vault's delay.
     /// @dev Implementations may add validation around who may queue redemptions.

@@ -11,4 +11,10 @@ if [ "${#staged[@]}" -eq 0 ]; then
     exit 0
 fi
 
-npm run gate:fast -- --changed-files "${staged[@]}"
+# gate.sh's changed-files mode requires diff evidence (CHANGE_CLASSIFIER_DIFF_FILE /
+# GATE_DIFF_BASE) to classify non-semantic Solidity diffs deterministically; feed it the
+# staged diff (HEAD->index, exactly what is about to be committed).
+diff_file="$(mktemp "${TMPDIR:-/tmp}/precommit-gate.XXXXXX.diff")"
+trap 'rm -f "$diff_file"' EXIT
+git diff --cached -- "${staged[@]}" > "$diff_file"
+CHANGE_CLASSIFIER_DIFF_FILE="$diff_file" npm run gate:fast -- --changed-files "${staged[@]}"

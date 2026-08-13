@@ -19,6 +19,8 @@ interface IMemecoinDaoGovernor {
      * @param _governanceCycleIncentivizer Incentivizer contract address paired to this governor.
      * @param _minQuorum Absolute minimum quorum floor based on total supply.
      * @param _bootstrapPeriod Delay after deployment before proposals are accepted.
+     * @param _maxTreasurySpendRatio Maximum treasury spend per execution, in basis points (10000 = 100%).
+     * @param _upgradeSupermajorityRatio Required for-votes ratio for proposals targeting the Governor or its incentivizer, in basis points (10000 = 100%).
      */
     function initialize(
         string calldata _name,
@@ -52,8 +54,13 @@ interface IMemecoinDaoGovernor {
      */
     function governanceStartTime() external view returns (uint256);
 
+    /// @notice Returns the maximum treasury spend ratio allowed for one execution.
+    /// @dev The ratio is expressed in basis points, using 10000 as the denominator for 100%.
     function maxTreasurySpendRatio() external view returns (uint256);
 
+    /// @notice Returns the vote ratio required for proposals that target the Governor (self-call) or the paired
+    ///         incentivizer.
+    /// @dev The ratio is expressed in basis points with denominator 10000.
     function upgradeSupermajorityRatio() external view returns (uint256);
 
     /**

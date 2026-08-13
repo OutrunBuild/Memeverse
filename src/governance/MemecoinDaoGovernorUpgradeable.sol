@@ -97,6 +97,8 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
      * @param _governanceCycleIncentivizer Address of the incentivizer that tracks cycle rewards.
      * @param _minQuorum Absolute minimum quorum floor based on total supply.
      * @param _bootstrapPeriod Delay after deployment before proposals are accepted.
+     * @param _maxTreasurySpendRatio Maximum treasury spend per execution, in basis points (10000 = 100%).
+     * @param _upgradeSupermajorityRatio Required for-votes ratio for proposals targeting the Governor or its incentivizer, in basis points (10000 = 100%).
      */
     function initialize(
         string calldata _name,

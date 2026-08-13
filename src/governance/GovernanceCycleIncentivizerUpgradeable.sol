@@ -127,6 +127,11 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
     /**
      * @notice Returns metadata for a specific cycle.
      * @dev Exposes timing, total votes, treasury token list, and reward token list for the requested cycle.
+     * Token lists are snapshots written only at finalize time: querying the active (unfinalized) cycle
+     * returns empty lists. Use metaData() for the active cycle's live registries. The finalized
+     * rewardTokenList is a filtered subset of the registered reward tokens: only those that had a positive
+     * treasury balance in a cycle with positive total votes (the per-token amount may still round to zero),
+     * not the live list.
      * @param cycleId The cycle identifier to inspect.
      * @return startTime The cycle start timestamp.
      * @return endTime The cycle end timestamp.
@@ -472,6 +477,13 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
             unchecked {
                 ++i;
             }
+        }
+
+        // Truncate the reward arrays to the actually-distributed count `j` so no trailing
+        // address(0)/0 ghost entries reach storage, the event, or the array-returning views.
+        assembly {
+            mstore(rewardTokens, j)
+            mstore(rewards, j)
         }
 
         currentCycle.treasuryTokenList = treasuryTokens;

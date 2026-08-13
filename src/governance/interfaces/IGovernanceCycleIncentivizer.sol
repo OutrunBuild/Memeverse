@@ -53,7 +53,11 @@ interface IGovernanceCycleIncentivizer {
 
     /**
      * @notice Returns immutable and aggregate metadata for a specific cycle.
-     * @dev Exposes cycle boundaries and token registries without user-level balances.
+     * @dev Exposes cycle boundaries and token registries without user-level balances. Token lists are
+     * snapshots written only at finalize time: querying the active (unfinalized) cycle returns empty
+     * lists. Use metaData() for the active cycle's live registries. The finalized rewardTokenList is a
+     * filtered subset of the registered reward tokens (only those that actually accrued a reward this
+     * cycle), not the live registered list.
      * @param cycleId Cycle identifier to inspect.
      * @return startTime Cycle start timestamp.
      * @return endTime Cycle end timestamp.

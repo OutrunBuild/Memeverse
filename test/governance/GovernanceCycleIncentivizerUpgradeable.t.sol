@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
@@ -470,6 +471,92 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         assertEq(incentivizer.getClaimableReward(address(0x1), address(tokenA)), 10 ether);
         assertEq(incentivizer.getClaimableReward(address(0x2), address(tokenA)), 15 ether);
         assertEq(incentivizer.getTreasuryBalance(2, address(tokenA)), 75 ether);
+    }
+
+    /// @notice Test finalize with a zero-income reward token truncates address(0)/0 ghost entries.
+    /// @dev Regression for F-032: finalize allocated rewardTokens/rewards to the full registered length but only
+    /// filled the first `j` slots, so trailing address(0)/0 entries reached storage and the event, making
+    /// isRewardToken(cycle, address(0)) return true. A reward token with zero treasury income is skipped
+    /// (j < rewardLength), a path the pre-fix tests never exercised.
+    function testFinalizeTruncatesGhostEntriesWhenRewardTokenHasNoIncome() external {
+        tokenA.mint(address(governor), 100 ether);
+        vm.startPrank(address(governor));
+        incentivizer.registerTreasuryToken(address(tokenB));
+        // tokenB is registered as a reward token but earns no income this cycle (treasuryBalance == 0),
+        // so finalize must skip it and must NOT leave an address(0) ghost in the frozen reward list.
+        incentivizer.registerRewardToken(address(tokenB));
+        incentivizer.registerRewardToken(address(tokenA));
+        incentivizer.recordTreasuryIncome(address(tokenA), 100 ether);
+        incentivizer.accumCycleVotes(address(this), 100);
+        vm.stopPrank();
+
+        vm.recordLogs();
+        vm.warp(block.timestamp + 90 days);
+        incentivizer.finalizeCurrentCycle();
+
+        // Key regression: no ghost address(0) entry in the frozen reward list (pre-fix this returned true).
+        assertFalse(incentivizer.isRewardToken(1, address(0)));
+
+        // Only the actually-distributed token (tokenA) is listed; zero-income tokenB is skipped.
+        assertTrue(incentivizer.isRewardToken(1, address(tokenA)));
+        assertFalse(incentivizer.isRewardToken(1, address(tokenB)));
+
+        // Frozen list (via getClaimableReward) has length == distributed count with no address(0) entry.
+        (address[] memory tokens, uint256[] memory rewards) = incentivizer.getClaimableReward(address(this));
+        assertEq(tokens.length, 1);
+        assertEq(rewards.length, 1);
+        assertEq(tokens[0], address(tokenA));
+        assertEq(rewards[0], 25 ether);
+
+        // The CycleFinalized event carries the same truncated, parallel arrays.
+        (address[] memory eventRewardTokens, uint256[] memory eventRewards) = _decodeFinalizedRewardArrays();
+        assertEq(eventRewardTokens.length, 1);
+        assertEq(eventRewards.length, 1);
+        assertEq(eventRewardTokens.length, eventRewards.length);
+        assertEq(eventRewardTokens[0], address(tokenA));
+    }
+
+    /// @notice Test finalize with no accumulated votes produces an empty reward list, not address(0) ghosts.
+    /// @dev Regression for F-032: with totalVotes == 0 every reward token is skipped (j == 0), so the pre-fix
+    /// code wrote rewardTokenList = [address(0)] into the frozen cycle and emitted it in CycleFinalized.
+    function testFinalizeTruncatesGhostEntriesWhenCycleHasNoVotes() external {
+        tokenA.mint(address(governor), 100 ether);
+        vm.startPrank(address(governor));
+        incentivizer.registerRewardToken(address(tokenA));
+        incentivizer.recordTreasuryIncome(address(tokenA), 100 ether);
+        vm.stopPrank();
+
+        vm.recordLogs();
+        vm.warp(block.timestamp + 90 days);
+        incentivizer.finalizeCurrentCycle();
+
+        // Key regression: no ghost address(0) entry in the frozen reward list (pre-fix this returned true).
+        assertFalse(incentivizer.isRewardToken(1, address(0)));
+
+        // The frozen list is empty (j == 0); cycleInfo reads the stored rewardTokenList directly.
+        (,,,, address[] memory cycleRewardTokens) = incentivizer.cycleInfo(1);
+        assertEq(cycleRewardTokens.length, 0);
+
+        // The CycleFinalized event carries the same empty, parallel arrays.
+        (address[] memory eventRewardTokens, uint256[] memory eventRewards) = _decodeFinalizedRewardArrays();
+        assertEq(eventRewardTokens.length, 0);
+        assertEq(eventRewards.length, 0);
+        assertEq(eventRewardTokens.length, eventRewards.length);
+    }
+
+    /// @dev Decodes the rewardTokens/rewards arrays from the CycleFinalized log recorded by vm.recordLogs().
+    /// @dev cycleId is the only indexed parameter, so the event data is the non-indexed tuple
+    /// (endTime, treasuryTokens, balances, rewardTokens, rewards).
+    function _decodeFinalizedRewardArrays() internal returns (address[] memory rewardTokens, uint256[] memory rewards) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 finalizedTopic = keccak256("CycleFinalized(uint128,uint128,address[],uint256[],address[],uint256[])");
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length == 0 || logs[i].topics[0] != finalizedTopic) continue;
+            (,,, rewardTokens, rewards) =
+                abi.decode(logs[i].data, (uint128, address[], uint256[], address[], uint256[]));
+            return (rewardTokens, rewards);
+        }
+        revert("CycleFinalized log not found");
     }
 
     /// @notice Test finalize current cycle reverts before end and carries undistributed rewards forward.

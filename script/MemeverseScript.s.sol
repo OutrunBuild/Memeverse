@@ -92,6 +92,12 @@ contract MemeverseScript is BaseScript {
     address internal CREDIT_FACTORY;
     address internal MEMEVERSE_SWAP_ROUTER;
 
+    // Expected registration DAY for the target network; set from the EXPECTED_DAY env var in
+    // _loadReadinessEnv (defaults to the production DAY). Testnet deployments set EXPECTED_DAY=180
+    // for the fast-window; mainnet leaves it unset, so a mainnet deploy that forgot to flip the
+    // center's DAY constant is blocked (fail-closed toward production).
+    uint256 internal expectedRegistrationDay = DAY;
+
     uint256 internal POLEND_INTEREST_RATE;
     uint256 internal POLEND_LEVERAGED_DEBT_FACTOR;
     address internal POLEND_TREASURY;
@@ -187,6 +193,7 @@ contract MemeverseScript is BaseScript {
         MEMEVERSE_PROXY_DEPLOYER = vm.envAddress("MEMEVERSE_PROXY_DEPLOYER");
         MEMEVERSE_YIELD_DISPATCHER = vm.envAddress("MEMEVERSE_YIELD_DISPATCHER");
         OMNICHAIN_MEMECOIN_STAKER = vm.envAddress("OMNICHAIN_MEMECOIN_STAKER");
+        expectedRegistrationDay = vm.envOr("EXPECTED_DAY", DAY);
         POLEND = _optionalEnvAddress("POLEND");
         POLSPLITTER = _optionalEnvAddress("POLSPLITTER");
     }
@@ -821,7 +828,7 @@ contract MemeverseScript is BaseScript {
     function _openSupportedUAssetsAfterReadiness(address registrationCenter, address swapRouter, address hook)
         internal
     {
-        _requireContractCode(registrationCenter, "REGISTRATION_CENTER_CODE_NOT_READY");
+        _requireRegistrationCenterReady(registrationCenter);
         _requireDeploymentReady(swapRouter, hook);
 
         IMemeverseRegistrationCenter(registrationCenter).setSupportedUAsset(UETH, true);
@@ -881,7 +888,7 @@ contract MemeverseScript is BaseScript {
         require(registrationCenter != address(0), "ZERO_REGISTRATION_CENTER");
         _requireContractCode(MEMEVERSE_LAUNCHER, "LAUNCHER_CODE_NOT_READY");
         _requireContractCode(POLEND, "POLEND_CODE_NOT_READY");
-        _requireContractCode(registrationCenter, "REGISTRATION_CENTER_CODE_NOT_READY");
+        _requireRegistrationCenterReady(registrationCenter);
         // _loadScriptEnv hard-requires this var, so the canonical pin cannot be skipped.
         address canonicalCenter = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
         require(registrationCenter == canonicalCenter, "REGISTRATION_CENTER_MISMATCH");
@@ -914,6 +921,16 @@ contract MemeverseScript is BaseScript {
         //    already be in place before registrations for this uAsset can be accepted.
         IMemeverseRegistrationCenter(registrationCenter).setSupportedUAsset(uAsset, true);
         require(_readSupportedUAsset(registrationCenter, uAsset), "SUPPORTED_UASSET_NOT_READY");
+    }
+
+    /// @dev Registration-center readiness gate: the center must have code and its DAY() must equal the
+    ///      network's expected registration day (`expectedRegistrationDay`, loaded from EXPECTED_DAY env).
+    function _requireRegistrationCenterReady(address registrationCenter) internal view {
+        _requireContractCode(registrationCenter, "REGISTRATION_CENTER_CODE_NOT_READY");
+        require(
+            IMemeverseRegistrationCenter(registrationCenter).DAY() == expectedRegistrationDay,
+            "REGISTRATION_DAY_NOT_READY"
+        );
     }
 
     function _requireDeploymentReady(address swapRouter, address hook) internal view {

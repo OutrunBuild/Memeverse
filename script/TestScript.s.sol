@@ -13,8 +13,6 @@ contract TestScript is BaseScript {
     using OptionsBuilder for bytes;
     using Clones for address;
 
-    uint256 public constant DAY = 24 * 3600;
-
     address internal owner;
     address internal UETH;
     address internal MEMEVERSE_REGISTRAR;

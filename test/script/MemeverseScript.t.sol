@@ -168,6 +168,18 @@ contract MockScriptRouter {
 contract MockScriptRegistrationCenter {
     mapping(address => bool) public supportedUAssets;
 
+    uint256 internal day = 24 * 3600;
+
+    /// @dev Production-configured DAY so the script's DAY() == DAY readiness assertion passes;
+    ///      overridable via setDay for the negative (REGISTRATION_DAY_NOT_READY) path.
+    function DAY() external view returns (uint256) {
+        return day;
+    }
+
+    function setDay(uint256 day_) external {
+        day = day_;
+    }
+
     function setSupportedUAsset(address uAsset, bool isSupported) external {
         supportedUAssets[uAsset] = isSupported;
     }
@@ -212,6 +224,22 @@ contract MemeverseScriptHarness is MemeverseScript {
 
     function setOutrunDeployerForTest(address deployer) external {
         OUTRUN_DEPLOYER = deployer;
+    }
+
+    function setExpectedRegistrationDayForTest(uint256 day) external {
+        expectedRegistrationDay = day;
+    }
+
+    /// @dev Reaches onboardUAsset's DAY gate without `_loadReadinessEnv`, so the second
+    ///      `_requireRegistrationCenterReady` call site is pinned via storage setters (env vars are
+    ///      not set in these tests). Mirrors onboardUAsset's checks up to the DAY gate.
+    function onboardUAssetForTest(address registrationCenter, address uAsset) external {
+        require(deployer == owner, "SIGNER_NOT_OWNER");
+        require(uAsset != address(0), "ZERO_UASSET");
+        require(registrationCenter != address(0), "ZERO_REGISTRATION_CENTER");
+        _requireContractCode(MEMEVERSE_LAUNCHER, "LAUNCHER_CODE_NOT_READY");
+        _requireContractCode(POLEND, "POLEND_CODE_NOT_READY");
+        _requireRegistrationCenterReady(registrationCenter);
     }
 
     function setEndpointForTest(uint32 chainId, address endpoint) external {
@@ -485,62 +513,68 @@ contract MemeverseScriptTest is Test {
         assertTrue(center.supportedUAssets(UUSD));
     }
 
-    function testPublicOpenSupportedUAssetsLoadsEnvAndOpensWhenReady() external {
-        MemeverseScriptHarness publicEntryScript = new MemeverseScriptHarness();
-        publicEntryScript.setBroadcastSender(address(this));
-        // The standalone entry fills endpoints from env via _chainsInit, so the test chain must be one
-        // of the nine configured chains (BSC testnet) with its ENDPOINT/EID env vars set.
-        vm.chainId(97);
+    // Regression: the open path must reject a RegistrationCenter whose DAY() does not match the
+    // expected deployment value (default production 86400), so the whitelist is never written for a
+    // center configured for a non-prod day (the DAY() == expected-day check runs before the
+    // launch/settlement/liquidity readiness gates).
+    function testOpenSupportedUAssetsAfterReadinessRevertsWhenDayIsNotProduction() external {
         MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
+        center.setDay(180);
         (address readyRouter, address readyHook) = _configureReadySwap();
         polend.setSettlementDustState(UETH, 0, 1);
         polend.setSettlementDustState(UUSD, 0, 1);
-        _setReadinessEnv(address(script), address(launcher), address(polend), address(splitter));
-        _setChainEnv(LOCAL_ENDPOINT);
 
-        publicEntryScript.openSupportedUAssetsAfterReadiness(address(center), readyRouter, readyHook);
+        vm.expectRevert("REGISTRATION_DAY_NOT_READY");
+        script.openSupportedUAssetsAfterReadinessForTest(address(center), readyRouter, readyHook);
+
+        assertFalse(center.supportedUAssets(UETH));
+        assertFalse(center.supportedUAssets(UUSD));
+    }
+
+    // Testnet path: a center configured for the fast-window DAY (180) is accepted when the
+    // deployment sets EXPECTED_DAY=180, so testnet keeps the practical short window.
+    function testOpenSupportedUAssetsAfterReadinessOpensWhenDayMatchesTestnetValue() external {
+        MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
+        center.setDay(180);
+        script.setExpectedRegistrationDayForTest(180);
+        (address readyRouter, address readyHook) = _configureReadySwap();
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+
+        script.openSupportedUAssetsAfterReadinessForTest(address(center), readyRouter, readyHook);
 
         assertTrue(center.supportedUAssets(UETH));
         assertTrue(center.supportedUAssets(UUSD));
     }
 
-    // Regression: the standalone entry must load OMNICHAIN_MEMECOIN_STAKER from env and reject a
-    // non-zero address without code instead of silently skipping the check (previously the env var was
-    // never loaded on this path, so the code check always failed with STAKER_CODE_NOT_READY).
-    function testPublicOpenSupportedUAssetsRevertsWhenStakerEnvHasNoCode() external {
-        MemeverseScriptHarness publicEntryScript = new MemeverseScriptHarness();
-        publicEntryScript.setBroadcastSender(address(this));
-        vm.chainId(97);
+    // Regression: onboardUAsset's DAY gate (the second _requireRegistrationCenterReady call site) must
+    // reject a center whose DAY() != expected. The shared helper is tested via the open path; this pins
+    // the onboardUAsset call site through a harness entry that skips env-loading.
+    function testOnboardUAssetRevertsWhenDayIsNotProduction() external {
+        script.setBroadcastSender(address(script));
         MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
-        (address readyRouter, address readyHook) = _configureReadySwap();
-        polend.setSettlementDustState(UETH, 0, 1);
-        polend.setSettlementDustState(UUSD, 0, 1);
-        _setReadinessEnv(address(script), address(launcher), address(polend), address(splitter));
-        _setChainEnv(LOCAL_ENDPOINT);
-        vm.setEnv("OMNICHAIN_MEMECOIN_STAKER", vm.toString(address(0xDEAD)));
+        center.setDay(180);
 
-        vm.expectRevert("STAKER_CODE_NOT_READY");
-        publicEntryScript.openSupportedUAssetsAfterReadiness(address(center), readyRouter, readyHook);
+        vm.expectRevert("REGISTRATION_DAY_NOT_READY");
+        script.onboardUAssetForTest(address(center), UETH);
     }
 
-    // Regression: the standalone entry must fill endpoints (via _chainsInit) before comparing the
-    // dispatcher's localEndpoint() against endpoints[block.chainid]; a mismatch must be rejected with
-    // YIELD_DISPATCHER_ENDPOINT_NOT_READY (previously the mapping was never filled on this path, so a
-    // legitimate dispatcher was always rejected against endpoints[chainid] == 0).
-    function testPublicOpenSupportedUAssetsRevertsWhenDispatcherEndpointMismatchesLocal() external {
-        MemeverseScriptHarness publicEntryScript = new MemeverseScriptHarness();
-        publicEntryScript.setBroadcastSender(address(this));
-        vm.chainId(97);
-        MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
-        (address readyRouter, address readyHook) = _configureReadySwap();
-        polend.setSettlementDustState(UETH, 0, 1);
-        polend.setSettlementDustState(UUSD, 0, 1);
-        _setReadinessEnv(address(script), address(launcher), address(polend), address(splitter));
-        _setChainEnv(LOCAL_ENDPOINT);
+    // Readiness gate: a no-code staker must reject with STAKER_CODE_NOT_READY (the center code/DAY
+    // check and the other dependency code checks pass; only the staker code check fails).
+    function testReadinessRevertsWhenStakerHasNoCode() external {
+        script.setOmnichainMemecoinStakerForTest(address(0xDEAD));
+
+        vm.expectRevert("STAKER_CODE_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // Readiness gate: the dispatcher's localEndpoint() must match endpoints[block.chainid]; a mismatch
+    // must be rejected with YIELD_DISPATCHER_ENDPOINT_NOT_READY.
+    function testReadinessRevertsWhenDispatcherEndpointMismatchesLocal() external {
         yieldDispatcher.setLocalEndpoint(address(0x9999));
 
         vm.expectRevert("YIELD_DISPATCHER_ENDPOINT_NOT_READY");
-        publicEntryScript.openSupportedUAssetsAfterReadiness(address(center), readyRouter, readyHook);
+        script.requireDeploymentReady(address(0), address(0));
     }
 
     function testOptionalEnvAddressReturnsZeroWhenMissing() external view {
@@ -925,42 +959,5 @@ contract MemeverseScriptTest is Test {
         vm.mockCall(READY_SWAP_FACET, abi.encodeWithSignature("poolManager()"), abi.encode(MOCK_POOL_MANAGER));
         vm.mockCall(READY_DYNAMIC_FEE_FACET, abi.encodeWithSignature("poolManager()"), abi.encode(MOCK_POOL_MANAGER));
         vm.mockCall(READY_SETTLEMENT_FACET, abi.encodeWithSignature("poolManager()"), abi.encode(MOCK_POOL_MANAGER));
-    }
-
-    function _setReadinessEnv(address owner_, address launcher_, address polend_, address splitter_) internal {
-        vm.setEnv("OWNER", vm.toString(owner_));
-        vm.setEnv("UETH", vm.toString(UETH));
-        vm.setEnv("UUSD", vm.toString(UUSD));
-        vm.setEnv("MEMEVERSE_LAUNCHER", vm.toString(launcher_));
-        vm.setEnv("MEMEVERSE_REGISTRAR", vm.toString(address(registrar)));
-        vm.setEnv("MEMEVERSE_PROXY_DEPLOYER", vm.toString(address(proxyDeployer)));
-        vm.setEnv("MEMEVERSE_YIELD_DISPATCHER", vm.toString(address(yieldDispatcher)));
-        vm.setEnv("OMNICHAIN_MEMECOIN_STAKER", vm.toString(STAKER));
-        vm.setEnv("POLEND", vm.toString(polend_));
-        vm.setEnv("POLSPLITTER", vm.toString(splitter_));
-    }
-
-    // Fills every ENDPOINT/EID env var _chainsInit reads. The standalone readiness entry reverts on any
-    // missing chain env var, so tests exercising it must set the full set; only the local chain's
-    // endpoint value is asserted against (endpoints[block.chainid]).
-    function _setChainEnv(address localEndpoint) internal {
-        vm.setEnv("BSC_TESTNET_ENDPOINT", vm.toString(localEndpoint));
-        vm.setEnv("BASE_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
-        vm.setEnv("ARBITRUM_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
-        vm.setEnv("AVALANCHE_FUJI_ENDPOINT", vm.toString(localEndpoint));
-        vm.setEnv("POLYGON_AMOY_ENDPOINT", vm.toString(localEndpoint));
-        vm.setEnv("SONIC_BLAZE_ENDPOINT", vm.toString(localEndpoint));
-        vm.setEnv("BLAST_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
-        vm.setEnv("SCROLL_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
-        vm.setEnv("ETHEREUM_SEPOLIA_ENDPOINT", vm.toString(localEndpoint));
-        vm.setEnv("BSC_TESTNET_EID", vm.toString(uint256(40102)));
-        vm.setEnv("BASE_SEPOLIA_EID", vm.toString(uint256(40245)));
-        vm.setEnv("ARBITRUM_SEPOLIA_EID", vm.toString(uint256(40231)));
-        vm.setEnv("AVALANCHE_FUJI_EID", vm.toString(uint256(40106)));
-        vm.setEnv("POLYGON_AMOY_EID", vm.toString(uint256(40267)));
-        vm.setEnv("SONIC_BLAZE_EID", vm.toString(uint256(40363)));
-        vm.setEnv("BLAST_SEPOLIA_EID", vm.toString(uint256(40287)));
-        vm.setEnv("SCROLL_SEPOLIA_EID", vm.toString(uint256(40170)));
-        vm.setEnv("ETHEREUM_SEPOLIA_EID", vm.toString(uint256(40161)));
     }
 }

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {TokenHelper} from "../../../src/common/token/TokenHelper.sol";
@@ -121,6 +122,52 @@ contract TokenHelperTest is Test {
         // Initial allowance is 0 (< LOWER_BOUND_APPROVAL), so _safeApproveInf resets to max.
         address spender = makeAddr("spender");
         assertEq(token.allowance(address(harness), spender), 0);
+
+        harness.safeApproveInf(address(token), spender);
+
+        assertEq(token.allowance(address(harness), spender), type(uint256).max);
+    }
+
+    function testSafeApproveInfZeroAllowanceOmitsRedundantApproveZero() external {
+        // The optimization itself: when current allowance is 0, _safeApproveInf must issue only
+        // approve(spender, max) and NOT the redundant same-value approve(spender, 0). This fails if
+        // the optimization is reverted, because the old code would emit an extra Approval(spender, 0).
+        address spender = makeAddr("spender");
+        assertEq(token.allowance(address(harness), spender), 0);
+
+        vm.recordLogs();
+        harness.safeApproveInf(address(token), spender);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 approvalTopic = keccak256("Approval(address,address,uint256)");
+        bytes32 spenderTopic = bytes32(uint256(uint160(spender)));
+        uint256 zeroApprovals;
+        uint256 maxApprovals;
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].topics.length < 3) continue;
+            if (logs[i].topics[0] != approvalTopic || logs[i].topics[2] != spenderTopic) continue;
+            uint256 value = abi.decode(logs[i].data, (uint256));
+            if (value == 0) {
+                ++zeroApprovals;
+            } else if (value == type(uint256).max) {
+                ++maxApprovals;
+            }
+        }
+        assertEq(zeroApprovals, 0, "zero-allowance path must not emit a redundant Approval(spender, 0)");
+        assertEq(maxApprovals, 1, "zero-allowance path must emit exactly one Approval(spender, max)");
+    }
+
+    function testSafeApproveInfNonZeroBelowLowerBoundResetsToMax() external {
+        // A non-zero allowance below the lower bound must still reset to 0 before re-setting max.
+        // The fix only skips the reset when the current allowance is already 0 (a same-value no-op);
+        // USDT-style tokens require this reset on non-zero -> non-zero transitions.
+        address spender = makeAddr("spender");
+        uint256 smallAllowance = 1 ether; // non-zero, well below LOWER_BOUND_APPROVAL
+        harness.safeApproveToken(address(token), spender, smallAllowance);
+        assertEq(token.allowance(address(harness), spender), smallAllowance);
+
+        // The intermediate reset-to-0 call must still fire for a non-zero current allowance.
+        vm.expectCall(address(token), abi.encodeWithSignature("approve(address,uint256)", spender, 0));
 
         harness.safeApproveInf(address(token), spender);
 

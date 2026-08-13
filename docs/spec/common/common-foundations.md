@@ -34,7 +34,7 @@ swap 栈是显式例外：
 
 其关键语义是：
 
-- 对某些 allowance 语义不标准的 token，先清零再重设
+- 对某些 allowance 语义不标准的 token，先清零再重设（清零仅当当前 allowance 非零时执行；已为 0 则该步是同值 no-op，直接跳过）
 - 当 allowance 低于下界时，才重新设置为 `type(uint256).max`
 
 这能降低重复 approve 与奇怪 token 行为带来的兼容性风险。

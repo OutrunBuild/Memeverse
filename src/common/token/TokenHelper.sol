@@ -61,8 +61,12 @@ abstract contract TokenHelper is ReentrancyGuard {
 
     function _safeApproveInf(address token, address to) internal {
         if (token == NATIVE) return;
-        if (IERC20(token).allowance(address(this), to) < LOWER_BOUND_APPROVAL) {
-            _safeApprove(token, to, 0);
+        // Cache once. When current allowance is already 0, the reset-to-0 call below would be a
+        // same-value no-op external call (~2k gas wasted on a redundant CALL + Approval event), so
+        // skip it. USDT-style tokens only need the reset on non-zero -> non-zero; 0 -> max never does.
+        uint256 currentAllowance = IERC20(token).allowance(address(this), to);
+        if (currentAllowance < LOWER_BOUND_APPROVAL) {
+            if (currentAllowance != 0) _safeApprove(token, to, 0);
             _safeApprove(token, to, type(uint256).max);
         }
     }

@@ -17,6 +17,12 @@ abstract contract TokenHelper is ReentrancyGuard {
     error NativeTransferFailed();
     error SafeApproveFailed(address token, address spender, uint256 value);
 
+    /// @notice Single entry point for all inbound token pulls (ERC20 `safeTransferFrom`, native `msg.value`).
+    /// @dev Unlike `_transferOut`, this inbound pull carries no `nonReentrant`: `safeTransferFrom` is an
+    ///      external call, so a token with transfer hooks (ERC-777 / ERC-1363 style callbacks) could re-enter
+    ///      the caller before its effects are complete. Inbound reentrancy safety therefore rests on the trust
+    ///      precondition that every asset pulled in here is a plain ERC20 without transfer hooks — a
+    ///      per-asset precondition (authoritative uAsset trust boundary: docs/spec/polend/settlement-and-fees.md §9.1).
     function _transferIn(address token, address from, uint256 amount) internal {
         if (token == NATIVE) require(msg.value == amount, NativeValueMismatch(amount, msg.value));
         else if (amount != 0) IERC20(token).safeTransferFrom(from, address(this), amount);

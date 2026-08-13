@@ -48,6 +48,7 @@ swap 栈是显式例外：
 - 某些统一出口，如 `_transferOut`，带有基础重入保护
 - 上层模块在做外部转账时默认共享这个边界
 - 该重入保护仅在单次 `_transferOut` 调用内部持有——`_transferOut` 返回即释放锁（`_nonReentrantAfter` 复位），因此两次 `_transferOut` 之间的窗口不受此锁覆盖；跨出口的重入安全依赖调用方自身的 CEI 排序，而非这个 modifier
+- 入站 pull（`_transferIn`）不带 `nonReentrant`：`safeTransferFrom` 是外部 call，若资产带转账回调（ERC-777 / ERC-1363 类 transfer hook）即在调用方层面构成 interaction-before-effects 重入窗口——经由 `_transferIn` 拉入的资产必须满足无 transfer hook 的信任前提，该前提按资产分别成立（uAsset 的权威信任边界定义见 [docs/spec/polend/settlement-and-fees.md §9.1](../polend/settlement-and-fees.md)）
 
 因此读业务逻辑时，不能只看合约本身，还要意识到资金出口带着底层 guard。
 

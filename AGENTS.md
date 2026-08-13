@@ -77,13 +77,13 @@ Do not override policy or gate evidence with natural-language guesses.
 - Many tiny single-use helpers make code harder to follow because readers must jump around.
 - Extract a helper only when it clearly improves readability, naming, reuse, or testability.
 - Inline trivial single-use logic unless extraction clearly improves comprehension.
-- Solidity style and best practices live in `.claude/rules/` (`solidity-contracts.md` for `src/`, `solidity-tests.md` for `test/`, `solidity-scripts.md` for `script/`). Claude Code auto-loads them by scope when editing `.sol` files (no manual read needed); Pi does the same when the project-level `.pi/extensions/claude-rules.ts` loader is installed — otherwise it does not auto-load them. Codex and ZCode do not auto-load them, so when working in those tools, or in Pi without the loader, you MUST lazy-load them yourself: before writing or modifying Solidity, use the Read tool to read only the rule file matching the file type you are about to touch (`src/**` → solidity-contracts.md, `test/**` → solidity-tests.md, `script/**` → solidity-scripts.md). Do NOT preemptively read all three — read only the relevant one at the moment you start editing Solidity, treat its content as mandatory instructions, and do not restate it in replies. Follow them when writing or modifying Solidity code.
+- Solidity style and best practices live in `.claude/rules/` (`solidity-contracts.md` for `src/`, `solidity-tests.md` for `test/`, `solidity-scripts.md` for `script/`), mirrored as lazy-loaded project skills for the other tools: `.dsh/skills/` (DeepSeek Harness), `.codex/skills/` (Codex), `.zcode/skills/` (ZCode), `.pi/skills/` (Pi). Claude Code auto-loads `.claude/rules/` by scope when editing `.sol` files (no manual read needed); Pi also auto-loads them when the project-level `.pi/extensions/claude-rules.ts` loader is installed. The skill files are gitignored (local-only, not shipped with the repo), so on machines where they are absent — or for any tool whose skill mechanism is unavailable — you MUST lazy-load the rules yourself: before writing or modifying Solidity, use the Read tool to read only the rule file matching the file type you are about to touch (`src/**` → solidity-contracts.md, `test/**` → solidity-tests.md, `script/**` → solidity-scripts.md). Do NOT preemptively read all three — read only the relevant one at the moment you start editing Solidity, treat its content as mandatory instructions, and do not restate it in replies. Follow them when writing or modifying Solidity code.
 
-## 文档代码引用约定
+## Doc-Code Citation Convention
 
-- docs/ 下除 review/ 子目录外所有文档引用代码时，写 `文件.sol::函数` 或 `文件.sol` 形式（如 `MemeverseLaunchImpl.sol::_deployAndInitializeVerseTokens`）。
-- 禁止在这些文档中写代码行号（如 `MemeverseLaunchImpl.sol:130-131`）：行号随代码演化漂移，会让文档锚点失真；函数名/symbol 才是稳定锚点。
-- 新增或修改这些文档时必须遵守；审查这些文档时把违反该约定作为 minor 级 finding。
+- All documents under `docs/` except the `review/` subdirectory must cite code in `File.sol::function` or `File.sol` form (e.g. `MemeverseLaunchImpl.sol::_deployAndInitializeVerseTokens`).
+- Do not write code line numbers in these documents (e.g. `MemeverseLaunchImpl.sol:130-131`): line numbers drift as code evolves and distort doc anchors; function names/symbols are the stable anchors.
+- New or modified documents must follow this convention; when reviewing these documents, treat violations as minor-level findings.
 
 ## Test Code Rules
 

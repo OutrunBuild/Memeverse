@@ -27,7 +27,7 @@ function balance(uint256 id) public view override returns (uint256)
 function shutdown() public onlyOwner
 ```
 
-**Explicit visibility**: every function declares `external`/`public`/`internal`/`private` explicitly — never rely on defaults (the `explicit-function-visibility` lint is not excluded, so the project enforces it; implicit visibility is a common source of security bugs).
+**Explicit visibility**: every function declares `external`/`public`/`internal`/`private` explicitly — never rely on defaults (implicit visibility is a common source of security bugs).
 
 ## Imports
 Named imports only — `import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";`. Avoid bare/star imports (slower compilation, hidden dependencies). Prefer one contract per file; the filename matches the core contract name in PascalCase (`Owned.sol` → `contract Owned`).
@@ -38,7 +38,7 @@ Named imports only — `import {ERC20} from "@openzeppelin/contracts/token/ERC20
 | contract / library / interface / struct / enum / event | CapitalizedWords (PascalCase) | `SimpleToken`, `Position`, `Deposit` |
 | function / parameter / modifier / local & state variable | mixedCase (lowerCamelCase) | `getBalance`, `initialSupply`, `onlyOwner` |
 | `constant` | UPPER_CASE_WITH_UNDERSCORES | `MAX_BLOCKS`, `TOKEN_NAME` |
-| `immutable` | UPPER_SNAKE_CASE; the repo mixes styles — **match the surrounding file**; for a new file / no precedent, default to UPPER_SNAKE_CASE | `MEMEVERSE_LAUNCHER` |
+| `immutable` | match the surrounding file — follow the repo's dominant convention; the official guide prefers UPPER_SNAKE_CASE for new files with no precedent | `TREASURY` vs `lzEndpoint` |
 
 - Abbreviations: in PascalCase capitalize all letters (`HTTPServerError`); in mixedCase only the leading one is lowercase (`xmlHTTPRequest`).
 - Never name a single-letter variable `l`, `O`, or `I` (confusable with `1`/`0`).
@@ -68,7 +68,7 @@ Prefer custom errors: `error InsufficientBalance();` + `revert InsufficientBalan
 
 ## Project specifics
 - Compiler: Solidity `0.8.35`, `via_ir = true`, `optimizer_runs = 200`, `evm_version = prague`. Verify deployments use exactly these settings.
-- `foundry.toml` `[lint]` excludes many naming lints (`mixed-case-variable`, `mixed-case-function`, `screaming-snake-case-const`/`-immutable`, `pascal-case-struct`, …), so the linter will **not** flag naming — apply the table above yourself.
+- Naming lints may not flag every deviation depending on the repo's `[lint]` config — apply the naming table above yourself.
 - "Stack too deep": pack variables into structs, split large functions, or rely on `via_ir` (already enabled) as a last resort.
 - On surgical edits, follow the file's existing conventions; do not rename or reorder unrelated code.
 - Before you ship: `forge test -vvvv`, `forge lint`, `forge fmt --check`; `forge taint src/<Contract>.sol` for untrusted-data flows; production keys in keystore/HW (never plaintext, never Anvil defaults); keep `.env` out of VCS.

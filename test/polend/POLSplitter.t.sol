@@ -683,6 +683,47 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
         assertEq(uAsset.balanceOf(ALICE), 0, "uAsset not transferred");
     }
 
+    /// @notice Regression guard for `_ptToUAsset`'s Floor rounding (INV-18 PT-solvency). With a
+    ///         dust-producing ratio (3/10) and a settlement funded at exactly the floored PT
+    ///         reserve, every PT holder — including the last redeemer — redeems in full. This
+    ///         holds only because Floor is subadditive (`Σfloor(per-PT) ≤ floor(totalSupply·ratio)`).
+    ///         If `_ptToUAsset` were changed to Ceil, each payout becomes ceil(1.2)=2, so the
+    ///         first holder's `assertEq(redeemPT(..), 1)` fails immediately (and cumulatively
+    ///         Σceil ≥ ceil(total) would also break coverage) — pinning the rounding direction
+    ///         as an executable guard.
+    function testRedeemPT_FloorRoundingCoversAllHoldersAtDustRatio() external {
+        address carol = makeAddr("carol");
+        // Ratio 3/10 truncates each 4-PT redemption (4*3/10 = 1.2 -> floor 1).
+        vm.prank(address(launcher));
+        splitter.recordPTBackingRatio(VERSE_ID, 3, 10);
+        // Fund the settlement at exactly the floored total reserve floor(12*3/10) = 3 — the
+        // tight lower bound where Σfloor(per-PT) = floor(total), so the reserve pays out 1+1+1
+        // and is exhausted to 0 (dust would only remain if funded above this floor reserve).
+        mockSettledForTest(address(splitter), VERSE_ID, 3, 0);
+        uAsset.mint(address(splitter), 3);
+        mintPTForTest(address(splitter), VERSE_ID, ALICE, 4);
+        mintPTForTest(address(splitter), VERSE_ID, BOB, 4);
+        mintPTForTest(address(splitter), VERSE_ID, carol, 4);
+
+        // Each holder redeems 4 PT for floor(4 * 3 / 10) = 1 uAsset; all three succeed.
+        vm.prank(ALICE);
+        assertEq(splitter.redeemPT(VERSE_ID, 4, ALICE), 1, "alice floor share");
+        vm.prank(BOB);
+        assertEq(splitter.redeemPT(VERSE_ID, 4, BOB), 1, "bob floor share");
+        // Last redeemer at the tight boundary: settlementUAsset == uAssetAmount == 1, so this
+        // both proves every holder stays redeemable and guards the strict `<` of redeemPT's
+        // coverage check (flipping it to `<=` would revert carol here).
+        vm.prank(carol);
+        assertEq(splitter.redeemPT(VERSE_ID, 4, carol), 1, "carol last redeemer covered");
+
+        assertEq(uAsset.balanceOf(ALICE), 1, "alice balance");
+        assertEq(uAsset.balanceOf(BOB), 1, "bob balance");
+        assertEq(uAsset.balanceOf(carol), 1, "carol balance");
+        // Σfloor(per-PT) = 1+1+1 = 3 = floor(totalSupply*3/10), exhausting the reserve exactly —
+        // the equality that only Floor's subadditivity guarantees at this tight boundary.
+        assertEq(uAsset.balanceOf(address(splitter)), 0, "settlement exhausted by floored per-PT sums");
+    }
+
     function testRedeemYT_ReservesConvertedPTBacking() external {
         vm.prank(address(launcher));
         splitter.recordPTBackingRatio(VERSE_ID, 7 ether, 14 ether);

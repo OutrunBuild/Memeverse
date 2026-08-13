@@ -362,6 +362,10 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         uint256 settlementMemecoin = info.settlementMemecoin;
         uint256 ytRedeemableUAssetPool = _ytRedeemableUAssetPool(info);
 
+        // Floor (mulDiv default) is deliberate, same rationale as `_ptToUAsset`: each redeemer
+        // gets at most their exact pro-rata share, so leftover dust stays in the pool and the
+        // share of each remaining YT holder never drops — keeping everyone redeemable. Ceil
+        // would over-pay early redeemers and drain the pools; do not change the direction.
         uAssetAmount = Math.mulDiv(ytRedeemableUAssetPool, ytAmount, outstandingYT);
         memecoinAmount = Math.mulDiv(settlementMemecoin, ytAmount, outstandingYT);
         if (uAssetAmount == 0 && memecoinAmount == 0) revert InvalidClaim();
@@ -417,6 +421,17 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         settlementMemecoin = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;
     }
 
+    /// @notice Converts PT to uAsset at the recorded backing ratio (spec §3.2). Reverts
+    ///         InvalidClaim if the ratio is unset. Shared by redeemPT, preRedeemPTFee, and
+    ///         the settle-time PT reserve, so a change here applies to all three paths.
+    /// @dev Floor rounding (mulDiv default) is deliberate, not a default to "refine":
+    ///      floor subadditivity — `floor(a)+floor(b) ≤ floor(a+b)` — guarantees the sum of
+    ///      per-PT redemptions never exceeds the floored total reserve `_ptReservedUAsset`,
+    ///      which settle guarantees is `≤ settlementUAsset` (INV-18). So every PT holder can
+    ///      always redeem in full, and any rounding dust stays in the contract (the YT pool).
+    ///      Switching to ceil reverses the inequality (`Σceil ≥ ceil(Σ)`): early redeemers
+    ///      would over-claim and a late PT holder would hit redeemPT's coverage revert. Do
+    ///      not change the rounding direction.
     function _ptToUAsset(SplitInfo storage info, uint256 ptAmount) internal view returns (uint256 uAssetAmount) {
         uint256 numerator = info.ptBackingNumerator;
         uint256 denominator = info.ptBackingDenominator;

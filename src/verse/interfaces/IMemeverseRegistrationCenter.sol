@@ -87,7 +87,10 @@ interface IMemeverseRegistrationCenter {
 
     /**
      * @notice Enables or disables a uAsset token for registration funding.
-     * @dev Token allowlist gate for verse creation.
+     * @dev Token allowlist gate for verse creation. Membership-only: `uAsset` must be a plain
+     *      ERC20 with no external-callback semantics (transfer/transferFrom/approve/mint/repay
+     *      must not trigger external callbacks), guaranteed by governance and deployment per
+     *      docs/spec/polend/settlement-and-fees.md §9.1 — not enforced at runtime here.
      * @param uAsset uAsset token address.
      * @param isSupported Support status to apply.
      */

@@ -10,7 +10,7 @@ import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
-import {OutrunOwnableUpgradeable} from "../../src/common/access/OutrunOwnableUpgradeable.sol";
+import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
 
 import {MockPOLendForLifecycle, MockPOLSplitterForLifecycle} from "../mocks/verse/LauncherLifecycleMocks.sol";
 
@@ -141,7 +141,7 @@ contract MemeverseLauncherSettlementTest is Test, MemeverseLauncherTestHelper {
         // Non-owner rejected.
         address attacker = makeAddr("attacker");
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSelector(OutrunOwnableUpgradeable.OwnableUnauthorizedAccount.selector, attacker));
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, attacker));
         launcher.setSettlementImpl(address(1));
     }
 
@@ -152,7 +152,7 @@ contract MemeverseLauncherSettlementTest is Test, MemeverseLauncherTestHelper {
 
         address attacker = makeAddr("attacker");
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSelector(OutrunOwnableUpgradeable.OwnableUnauthorizedAccount.selector, attacker));
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, attacker));
         launcher.setFeePreviewReader(address(1));
     }
 }

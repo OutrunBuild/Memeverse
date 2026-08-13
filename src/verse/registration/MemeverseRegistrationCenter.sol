@@ -225,6 +225,9 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         require(bytes(param.symbol).length > 0 && bytes(param.symbol).length < 32, InvalidLength());
         require(bytes(param.uri).length > 0, InvalidLength());
         require(bytes(param.desc).length > 0 && bytes(param.desc).length < 256, InvalidLength());
+        // Whitelist membership is the only uAsset gate here; the plain-ERC20 (no external callback)
+        // token-kind precondition is guaranteed by governance and deployment, not checked at runtime
+        // (authoritative boundary: docs/spec/polend/settlement-and-fees.md §9.1).
         require(supportedUAssets[param.uAsset], InvalidUAsset());
 
         uint32[] memory omnichainIds = param.omnichainIds;
@@ -258,6 +261,14 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
 
     /// @notice Updates whether a fundraising token is accepted for new registrations.
     /// @dev Only callable by the owner.
+    ///      `uAsset` must be a plain ERC20 with no external-callback semantics: `transfer` /
+    ///      `transferFrom` / `approve` / `mint` / `repay` must not trigger any external callback
+    ///      during execution. Callback-capable assets are outside the protocol's supported scope;
+    ///      the authoritative trust boundary is docs/spec/polend/settlement-and-fees.md §9.1, and
+    ///      this precondition is guaranteed by governance and deployment, not runtime detection
+    ///      (this setter only manages whitelist membership). A callback-capable `uAsset` would
+    ///      conditionally enable the LP per-share accounting reentrancy window (F-020) at
+    ///      `MemeverseUniswapHook.sol::_addLiquidityCore`.
     /// @param uAsset Fundraising token address to update.
     /// @param isSupported Whether the token should be accepted for future registrations.
     function setSupportedUAsset(address uAsset, bool isSupported) external override onlyOwner {

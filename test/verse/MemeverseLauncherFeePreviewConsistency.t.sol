@@ -12,8 +12,11 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 ///         native fee that `MemeverseLauncher.redeemAndDistributeFees` requires, so a keeper funding the
 ///         quoted amount never hits `InvalidLzFee`.
 /// @dev The preview reader and the fee distributor compute the same fee split / pair-fee mapping through
-///      shared `MemeverseLauncherLib` helpers (`splitExecutorReward`, `mapPairFees`); the remaining mirrored
-///      helpers (`_splitAuxiliaryGovFees`, `_buildSendParamAndMessagingFee`) are paired by source convention.
+///      shared `MemeverseLauncherLib` helpers (`splitExecutorReward`, `mapPairFees`). The auxiliary-gov
+///      split and the OFT send-param construction are also single-sourced in the library
+///      (`MemeverseLauncherLib.splitAuxiliaryGovFees`, `MemeverseLauncherLib.buildSendParamAndMessagingFee`):
+///      the wrappers `_splitAuxiliaryGovFees` / `_buildSendParamAndMessagingFee` only gather inputs for
+///      the shared formula.
 ///      These tests wire the reader's preview fee source (`router.setPreviewQuote`) and the distributor's
 ///      runtime fee source (`router.setClaimQuote`) to identical amounts, then assert the quoted LZ fee
 ///      equals the runtime-required LZ fee across exact / underpay / overpay funding. If either side's
@@ -59,9 +62,11 @@ contract MemeverseLauncherFeePreviewConsistencyTest is MemeverseLauncherLifecycl
         launcher.redeemAndDistributeFees{value: quoted}(verseId, REWARD_RECEIVER);
     }
 
-    /// @notice Exercises the still-mirrored `_splitAuxiliaryGovFees` arithmetic with `quoteSend` tracking
+    /// @notice Exercises the lib-single-sourced `_splitAuxiliaryGovFees` arithmetic with `quoteSend` tracking
     ///         `amountLD`, so a magnitude drift in the auxiliary-gov split surfaces as a quote != required
-    ///         mismatch. Seeds non-zero leverage and normal funds so the `mulDiv` gov-share branch executes
+    ///         mismatch — a change to the shared `MemeverseLauncherLib.splitAuxiliaryGovFees` formula would
+    ///         break that equality and fail this test. Seeds non-zero leverage and normal funds so the
+    ///         `mulDiv` gov-share branch executes
     ///         on BOTH the reader and the distributor, and enables amount-sensitive OFT quoting so the LZ fee
     ///         reflects the actual send amount — not a fixed mock fee.
     function testFeePreviewConsistency_AuxiliaryGovSplitDriftDetected_RemoteAmountSensitiveQuote() external {
@@ -203,7 +208,7 @@ contract MemeverseLauncherFeePreviewConsistencyTest is MemeverseLauncherLifecycl
     ///         `nativeFee = sendParam.amountLD` (mirroring real LayerZero where the fee tracks the bridged
     ///         amount), and seeds non-zero normal funds + leveraged debt so `_splitAuxiliaryGovFees` executes
     ///         its `mulDiv` gov-share branch on both the reader and the distributor. This makes a magnitude
-    ///         drift in the still-mirrored auxiliary-gov split observable: if either side computes a
+    ///         drift in the auxiliary-gov split observable: if either side computes a
     ///         different `govFee`, the quoted amount diverges from the required amount and exact funding
     ///         reverts.
     function _setupRemoteFeeVerseWithLeverage(

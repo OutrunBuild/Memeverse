@@ -92,6 +92,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             mainPoolUAssetBudget,
             mainPoolMemecoinBudget,
             swapRouter,
+            hookAddress,
             _polSplitter,
             _polend
         );
@@ -111,6 +112,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 mainPoolUAssetBudget,
         uint256 mainPoolMemecoinBudget,
         address swapRouter,
+        address hookAddress,
         address _polSplitter,
         address _polend
     )
@@ -122,7 +124,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         (mainPoolPOLRawAmount, poolKey, mainPoolUAssetUsed, burnedMemecoin) =
             _createMainBootstrapPool(memecoin, uAsset, mainPoolUAssetBudget, mainPoolMemecoinBudget, swapRouter);
 
-        _settlePreorder(verseId, poolKey, uAsset, memecoin);
+        _settlePreorder(verseId, poolKey, uAsset, memecoin, hookAddress);
         IMemeverseLauncher.BootstrapPolPlan memory plan =
             _buildBootstrapPolPlan(normalFunds, mainPoolPOLRawAmount, totalLeveragedDebt);
 
@@ -421,7 +423,13 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         claims.normalResidualPT = residualPT - leveragedResidualPT;
     }
 
-    function _settlePreorder(uint256 verseId, PoolKey memory poolKey, address uAsset, address memecoin) internal {
+    function _settlePreorder(
+        uint256 verseId,
+        PoolKey memory poolKey,
+        address uAsset,
+        address memecoin,
+        address hookAddress
+    ) internal {
         IMemeverseLauncher.PreorderState storage preorderState = memeverseLauncherStorage.preorderStates[verseId];
         uint256 totalFunds = preorderState.totalFunds;
         if (totalFunds == 0) return;
@@ -432,7 +440,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         // MIN/MAX is the v4 tick-range safety bound, not a slippage intent.
         uint160 sqrtPriceLimitX96 = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
         // Settlement goes through the hook's dedicated preorder-settlement path so preorder accounting stays isolated from public swap flow.
-        BalanceDelta delta = IMemeverseUniswapHook(memeverseLauncherStorage.memeverseUniswapHook)
+        BalanceDelta delta = IMemeverseUniswapHook(hookAddress)
             .executePreorderSettlement(
                 IMemeverseUniswapHook.PreorderSettlementParams({
                 key: poolKey,

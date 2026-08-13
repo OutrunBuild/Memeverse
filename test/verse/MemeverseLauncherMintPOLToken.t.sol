@@ -9,7 +9,7 @@ import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
-import {OutrunOwnableUpgradeable} from "../../src/common/access/OutrunOwnableUpgradeable.sol";
+import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
 
 import {MockPOLendForLifecycle, MockPOLSplitterForLifecycle} from "../mocks/verse/LauncherLifecycleMocks.sol";
 
@@ -127,7 +127,7 @@ contract MemeverseLauncherMintPOLTokenTest is Test, MemeverseLauncherTestHelper 
         // Non-owner rejected.
         address attacker = makeAddr("attacker");
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSelector(OutrunOwnableUpgradeable.OwnableUnauthorizedAccount.selector, attacker));
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, attacker));
         launcher.setLiquidityImpl(address(1));
     }
 

@@ -24,7 +24,6 @@
 | RegistrationCenter | constructor 部署 | constructor | 不适用 | `src/verse/registration/MemeverseRegistrationCenter.sol::constructor` |
 | RegistrarAtLocal | constructor 部署 | constructor | 不适用 | `src/verse/registration/MemeverseRegistrarAtLocal.sol::constructor` |
 | RegistrarOmnichain | constructor 部署 | constructor | 不适用 | `src/verse/registration/MemeverseRegistrarOmnichain.sol::constructor` |
-| YieldDispatcher | constructor 部署 | constructor | 不适用 | `src/verse/YieldDispatcher.sol::constructor` |
 | OmnichainInteroperation | constructor 部署 | constructor | 不适用 | `src/interoperation/MemeverseOmnichainInteroperation.sol::constructor` |
 | OmnichainMemecoinStaker | constructor 部署 | constructor | 不适用 | `src/interoperation/OmnichainMemecoinStaker.sol::constructor` |
 | LzEndpointRegistry | constructor 部署 | constructor | 不适用 | `src/common/omnichain/LzEndpointRegistry.sol::constructor` |
@@ -39,6 +38,7 @@
 | `GovernanceCycleIncentivizerUpgradeable` | `ERC1967Proxy` + UUPS | `initialize(...)` | `_authorizeUpgrade(...) => onlyGovernance` | `src/governance/GovernanceCycleIncentivizerUpgradeable.sol`（`_authorizeUpgrade`）; `src/verse/deployment/MemeverseProxyDeployer.sol`（proxy 部署） |
 | `POLend` | `ERC1967Proxy` + UUPS | `initialize(initialOwner, interestRate_, leveragedDebtFactor_, treasury_, launcher_, splitter_, creditFactory_)` | `_authorizeUpgrade(...) => onlyOwner` | `src/polend/POLend.sol`（`_authorizeUpgrade`） |
 | `POLSplitter` | `ERC1967Proxy` + UUPS | `initialize(initialOwner, _launcher)` | `_authorizeUpgrade(...) => onlyOwner` | `src/polend/POLSplitter.sol`（`_authorizeUpgrade`） |
+| YieldDispatcher | `ERC1967Proxy` + UUPS | `initialize(initialOwner, _localEndpoint, _memeverseLauncher, _protocolTreasury)` | `_authorizeUpgrade(...) => onlyOwner` | `src/verse/YieldDispatcher.sol::initialize`、`::_authorizeUpgrade` |
 | **UUPS 可升级（diamond Router）** | | | | |
 | `MemeverseUniswapHook`（Router） | `ERC1967Proxy` + UUPS | `initialize(initialOwner, treasury_, lpTokenImplementation_, swapFacet_, dynamicFeeFacet_, settlementFacet_, launcher_)` | `_authorizeUpgrade(...) => onlyOwner`（Hook `owner()`）；3 facet 地址经 owner `setFacet(bytes32 role, address facet)` 独立替换 | `script/DeployMemeverseHookProxy.s.sol`（Hook proxy 部署与 existing proxy 校验）；`src/swap/MemeverseUniswapHook.sol::initialize`、`::setFacet`；getter 区 `::lpTokenImplementation`、`::swapFacet`、`::dynamicFeeFacet`、`::settlementFacet` |
 | **Diamond facet（非 proxy，可替换实现）** | | | | |

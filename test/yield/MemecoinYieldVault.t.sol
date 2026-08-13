@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
@@ -388,9 +389,19 @@ contract MemecoinYieldVaultTest is Test {
         // by deploying a second YieldDispatcher whose localEndpoint points at the same mock endpoint (0x9999) the
         // settle path reads. The stuck compose is delivered into dispatcherB's queue, not dispatcherA's.
         // Native deploy (no etch): composeStates and the composeQueue `to` key both derive from dispatcherB's own
-        // address, and constructor immutables are set correctly, so a fresh deploy is sufficient and avoids the
-        // etch-only-copies-code storage caveat that the dispatcherA setup must work around.
-        YieldDispatcher dispatcherB = new YieldDispatcher(endpointAddr, address(this));
+        // address, and the ERC-7201 storage addresses are set by initialize, so a fresh impl+proxy deploy is
+        // sufficient and avoids the etch-only-copies-code storage caveat that the dispatcherA setup must work around.
+        YieldDispatcher dispatcherBImpl = new YieldDispatcher();
+        YieldDispatcher dispatcherB = YieldDispatcher(
+            address(
+                new ERC1967Proxy(
+                    address(dispatcherBImpl),
+                    abi.encodeCall(
+                        YieldDispatcher.initialize, (address(this), endpointAddr, address(this), address(this))
+                    )
+                )
+            )
+        );
 
         // Seed an existing deposit so settlement credits totalAssets (non-empty vault path).
         composeAsset.mint(ATTACKER, 10 ether);
@@ -1790,24 +1801,31 @@ contract MemecoinYieldVaultTest is Test {
         );
     }
 
-    /// @dev Deploys a fresh compose-vault clone and a real YieldDispatcher, etching the dispatcher onto the
-    ///      fixed `0xD15A7` address the vault references as `yieldDispatcher` and the mock composer endpoint
-    ///      onto `0x9999`. Every `reAccumulateYields` retry-path test calls this so dispatcher-constructor /
-    ///      etch drift has a single edit point. Returns the etched `dispatcherAddr` (state MUST be read via
-    ///      `YieldDispatcher(dispatcherAddr)`, since `vm.etch` copies only code, not storage — the in-memory
-    ///      `dispatcher` instance is a distinct storage context) and the mock `endpointAddr` (used to plant
-    ///      the compose queue).
+    /// @dev Deploys a fresh compose-vault clone and a real (upgradeable) YieldDispatcher over the mock composer
+    ///      endpoint etched onto `0x9999`. The dispatcher is deployed as impl + ERC1967Proxy + initialize and the
+    ///      vault is wired to the proxy address: post-upgrade the dispatcher has no immutables (its addresses live
+    ///      in ERC-7201 storage set by initialize), so the prior etch-onto-a-fixed-address pattern no longer works
+    ///      (`vm.etch` copies only code, not storage). Returns the deployed `dispatcherAddr`.
     function _deployComposeVaultWithDispatcher(address asset)
         internal
         returns (MemecoinYieldVault composeVault, address dispatcherAddr, address endpointAddr)
     {
         composeVault = MemecoinYieldVault(Clones.clone(address(new MemecoinYieldVault())));
-        dispatcherAddr = address(0xD15A7);
         endpointAddr = address(0x9999);
         MockMessagingComposerEndpoint endpointImpl = new MockMessagingComposerEndpoint();
         vm.etch(endpointAddr, address(endpointImpl).code);
-        YieldDispatcher dispatcher = new YieldDispatcher(endpointAddr, address(this));
-        vm.etch(dispatcherAddr, address(dispatcher).code);
+        YieldDispatcher dispatcherImpl = new YieldDispatcher();
+        YieldDispatcher dispatcher = YieldDispatcher(
+            address(
+                new ERC1967Proxy(
+                    address(dispatcherImpl),
+                    abi.encodeCall(
+                        YieldDispatcher.initialize, (address(this), endpointAddr, address(this), address(this))
+                    )
+                )
+            )
+        );
+        dispatcherAddr = address(dispatcher);
         composeVault.initialize("Compose Vault", "cvMEME", dispatcherAddr, asset, 2, VIRTUAL_ASSETS);
     }
 

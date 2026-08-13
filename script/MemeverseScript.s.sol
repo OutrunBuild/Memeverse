@@ -58,6 +58,7 @@ contract MemeverseScript is BaseScript {
     string internal constant SALT_MEMEVERSE_LAUNCHER = "MemeverseLauncher";
     string internal constant SALT_MEMEVERSE_LAUNCHER_IMPLEMENTATION = "MemeverseLauncherImplementation";
     string internal constant SALT_YIELD_DISPATCHER = "YieldDispatcher";
+    string internal constant SALT_YIELD_DISPATCHER_IMPLEMENTATION = "YieldDispatcherImplementation";
     string internal constant SALT_MEMEVERSE_OMNICHAIN_INTEROPERATION = "MemeverseOmnichainInteroperation";
     string internal constant SALT_OMNICHAIN_MEMECOIN_STAKER = "OmnichainMemecoinStaker";
     string internal constant SALT_POLEND = "POLend";
@@ -101,6 +102,7 @@ contract MemeverseScript is BaseScript {
     uint256 internal POLEND_INTEREST_RATE;
     uint256 internal POLEND_LEVERAGED_DEBT_FACTOR;
     address internal POLEND_TREASURY;
+    address internal PROTOCOL_TREASURY;
     address internal MEMEVERSE_UNISWAP_HOOK;
 
     uint32[] public omnichainIds;
@@ -176,6 +178,7 @@ contract MemeverseScript is BaseScript {
         POLEND_INTEREST_RATE = vm.envUint("POLEND_INTEREST_RATE");
         POLEND_LEVERAGED_DEBT_FACTOR = vm.envUint("POLEND_LEVERAGED_DEBT_FACTOR");
         POLEND_TREASURY = vm.envAddress("POLEND_TREASURY");
+        PROTOCOL_TREASURY = vm.envAddress("PROTOCOL_TREASURY");
         _loadReadinessEnv();
     }
 
@@ -235,36 +238,36 @@ contract MemeverseScript is BaseScript {
         return keccak256(abi.encodePacked(saltName, nonce));
     }
 
-    /// @dev Logs the predicted CREATE3 address of one artifact. `deployer` is the account that will
-    ///      call IOutrunDeployer.deploy — `owner` for most artifacts, `_memeverseLauncherDeployCaller()`
-    ///      for Launcher/POLend/POLSplitter whose salts are namespaced under the deployer's msg.sender.
-    function _getDeployed(string memory saltName, address deployer, uint256 nonce) internal view {
-        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployer, _saltFrom(saltName, nonce));
+    /// @dev Logs the predicted CREATE3 address of one artifact. `deployCaller` is the account that will
+    ///      call IOutrunDeployer.deploy — always `_memeverseLauncherDeployCaller()` (the broadcaster
+    ///      deployer, or address(this) in tests), since OutrunDeployer namespaces each salt by msg.sender.
+    function _getDeployed(string memory saltName, address deployCaller, uint256 nonce) internal view {
+        address deployed = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, _saltFrom(saltName, nonce));
         console.log("%s deployed on %s", saltName, deployed);
     }
 
     function _getDeployedImplementation(uint256 nonce) internal view {
-        _getDeployed(SALT_MEMECOIN_IMPLEMENTATION, owner, nonce);
-        _getDeployed(SALT_MEMECOIN_POL_IMPLEMENTATION, owner, nonce);
-        _getDeployed(SALT_MEMECOIN_YIELD_VAULT_IMPLEMENTATION, owner, nonce);
-        _getDeployed(SALT_MEMECOIN_GOVERNOR_IMPLEMENTATION, owner, nonce);
-        _getDeployed(SALT_CYCLE_INCENTIVIZER_IMPLEMENTATION, owner, nonce);
+        _getDeployed(SALT_MEMECOIN_IMPLEMENTATION, _memeverseLauncherDeployCaller(), nonce);
+        _getDeployed(SALT_MEMECOIN_POL_IMPLEMENTATION, _memeverseLauncherDeployCaller(), nonce);
+        _getDeployed(SALT_MEMECOIN_YIELD_VAULT_IMPLEMENTATION, _memeverseLauncherDeployCaller(), nonce);
+        _getDeployed(SALT_MEMECOIN_GOVERNOR_IMPLEMENTATION, _memeverseLauncherDeployCaller(), nonce);
+        _getDeployed(SALT_CYCLE_INCENTIVIZER_IMPLEMENTATION, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedRegistrationCenter(uint256 nonce) internal view {
-        _getDeployed(SALT_MEMEVERSE_REGISTRATION_CENTER, owner, nonce);
+        _getDeployed(SALT_MEMEVERSE_REGISTRATION_CENTER, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedLzEndpointRegistry(uint256 nonce) internal view {
-        _getDeployed(SALT_LZ_ENDPOINT_REGISTRY, owner, nonce);
+        _getDeployed(SALT_LZ_ENDPOINT_REGISTRY, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedMemeverseRegistrar(uint256 nonce) internal view {
-        _getDeployed(SALT_MEMEVERSE_REGISTRAR, owner, nonce);
+        _getDeployed(SALT_MEMEVERSE_REGISTRAR, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedMemeverseProxyDeployer(uint256 nonce) internal view {
-        _getDeployed(SALT_MEMEVERSE_PROXY_DEPLOYER, owner, nonce);
+        _getDeployed(SALT_MEMEVERSE_PROXY_DEPLOYER, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedMemeverseLauncher(uint256 nonce) internal view {
@@ -272,15 +275,15 @@ contract MemeverseScript is BaseScript {
     }
 
     function _getDeployedYieldDispatcher(uint256 nonce) internal view {
-        _getDeployed(SALT_YIELD_DISPATCHER, owner, nonce);
+        _getDeployed(SALT_YIELD_DISPATCHER, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedMemeverseOmnichainInteroperation(uint256 nonce) internal view {
-        _getDeployed(SALT_MEMEVERSE_OMNICHAIN_INTEROPERATION, owner, nonce);
+        _getDeployed(SALT_MEMEVERSE_OMNICHAIN_INTEROPERATION, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedOmnichainMemecoinStaker(uint256 nonce) internal view {
-        _getDeployed(SALT_OMNICHAIN_MEMECOIN_STAKER, owner, nonce);
+        _getDeployed(SALT_OMNICHAIN_MEMECOIN_STAKER, _memeverseLauncherDeployCaller(), nonce);
     }
 
     function _getDeployedPOLend(uint256 nonce) internal view {
@@ -1139,12 +1142,30 @@ contract MemeverseScript is BaseScript {
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
         require(MEMEVERSE_LAUNCHER != address(0), "ZERO_MEMEVERSE_LAUNCHER");
         require(OUTRUN_DEPLOYER != address(0), "ZERO_OUTRUN_DEPLOYER");
+        require(PROTOCOL_TREASURY != address(0), "ZERO_PROTOCOL_TREASURY");
 
-        bytes memory creationCode =
-            abi.encodePacked(type(YieldDispatcher).creationCode, abi.encode(localEndpoint, MEMEVERSE_LAUNCHER));
+        // Two-step UUPS deploy mirroring _deployMemeverseLauncher / _deployPOLend: CREATE3 the implementation, then
+        // CREATE3 the ERC1967Proxy under SALT_YIELD_DISPATCHER. CREATE3 address = f(factory, caller, salt), independent
+        // of creationCode, so the proxy still lands at the same address the single-step constructor deploy did — keeping
+        // the cross-chain same-address property (same OutrunDeployer + same deploy caller + same saltName + nonce).
+        bytes32 implementationSalt = _saltFrom(SALT_YIELD_DISPATCHER_IMPLEMENTATION, nonce);
+        address implementation =
+            IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(YieldDispatcher).creationCode);
+
+        bytes memory initializeData =
+            abi.encodeCall(YieldDispatcher.initialize, (owner, localEndpoint, MEMEVERSE_LAUNCHER, PROTOCOL_TREASURY));
 
         bytes32 salt = _saltFrom(SALT_YIELD_DISPATCHER, nonce);
+        // Predict the proxy address under the same CREATE3 namespace as the deploy below, then assert it lands there.
+        // The caller passed to getDeployed must be the deploy caller (_memeverseLauncherDeployCaller()), NOT owner:
+        // OutrunDeployer hashes msg.sender into the salt, and the deploy below runs as msg.sender = the broadcaster.
+        // owner is only initialize's initialOwner — a different role (see docs/spec/verse/deployment.md).
+        address predictedDispatcher =
+            IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(_memeverseLauncherDeployCaller(), salt);
+        bytes memory creationCode =
+            abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(implementation, initializeData));
         address memeverseOFTDispatcher = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+        require(memeverseOFTDispatcher == predictedDispatcher, "YIELD_DISPATCHER_PROXY_MISMATCH");
 
         console.log("YieldDispatcher deployed on %s", memeverseOFTDispatcher);
     }

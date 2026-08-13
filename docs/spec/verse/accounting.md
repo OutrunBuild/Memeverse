@@ -163,7 +163,7 @@
   - 辅助池 gov `PT` fee 按当前阶段转换成的 `uAsset`
     - `Locked`：经 `POLend.preRedeemPTFee(...)`
     - `Unlocked/settled`：经 `POLSplitter.redeemPT(...)`
-- 若治理链为本链或异链，token 的最终 receiver 映射（`UASSET` → `Governor.receiveTreasuryIncome`、`MEMECOIN` → `YieldVault.accumulateYields`，非合约 receiver → burn）以 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3 为跨链终点 canonical；本链/异链路径见 §3.1/§3.2。
+- 若治理链为本链或异链，token 的最终 receiver 映射（合约 receiver：`UASSET` → `Governor.receiveTreasuryIncome`、`MEMECOIN` → `YieldVault.accumulateYields`；非合约 receiver 按 tokenType 分流：MEMECOIN → burn、UASSET → `protocolTreasury`）以 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3 为跨链终点 canonical；本链/异链路径见 §3.1/§3.2。
 - 目标：`redeemAndDistributeFees` 的 native payment 必须精确等于 required fee；underpay 与 overpay 都会 revert（实现要求“等于”，不是“大于等于”）。
 - 目标：若本次没有任何 fee 被分发，required fee 为 `0`，因此非零 `msg.value` 应 revert。
 

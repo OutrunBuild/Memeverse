@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
@@ -129,11 +130,19 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
         vault.initialize("Verse 1 Vault", "vMEME", RECEIVER, address(memecoin), 1, 1e18);
 
         // ---- Dispatcher ----
-        // Re-etch the shared endpoint for the dispatcher's immutable; the staker's slot state is keyed by
-        // (from=memecoin OFT, to=staker) and the dispatcher's by (from=token, to=dispatcher), so they never
-        // collide even on the shared etched mock.
+        // Re-etch the shared endpoint for the dispatcher's localEndpoint storage slot; the staker's slot state is
+        // keyed by (from=memecoin OFT, to=staker) and the dispatcher's by (from=token, to=dispatcher), so they never
+        // collide even on the shared etched mock. The dispatcher is measured through its proxy (impl+proxy+initialize).
         _etchComposer();
-        dispatcher = new YieldDispatcher(LOCAL_ENDPOINT, LAUNCHER);
+        YieldDispatcher dispatcherImpl = new YieldDispatcher();
+        dispatcher = YieldDispatcher(
+            address(
+                new ERC1967Proxy(
+                    address(dispatcherImpl),
+                    abi.encodeCall(YieldDispatcher.initialize, (address(this), LOCAL_ENDPOINT, LAUNCHER, address(this)))
+                )
+            )
+        );
         burnToken = new GasBurnableToken("Burn Token", "BRN");
         dispatchVault = new GasVault(address(burnToken));
         governor = new GasGovernor();

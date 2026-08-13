@@ -8,6 +8,7 @@ import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTCompo
 import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppReceiver.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
 import {OFTComposeSettleVerify} from "../../src/common/omnichain/OFTComposeSettleVerify.sol";
@@ -23,7 +24,6 @@ import {ERC20} from "solmate/tokens/ERC20.sol";
 import {OFTHarness} from "../mocks/infrastructure/OFTHarness.sol";
 import {AttackComposeToken} from "../mocks/verse/AttackComposeToken.sol";
 import {BindingPassingFakeVault} from "../mocks/verse/BindingPassingFakeVault.sol";
-import {NoOpBurnToken} from "../mocks/verse/NoOpBurnToken.sol";
 import {YieldDispatcherMockBase} from "../mocks/verse/YieldDispatcherMockBase.sol";
 import {MemecoinDaoGovernorUpgradeable} from "../../src/governance/MemecoinDaoGovernorUpgradeable.sol";
 import {GovernanceCycleIncentivizerUpgradeable} from "../../src/governance/GovernanceCycleIncentivizerUpgradeable.sol";
@@ -130,6 +130,19 @@ contract ReentrantDispatcherVault {
     }
 }
 
+/// @dev Deploys a YieldDispatcher as impl + ERC1967Proxy + initialize, returning the proxy cast to
+///      `YieldDispatcher`. `layout at erc7201(...)` contracts cannot be inherited (Solidity Error 8894), so tests
+///      interact through this proxy address only. Shared by every dispatcher-instantiating contract in this file.
+function _deployYieldDispatcherProxy(address owner_, address localEndpoint, address launcher, address treasury)
+    returns (YieldDispatcher dispatcher)
+{
+    YieldDispatcher impl = new YieldDispatcher();
+    ERC1967Proxy proxy = new ERC1967Proxy(
+        address(impl), abi.encodeCall(YieldDispatcher.initialize, (owner_, localEndpoint, launcher, treasury))
+    );
+    return YieldDispatcher(address(proxy));
+}
+
 contract YieldDispatcherTest is ComposerEndpointFixture {
     using Clones for address;
     using OFTComposeMsgCodec for bytes;
@@ -137,6 +150,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     address internal constant OWNER = address(0xABCD);
     address internal constant LAUNCHER = address(0x2222);
     address internal constant ALICE = address(0xA11CE);
+    address internal constant TREASURY = address(0x7EAE);
 
     YieldDispatcher internal dispatcher;
     MockDispatcherComposeToken internal token;
@@ -146,25 +160,115 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice Set up.
     function setUp() external {
-        dispatcher = new YieldDispatcher(LOCAL_ENDPOINT, LAUNCHER);
+        dispatcher = _deployYieldDispatcherProxy(OWNER, LOCAL_ENDPOINT, LAUNCHER, TREASURY);
         token = new MockDispatcherComposeToken("Compose Token", "CMP");
         yieldVault = new MockDispatcherYieldVault(address(token));
         governor = new MockDispatcherGovernor(address(token));
         // Etch the shared endpoint mock runtime onto the LOCAL_ENDPOINT address so the dispatcher's `localEndpoint`
-        // immutable points at a controllable endpoint mock (the immutable is fixed to LOCAL_ENDPOINT at construction time).
+        // storage slot points at a controllable endpoint mock.
         endpoint = _etchComposer();
     }
 
-    /// @notice Test constructor rejects zero local endpoint.
-    function testConstructorRejectsZeroLocalEndpoint() external {
+    /// @notice Initialize rejects a zero local endpoint.
+    function testInitializeRejectsZeroLocalEndpoint() external {
+        YieldDispatcher impl = new YieldDispatcher();
         vm.expectRevert(IYieldDispatcher.ZeroAddress.selector);
-        new YieldDispatcher(address(0), LAUNCHER);
+        // Cast is a no-op for revert capture; the proxy constructor delegatecalls initialize and reverts.
+        YieldDispatcher(
+            address(
+                new ERC1967Proxy(
+                    address(impl), abi.encodeCall(YieldDispatcher.initialize, (OWNER, address(0), LAUNCHER, TREASURY))
+                )
+            )
+        );
     }
 
-    /// @notice Test constructor rejects zero memeverse launcher.
-    function testConstructorRejectsZeroMemeverseLauncher() external {
+    /// @notice Initialize rejects a zero memeverse launcher.
+    function testInitializeRejectsZeroMemeverseLauncher() external {
+        YieldDispatcher impl = new YieldDispatcher();
         vm.expectRevert(IYieldDispatcher.ZeroAddress.selector);
-        new YieldDispatcher(LOCAL_ENDPOINT, address(0));
+        YieldDispatcher(
+            address(
+                new ERC1967Proxy(
+                    address(impl),
+                    abi.encodeCall(YieldDispatcher.initialize, (OWNER, LOCAL_ENDPOINT, address(0), TREASURY))
+                )
+            )
+        );
+    }
+
+    /// @notice Initialize rejects a zero protocol treasury.
+    function testInitializeRejectsZeroProtocolTreasury() external {
+        YieldDispatcher impl = new YieldDispatcher();
+        vm.expectRevert(IYieldDispatcher.ZeroAddress.selector);
+        YieldDispatcher(
+            address(
+                new ERC1967Proxy(
+                    address(impl),
+                    abi.encodeCall(YieldDispatcher.initialize, (OWNER, LOCAL_ENDPOINT, LAUNCHER, address(0)))
+                )
+            )
+        );
+    }
+
+    /// @notice Initialize rejects a zero owner (delegated to OutrunOwnableUpgradeable).
+    function testInitializeRejectsZeroOwner() external {
+        YieldDispatcher impl = new YieldDispatcher();
+        vm.expectRevert(abi.encodeWithSignature("OwnableInvalidOwner(address)", address(0)));
+        YieldDispatcher(
+            address(
+                new ERC1967Proxy(
+                    address(impl),
+                    abi.encodeCall(YieldDispatcher.initialize, (address(0), LOCAL_ENDPOINT, LAUNCHER, TREASURY))
+                )
+            )
+        );
+    }
+
+    /// @notice The implementation cannot be re-initialized after `_disableInitializers`.
+    function testImplCannotBeReinitialized() external {
+        YieldDispatcher impl = new YieldDispatcher();
+        // Any direct initialize call on the impl reverts (OZ Initializable blocks it).
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        impl.initialize(OWNER, LOCAL_ENDPOINT, LAUNCHER, TREASURY);
+    }
+
+    /// @notice setProtocolTreasury is onlyOwner and rejects the zero address.
+    function testSetProtocolTreasuryRejectsNonOwner() external {
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", ALICE));
+        dispatcher.setProtocolTreasury(address(0xBEEF));
+    }
+
+    /// @notice setProtocolTreasury rejects a zero address even from the owner.
+    function testSetProtocolTreasuryRejectsZeroAddress() external {
+        vm.prank(OWNER);
+        vm.expectRevert(IYieldDispatcher.ZeroAddress.selector);
+        dispatcher.setProtocolTreasury(address(0));
+    }
+
+    /// @notice setProtocolTreasury updates the treasury when called by the owner and emits the rotation event.
+    function testSetProtocolTreasuryUpdatesTreasury() external {
+        address newTreasury = address(0xBEEF);
+        // oldTreasury is the initialize-time treasury (the TREASURY constant the proxy was initialized with).
+        vm.expectEmit(true, true, false, false);
+        emit IYieldDispatcher.ProtocolTreasuryChanged(TREASURY, newTreasury);
+        vm.prank(OWNER);
+        dispatcher.setProtocolTreasury(newTreasury);
+        assertEq(dispatcher.protocolTreasury(), newTreasury);
+    }
+
+    /// @notice A non-owner upgrade attempt is rejected; the owner can upgrade.
+    function testUpgradeAuthorization() external {
+        YieldDispatcher newImpl = new YieldDispatcher();
+        // Non-owner: reverts via _authorizeUpgrade's onlyOwner.
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", ALICE));
+        dispatcher.upgradeToAndCall(address(newImpl), "");
+
+        // Owner: succeeds. OZ 5.x exposes only upgradeToAndCall (no standalone upgradeTo).
+        vm.prank(OWNER);
+        dispatcher.upgradeToAndCall(address(newImpl), "");
     }
 
     /// @notice Test lz compose rejects unauthorized caller.
@@ -2106,7 +2210,7 @@ contract YieldDispatcherRealGovernorIntegrationTest is ComposerEndpointFixture {
         incentivizer.initialize(address(governor), initTokens);
 
         endpoint = new MockMessagingComposerEndpoint();
-        dispatcher = new YieldDispatcher(address(endpoint), LAUNCHER);
+        dispatcher = _deployYieldDispatcherProxy(address(this), address(endpoint), LAUNCHER, address(this));
         token = new MockDispatcherComposeToken("Compose Token", "CMP");
     }
 
@@ -2216,8 +2320,10 @@ contract UnsafeUninitializedProxy is ERC1967Proxy {
 ///         anchoring: every existing EOA-burn test drives MEMECOIN frames, so the UASSET branch of
 ///         `_settle`'s `receiver.code.length == 0` path was untested for both terminal classes.
 contract YieldDispatcherUAssetEoaBranchTest is ComposerEndpointFixture {
+    address internal constant OWNER = address(0xABCD);
     address internal constant LAUNCHER = address(0x2222);
     address internal constant ALICE = address(0xA11CE);
+    address internal constant TREASURY = address(0x7EAE);
 
     YieldDispatcher internal dispatcher;
     MockDispatcherComposeToken internal token;
@@ -2225,110 +2331,79 @@ contract YieldDispatcherUAssetEoaBranchTest is ComposerEndpointFixture {
 
     /// @notice Set up.
     function setUp() external {
-        dispatcher = new YieldDispatcher(LOCAL_ENDPOINT, LAUNCHER);
+        dispatcher = _deployYieldDispatcherProxy(OWNER, LOCAL_ENDPOINT, LAUNCHER, TREASURY);
         token = new MockDispatcherComposeToken("Compose Token", "CMP");
         // Etch the shared endpoint mock runtime onto the LOCAL_ENDPOINT address so the dispatcher's `localEndpoint`
-        // immutable points at a controllable endpoint mock (the immutable is fixed to LOCAL_ENDPOINT at construction time).
+        // storage slot points at a controllable endpoint mock.
         endpoint = _etchComposer();
     }
 
-    /// @notice A UASSET frame naming an EOA receiver whose token's `burn` reverts pins the queue on BOTH entries:
-    ///         the whole lzCompose reverts (the CEI Settled write rolls back) and the whole settlePendingCompose
-    ///         reverts (the Released write rolls back), so the guid stays `None`, the funds stay stranded, and the
-    ///         endpoint queue keeps its delivery hash (pinned by a direct slot assert) — no convergence signal for
-    ///         the endpoint state machine.
-    /// @dev UASSET×EOA is the missing half of the EOA-burn revert-pin coverage: the existing burn-revert tests
-    ///      (testLzComposeAllowsRetryAfterFailedBurnAndBlocksReplayAfterSuccess and its settle mirror) drive
-    ///      MEMECOIN frames, and the UASSET EOA branch reaches the same `IBurnable(token).burn(amount)` call only
-    ///      because the tokenType does not select the contract path. This is the operations.md §3.13 settle-failure class (b)
-    ///      class: the uAsset's burn reverts (owner-only/absent burn), the settle-fail rollback-retry contract
-    ///      applies, and the guid must stay resolvable for the documented retry.
-    function testUAssetEoaReceiverBurnRevertPinsQueueOnBothEntries() external {
-        bytes32 guid = bytes32("uasset-burn-revert");
+    /// @notice A UASSET frame naming a no-code (EOA) receiver routes the funds to `protocolTreasury` instead of
+    ///         burning: the dispatcher never calls `burn`, the treasury balance rises by `amount`, the dispatcher is
+    ///         drained, and `OFTProcessed.burnedAtDispatcher` is `false`.
+    /// @dev Replaces the prior UASSET×EOA coverage, which pinned the old unconditional `IBurnable.burn` (revert-pin
+    ///      and no-op-absorb classes). uAsset OFTs expose no caller-callable single-arg `burn(uint256)`, so the old
+    ///      path reverted/stranded; `_settle` now splits the no-code branch by `tokenType` and routes UASSET through
+    ///      `_transferOut(token, protocolTreasury, amount)`.
+    function testUAssetEoaReceiverRoutesToProtocolTreasuryOnLzCompose() external {
+        bytes32 guid = bytes32("uasset-eoa-treasury");
         uint256 amount = 5 ether;
-        token.setBurnShouldRevert(true);
         token.mint(address(dispatcher), amount);
 
-        // ALICE is an EOA (no code), so `_settle` takes the burn branch; the token's burn reverts "settle failed".
-        bytes memory message = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.UASSET);
-
-        // The compose was delivered before execution: the endpoint queue holds the delivery hash (as the real
-        // composer writes it on delivery), so the failed run must leave it intact — no RECEIVED convergence.
-        endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
-
-        // lzCompose entry: the whole call reverts, rolling back the CEI Settled write — the guid stays None.
-        vm.prank(LOCAL_ENDPOINT);
-        vm.expectRevert("settle failed");
-        dispatcher.lzCompose(address(token), guid, message, address(0), "");
-
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.None));
-        // Funds stranded: no burn happened and no convergence signal was emitted.
-        assertEq(token.balanceOf(address(dispatcher)), amount);
-        // Endpoint queue keeps its delivery hash: no RECEIVED convergence signal for the state machine.
-        assertEq(endpoint.composeQueue(address(token), address(dispatcher), guid, 0), keccak256(message));
-
-        // settlePendingCompose entry: delivered-but-pending, same revert, Released write rolled back.
-        endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
-        vm.expectRevert("settle failed");
-        dispatcher.settlePendingCompose(address(token), guid, message);
-
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.None));
-        assertEq(token.balanceOf(address(dispatcher)), amount);
-    }
-
-    /// @notice A UASSET frame naming an EOA receiver whose token's `burn` is an empty no-op silently "succeeds":
-    ///         the dispatcher emits burnedAtDispatcher=true (a false report — nothing was destroyed) and resolves the slot,
-    ///         while the token balance never moves.
-    /// @dev UASSET×EOA is the missing half of the silent false-report coverage: the existing EOA-burn success tests
-    ///      all drive MEMECOIN frames against MockDispatcherComposeToken's real `_burn`. This is the operations.md
-    ///      §3.13 fallback-absorb class: a token whose burn absorbs the call (no-op burn) makes the dispatcher's
-    ///      burnedAtDispatcher flag a false report — the funds are neither destroyed nor credited to the receiver, and the
-    ///      mutex write converges the endpoint as if settlement succeeded. A mint anchors the zero-movement
-    ///      assertion: the dispatcher holds the full minted balance, and the no-op burn still succeeds regardless
-    ///      of balance — so the false-report terminal class is proven by unchanged balance and totalSupply rather
-    ///      than by the absence of funds.
-    function testUAssetEoaReceiverNoOpBurnSilentlySucceedsWithIsBurnedTrue() external {
-        NoOpBurnToken noOpToken = new NoOpBurnToken("No Op Token", "NOP");
-
-        // lzCompose entry: silent success with burnedAtDispatcher=true, zero balance movement.
-        bytes32 guid = bytes32("uasset-noop");
-        uint256 amount = 5 ether;
-        // Anchor the zero-movement claim: the dispatcher holds the full minted balance, so the no-op burn must
-        // leave both the balance and the total supply untouched to be detected.
-        noOpToken.mint(address(dispatcher), amount);
+        // ALICE is an EOA (no code), so `_settle` takes the no-code branch; UASSET routes to the protocol treasury.
         bytes memory message = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.UASSET);
 
         vm.expectEmit(true, true, true, true);
         emit IYieldDispatcher.OFTProcessed(
-            guid, address(noOpToken), IMemeverseOFTEnum.TokenType.UASSET, ALICE, amount, true
+            guid, address(token), IMemeverseOFTEnum.TokenType.UASSET, ALICE, amount, false
         );
         vm.prank(LOCAL_ENDPOINT);
-        dispatcher.lzCompose(address(noOpToken), guid, message, address(0), "");
+        dispatcher.lzCompose(address(token), guid, message, address(0), "");
 
-        assertEq(
-            uint256(dispatcher.composeStates(address(noOpToken), guid)), uint256(IComposeState.ComposeState.Settled)
+        // Treasury credited, dispatcher drained, and NO burn happened.
+        assertEq(token.balanceOf(TREASURY), amount);
+        assertEq(token.balanceOf(address(dispatcher)), 0);
+        assertEq(token.lastBurnAmount(), 0);
+        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Settled));
+    }
+
+    /// @notice The same-chain fast path routes UASSET no-code receivers to `protocolTreasury` too
+    ///         (`OFTProcessed.burnedAtDispatcher` is `false`), mirroring the lzCompose terminal class.
+    function testUAssetEoaReceiverRoutesToProtocolTreasuryOnDistributeSameChain() external {
+        uint256 amount = 5 ether;
+        token.mint(address(dispatcher), amount);
+
+        vm.expectEmit(true, true, true, true);
+        emit IYieldDispatcher.OFTProcessed(
+            bytes32(0), address(token), IMemeverseOFTEnum.TokenType.UASSET, ALICE, amount, false
         );
-        // Zero movement: the no-op burn absorbed the call — balance and total supply are unchanged.
-        assertEq(noOpToken.balanceOf(address(dispatcher)), amount);
-        assertEq(noOpToken.totalSupply(), amount);
+        vm.prank(LAUNCHER);
+        dispatcher.distributeSameChain(address(token), ALICE, IMemeverseOFTEnum.TokenType.UASSET, amount);
 
-        // settlePendingCompose entry with a second guid: same silent false-report terminal class.
-        bytes32 guid2 = bytes32("uasset-noop-settle");
-        bytes memory message2 = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.UASSET);
-        endpoint.setQueue(address(noOpToken), address(dispatcher), guid2, 0, keccak256(message2));
+        assertEq(token.balanceOf(TREASURY), amount);
+        assertEq(token.balanceOf(address(dispatcher)), 0);
+        assertEq(token.lastBurnAmount(), 0);
+    }
+
+    /// @notice The permissionless `settlePendingCompose` fallback also routes UASSET no-code receivers to
+    ///         `protocolTreasury` (`ComposeSettled.burnedAtDispatcher` is `false`), matching the forward path.
+    function testUAssetEoaReceiverRoutesToProtocolTreasuryOnSettle() external {
+        bytes32 guid = bytes32("uasset-eoa-treasury-settle");
+        uint256 amount = 5 ether;
+        token.mint(address(dispatcher), amount);
+        bytes memory message = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.UASSET);
+        endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
 
         vm.expectEmit(true, true, true, true);
         emit IYieldDispatcher.ComposeSettled(
-            guid2, address(noOpToken), ALICE, IMemeverseOFTEnum.TokenType.UASSET, amount, true
+            guid, address(token), ALICE, IMemeverseOFTEnum.TokenType.UASSET, amount, false
         );
-        dispatcher.settlePendingCompose(address(noOpToken), guid2, message2);
+        dispatcher.settlePendingCompose(address(token), guid, message);
 
-        assertEq(
-            uint256(dispatcher.composeStates(address(noOpToken), guid2)), uint256(IComposeState.ComposeState.Released)
-        );
-        // Same zero-movement pin on the settle entry: balance and total supply unchanged.
-        assertEq(noOpToken.balanceOf(address(dispatcher)), amount);
-        assertEq(noOpToken.totalSupply(), amount);
+        assertEq(token.balanceOf(TREASURY), amount);
+        assertEq(token.balanceOf(address(dispatcher)), 0);
+        assertEq(token.lastBurnAmount(), 0);
+        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
     }
 }
 

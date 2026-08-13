@@ -3,9 +3,11 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {MemeverseScript} from "../../script/MemeverseScript.s.sol";
 import {IOutrunDeployer} from "../../script/IOutrunDeployer.sol";
+import {OutrunDeployer} from "../../script/deployment/OutrunDeployer.sol";
 import {YieldDispatcher} from "../../src/verse/YieldDispatcher.sol";
 import {OmnichainMemecoinStaker} from "../../src/interoperation/OmnichainMemecoinStaker.sol";
 import {MemeverseOmnichainInteroperation} from "../../src/interoperation/MemeverseOmnichainInteroperation.sol";
@@ -67,12 +69,19 @@ contract MockScriptProxyDeployer {
 // Captures the creationCode passed to OUTRUN_DEPLOYER so a test can execute the script's
 // exact constructor-arg encoding and pin its order/count against the real YieldDispatcher.
 contract MockScriptOutrunDeployer is IOutrunDeployer {
+    struct DeployCall {
+        bytes32 salt;
+        bytes creationCode;
+    }
+
     bytes public lastCreationCode;
     bytes32 public lastSalt;
+    DeployCall[] public deployCalls;
 
     function deploy(bytes32 salt, bytes memory creationCode) external payable returns (address deployed) {
         lastSalt = salt;
         lastCreationCode = creationCode;
+        deployCalls.push(DeployCall({salt: salt, creationCode: creationCode}));
         return address(0);
     }
 
@@ -258,6 +267,10 @@ contract MemeverseScriptHarness is MemeverseScript {
         MEMEVERSE_COMMON_INFO = commonInfo_;
     }
 
+    function setProtocolTreasuryForTest(address treasury) external {
+        PROTOCOL_TREASURY = treasury;
+    }
+
     function deployOmnichainMemecoinStakerForTest(uint256 nonce) external {
         _deployOmnichainMemecoinStaker(nonce);
     }
@@ -358,6 +371,9 @@ contract MemeverseScriptTest is Test {
         script.setOmnichainMemecoinStakerForTest(STAKER);
         yieldDispatcher.setLocalEndpoint(LOCAL_ENDPOINT);
         script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+        // _deployYieldDispatcher reads PROTOCOL_TREASURY (UASSET no-code settlement sink). Default it to a non-zero
+        // address so the dispatcher deploy tests pass; the zero-treasury test overrides it.
+        script.setProtocolTreasuryForTest(address(0xBEEF));
         // Endpoint capability check: _requireDeploymentReady now requires the endpoint to have code
         // and expose the MessagingComposer composeQueue getter. The harness endpoint has no real
         // code, so etch lens bytecode and mock the probe with the exact placeholder calldata the
@@ -589,38 +605,131 @@ contract MemeverseScriptTest is Test {
         );
     }
 
-    // Regression: pins _deployYieldDispatcher's creationCode constructor-arg encoding (order + count)
-    // against the real YieldDispatcher constructor. The script builds the creation code by type-erased
-    // abi.encode, so a constructor-signature drift (e.g. the 3-arg-with-owner -> 2-arg change) compiles
-    // cleanly and would silently deploy a dispatcher with wrong immutables. Byte-equality against a
-    // hand-written expectation alone cannot catch constructor-side arg-order drift (both sides would
-    // keep the same handwritten order), so the captured bytes are ALSO executed and the deployed
-    // immutables read back: any arg-count mismatch reverts the create, any arg-order mismatch flips
-    // localEndpoint()/memeverseLauncher() and fails the read-back assertions.
+    // Regression: pins _deployYieldDispatcher's two-step UUPS encoding (impl CREATE3, then ERC1967Proxy CREATE3
+    // wrapping initializeData) against the real YieldDispatcher ABI. The script builds both creation codes by
+    // type-erased abi encoding, so an initialize-signature drift compiles cleanly and would silently bake a proxy
+    // that initializes with wrong args. Byte-equality alone cannot catch arg-order drift (both sides keep the same
+    // handwritten order), so initializeData is ALSO executed against a real impl+proxy and every arg read back: any
+    // arg-count mismatch reverts the proxy's delegatecall, any arg-order mismatch flips a read-back. The captured
+    // proxy creationCode embeds implementation=address(0) (the mock returns 0) and so cannot be `create`d directly —
+    // the read-back uses a separate real impl+proxy deploy with the identical initializeData args instead.
     function testDeployYieldDispatcherPinsConstructorArgEncoding() external {
         MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
         address localEndpoint = address(0x1234);
+        address treasury = address(0xBEEF);
+        // owner comes from setUp (setDeploymentAddresses wired owner = address(script)); launcher from setUp.
+        address expectedOwner = address(script);
         script.setOutrunDeployerForTest(address(deployer));
         script.setEndpointForTest(uint32(block.chainid), localEndpoint);
+        script.setProtocolTreasuryForTest(treasury);
 
         script.deployYieldDispatcherForTest(2);
 
-        bytes memory expectedCreationCode =
-            abi.encodePacked(type(YieldDispatcher).creationCode, abi.encode(localEndpoint, address(launcher)));
-        assertEq(deployer.lastCreationCode(), expectedCreationCode);
-        assertEq(deployer.lastSalt(), keccak256(abi.encodePacked("YieldDispatcher", uint256(2))));
+        // Deploy #1: implementation (no constructor args).
+        (bytes32 implSalt, bytes memory implCreationCode) = deployer.deployCalls(0);
+        assertEq(implSalt, keccak256(abi.encodePacked("YieldDispatcherImplementation", uint256(2))));
+        assertEq(implCreationCode, type(YieldDispatcher).creationCode);
 
-        // Execute the exact creation code the script handed to the deployer and read back the
-        // immutables the real constructor assigns. The YieldDispatcher constructor performs no
-        // external calls, so a plain create is safe in the test EVM.
-        bytes memory creationCode = deployer.lastCreationCode();
-        address deployed;
-        assembly {
-            deployed := create(0, add(creationCode, 0x20), mload(creationCode))
-        }
-        assertTrue(deployed != address(0), "creationCode deploy reverted");
-        assertEq(YieldDispatcher(deployed).localEndpoint(), localEndpoint);
-        assertEq(YieldDispatcher(deployed).memeverseLauncher(), address(launcher));
+        // Deploy #2: ERC1967Proxy wrapping (implementation, initializeData). The mock returns address(0) for the
+        // impl deploy, so the encoded implementation address is address(0).
+        bytes memory initializeData =
+            abi.encodeCall(YieldDispatcher.initialize, (expectedOwner, localEndpoint, address(launcher), treasury));
+        (bytes32 proxySalt, bytes memory proxyCreationCode) = deployer.deployCalls(1);
+        assertEq(proxySalt, keccak256(abi.encodePacked("YieldDispatcher", uint256(2))));
+        assertEq(
+            proxyCreationCode, abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(address(0), initializeData))
+        );
+
+        // Read-back: a REAL impl+proxy deploy with the identical initializeData args, read through the proxy.
+        YieldDispatcher impl = new YieldDispatcher();
+        YieldDispatcher proxy = YieldDispatcher(address(new ERC1967Proxy(address(impl), initializeData)));
+        assertEq(proxy.localEndpoint(), localEndpoint);
+        assertEq(proxy.memeverseLauncher(), address(launcher));
+        assertEq(proxy.protocolTreasury(), treasury);
+        assertEq(proxy.owner(), expectedOwner);
+    }
+
+    // Regression: a zero PROTOCOL_TREASURY must fail loudly at deploy time instead of initializing a dispatcher
+    // that routes UASSET no-code settlement to address(0). Pins that the guard fires BEFORE any OutrunDeployer call.
+    function testDeployYieldDispatcherRevertsOnZeroProtocolTreasury() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+        script.setProtocolTreasuryForTest(address(0));
+
+        vm.expectRevert("ZERO_PROTOCOL_TREASURY");
+        script.deployYieldDispatcherForTest(2);
+
+        // F1: pin that the guard fires BEFORE any OutrunDeployer call.
+        assertEq(deployer.lastSalt(), bytes32(0));
+        assertEq(deployer.lastCreationCode(), bytes(""));
+    }
+
+    // Address-stability: the proxy still lands at the CREATE3 address derived from (factory, owner, SALT_YIELD_DISPATCHER),
+    // independent of the creationCode change to the UUPS proxy form. Deploys through a REAL OutrunDeployer (CREATE3)
+    // and asserts the proxy lands at getDeployed(owner, salt) and is a real initialized YieldDispatcher there.
+    function testDeployYieldDispatcherProxyAddressIsCreate3Stable() external {
+        // Real CREATE3 factory owned by the harness (= the deploy caller / owner), so its onlyOwner deploy gate passes.
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        address localEndpoint = address(0x4321);
+        address treasury = address(0xCAFE);
+        script.setOutrunDeployerForTest(address(realDeployer));
+        script.setEndpointForTest(uint32(block.chainid), localEndpoint);
+        script.setProtocolTreasuryForTest(treasury);
+
+        script.deployYieldDispatcherForTest(7);
+
+        bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", uint256(7)));
+        address predictedProxy = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        // The proxy is deployed and is a real initialized dispatcher at the predicted CREATE3 address.
+        assertGt(predictedProxy.code.length, 0, "proxy not deployed at predicted address");
+        assertEq(YieldDispatcher(predictedProxy).localEndpoint(), localEndpoint);
+        assertEq(YieldDispatcher(predictedProxy).memeverseLauncher(), address(launcher));
+        assertEq(YieldDispatcher(predictedProxy).protocolTreasury(), treasury);
+        assertEq(YieldDispatcher(predictedProxy).owner(), address(script));
+    }
+
+    // F-001 regression: under the documented dual-role deployment (deployer/broadcaster != owner), the CREATE3
+    // namespace is keyed by the deploy caller (msg.sender = address(script) here), NOT by owner. The proxy must land
+    // at getDeployed(deployCaller, salt) and the assert must pass even though owner (the initialize initialOwner,
+    // the multisig) differs from the deploy caller.
+    function testDeployYieldDispatcherDualRoleOwnerDistinctFromCaller() external {
+        address multisig = makeAddr("multisig"); // OWNER env = protocol owner, distinct from the deploy caller
+        // Re-wire owner = multisig; the deploy caller stays address(script) (the harness calling OutrunDeployer.deploy).
+        script.setDeploymentAddresses(
+            multisig,
+            UETH,
+            UUSD,
+            address(launcher),
+            address(registrar),
+            address(proxyDeployer),
+            address(yieldDispatcher),
+            address(polend),
+            address(splitter)
+        );
+
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script)); // owned by the deploy caller
+        address localEndpoint = address(0x4321);
+        address treasury = address(0xCAFE);
+        script.setOutrunDeployerForTest(address(realDeployer));
+        script.setEndpointForTest(uint32(block.chainid), localEndpoint);
+        script.setProtocolTreasuryForTest(treasury);
+
+        script.deployYieldDispatcherForTest(7);
+
+        bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", uint256(7)));
+        address predictedByCaller = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        address predictedByOwner = IOutrunDeployer(address(realDeployer)).getDeployed(multisig, salt);
+        // The dual-role setup must actually diverge — otherwise the branch under test is not exercised.
+        assertFalse(predictedByCaller == predictedByOwner, "dual-role namespaces must diverge");
+        // The proxy lands at the deploy-caller-namespaced address (not owner's), proving the prediction caller is correct.
+        assertGt(predictedByCaller.code.length, 0, "proxy not deployed at caller-namespaced address");
+        assertEq(
+            YieldDispatcher(predictedByCaller).owner(), multisig, "dispatcher owner is the multisig, not the caller"
+        );
+        assertEq(YieldDispatcher(predictedByCaller).localEndpoint(), localEndpoint);
+        assertEq(YieldDispatcher(predictedByCaller).memeverseLauncher(), address(launcher));
+        assertEq(YieldDispatcher(predictedByCaller).protocolTreasury(), treasury);
     }
 
     // Mirror of testDeployYieldDispatcherPinsConstructorArgEncoding for the staker. Same motivation:

@@ -2,8 +2,11 @@
 pragma solidity ^0.8.35;
 
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {TokenHelper} from "../common/token/TokenHelper.sol";
+import {OutrunOwnableUpgradeable} from "../common/access/OutrunOwnableUpgradeable.sol";
 import {OFTComposeSettleVerify} from "../common/omnichain/OFTComposeSettleVerify.sol";
 import {ISettleCompose} from "../common/omnichain/ISettleCompose.sol";
 import {IBurnable} from "../common/interfaces/IBurnable.sol";
@@ -17,10 +20,15 @@ import {IMemecoinDaoGovernor} from "../governance/interfaces/IMemecoinDaoGoverno
  *      Cross-chain deliveries arrive through LayerZero's OFT compose flow (`lzCompose`); the launcher's
  *      same-chain fast path uses the dedicated `distributeSameChain` entry.
  */
-contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
-    address public immutable localEndpoint;
-    address public immutable memeverseLauncher;
-
+contract YieldDispatcher layout at erc7201("outrun.storage.YieldDispatcher")
+    is
+    IYieldDispatcher,
+    ISettleCompose,
+    Initializable,
+    OutrunOwnableUpgradeable,
+    UUPSUpgradeable,
+    TokenHelper
+{
     // Compose payload wire offsets (see `_parseCompose`): 44 / 76 are OFTComposeMsgCodec's AMOUNT_LD_OFFSET /
     // COMPOSE_FROM_OFFSET constants (amountLD spans [12:44], composeFrom [44:76]); the 64-byte abi-encoded
     // (address, TokenType) tuple follows them, its two words at RECEIVER_OFFSET / TOKEN_TYPE_OFFSET.
@@ -30,20 +38,85 @@ contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
     uint256 private constant RECEIVER_OFFSET = COMPOSE_FROM_OFFSET + 32;
     uint256 private constant TOKEN_TYPE_OFFSET = COMPOSE_FROM_OFFSET + TUPLE_LENGTH;
 
-    /// @dev Per-(token, guid) compose mutex shared by `lzCompose` (sets Settled) and `settlePendingCompose` (sets Released).
-    ///      Both entries reject any (token, guid) pair that is no longer `None`, so a pair can be resolved at most
-    ///      once, regardless of which path runs first. Keying on the genuine bridged `token` (not just the guid)
-    ///      prevents an attacker from burning a real guid's mutex by settling with a forged token address: a forged
-    ///      settle touches at most the attacker's own (token, guid) slot — mismatched token↔vault pairings are
-    ///      reverted by the MEMECOIN binding before even that (see `_settleToContract`) — and leaves the real pair
-    ///      untouched.
-    mapping(address token => mapping(bytes32 guid => ComposeState)) public composeStates;
+    /// @notice Storage layout for the YieldDispatcher ERC-7201 namespace.
+    ///         When adding fields in upgrades, append only at the end. Never reorder or insert fields.
+    /// @custom:storage-location erc7201:outrun.storage.YieldDispatcher
+    struct YieldDispatcherStorage {
+        address localEndpoint;
+        address memeverseLauncher;
+        address protocolTreasury;
+        mapping(address token => mapping(bytes32 guid => ComposeState)) composeStates;
+    }
 
-    constructor(address _localEndpoint, address _memeverseLauncher) {
-        require(_localEndpoint != address(0), ZeroAddress());
-        require(_memeverseLauncher != address(0), ZeroAddress());
-        localEndpoint = _localEndpoint;
-        memeverseLauncher = _memeverseLauncher;
+    /// @dev Namespaced storage. The contract header's `layout at erc7201(...)` binds this struct to the ERC-7201
+    ///      base slot of "outrun.storage.YieldDispatcher".
+    ///      The `composeStates` mapping is the per-(token, guid) compose mutex shared by `lzCompose` (sets Settled)
+    ///      and `settlePendingCompose` (sets Released). Both entries reject any (token, guid) pair that is no longer
+    ///      `None`, so a pair can be resolved at most once, regardless of which path runs first. Keying on the
+    ///      genuine bridged `token` (not just the guid) prevents an attacker from burning a real guid's mutex by
+    ///      settling with a forged token address: a forged settle touches at most the attacker's own (token, guid)
+    ///      slot — mismatched token↔vault pairings are reverted by the MEMECOIN binding before even that
+    ///      (see `_settleToContract`) — and leaves the real pair untouched.
+    YieldDispatcherStorage private yieldDispatcherStorage;
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    /// @notice This is the UUPS implementation contract. Do not call directly.
+    ///         Use the proxy contract for all interactions.
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice Initializes the dispatcher proxy.
+    /// @dev Deterministic dependencies may be predicted addresses during CREATE3 deployment, so initialization
+    ///      checks non-zero addresses without requiring code to exist yet. The initial owner zero-check is enforced
+    ///      by `__OutrunOwnable_init` (`OwnableInvalidOwner`).
+    /// @param initialOwner Address that becomes the initial owner.
+    /// @param _localEndpoint Local LayerZero endpoint that is allowed to call `lzCompose`.
+    /// @param _memeverseLauncher Launcher allowed to call `distributeSameChain`.
+    /// @param _protocolTreasury Sink for UASSET no-code-receiver settlement (see `_settle`).
+    function initialize(
+        address initialOwner,
+        address _localEndpoint,
+        address _memeverseLauncher,
+        address _protocolTreasury
+    ) external initializer {
+        __OutrunOwnable_init(initialOwner);
+        require(
+            _localEndpoint != address(0) && _memeverseLauncher != address(0) && _protocolTreasury != address(0),
+            ZeroAddress()
+        );
+        yieldDispatcherStorage.localEndpoint = _localEndpoint;
+        yieldDispatcherStorage.memeverseLauncher = _memeverseLauncher;
+        yieldDispatcherStorage.protocolTreasury = _protocolTreasury;
+    }
+
+    function _authorizeUpgrade(address) internal view override onlyOwner {}
+
+    /// @notice Sets the protocol treasury that receives UASSET settlement when a no-code receiver is named.
+    /// @dev Only callable by the owner. The treasury is intended to be the same address across all chains
+    ///      (a protocol-level single sink); cross-chain consistency is a deployment convention, not an invariant.
+    /// @param _protocolTreasury The new protocol treasury address.
+    function setProtocolTreasury(address _protocolTreasury) external onlyOwner {
+        address prev = yieldDispatcherStorage.protocolTreasury;
+        require(_protocolTreasury != address(0), ZeroAddress());
+        yieldDispatcherStorage.protocolTreasury = _protocolTreasury;
+        emit ProtocolTreasuryChanged(prev, _protocolTreasury);
+    }
+
+    function localEndpoint() external view returns (address) {
+        return yieldDispatcherStorage.localEndpoint;
+    }
+
+    function memeverseLauncher() external view returns (address) {
+        return yieldDispatcherStorage.memeverseLauncher;
+    }
+
+    function protocolTreasury() external view returns (address) {
+        return yieldDispatcherStorage.protocolTreasury;
+    }
+
+    function composeStates(address token, bytes32 guid) external view returns (ComposeState) {
+        return yieldDispatcherStorage.composeStates[token][guid];
     }
 
     /// @notice Processes an incoming OFT compose payload for protocol treasury routing.
@@ -66,9 +139,9 @@ contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
         payable
         override
     {
-        require(msg.sender == localEndpoint, PermissionDenied());
+        require(msg.sender == yieldDispatcherStorage.localEndpoint, PermissionDenied());
         // Released pairs are absorbed as a no-op — see the @dev above for the rationale.
-        ComposeState state = composeStates[token][guid];
+        ComposeState state = yieldDispatcherStorage.composeStates[token][guid];
         if (state == ComposeState.Released) return;
         require(state == ComposeState.None, AlreadyResolved());
 
@@ -79,7 +152,7 @@ contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
         // ComposeDelivered) instead of pinning the queue for executor retries, and consuming the
         // slot never blocks legitimate settlement.
         (uint256 amount, address receiver, TokenType tokenType, bool parseable) = _parseCompose(message);
-        composeStates[token][guid] = ComposeState.Settled;
+        yieldDispatcherStorage.composeStates[token][guid] = ComposeState.Settled;
         if (!parseable) {
             emit ComposeRejected(guid, token, amount);
             return;
@@ -106,7 +179,7 @@ contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
 
     /// @inheritdoc IYieldDispatcher
     function distributeSameChain(address token, address receiver, TokenType tokenType, uint256 amount) external {
-        require(msg.sender == memeverseLauncher, PermissionDenied());
+        require(msg.sender == yieldDispatcherStorage.memeverseLauncher, PermissionDenied());
         bool isBurned = _settle(token, receiver, tokenType, amount);
         emit OFTProcessed(bytes32(0), token, tokenType, receiver, amount, isBurned);
     }
@@ -117,10 +190,11 @@ contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
         override(IYieldDispatcher, ISettleCompose)
         returns (uint256 amount)
     {
-        require(composeStates[token][guid] == ComposeState.None, AlreadyResolved());
+        require(yieldDispatcherStorage.composeStates[token][guid] == ComposeState.None, AlreadyResolved());
 
         bytes memory composeMsg;
-        (amount, composeMsg) = OFTComposeSettleVerify.verifySettle(localEndpoint, token, guid, message);
+        (amount, composeMsg) =
+            OFTComposeSettleVerify.verifySettle(yieldDispatcherStorage.localEndpoint, token, guid, message);
         require(amount != 0, ZeroInput());
         // Schema-shape guard: the inner (address, TokenType) tuple must be at least 64 bytes to decode. `abi.decode`
         // reads only this static tuple's first two words and ignores anything past 64 bytes, so an overlong inner
@@ -135,7 +209,7 @@ contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
         require(composeMsg.length >= TUPLE_LENGTH, MalformedComposeMsg());
         (address receiver, TokenType tokenType) = abi.decode(composeMsg, (address, TokenType));
 
-        composeStates[token][guid] = ComposeState.Released;
+        yieldDispatcherStorage.composeStates[token][guid] = ComposeState.Released;
         bool isBurned = _settle(token, receiver, tokenType, amount);
         emit ComposeSettled(guid, token, receiver, tokenType, amount, isBurned);
     }
@@ -188,8 +262,11 @@ contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
     /// @dev Routes `amount` of `token` to `receiver` based on `tokenType`.
     ///      The unified settlement entry, shared by `lzCompose`, `distributeSameChain`, and `settlePendingCompose`,
     ///      so the settle path stays semantically identical to the forward settlement path.
-    ///      For EOA receivers the token is burned (actual destruction only for tokens implementing a caller-callable
-    ///      single-arg `burn(uint256)`); for contract receivers the token is approved for exactly `amount`
+    ///      For no-code receivers (EOA / undeployed) the route splits by `tokenType`: a MEMECOIN is burned (actual
+    ///      destruction only for tokens implementing a caller-callable single-arg `burn(uint256)`, so `isBurned=true`);
+    ///      a UASSET is transferred to `protocolTreasury` (uAsset OFTs expose no caller-callable single-arg
+    ///      `burn(uint256)`, so the old burn path reverted/stranded the funds) and `isBurned=false`.
+    ///      For contract receivers the token is approved for exactly `amount`
     ///      (since each receiver only pulls once per call) and the receiver pulls it via a callback — the exact-approval
     ///      cap bounds pulls only for genuine bridged frames (a forged frame's amountLD is sender-chosen up to
     ///      `type(uint256).max`, but its token key is the forger's own address, so no third-party exposure). That
@@ -199,8 +276,9 @@ contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
     ///      reverting before any approve, and the defense no longer depends on the no-standing-allowance invariant.
     ///      UASSET receivers carry no pairing class (the governor pulls the payload-named token), so no binding
     ///      applies there.
-    ///      A zero amount is a no-op (returns isBurned=false): it converges a zero-amount compose without burning or
-    ///      accounting, matching the vault branch's own zero-yield early return and the staker's _transferOut(0).
+    ///      A zero amount is a no-op (returns isBurned=false): it converges a zero-amount compose without burning,
+    ///      routing, or accounting, matching the vault branch's own zero-yield early return and the staker's
+    ///      _transferOut(0).
     function _settle(address token, address receiver, TokenType tokenType, uint256 amount)
         internal
         returns (bool isBurned)
@@ -213,8 +291,16 @@ contract YieldDispatcher is IYieldDispatcher, ISettleCompose, TokenHelper {
         // UASSET→governor branches would otherwise revert ZeroInput downstream). isBurned stays false.
         if (amount == 0) return false;
         if (receiver.code.length == 0) {
-            IBurnable(token).burn(amount);
-            isBurned = true;
+            if (tokenType == TokenType.MEMECOIN) {
+                IBurnable(token).burn(amount);
+                isBurned = true;
+            } else {
+                // UASSET: route to the protocol treasury instead of burning. uAsset OFTs expose no caller-callable
+                // single-arg burn(uint256), so the prior unconditional burn reverted (stranding) for real uAssets.
+                // `InvalidTokenType` above guarantees this else-branch is UASSET. `_transferOut` is `nonReentrant`.
+                _transferOut(token, yieldDispatcherStorage.protocolTreasury, amount);
+                isBurned = false;
+            }
         } else {
             _settleToContract(token, receiver, tokenType, amount);
         }

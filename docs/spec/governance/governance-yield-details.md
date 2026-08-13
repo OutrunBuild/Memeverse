@@ -52,7 +52,7 @@ launcher 从 `memecoin/uAsset` 主池与三个辅助池捕获 fee 后，目标�
 - `memecoin` yield
   - 进入 yield 路径
 
-进一步流向（`UASSET` → `Governor.receiveTreasuryIncome`、`MEMECOIN` → `YieldVault.accumulateYields`、非合约 receiver → burn）以 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3 为跨链终点 canonical；本链/异链分发路径见该文档 §3.1/§3.2。
+进一步流向（`UASSET` → `Governor.receiveTreasuryIncome`、`MEMECOIN` → `YieldVault.accumulateYields`、非合约 receiver 按 tokenType 分流：MEMECOIN→burn、UASSET→`protocolTreasury`）以 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3 为跨链终点 canonical；本链/异链分发路径见该文档 §3.1/§3.2。
 
 ## 4. YieldVault 的份额模型
 

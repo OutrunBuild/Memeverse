@@ -23,7 +23,7 @@
 - **Governor**：DAO 治理与 treasury 合约，接收 uAsset 国库收入。
 - **Yield Vault**：memecoin 收益池，接收并累计 memecoin 收益。
 - **Governance Cycle Incentivizer**：治理周期奖励账本与分发模块。
-- **YieldDispatcher**：跨链/本链收益路由器，把 token 分发到 Governor 或 Yield Vault。
+- **YieldDispatcher**：跨链/本链收益路由器，把 token 分发到 Governor 或 Yield Vault；非合约 receiver 按 tokenType 分流：MEMECOIN → burn、UASSET → 可配置的 `protocolTreasury`（`initialize` 传入、`onlyOwner` 的 `setProtocolTreasury` 可改）。现为 UUPS 可升级合约（`ERC1967Proxy` + UUPS，`_authorizeUpgrade` 仅 owner）。
 - **Governance Chain**：`omnichainIds[0]` 指定的治理主链。
 - **Registration Center**：注册参数校验、symbol 占用与跨链注册分发中心。
 - **Registrar**：把注册结果写入 launcher 的执行层（本地或异链接收）。

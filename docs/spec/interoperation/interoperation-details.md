@@ -44,7 +44,9 @@
   - receiver 不是合约时 -> burn
 - `TokenType.UASSET`
   - receiver 为合约时 -> `Governor.receiveTreasuryIncome`
-  - receiver 不是合约时 -> burn
+  - receiver 不是合约时 -> `_transferOut` 到 `protocolTreasury`（路由协议金库，非 burn）
+
+> no-code receiver 现按 `tokenType` 分流：MEMECOIN 走 `IBurnable(token).burn(amount)`（`isBurned = true`）；UASSET 走 `_transferOut(token, protocolTreasury, amount)`（`isBurned` 恒为 `false`——uAsset 是仓库外 OFT，无公开单参 `burn(uint256)`，原为 revert/滞留，现改为路由 `protocolTreasury`）。该 UASSET→`protocolTreasury` 路由仅经 permissionless 直接 OFT send 命名 EOA/无代码 receiver 时可达（协议发送端恒编码 `governor`/`yieldVault`），sender 自有 uAsset 等同捐赠给 `protocolTreasury`（原为 revert/滞留）。`protocolTreasury` 为协议级单一金库，经 `initialize` 传入、`onlyOwner` 的 `setProtocolTreasury` 可改（非零校验）。
 
 因此 `YieldDispatcher` 不是只处理 memecoin yield，而是统一处理 yield / treasury 两类协议收入。
 
@@ -126,7 +128,7 @@ replay 防护规则本体（endpoint 路径检查 `guid` 未执行、置 Settled
 在治理收益或异链 staking 到达治理链时，如果目标 receiver / yieldVault 不存在：
 
 - 不会默默保留悬空余额
-- 治理收益的非合约 receiver 按当前规则 burn
+- 治理收益的非合约 receiver 按 tokenType 分流：MEMECOIN → burn；UASSET → `_transferOut` 到 `protocolTreasury`（UASSET no-code 的 `isBurned` 恒为 `false`，自伤捐赠语义见 §3.3）
 - 异链 staking 的缺失 yieldVault 直接 fallback transfer 给 receiver
 
 本链 staking 的缺失 yieldVault 是显式回滚条件，不属于 fallback。

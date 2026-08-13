@@ -267,7 +267,7 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         // its global debt ledger stays consistent, then clear the pre-redeemed record.
         if (preRedeemedUAssetBacking != 0) {
             address _polend = polSplitterStorage.polend;
-            IERC20(info.uAsset).approve(_polend, preRedeemedUAssetBacking);
+            IERC20(info.uAsset).safeApprove(_polend, preRedeemedUAssetBacking);
             IPOLend(_polend).burnPreRedeemedBacking(verseId, preRedeemedUAssetBacking);
             delete polSplitterStorage.preRedeemedStates[verseId];
         }
@@ -414,7 +414,7 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         uint256 beforeUAsset = IERC20(uAsset).balanceOf(address(this));
         uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
 
-        IERC20(info.pol).approve(launcher, polAmount);
+        IERC20(info.pol).safeApprove(launcher, polAmount);
         IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId, polAmount, true);
 
         settlementUAsset = IERC20(uAsset).balanceOf(address(this)) - beforeUAsset;

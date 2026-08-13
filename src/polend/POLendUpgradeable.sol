@@ -421,9 +421,9 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         SettlementDustState storage dustState = polendStorage.settlementDustStates[marketUAsset];
         uint256 reserveBeforeSettlement = dustState.reserve;
         uint256 reserveAfterSettlement = reserveBeforeSettlement;
-        uint256 consumedSettlementDustReserve;
-        uint256 residualUAsset;
 
+        uint256 residualUAsset;
+        uint256 consumedSettlementDustReserve;
         if (totalRecoveredUAsset >= debt) {
             residualUAsset = totalRecoveredUAsset - debt;
         } else {
@@ -864,7 +864,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         uint256 beforeUAsset = IERC20(marketUAsset).balanceOf(address(this));
         uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
 
-        IERC20(pol).approve(launcher, polAmount);
+        IERC20(pol).safeApprove(launcher, polAmount);
         IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId, polAmount, true);
 
         uAssetAmount = IERC20(marketUAsset).balanceOf(address(this)) - beforeUAsset;

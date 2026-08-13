@@ -15,6 +15,7 @@ contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegis
     constructor(address _owner, address _registrationCenter, address _memeverseLauncher, address _memeverseCommonInfo)
         MemeverseRegistrarAbstract(_owner, _memeverseLauncher, _memeverseCommonInfo)
     {
+        require(_registrationCenter != address(0), ZeroAddress());
         registrationCenter = _registrationCenter;
     }
 

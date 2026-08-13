@@ -46,6 +46,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
         OApp(_lzEndpoint, _owner)
         Ownable(_owner)
     {
+        require(_memeverseRegistrar != address(0) && _memeverseCommonInfo != address(0), ZeroInput());
         MEMEVERSE_REGISTRAR = _memeverseRegistrar;
         MEMEVERSE_COMMON_INFO = _memeverseCommonInfo;
     }

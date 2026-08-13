@@ -77,6 +77,12 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         uint256 _maxTreasurySpendRatio,
         uint256 _upgradeSupermajorityRatio
     ) Ownable(_owner) {
+        require(
+            _memeverseLauncher != address(0) && _memecoinImplementation != address(0)
+                && _polImplementation != address(0) && _vaultImplementation != address(0)
+                && _governorImplementation != address(0) && _incentivizerImplementation != address(0),
+            ZeroInput()
+        );
         memeverseLauncher = _memeverseLauncher;
         memecoinImplementation = _memecoinImplementation;
         polImplementation = _polImplementation;

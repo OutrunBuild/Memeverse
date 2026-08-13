@@ -51,8 +51,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     ///      the permanent virtual buffer used to dampen exchange-rate inflation.
     /// @param _name Share token name.
     /// @param _symbol Share token symbol.
-    /// @param _yieldDispatcher Address treated as the canonical remote-yield source.
-    /// @param _asset Underlying memecoin address.
+    /// @param _yieldDispatcher Address treated as the canonical remote-yield source. Reverts `ZeroAddress`
+    ///        if set to the zero address.
+    /// @param _asset Underlying memecoin address. Reverts `ZeroAddress` if set to the zero address.
     /// @param _verseId Verse id associated with this vault.
     /// @param _virtualAssets Permanent virtual buffer. Must be non-zero so the `+virtualAssets` conversion guards can
     ///        never divide by zero and actually dampen the rate; sized by the launcher (spec §4).
@@ -65,6 +66,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         uint256 _virtualAssets
     ) external override initializer {
         require(_virtualAssets > 0, ZeroVirtualAssets());
+        require(_yieldDispatcher != address(0) && _asset != address(0), ZeroAddress());
 
         __OutrunERC20_init(_name, _symbol);
         __OutrunERC20Permit_init(_name);

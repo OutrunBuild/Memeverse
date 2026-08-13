@@ -221,6 +221,8 @@ interface IMemecoinYieldVault is IERC20 {
 
     error ZeroVirtualAssets();
 
+    error ZeroAddress();
+
     error ZeroRedeemRequest();
 
     error ZeroSharesDeposit();

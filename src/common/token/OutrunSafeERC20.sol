@@ -34,6 +34,17 @@ library OutrunSafeERC20 {
     }
 
     /**
+     * @dev Approve `value` amount of `token` to `spender`. If `token` returns no value, non-reverting
+     * calls are assumed to be successful.
+     */
+    function safeApprove(IERC20 token, address spender, uint256 value) internal {
+        // solhint-disable-next-line avoid-low-level-calls
+        (bool success, bytes memory data) =
+            address(token).call(abi.encodeWithSelector(IERC20.approve.selector, spender, value));
+        require(success && (data.length == 0 || abi.decode(data, (bool))), SafeERC20FailedOperation(address(token)));
+    }
+
+    /**
      * @dev Imitates a Solidity `token.transfer(to, value)` call, relaxing the requirement on the return value: the
      * return value is optional (but if data is returned, it must not be false).
      */

@@ -40,8 +40,9 @@ contract MemePol is IPol, OutrunOFTInit {
         __OutrunOFT_init(name_, symbol_, delegate_);
         __OutrunOwnable_init(delegate_);
 
-        // Defense in depth, mirroring the launcher facade's ZeroInput checks: zero links would
-        // permanently freeze minting and pool setup (no setters exist), so reject them at initialization time.
+        // Defense in depth, mirroring the launcher facade's ZeroInput checks: a zero launcher would
+        // permanently freeze minting and pool setup (no setter exists), and a zero memecoin link
+        // would leave the pairing getter permanently empty — reject both at initialization time.
         require(memecoin_ != address(0) && memeverseLauncher_ != address(0), ZeroInput());
         memecoin = memecoin_;
         memeverseLauncher = memeverseLauncher_;
@@ -72,6 +73,11 @@ contract MemePol is IPol, OutrunOFTInit {
     /// @param amount Amount of POL to burn.
     function burn(address account, uint256 amount) external {
         require(amount != 0, ZeroInput());
+        // Third-party burns spend allowance: the launcher proxy burns on the holder's behalf
+        // (redeemMemecoinLiquidity runs under delegatecall, so the proxy is the spender and the
+        // holder must pre-approve it). The msg.sender == account skip also lets the launcher's own
+        // settlement self-burns proceed without a self-allowance. Memecoin has no such overload
+        // because its launcher only burns tokens it already holds.
         if (msg.sender != account) _spendAllowance(account, msg.sender, amount);
         _burn(account, amount);
     }

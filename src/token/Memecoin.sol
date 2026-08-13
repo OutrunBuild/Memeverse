@@ -54,6 +54,9 @@ contract Memecoin is IMemecoin, OutrunOFTInit {
     /// @param amount Amount of tokens to burn.
     function burn(uint256 amount) external override {
         require(amount != 0, ZeroInput());
+        // Self-burn only by design: the launcher and protocol flows always burn tokens they already
+        // hold (leftover bootstrap budget, vault yield), so unlike MemePol there is no allowance-based
+        // third-party burn overload — see MemePol.burn(address,uint256) for the sibling variant.
         _burn(msg.sender, amount);
     }
 }

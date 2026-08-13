@@ -17,6 +17,9 @@ interface IPol is IERC20 {
 
     /**
      * @notice Get the paired memecoin.
+     * @dev Pointer-only: stored once at initialization for off-chain/integrator pairing and never
+     *      read at runtime — no in-repo production code reads it. POL does not custody or consume
+     *      the paired memecoin at the token layer (mint/burn only move POL balances).
      * @return memecoin The memecoin address associated with this POL token.
      */
     function memecoin() external view returns (address);
@@ -26,7 +29,7 @@ interface IPol is IERC20 {
      * @dev Called once from deployment flow before any mint/burn activity.
      * @param name_ ERC20 name.
      * @param symbol_ ERC20 symbol.
-     * @param memecoin_ Backing memecoin address associated with this POL token.
+     * @param memecoin_ Paired memecoin address associated with this POL token.
      * @param memeverseLauncher_ Authorized launcher controlling issuance flows.
      * @param delegate_ LayerZero delegate used by omnichain OFT setup.
      */

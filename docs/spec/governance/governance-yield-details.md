@@ -33,7 +33,7 @@ vault 的治理时钟是 **timestamp 域**（ERC-6372），不是 block 域：
 ### 2.2 票权激活前提与归属
 
 - 票权须委托激活：份额本身不自动产生票权，持有人须先调用 `OutrunVotesInit.sol::delegate`（通常 `delegate(self)`）激活 checkpoint 才产生票权——OZ Votes 默认不自动激活，未 delegate 时 `OutrunVotesInit.sol::getPastVotes` 恒为零，该账户的份额不产生任何票权：不计入提案门槛（`MemecoinDaoGovernorUpgradeable.sol::proposalThreshold` 为 GovernorSettings 存储参数，且仅治理可通过 `GovernorSettingsUpgradeable.sol::setProposalThreshold` 更新；OZ `GovernorUpgradeable.sol::propose` 以 `getVotes(proposer, clock() − 1)`（委托 `token().getPastVotes`）与 `proposalThreshold()` 比较）也不构成计票。注意与总票基数的区别：`OutrunVotesInit.sol::getPastTotalSupply`（资产计价）按份额记录、与委托状态无关，未委托份额仍计入动态 quorum 基数——抬高所需票数而非贡献票权（治理启动前置条件见 §7.6）。
-- `deposit` 的 receiver 开放：`MemecoinYieldVault.sol::deposit` 从 `msg.sender` 拉取资产、把份额铸给任意 `receiver`，铸出份额的票权随 `receiver` 的委托状态归属、与存款人无关——向第三方 receiver 存款不会给存款人计票；与 `MemecoinYieldVault.sol::requestRedeem` 的自我赎回限制（`receiver == msg.sender`，否则 revert `NotSelfRedemption`，见 §6）构成开放/封闭对照。
+- `deposit` 的 receiver 开放：`MemecoinYieldVault.sol::deposit` 从 `msg.sender` 拉取资产、把份额铸给任意 `receiver`，铸出份额的票权随 `receiver` 的委托状态归属、与存款人无关——向第三方 receiver 存款不会给存款人计票；与 `MemecoinYieldVault.sol::requestRedeem` 的自我赎回限制（`controller == msg.sender && owner == msg.sender`，否则 revert `NotSelfRedemption`，见 §6）构成开放/封闭对照。
 
 ## 3. fee 到治理与收益的分流
 
@@ -126,7 +126,7 @@ virtualAssets / (totalSupply + virtualAssets)
 
 这条规则的目标是防止首存者攫取历史收益。
 
-该 burn 规则与 §4 的虚拟资产缓冲（`virtualAssets`） 正交，但正交点不是 `totalSupply` 本身：share/asset 转换公式（§4.1）中 virtualAssets 无条件参与，当 `totalAssets == totalSupply`（含全新空金库的 `(0 + virtualAssets) / (0 + virtualAssets)`）时恰好约掉、price 为 1；当 vault 因全额赎回而残留 §4.3 的吸收收益（`totalSupply == 0` 但 `totalAssets > 0`）时，virtualAssets 依然参与转换，使汇率保持有定义且非退化（无 virtualAssets 时 `assets × 0 / totalAssets` 恒为 0 份额）；残留态（`totalSupply == 0`）下低于 `(totalAssets + virtualAssets) / virtualAssets` 的存款在 `deposit` 时向下取整为 0 份额，`deposit` 显式 `revert ZeroSharesDeposit()` 拒绝该笔存款（资产留在调用方、不并入残留收益），防止小额定金本金被静默吸收（一般态即 `totalSupply > 0` 时的 0 份额阈值按 §4.1 公式为 `(totalAssets + virtualAssets) / (totalSupply + virtualAssets)`）。与 virtualAssets 正交的是 burn 规则本身：空金库阶段 yield 直接 burn，不进入 `totalAssets`，因此不进入 virtualAssets 缓冲吸收路径。该零份额守卫只覆盖向下取整为 0 份额的情形；达到阈值以上的存款仍因 share-mint floor 承受亚 1 股的部分吸收（往返损失，见 §4.3），损失上界 ≤ 亚 1 股 × 当前汇率 + 1 wei（精确值见 `test/yield/MemecoinYieldVault.t.sol::test_RoundTripLossInResidualState` 与 `::test_RoundTripLossInHighRateState` 钉住用例）。此前「往返损失 ~1 wei」的表述仅适用于汇率 ≈ 1（`totalAssets ≈ totalSupply`）的场景；高 rate 态（含残留态）下损失随汇率放大至 ~1 股 × rate 量级。
+该 burn 规则与 §4 的虚拟资产缓冲（`virtualAssets`） 正交，但正交点不是 `totalSupply` 本身：share/asset 转换公式（§4.1）中 virtualAssets 无条件参与，当 `totalAssets == totalSupply`（含全新空金库的 `(0 + virtualAssets) / (0 + virtualAssets)`）时恰好约掉、price 为 1；当 vault 因全额赎回而残留 §4.3 的吸收收益（`totalSupply == 0` 但 `totalAssets > 0`）时，virtualAssets 依然参与转换，使汇率保持有定义且非退化（无 virtualAssets 时 `assets × 0 / totalAssets` 恒为 0 份额）；残留态（`totalSupply == 0`）下低于 `(totalAssets + virtualAssets) / virtualAssets` 的存款在 `deposit` 时向下取整为 0 份额，`deposit` 显式 `revert ZeroSharesDeposit()` 拒绝该笔存款（资产留在调用方、不并入残留收益），防止小额定金本金被静默吸收（一般态即 `totalSupply > 0` 时的 0 份额阈值按 §4.1 公式为 `(totalAssets + virtualAssets) / (totalSupply + virtualAssets)`）。与 virtualAssets 正交的是 burn 规则本身：空金库阶段 yield 直接 burn，不进入 `totalAssets`，因此不进入 virtualAssets 缓冲吸收路径。该零份额守卫只覆盖向下取整为 0 份额的情形；达到阈值以上的存款仍因 share-mint floor 承受亚 1 股的部分吸收（往返损失，见 §4.3），损失上界 ≤ 亚 1 股 × 当前汇率 + 1 wei（精确值见 `test/yield/MemecoinYieldVault.t.sol::test_RoundTripLossInResidualState` 与 `::test_RoundTripLossInHighRateState` 钉住用例）。该 ~1 wei 量级仅适用于汇率 ≈ 1（`totalAssets ≈ totalSupply`）的场景；高 rate 态（含残留态）下损失随汇率放大至 ~1 股 × rate 量级。
 
 ## 6. 延迟赎回队列
 
@@ -135,45 +135,62 @@ V2 当前没有即时赎回 underlying，而是：
 1. `requestRedeem`
 2. 进入队列
 3. 等待 `REDEEM_DELAY`
-4. `executeRedeem`
+4. `redeem` / `withdraw` claim（从成熟队列转出锁定的 assets，见 §6.2）
 
 关键约束：
 
 - 每个地址最多 `MAX_REDEEM_REQUESTS`
 - 请求时即锁定本次 underlying 数量
 - 实际转账在执行时完成
-- `requestRedeem` 仅允许自我赎回：`receiver == msg.sender`，否则 revert `NotSelfRedemption()`。禁止第三方代排队的理由：`MAX_REDEEM_REQUESTS` 按 receiver 计数，若允许任意 `msg.sender` 向任意 receiver 排队，攻击者可用 5 wei dust 填满受害者的 5 个队列槽位，使受害者自己的赎回请求 revert `MaxRedeemRequestsReached()`；而 `executeRedeem` 只清成熟条目（`block.timestamp >= requestTime + REDEEM_DELAY`），该锁定持续 `REDEEM_DELAY` 并可每日重填，构成低成本可持续的退出封锁
+- `requestRedeem` 仅允许自我赎回：`controller == msg.sender && owner == msg.sender`，否则 revert `NotSelfRedemption()`。禁止第三方代排队的理由：`MAX_REDEEM_REQUESTS` 按 owner 计数，若允许任意 `msg.sender` 向任意 owner 排队，攻击者可用 5 wei dust 填满受害者的 5 个队列槽位，使受害者自己的赎回请求 revert `MaxRedeemRequestsReached()`；而 `redeem` / `withdraw` claim 时只消费成熟条目（`block.timestamp >= requestTime + REDEEM_DELAY`），该锁定持续 `REDEEM_DELAY` 并可每日重填，构成低成本可持续的退出封锁
 
 这个模型的目的，是降低 flash 攻击和瞬时套利对 vault 的影响。
 
 ### 6.1 ERC-4626 接口面对齐
 
-为支持外部聚合器报价与按份额存款，`MemecoinYieldVault.sol` 将新增 9 个公共函数，签名逐字节匹配 EIP-4626；但合约**不**继承 `IERC4626`、**不**补 `supportsInterface`（即不声称经 ERC-165 实现 ERC-4626 接口）。
+为支持外部聚合器报价与按份额存款，`MemecoinYieldVault.sol` 已新增 9 个公共函数（已落地），签名逐字节匹配 EIP-4626；但合约**不**继承 `IERC4626`、**不**补 `supportsInterface`（即不声称经 ERC-165 实现 ERC-4626 接口）。
 
 只读视图（view）：
 
 - `convertToShares(uint256 assets) → shares`：复用现有内部换算（向下取整 floor + `virtualAssets` 缓冲，见 §4.1），基线与 `MemecoinYieldVault.sol::previewDeposit`（`MemecoinYieldVault.sol::_convertToShares`）一致。
-- `convertToAssets(uint256 shares) → assets`：复用现有内部换算（floor + 缓冲），基线与 `MemecoinYieldVault.sol::previewRedeem`（`MemecoinYieldVault.sol::_convertToAssets`）一致。
+- `convertToAssets(uint256 shares) → assets`：直接复用内部换算 `MemecoinYieldVault.sol::_convertToAssets`（floor + `virtualAssets` 缓冲，见 §4.1）。claim 模型下 `previewRedeem` 自身 revert（见 §6.2 偏离 #2），故 `convertToAssets` 不再以 `previewRedeem` 为基线。
 - `maxDeposit(address) → type(uint256).max`：无存款上限。
 - `maxMint(address) → type(uint256).max`。
-- `maxWithdraw(address owner) → convertToAssets(balanceOf(owner))`。
-- `maxRedeem(address owner) → balanceOf(owner)`。
+- `maxWithdraw(address owner)`：求和 `owner` 名下已成熟（`block.timestamp >= requestTime + REDEEM_DELAY`）队列条目的 `lockedAssets`（锚 `MemecoinYieldVault.sol::maxWithdraw`）。
+- `maxRedeem(address owner)`：返回 `_claimableShares(owner)`（已成熟条目 shares 之和；锚 `MemecoinYieldVault.sol::maxRedeem`）。
 - `previewMint(uint256 shares) → assets`：**向上取整**（`Math.mulDiv` Ceil），满足 EIP-4626「no fewer than」约束（铸出指定份额所需资产不少于返回值）。
-- `previewWithdraw(uint256 assets) → shares`：**向上取整**（Ceil），满足 EIP-4626「no fewer than」约束（提出指定资产所需份额不少于返回值）。
+- `previewWithdraw(uint256 assets) → shares`：**永久 revert**（`PreviewWithdrawNotSupported`）。claim 模型按 per-request 锁定率结算，无法由单一 assets 参数预览（见 §6.2 偏离 #2）。
 
 写操作：
 
 - `mint(uint256 shares, address receiver) → assets`：复用 `MemecoinYieldVault.sol::_deposit`，assets 向上取整（与 `previewMint` 同基线），在同调用内写 `totalAssets` checkpoint（见 [docs/spec/invariants.md INV-26](../invariants.md)），emit 现有 `Deposit` 事件（签名已与 ERC-4626 标准 `Deposit` 逐字节一致，见 [docs/spec/events.md §2.5](../events.md)）。`mint` 与 `deposit` 同为 permissionless 入口（见 [docs/spec/access-control.md §3](../access-control.md)）：从 `msg.sender` 拉取 asset、把份额铸给任意 `receiver`，票权归属与 `deposit` 一致（见 §2.2）。
 
-### 6.2 ERC-4626 语义偏离声明
+### 6.2 类 ERC-7540 claim 模式与 ERC-4626 语义偏离声明
 
-本 vault **不声称完整 ERC-4626 合规**。与标准 ERC-4626 即时赎回模型的有意分歧逐条说明如下：
+> 本节描述 redeem 侧 claim 模式。claim-mode 机制已全量落地（代码已实现）：`requestRedeem` 烧份额 + 锁定 underlying + 入队并 emit `RedeemRequest`；`redeem` / `withdraw` 作为 claim 入口从成熟队列 FIFO 转出锁定的 assets 并 emit `Withdraw`。requestId 删除增量与 `RedeemRequest` 的 `lockedAssets` 字段均已全量落地（代码已实现）：`requestRedeem` 已返 `lockedAssets`、`pendingRedeemRequest` / `claimableRedeemRequest` 已改单参、`RedeemRequest` 已含未索引 `lockedAssets` 字段（emit 见 `MemecoinYieldVault.sol::requestRedeem`）、`InvalidRequestId` 已删。下方 `requestRedeem` 入队语义、§6 延迟队列、`REDEEM_DELAY` 防闪电贷说明、自我赎回防 griefing 说明沿用不变。
 
-1. `redeem` / `withdraw` 标准 selector **不实现**。取款沿用 §6 的自定义延迟队列：`MemecoinYieldVault.sol::requestRedeem` → 等 `MemecoinYieldVault.sol::REDEEM_DELAY`（`1 days`）→ `MemecoinYieldVault.sol::executeRedeem`。这是防闪电贷存取套利的第二道防线（`virtualAssets` 缓冲是第一道，见 §4.2），**不可删**；模型类似 Lido 提款队列。
-2. `maxRedeem(owner)` 返回 `balanceOf(owner)`，**不**返回 EIP-4626 timelock 条款要求的 limited value。理由：`REDEEM_DELAY` 是「到账延迟」而非「赎回额度限制」——份额在 `requestRedeem` 入队时即烧，owner 可全额申请赎回（受 §6.2.4 队列/单笔上限约束，常态下成立），只是资产 1 天后才到账。这是对 EIP-4626 `maxRedeem` timelock 条款的有意偏离。
-3. `previewWithdraw` / `maxWithdraw` 是**孤儿报价视图**：vault 无标准 `withdraw` 入口，只有 redeem 语义的 `requestRedeem`（shares→assets）。这两个函数仅供外部聚合器报价，其描述的操作无对应标准入口。
-4. 实际赎回另受 `MemecoinYieldVault.sol::MAX_REDEEM_REQUESTS`（每账户队列 5 笔上限）与单笔 `uint192` 上限约束，这是现有防 griefing / 防溢出机制，不在 ERC-4626 标准范围内。因此 `maxRedeem` / `maxWithdraw` 是**余额推导的高报上界**：两者无条件返回 `balanceOf(owner)` 及其资产折算，队列满或单笔超 `uint192` 时可能高于当前实际可入队的量，`requestRedeem` 会以 `MaxRedeemRequestsReached` / `RedeemAmountOverflowed` revert；集成方不得把 max* 当作可入队量的保证（EIP-4626「MUST NOT be higher than the actual maximum that would be accepted」为此未满足）。
-5. 综上，本 vault 只提供只读视图 + `mint` 的部分兼容，供外部聚合器报价与存款；不提供标准 `redeem` / `withdraw` 即时赎回语义。
+#### 总述
+
+vault 采用**类 ERC-7540 的异步 claim 模式**（非逐字实现 EIP-7540）：
+
+1. `requestRedeem`（request）：烧份额 + 锁定本次 underlying assets + 入队（沿用 §6 延迟队列与 `MemecoinYieldVault.sol::MAX_REDEEM_REQUESTS` / 单笔 `uint192` 上限）。（EIP-7540 允许 `requestRedeem` 时立即烧份额或锁存；本 vault 选立即烧，故 share `totalSupply` 在 request 时即降、票权立即移除——这也是偏离 #1 claim 自赎回的前提，本身不构成对 EIP-7540 的偏离。）
+2. 等待 `MemecoinYieldVault.sol::REDEEM_DELAY`（`1 days`）成熟。
+3. `redeem` / `withdraw`（claim）：从成熟队列把 request 时锁定的 assets 转给 receiver。
+
+`deposit` / `mint` 保持**同步**（类 ERC-4626，即时铸造，见 §6.1）。`REDEEM_DELAY` 是防闪电贷存取套利的第二道防线（`virtualAssets` 缓冲是第一道，见 §4.2），与 §6 自我赎回防 griefing 说明一并保留。
+
+#### 偏离声明
+
+本 vault **不声称完整 ERC-4626 / ERC-7540 合规**。与标准的有意偏离逐条说明如下：
+
+1. **claim 自赎回**：`redeem` / `withdraw` 强制 `owner == msg.sender`（`receiver` 可任意），**不支持 owner ≠ caller**。理由：份额在 `requestRedeem` 时已烧，claim 时无 allowance 可查；引入 allowance / operator 路径即构成 theft 面。偏离 ERC-4626 owner ≠ caller 条款与 EIP-7540 operator 模型。
+2. **`previewRedeem` / `previewWithdraw` revert**：claim 按 per-request 锁定率结算，无法由单一 shares / assets 参数预览。此 revert 是对 EIP-4626「preview 函数 MUST 返回」要求的有意偏离（理由：per-request 锁定率无法由单一参数预览；若强行返回估值会误导集成方）。`previewDeposit` / `previewMint` 保留（deposit 同步可预览，见 §6.1）。§6.1 已据此把 `previewWithdraw` 标为永久 revert、`convertToAssets` 改为直接复用 `MemecoinYieldVault.sol::_convertToAssets`（不再以 `previewRedeem` 为基线）。
+3. **不加 `supportsInterface` / 不声称 IERC-7540 合规**：因实现不完整（无 operator、claim 自赎回、preview 部分保留）。
+4. **vault 形态说明（同步 deposit + 异步 redeem claim）**：`deposit` / `mint` 即时（类 ERC-4626），`redeem` / `withdraw` 是 claim（类 ERC-7540 async-redeem 形态）。这是 vault 的混合形态说明，并非对 EIP-7540 的偏离（EIP-7540 允许 async-redeem-only）；本 vault 不声称 IERC-7540 合规的真正原因是偏离 #1 / #2 / #3（claim 自赎回、preview revert、不声明 `supportsInterface`），而非此处形态本身。
+5. **不引入 requestId 概念**：本 vault 采用单一时间延迟模型（统一 `MemecoinYieldVault.sol::REDEEM_DELAY`），无批次 / epoch 区分，故**不使用 requestId 概念**。`requestRedeem` 按当前汇率算出并锁定本次 underlying（已落地，`MemecoinYieldVault.sol::_convertToAssets` + `_requestWithdraw`），已把该锁定的 `lockedAssets` 返给调用方（前端可直接据此显示锁定值）。claim 模式已把 `pendingRedeemRequest` / `claimableRedeemRequest` 改为单参 `(controller)`（去掉 requestId 参数，按账户聚合查询）；**但不**经 `supportsInterface` 声称实现 IERC-7540（见偏离 #3）——这些 view 仅为 claim 流程的可观测性而设，集成方按账户（controller）查询 pending / claimable，不构成接口合规声明。相应地，`InvalidRequestId` 错误已随 requestId 参数移除而删除。
+6. **claim 语义**：`redeem` / `withdraw` 从成熟队列（`requestTime + REDEEM_DELAY <= block.timestamp`）FIFO 转出 request 时锁定的 assets；未成熟或 claimable 不足则 revert（对应 ERC-4626「MUST revert if cannot be withdrawn」）。实际赎回另受 `MemecoinYieldVault.sol::MAX_REDEEM_REQUESTS`（每账户队列 5 笔上限）与单笔 `uint192` 上限约束，故 §6.1 的 `maxRedeem` / `maxWithdraw` 返回精确可 claim 总额（已成熟 shares / 已成熟 lockedAssets 求和），而非 `balanceOf` 推导；集成方据此可知成熟可 claim 量。
+
+综上，本 vault 提供 deposit 侧（同步，类 ERC-4626）+ redeem 侧（异步 claim，类 ERC-7540）的混合模型；redeem 侧不提供标准 ERC-4626 即时赎回语义，而是 request → 延迟 → claim 的异步流。
 
 ## 7. Governor Treasury 语义
 

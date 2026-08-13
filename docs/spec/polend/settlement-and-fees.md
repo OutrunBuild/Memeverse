@@ -741,6 +741,13 @@ Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金�
 - 只影响之后执行的 market 注册检查、reserve credit 容量和 `executeGlobalSettlement` reserve 可用余额校验
 - 事件 `event SettlementDustReserveConfigured(address indexed uAsset, uint128 oldMaxReserve, uint128 newMaxReserve);`
 
+`setCreditFactory(newFactory)`：
+
+- 仅 owner
+- `newFactory != address(0)`
+- 替换 `GenesisCreditFactory` 地址指针，影响后续 `leveragedGenesisWithCredit` 按 `uAsset` 查 GenesisCredit 的路径；只影响未来 credit 路径解析，正常 `leveragedGenesis` 路径与已锁定 `market.creditToken` 的 verse 不受影响
+- 事件 `event CreditFactoryChanged(address indexed oldFactory, address indexed newFactory);`
+
 `fundSettlementDustReserve(address uAsset, amount)`：
 
 - permissionless
@@ -773,6 +780,7 @@ Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金�
 | `setDefaultInterestRate` | owner | 任意 | `0 < newRate <= 1e18`；当前 `leveragedDebtFactor` 与 `newRate` 满足杠杆约束 | 仅影响未来注册 market |
 | `setLeveragedDebtFactor` | owner | 任意 | `newFactor != 0`；`newFactor <= uint128.max * 1e18`；`newFactor` 与当前 `defaultInterestRate` 满足杠杆约束 | 仅影响可继续新增杠杆创世的 `None / Genesis` market 后续 debt cap / `remainingAdditionalInterest` |
 | `setMaxSettlementDustReserve` | owner | 任意 | `uAsset != address(0)`，`maxReserve > 0`，且下调时当前 `reserve <= maxReserve` | 配置该 `uAsset` 全局 settlement dust reserve 上限；不支持用 0 作为 launch-supported 运行模式 |
+| `setCreditFactory` | owner | 任意 | `newFactory != address(0)` | 替换 `GenesisCreditFactory` 地址指针，影响后续 `leveragedGenesisWithCredit` 按 `uAsset` 查 GenesisCredit 的路径;emit `CreditFactoryChanged` |
 | upgrade authorization | owner（UUPS `_authorizeUpgrade`） | 按升级框架 | 新实现初始化与存储布局必须兼容 | 不改变既有 market 语义 |
 | pause behavior | pauser / owner policy | 任意 | pause 不得阻断必要的 unlock / refund / repay 安全出口；`fundSettlementDustReserve` 视为 unlock / repay 安全出口 | pause 只限制新增资金入口和非必要领取入口。受 `whenNotPaused` 阻断的 Launcher 入口：`MemeverseLauncher.genesis`、`MemeverseLauncher.preorder`、`MemeverseLauncher.genesisAndPreorder`、`MemeverseLauncher.claimNormalYT`、`MemeverseLauncher.claimNormalFees`、`MemeverseLauncher.redeemAuxiliaryLiquidity`、`MemeverseLauncher.claimUnlockedPreorderMemecoin`、`MemeverseLauncher.redeemAndDistributeFees`、`MemeverseLauncher.mintPOLToken`、`MemeverseLauncher.registerMemeverse`。受 `whenNotPaused` 阻断的 POLend 入口：`POLend.leveragedGenesis`、`POLend.leveragedGenesisWithCredit`。不受 pause 阻断的安全出口：`POLend.claimRefund`、`POLend.claimLeveragedYT`、`POLend.claimResidual`、`POLend.fundSettlementDustReserve`、`POLend.executeGlobalSettlement`、`POLSplitter.redeemPT`、`POLSplitter.redeemYT`、`POLSplitter.settle` |
 

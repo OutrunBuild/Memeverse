@@ -33,7 +33,7 @@ POLend 定义产品语义、资金流、状态边界、结算规则和接口职�
   - `mainUAssetFunds` 是主池 bootstrap budget，不是 PT backing truth
   - `ptBackingNumerator = actualMainUAssetUsed`
   - `ptBackingDenominator = main pool LP / POL raw amount actually minted at launch`
-  - `uAssetBacking = FullMath.mulDiv(ptAmount, actualMainUAssetUsed, mainPoolPOLAmount)`
+  - `uAssetBacking = Math.mulDiv(ptAmount, actualMainUAssetUsed, mainPoolPOLAmount)`
 - `YT` 代表 `Splitter` 结算池内对应 `POL collateral` 的收益权益：兑付时按比例获得 `settlementUAsset` 中扣除 PT 准备金后的剩余 `uAsset` 以及全部 `settlementMemecoin`，不覆盖 `POLend` 残值，也不天然代表全部创世剩余资产
 - `POL` 被 split 后成为 `Splitter` 托管的 `POL collateral`
 - `Unlocked` 后，`POL collateral` 统一结算成 `settlementUAsset + settlementMemecoin`
@@ -411,7 +411,7 @@ else:
 
 以上容量计算只在 `settlementDustStates[uAsset].maxReserve > 0` 时执行；否则容量返回 0。
 
-该公式与 `totalLeveragedInterest * 1e18 / market.interestRate` 的向下取整语义严格匹配。实现应使用全精度乘除，避免中间乘法溢出，并在精确商 ≥ `type(uint256).max`（即乘积 ≥ `(2^256 - 1) * 1e18`）时防御性饱和返回 `type(uint256).max`；该饱和分支在极端配置（如 `minTotalFund > uint128.max`）下可触发，但其结果随后在 `_debtCapacity` 中被 aggregate 钳制，最终 `debtCap` 恒 ≤ `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = uint128.max < uint256.max`，故 `maxTotalInterest` 计算中 `debtCap == type(uint256).max` 的防御分支当前不可达（与 `POLend.sol` 的 `_debtCapacity` 注释一致）。
+该公式与 `totalLeveragedInterest * 1e18 / market.interestRate` 的向下取整语义严格匹配。实现按 `((debtCap + 1) * rate - 1) / 1e18` 直接计算（等价于 `ceil((debtCap + 1) * rate / 1e18) - 1`，`X >= 1` 时恒等）；`rawDebtCap` 的饱和路径（`POLend.sol::_mulDiv1e18Saturating` 在精确商 ≥ `type(uint256).max` 时返回 `type(uint256).max`）在极端配置（如 `MemeverseLauncher.sol::minTotalFund > uint128.max`）下可触发，但该结果随后在 `POLend.sol::_debtCapacity` 中被 aggregate 钳制，最终 `debtCap` 恒 ≤ `POLend.sol::MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = uint128.max < uint256.max`，故 `(debtCap + 1) * rate ≤ 2^128 * 1e18 < 2^256`，直接乘除不溢出，无需 `debtCap == type(uint256).max` 特殊分支；任何放宽 aggregate 上限的改动必须先重推本公式。
 
 ## 8. 错误语义
 
@@ -425,6 +425,10 @@ else:
 - `fundSettlementDustReserve`：`uAsset` 未完成全局 reserve 配置
 - `initialize / setLeveragedDebtFactor`：`leveragedDebtFactor > uint128.max * 1e18`
 - `setMaxSettlementDustReserve`：下调上限低于当前已存 reserve（`state.reserve > maxReserve`）
+- `POLend.sol::initialize / POLend.sol::setDefaultInterestRate`：`interestRate > 1e18`（利率上限）
+- `POLend.sol::initialize / POLend.sol::setDefaultInterestRate / POLend.sol::setLeveragedDebtFactor`：`leveragedDebtFactor < minDebtFactor`（`POLend.sol::_validateLeverageConfig` 守卫，即 `factor · rate < 1e36`；`registerLendMarket` 处调用同为防御性守卫，正常流程不可触发）
+- `POLend.sol::leveragedGenesis / POLend.sol::leveragedGenesisWithCredit`：`actualNormalFunds > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`
+- `POLend.sol::leveragedGenesis / POLend.sol::leveragedGenesisWithCredit`：聚合上限 `previewTotalDebt > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds`
 
 `POLend` 侧 `InvalidState` 使用场景：
 
@@ -447,6 +451,7 @@ else:
 
 - `recordPTBackingRatio`：verse 未 initialize（`InvalidClaim`）、已 settled（`AlreadySettled`）、存在 split 产生的未合并回零 collateral（`totalPOLCollateral != 0` → `InvalidClaim`）或 ratio 已记录（`InvalidClaim`）
 - `split / previewPTToUAsset / preRedeemPTFee / redeemPT / redeemYT`：ratio 未记录
+- `POLSplitter.sol::previewRedeemYTUAsset`：settle 前恒返回 0、不触 ratio；settle 后 ratio 未记录 → `InvalidClaim`
 - `AlreadyUnlocked`：split/merge 时 verse 已 Unlocked 或 settle 已完成
 - `NotUnlocked`：settle 时 verse 尚未 Unlocked
 - `AlreadySettled`：重复 settle，或 preRedeemPTFee 时已 settled

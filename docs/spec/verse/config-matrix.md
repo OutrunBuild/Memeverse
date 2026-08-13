@@ -24,7 +24,7 @@
 | `MemeverseLauncher` | `executorRewardRate` | `setExecutorRewardRate` | `< 10000` | fee 分账（执行者奖励） | `[代码已证]` |
 | `MemeverseLauncher` | `preorderCapRatio`,`preorderVestingDuration` | `setPreorderConfig` | 非零；`capRatio <= 10000` | preorder 容量和线性释放 | `[代码已证]` |
 | `MemeverseLauncher` | `oftReceiveGasLimit`,`yieldDispatcherGasLimit` | `setGasLimits` | 两者 `>0`；第一参（receive 面）误配后果同 `MemeverseOmnichainInteroperation` 行（无兜底、滞留至免许可重放投递，详见 operations.md §3.13.2） | 远端分发 OFT options | `[代码已证]` |
-| `MemeverseRegistrationCenter` | `supportedUAssets` | `setSupportedUAsset` | uAsset 非零 | 注册可用募资币种白名单；普通 `genesis` / `leveragedGenesis` 支持任意 decimals 的 `uAsset`，但 GenesisCredit credit path（`leveragedGenesisWithCredit` + `GenesisCreditFactory.deployCredit`）只支持 `uAsset.decimals() == 18`，非 18-dec `uAsset` 不得部署 GenesisCredit `[代码已证]`（`InvalidUAssetDecimals` / `CreditDecimalsMismatch` 已在 `GenesisCreditFactory.deployCredit` 与 `POLend.leveragedGenesisWithCredit` 双处落地） | `[代码已证]`（credit path 18-dec 校验已在 factory/POLend 双处落地） |
+| `MemeverseRegistrationCenter` | `supportedUAssets` | `setSupportedUAsset` | uAsset 非零；uAsset 必须为无外部回调语义的 plain ERC20（`transfer` / `transferFrom` / `approve` / `mint` / `repay` 不得触发任意外部回调），违反者不属于协议支持范围，信任边界权威定义见 [docs/spec/polend/settlement-and-fees.md §9.1](../polend/settlement-and-fees.md)——回调型 uAsset 会使 swap 侧 `MemeverseUniswapHook.sol::_addLiquidityCore` 的 LP per-share 会计重入窗口（F-020）条件可达；普通 `genesis` / `leveragedGenesis` 支持任意 decimals 的 `uAsset`，但 GenesisCredit credit path（`POLend.sol::leveragedGenesisWithCredit` + `GenesisCreditFactory.sol::deployCredit`）只支持 `uAsset.decimals() == 18`，非 18-dec `uAsset` 不得部署 GenesisCredit `[代码已证]`（`InvalidUAssetDecimals` / `CreditDecimalsMismatch` 已在 `GenesisCreditFactory.sol::deployCredit` 与 `POLend.sol::leveragedGenesisWithCredit` 双处落地） | 注册可用募资币种白名单，仅做成员资格门控（`MemeverseRegistrationCenter.sol::_registrationParamValidation`），token-kind 前置由治理配置与部署流程共同保证（权威定义见 §9.1） | `[代码已证]`（credit path 18-dec 校验已在 `GenesisCreditFactory.sol` / `POLend.sol` 双处落地） |
 | `MemeverseRegistrationCenter` | `min/maxDurationDays` | `setDurationDaysRange` | 非零，且 min < max | 注册 durationDays 校验 | `[代码已证]` |
 | `MemeverseRegistrationCenter` | `registerGasLimit` | `setRegisterGasLimit` | `>0` | center 向远端 registrar fan-out 的 receive gas | `[代码已证]` |
 | `MemeverseRegistrarAtLocal` | `registrationCenter` | `setRegistrationCenter` | 非零 | 本地 registrar 信任中心地址 | `[代码已证]` |
@@ -72,7 +72,7 @@ canonical Launcher address 是 `IOutrunDeployer` CREATE3 部署的 ERC1967 proxy
 | 模块 | 参数 | 当前值 | 说明 | 来源 |
 | --- | --- | --- | --- | --- |
 | `MemeverseLauncher` | `RATIO` | `10000` | 比率基数 | `[代码已证]` |
-| `MemeverseRegistrationCenter` | `DAY` | `180` 秒（测试值） | 注册时间单位（中心链实际生效） | `[代码已证]` |
+| `MemeverseRegistrationCenter` | `DAY` | `180` 秒（测试值） | 注册时间单位（中心链实际生效）；部署 readiness 断言 `DAY() == expectedRegistrationDay`（`MemeverseScript.s.sol::_requireRegistrationCenterReady` 读回校验，由 `::_openSupportedUAssetsAfterReadiness` / `::onboardUAsset` 调用，脚本存储变量经 `_loadReadinessEnv` 从 `EXPECTED_DAY` env 装载：testnet 在 `.env` 设 `EXPECTED_DAY=180` 保留快窗，未设默认生产值 `24*3600`；失配 `REGISTRATION_DAY_NOT_READY` 阻断 registration 打开） | `[代码已证]` |
 | `MemeverseRegistrationCenter` | `FIXED_LOCKUP_DURATION` | `365 days` | 注册时固定锁定期；`unlockTime = endTime + 365 days`，不是注册参数或 owner 配置项 | `[代码已证]` |
 | `MemeverseRegistrarAtLocal` | `registrationCenter.DAY()` | 中心链配置值 | 本地报价读取 registration center 的时间单位 | `[代码已证]` |
 | `MemeverseRegistrarAtLocal` | unlock 辅助计算 | `365 days` | 本地报价辅助使用固定锁定期，与中心链最终写入语义一致 | `[代码已证]` |

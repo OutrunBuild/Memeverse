@@ -437,6 +437,8 @@ dispatcher endpoint 读回进 readiness check：脚本 `_readAddress(MEMEVERSE_Y
 
 独立入口 `openSupportedUAssetsAfterReadiness` 与 `run()` 流程一致：内部先 `_loadReadinessEnv()` 装载 `OMNICHAIN_MEMECOIN_STAKER`，再 `_chainsInit()` 装载全部 9 链 ENDPOINT/EID env；任一 env 缺失时该入口响亮 revert，而非静默跳过检查（此前只 `_loadReadinessEnv` 不填 endpoints 映射、恒误拒绝）。`[代码已证]`
 
+registration center `DAY` 读回进 readiness check：`MemeverseScript.s.sol::_requireRegistrationCenterReady`（由 `::_openSupportedUAssetsAfterReadiness` 与 `::onboardUAsset` 两条 registration 打开路径调用）断言 `IMemeverseRegistrationCenter(registrationCenter).DAY() == expectedRegistrationDay`，前置 `_requireContractCode(registrationCenter, "REGISTRATION_CENTER_CODE_NOT_READY")`（脚本存储变量，`_loadReadinessEnv` 从 `EXPECTED_DAY` env 装载：testnet 部署在 `.env` 设 `EXPECTED_DAY=180` 保留快窗，未设默认生产值 `24 * 3600`；错误串 `REGISTRATION_DAY_NOT_READY`）——`DAY` 为源码级 `constant` 且 center 以构造部署（非 proxy），错误值永久烧入字节码、无 setter 可救；该断言把「测试值漏改生产值」从人工记忆转为部署闸门，fail-closed 朝向生产值（mainnet 漏改 180 会被阻断），任一路径失配即阻断 registration 打开。`[代码已证]`
+
 **MemeverseUniswapHook：**
 
 ```bash

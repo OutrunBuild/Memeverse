@@ -91,6 +91,7 @@
 | INV-02 memecoin→verseId 映射 | [invariants.md](invariants.md) | 注册时建立且不重写 |
 | INV-03 治理链取 `omnichainIds[0]` | [invariants.md](invariants.md) | 治理链统一取首元素 |
 | INV-04 启动结算显式路径 | [invariants.md](invariants.md) | 必须 Launcher→Hook |
+| INV-04A 预购结算 swap 路径完整性 | [invariants.md](invariants.md) | typed unlock 路由 + v4 self-call 语义 |
 | INV-05 Locked 费用分发恒等式 | [invariants.md](invariants.md) | 费用分发恒等约束 |
 | INV-06 远端 msg.value 精确匹配 | [invariants.md](invariants.md) | 远端分发/staking 报价精确匹配 |
 | INV-07 阶段机约束 | [invariants.md](invariants.md) | 关键业务动作受阶段机约束 |
@@ -114,6 +115,7 @@
 | INV-23 Smart EOA transient session 动态费隔离 | [invariants.md](invariants.md) | principal 替换 trader + 地址批次隔离 |
 | INV-24 YT Flash Swap 结算不变量 | [invariants.md](invariants.md) | 恰好一次 swap + 真实 delta + baseline 恢复 |
 | INV-25 OFT compose 兜底结算单一解析 | [invariants.md](invariants.md) | 每 (token,guid) 至多解析一次，互斥+幂等+纵深防御 |
+| INV-26 资产计价投票 checkpoint 三 trace 配对 | [invariants.md](invariants.md) | 三条 trace 任意历史 timepoint 配对一致 |
 
 ### 2.3 权限边界
 

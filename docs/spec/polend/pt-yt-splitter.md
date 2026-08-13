@@ -55,8 +55,13 @@
 `Splitter` 必须暴露并使用 PT raw -> uAsset backing raw 的 preview：
 
 ```text
-previewPTToUAsset(verseId, ptAmount) = FullMath.mulDiv(ptAmount, ptBackingNumerator, ptBackingDenominator)
+previewPTToUAsset(verseId, ptAmount) = Math.mulDiv(ptAmount, ptBackingNumerator, ptBackingDenominator)
 ```
+
+`Splitter` 的 YT preview 语义：
+
+- `POLSplitter.sol::previewRedeemYTUAsset` 在 settle 前恒返回 0（settle 前 `settlementUAsset` 未写入，YT 可赎回池定义上为 0，与 `outstandingYT == 0` 的零返回同族）
+- settle 后才按 §3.2（即本文件「PT / YT 兑付」节的公式 `ytRedeemableUAssetPool = settlementUAsset - reservedUAssetForPT`）计算
 
 所有 `preRedeemPTFee`、`redeemPT`、`redeemYT` 的 PT reserve、settle 时预兑付 backing burn、`POLend.executeGlobalSettlement` 回收 PT settlement 都必须使用该转换后的 `uAsset` 数量，不得直接把 `ptAmount` 当作 `uAsset` 数量。
 
@@ -185,7 +190,7 @@ settle 后：
 公式：
 
 ```text
-uAssetAmount = FullMath.mulDiv(ptAmount, actualMainUAssetUsed, ptBackingDenominator)
+uAssetAmount = Math.mulDiv(ptAmount, actualMainUAssetUsed, ptBackingDenominator)
 ```
 
 ### 3.2 redeemYT

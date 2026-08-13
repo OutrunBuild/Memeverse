@@ -179,6 +179,7 @@ function quoteSwap(PoolKey calldata key, SwapParams calldata params, address tra
 - `swap(...)`
 - `swapWithPermit2(...)`
 - `addLiquidity(...)`
+- `addLiquidityDetailed(...)`：同 `addLiquidity(...)` 路径，额外返回实际结算的两侧 token spend `(amount0Used, amount1Used)`（caller 参数序，受 `amount*Desired` 上限约束）；通用公开入口中唯一返回 minted liquidity 与 actual spend 的加流动性入口，Launcher POL token 铸造路径调用此入口（见 `MemeverseLiquidityImpl.sol::_mintPOLTokenWithAutoLiquidity` / `::_mintPOLTokenWithExactLiquidity`）
 - `addLiquidityWithPermit2(...)`
 - `removeLiquidity(...)`
 - `removeLiquidityWithPermit2(...)`

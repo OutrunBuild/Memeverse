@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {IMemeverseLauncher} from "./IMemeverseLauncher.sol";
 
 /// @title IMemeverseLaunchImpl
-/// @notice Selector interface for the MemeverseLaunchImpl delegatecall sibling. The MemeverseLauncher
+/// @notice Selector interface for the MemeverseLaunchImpl delegatecall sibling. The MemeverseLauncherUpgradeable
 ///         facade encodes these selectors when delegatecalling into the launch sibling, and the sibling
 ///         uses `IMemeverseLiquidityImpl.deployBootstrapLiquidity.selector` and
 ///         `IMemeverseSettlementImpl.unlockFromLocked.selector` for its nested delegatecalls. Each
@@ -14,7 +14,7 @@ interface IMemeverseLaunchImpl {
     /// @notice Register a new memeverse: deploy memecoin/POL, wire LayerZero peers, store verse config.
     /// @dev Invoked via delegatecall by the facade's `registerMemeverse`. Under delegatecall `msg.sender`
     ///      is the original caller (must equal `memeverseRegistrar`) and `address(this)` is the launcher
-    ///      proxy (token custody, OFT owner, POLend market registration source).
+    ///      proxy (token custody, OFT owner, POLendUpgradeable market registration source).
     function registerMemeverse(
         string calldata name,
         string calldata symbol,

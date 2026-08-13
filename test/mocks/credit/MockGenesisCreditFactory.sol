@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {IGenesisCreditFactory} from "../../../src/credit/interfaces/IGenesisCreditFactory.sol";
 
 /// @title MockGenesisCreditFactory
-/// @notice Minimal `IGenesisCreditFactory` stub for POLend unit tests. Test code wires
+/// @notice Minimal `IGenesisCreditFactory` stub for POLendUpgradeable unit tests. Test code wires
 ///         (uAsset -> credit) pairs directly via `setCreditOf`, avoiding any reliance on the
 ///         real factory/clone deployment path (those are exercised in dedicated factory tests).
 contract MockGenesisCreditFactory is IGenesisCreditFactory {

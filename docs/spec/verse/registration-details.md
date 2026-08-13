@@ -17,7 +17,7 @@
 - `MemeverseRegistrarOmnichain`
   - 异链向中心链发起注册
   - 负责跨链 quote/send
-- `MemeverseLauncher`
+- `MemeverseLauncherUpgradeable`
   - 接收最终注册结果
   - 记录 verse 主状态与资产地址
 
@@ -118,7 +118,7 @@ center gas dust 不可由用户认领，只能由 owner 通过 `removeGasDust(re
 2. 通过 deployer 部署并初始化 memecoin / POL
 3. 按 `omnichainIds` 配置 peer
 4. 写入 verse 基础信息与反向索引
-5. 在同一笔 `registerMemeverse(...)` 交易内调用 `POLend.registerLendMarket(verseId)`，注册 lend market，并记录 / 复制该 verse 的 `uAsset`、利率和初始状态
+5. 在同一笔 `registerMemeverse(...)` 交易内调用 `POLendUpgradeable.registerLendMarket(verseId)`，注册 lend market，并记录 / 复制该 verse 的 `uAsset`、利率和初始状态
 6. 发出 `RegisterMemeverse`
 7. registrar 后续再调用 `setExternalInfo` 写入 `uri/desc/communities`
 
@@ -127,17 +127,17 @@ center gas dust 不可由用户认领，只能由 owner 通过 `removeGasDust(re
 - 注册并不是“只写一个数据库记录”
 - 它会同时完成 memecoin / POL 部署初始化和 lend market 注册
 - `polend` / `polSplitter` 是注册前必备前置配置
-- `POLSplitter.initializeVerse(...)` 不在注册时执行，而是在 `Genesis -> Locked` 流程中由 launcher 调用
+- `POLSplitterUpgradeable.initializeVerse(...)` 不在注册时执行，而是在 `Genesis -> Locked` 流程中由 launcher 调用
 - `external info` 不在 `registerMemeverse(...)` 同一次函数体内写入，而是由 registrar 在后续调用中补写
 
-## 11. POLend 注册 ABI 与初始化边界
+## 11. POLendUpgradeable 注册 ABI 与初始化边界
 
-POLend 目标产品规范以 [docs/spec/polend/README.md](../polend/README.md) 为准：
+POLendUpgradeable 目标产品规范以 [docs/spec/polend/README.md](../polend/README.md) 为准：
 
-- `Launcher.registerMemeverse(...)` 同交易内只调用 `POLend.registerLendMarket(verseId)`
+- `Launcher.registerMemeverse(...)` 同交易内只调用 `POLendUpgradeable.registerLendMarket(verseId)`
 - `registerLendMarket` 从 launcher 读取 verse 的 `uAsset` 并复制当前 `defaultInterestRate`
 - 注册阶段不初始化 `PT / YT`
-- `POLSplitter.initializeVerse(...)` 只在 `Genesis -> Locked` 的四池部署流程中执行
+- `POLSplitterUpgradeable.initializeVerse(...)` 只在 `Genesis -> Locked` 的四池部署流程中执行
 
 ## 12. 当前实现提醒
 

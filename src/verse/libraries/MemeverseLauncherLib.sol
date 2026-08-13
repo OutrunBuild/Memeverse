@@ -11,7 +11,7 @@ import {IMemeverseLauncher} from "../interfaces/IMemeverseLauncher.sol";
 import {MemeverseLauncherStorage} from "../interfaces/IMemeverseLauncherStorage.sol";
 
 /// @title MemeverseLauncherLib
-/// @notice Internal helpers shared between the MemeverseLauncher facade and its MemeverseLaunchImpl /
+/// @notice Internal helpers shared between the MemeverseLauncherUpgradeable facade and its MemeverseLaunchImpl /
 ///         MemeverseSettlementImpl / MemeverseLiquidityImpl / MemeverseFeePreviewReader siblings: settlement-wiring
 ///         validation, genesis-funds arithmetic, and the pure fee-mapping / executor-reward split used by both the
 ///         settlement sibling and the preview reader.
@@ -161,7 +161,7 @@ library MemeverseLauncherLib {
     ///      already pass every input as a parameter, so the body is identical and inlines without storage reads.
     ///      Load-bearing multichain precondition: `to = yieldDispatcher` is delivered on the destination
     ///      (governance) chain, so the caller-supplied `yieldDispatcher` must equal the governance chain's
-    ///      actual YieldDispatcher address. The deployment script satisfies this via CREATE3 same-address
+    ///      actual YieldDispatcherUpgradeable address. The deployment script satisfies this via CREATE3 same-address
     ///      (OutrunDeployer + `keccak256("YieldDispatcher", nonce)` salt); a mismatch strands fees on the
     ///      governance chain with no recovery path (fail-closed, no third-party theft).
     /// @param govEndpointId Destination LayerZero endpoint id.

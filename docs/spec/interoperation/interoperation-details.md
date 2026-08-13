@@ -6,7 +6,7 @@
 
 ## 2. 主要模块
 
-- `YieldDispatcher`
+- `YieldDispatcherUpgradeable`
   - 处理治理收益路由
   - 接收 OFT（Omnichain Fungible Token，跨链同质化代币）`compose`（组合回调：OFT 在目标链完成 `lzReceive` 后，由 LayerZero endpoint 另行调用 `lzCompose` 处理附带 payload）或 launcher 通过 `distributeSameChain` 进入本地 fast path
 - `MemeverseOmnichainInteroperation`
@@ -22,8 +22,8 @@
 
 当治理链就是当前链时：
 
-- launcher 先把 token 转给 `YieldDispatcher`
-- 再由 launcher 直接调用 `YieldDispatcher.distributeSameChain`
+- launcher 先把 token 转给 `YieldDispatcherUpgradeable`
+- 再由 launcher 直接调用 `YieldDispatcherUpgradeable.distributeSameChain`
 
 因此本链场景并不一定经过真正的跨链 message round-trip。
 
@@ -33,7 +33,7 @@
 
 - launcher 先构造 OFT send 参数
 - token 通过 OFT 发送到治理链
-- 治理链先在 `lzReceive` 阶段接收 OFT，再由 LayerZero endpoint 调用 `YieldDispatcher` 的 `lzCompose` compose 回调完成最终路由
+- 治理链先在 `lzReceive` 阶段接收 OFT，再由 LayerZero endpoint 调用 `YieldDispatcherUpgradeable` 的 `lzCompose` compose 回调完成最终路由
 
 ### 3.3 两类 token 的终点
 
@@ -48,7 +48,7 @@
 
 > no-code receiver 现按 `tokenType` 分流：MEMECOIN 走 `IBurnable(token).burn(amount)`（`isBurned = true`）；UASSET 走 `_transferOut(token, protocolTreasury, amount)`（`isBurned` 恒为 `false`——uAsset 是仓库外 OFT，无公开单参 `burn(uint256)`，原为 revert/滞留，现改为路由 `protocolTreasury`）。该 UASSET→`protocolTreasury` 路由仅经 permissionless 直接 OFT send 命名 EOA/无代码 receiver 时可达（协议发送端恒编码 `governor`/`yieldVault`），sender 自有 uAsset 等同捐赠给 `protocolTreasury`（原为 revert/滞留）。`protocolTreasury` 为协议级单一金库，经 `initialize` 传入、`onlyOwner` 的 `setProtocolTreasury` 可改（非零校验）。
 
-因此 `YieldDispatcher` 不是只处理 memecoin yield，而是统一处理 yield / treasury 两类协议收入。
+因此 `YieldDispatcherUpgradeable` 不是只处理 memecoin yield，而是统一处理 yield / treasury 两类协议收入。
 
 ### 3.4 Compose 失败后的 retry
 
@@ -97,7 +97,7 @@
 
 ### 4.4 阶段与 vault 部署状态
 
-跨链 staking 无 verse 阶段门控：`MemeverseOmnichainInteroperation.sol::memecoinStaking` 与 `::quoteMemecoinStaking` 的异链/远端分支均不检查 verse 阶段或 gov 链 vault 部署状态（本链分支的 vault-code 检查见 §4.1 与 §4.3）。compose 消息编码的 vault word 取源链本地 `verse.yieldVault`（`MemeverseOmnichainInteroperation.sol::_buildStakingSendParam` 编码 composeMsg；该字段的唯一赋值点 `MemeverseLaunchImpl.sol::_deployAndSetupMemeverse` 内 `verse.yieldVault = yieldVault` 仅在源链完成 Genesis→Locked 后执行）。`MemeverseLauncher.sol::changeStage` 为 per-chain、permissionless 的本地执行（无跨链同步），故 vault-absent fallback 的触发面包含两种情形：① 源链未完成 Genesis→Locked——compose 的 vault word 取源链本地 `verse.yieldVault`，此时为零地址，即使 gov 链 vault 已部署（部署顺序完全正确），远端 staking 仍静默降级；② gov 链未进入 Locked——gov 链仍在 Genesis 或进入 Refund 终态（Refund 后 vault 永不部署）时，其 yieldVault 未部署。两种情形下远端 staking 的 compose 均在 `OmnichainMemecoinStaker.sol::lzCompose` 命中 vault-absent fallback（含脏/零 vault word 处理），到账 memecoin 直接转给 receiver——非质押、无 vault 份额/投票权。`quoteMemecoinStaking` 仅返回 LZ fee，不反映目标链 vault 部署状态，调用方无法在发送前得知该降级。多链 verse 应确保 gov 链与所有可能发起 staking 的源链均先完成 Genesis→Locked，避免静默降级。
+跨链 staking 无 verse 阶段门控：`MemeverseOmnichainInteroperation.sol::memecoinStaking` 与 `::quoteMemecoinStaking` 的异链/远端分支均不检查 verse 阶段或 gov 链 vault 部署状态（本链分支的 vault-code 检查见 §4.1 与 §4.3）。compose 消息编码的 vault word 取源链本地 `verse.yieldVault`（`MemeverseOmnichainInteroperation.sol::_buildStakingSendParam` 编码 composeMsg；该字段的唯一赋值点 `MemeverseLaunchImpl.sol::_deployAndSetupMemeverse` 内 `verse.yieldVault = yieldVault` 仅在源链完成 Genesis→Locked 后执行）。`MemeverseLauncherUpgradeable.sol::changeStage` 为 per-chain、permissionless 的本地执行（无跨链同步），故 vault-absent fallback 的触发面包含两种情形：① 源链未完成 Genesis→Locked——compose 的 vault word 取源链本地 `verse.yieldVault`，此时为零地址，即使 gov 链 vault 已部署（部署顺序完全正确），远端 staking 仍静默降级；② gov 链未进入 Locked——gov 链仍在 Genesis 或进入 Refund 终态（Refund 后 vault 永不部署）时，其 yieldVault 未部署。两种情形下远端 staking 的 compose 均在 `OmnichainMemecoinStaker.sol::lzCompose` 命中 vault-absent fallback（含脏/零 vault word 处理），到账 memecoin 直接转给 receiver——非质押、无 vault 份额/投票权。`quoteMemecoinStaking` 仅返回 LZ fee，不反映目标链 vault 部署状态，调用方无法在发送前得知该降级。多链 verse 应确保 gov 链与所有可能发起 staking 的源链均先完成 Genesis→Locked，避免静默降级。
 
 ### 4.5 金额截断、余量退款与源链事件语义
 
@@ -117,7 +117,7 @@
 
 ## 6. compose 回调与 replay 防护
 
-`YieldDispatcher` 和 `OmnichainMemecoinStaker` 都依赖 compose 回调处理跨链到账。
+`YieldDispatcherUpgradeable` 和 `OmnichainMemecoinStaker` 都依赖 compose 回调处理跨链到账。
 
 replay 防护规则本体（endpoint 路径检查 `guid` 未执行、置 Settled（CEI）后结算，`Released` 态幂等放行）见 [docs/spec/invariants.md INV-10](../invariants.md) 与 [docs/spec/interoperation/layerzero-oapp-oft.md §4](layerzero-oapp-oft.md)。
 
@@ -138,7 +138,7 @@ replay 防护规则本体（endpoint 路径检查 `guid` 未执行、置 Settled
 ## 8. 当前实现提醒
 
 - 本链 fast path 和异链 compose path 共享同一个高层收益路由语义
-- `YieldDispatcher` 是当前业务语义名称，应作为跨链收益路由模块的正式称呼
+- `YieldDispatcherUpgradeable` 是当前业务语义名称，应作为跨链收益路由模块的正式称呼
 - 互操作路径里的安全关键点不是 UI 或脚本，而是链上 exact fee 与 replay 防护
 
 ## 9. 相关真源与证据

@@ -59,7 +59,7 @@ contract GenesisCredit is OFT, IGenesisCredit {
 
     /// @notice Merkle airdrop claim. Only callable on the home chain.
     /// @dev Order matters: chain gate -> amount -> double-claim -> proof. Total supply is not
-    ///      capped locally; it is bounded upstream by the POLend debt cap + aggregate
+    ///      capped locally; it is bounded upstream by the POLendUpgradeable debt cap + aggregate
     ///      `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` that governs how much credit-minted debt may enter
     ///      a verse. Each user may claim at most once (`claimed` guard).
     /// @param amount Allocation amount for msg.sender.

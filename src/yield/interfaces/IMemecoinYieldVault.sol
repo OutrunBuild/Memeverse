@@ -120,7 +120,7 @@ interface IMemecoinYieldVault is IERC20 {
     ///      dispatcher's `settlePendingCompose` verifies both against the endpoint's composeQueue. The entry also
     ///      verifies the message's inner receiver is this vault (revert `NotComposeBeneficiary`) and that the
     ///      settlement returned a non-zero amount (revert `ComposeSettlementFailed`).
-    /// @param dispatcher YieldDispatcher the stuck compose was delivered to.
+    /// @param dispatcher YieldDispatcherUpgradeable the stuck compose was delivered to.
     /// @param guid LayerZero compose guid for the failed yield transfer.
     /// @param message The original compose payload.
     function reAccumulateYields(address dispatcher, bytes32 guid, bytes calldata message) external;

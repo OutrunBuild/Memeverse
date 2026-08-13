@@ -25,7 +25,7 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
@@ -105,7 +105,7 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
     address internal constant REFERRER = address(0xCAFE);
 
     IPoolManager internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     /// @dev Interface alias for the hook Router's rebate custody and views.
     IMemeverseUniswapHook internal engine;
     RealV4SwapIntegrator internal integrator;
@@ -129,7 +129,7 @@ contract MemeverseReferralRebateRealV4PoC is Test, HookStorageHelper {
 
         // 3. Deploy the real hook/LP stack at a flag-address proxy.
         address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         // Rebate assertions use the hook's Router interface.
         engine = hook;
         vm.label(hookProxy, "HookProxy");

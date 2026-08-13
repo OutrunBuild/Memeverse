@@ -31,7 +31,7 @@ import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
@@ -40,7 +40,7 @@ contract RouterSettlementAccountingHandler is Test {
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MemeverseSwapRouter internal router;
-    MemeverseUniswapHook internal immutable hook;
+    MemeverseUniswapHookUpgradeable internal immutable hook;
     MockERC20 internal immutable token0;
     address internal immutable treasury;
     PoolKey internal key;
@@ -48,7 +48,7 @@ contract RouterSettlementAccountingHandler is Test {
     uint256 public expectedRegularTreasuryFee;
     uint256 public expectedMarkerTreasuryFee;
 
-    constructor(MemeverseUniswapHook _hook, MockERC20 _token0, address _treasury, PoolKey memory _key) {
+    constructor(MemeverseUniswapHookUpgradeable _hook, MockERC20 _token0, address _treasury, PoolKey memory _key) {
         hook = _hook;
         token0 = _token0;
         treasury = _treasury;
@@ -141,7 +141,7 @@ contract RouterSettlementSpoofHandler is Test {
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MemeverseSwapRouter internal immutable router;
-    MemeverseUniswapHook internal immutable hook;
+    MemeverseUniswapHookUpgradeable internal immutable hook;
     MockERC20 internal immutable token0;
     address internal immutable treasury;
     PoolKey internal key;
@@ -150,7 +150,7 @@ contract RouterSettlementSpoofHandler is Test {
 
     constructor(
         MemeverseSwapRouter _router,
-        MemeverseUniswapHook _hook,
+        MemeverseUniswapHookUpgradeable _hook,
         MockERC20 _token0,
         address _treasury,
         PoolKey memory _key
@@ -210,7 +210,7 @@ contract MemeverseSwapRouterSettlementInvariantTest is StdInvariant, Test, HookS
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MockPoolManagerForRouterTest internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseSwapRouter internal router;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -222,12 +222,12 @@ contract MemeverseSwapRouterSettlementInvariantTest is StdInvariant, Test, HookS
 
     function _deployHookProxy(IPoolManager manager_, address owner_, address treasury_)
         internal
-        returns (MemeverseUniswapHook deployed)
+        returns (MemeverseUniswapHookUpgradeable deployed)
     {
-        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // Deploy the real MemeverseUniswapHookUpgradeable behind a CREATE2-mined flag-address proxy so production
         // `_validateProxyHookAddress` and facet bindings are exercised.
         address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
-        deployed = MemeverseUniswapHook(hookProxy);
+        deployed = MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
     /// @notice Deploys the router settlement invariant harness.

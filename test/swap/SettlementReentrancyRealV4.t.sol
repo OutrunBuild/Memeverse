@@ -11,7 +11,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
@@ -32,7 +32,7 @@ contract SettlementReentrancyRealV4Test is Test, HookStorageHelper {
     bytes4 internal constant _WRAPPED_ERROR_SELECTOR = bytes4(0x90bfb865);
 
     IPoolManager internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     SettlementSettleReenterer internal callbackToken;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -56,7 +56,7 @@ contract SettlementReentrancyRealV4Test is Test, HookStorageHelper {
         token1.mint(address(callbackToken), 100 ether);
 
         address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         hook.setPoolInitializer(address(this));
 
         token0.approve(address(hook), type(uint256).max);

@@ -8,7 +8,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {POLend} from "../../src/polend/POLend.sol";
+import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {
@@ -253,7 +253,7 @@ contract POLendTest is Test, POLendStorageHelper {
     MockPOL internal pol;
     MockLauncherForPOLend internal launcher;
     MockSplitterForPOLend internal splitter;
-    POLend internal polend;
+    POLendUpgradeable internal polend;
 
     function setUp() external {
         uAsset = new BurnableMockERC20("UASSET", "UASSET");
@@ -293,27 +293,27 @@ contract POLendTest is Test, POLendStorageHelper {
         address treasury,
         address launcher_,
         address splitter_
-    ) internal returns (POLend deployed) {
-        POLend implementation = new POLend();
+    ) internal returns (POLendUpgradeable deployed) {
+        POLendUpgradeable implementation = new POLendUpgradeable();
         return _deployPOLendWithImplementation(
             implementation, interestRate, leveragedDebtFactor, treasury, launcher_, splitter_, address(this)
         );
     }
 
     function _deployPOLendWithImplementation(
-        POLend implementation,
+        POLendUpgradeable implementation,
         uint256 interestRate,
         uint256 leveragedDebtFactor,
         address treasury,
         address launcher_,
         address splitter_,
         address creditFactory_
-    ) internal returns (POLend deployed) {
+    ) internal returns (POLendUpgradeable deployed) {
         bytes memory data = abi.encodeCall(
-            POLend.initialize,
+            POLendUpgradeable.initialize,
             (address(this), interestRate, leveragedDebtFactor, treasury, launcher_, splitter_, creditFactory_)
         );
-        return POLend(address(new ERC1967Proxy(address(implementation), data)));
+        return POLendUpgradeable(address(new ERC1967Proxy(address(implementation), data)));
     }
 
     function _fundDustReserveFromAlice(uint256 amount) internal {
@@ -325,30 +325,30 @@ contract POLendTest is Test, POLendStorageHelper {
     }
 
     function testInitialize_RevertsWhenInterestRateZeroOrAboveOne() external {
-        POLend implementation = new POLend();
+        POLendUpgradeable implementation = new POLendUpgradeable();
 
         vm.expectRevert(IPOLend.ZeroInput.selector);
         _deployPOLendWithImplementation(
             implementation, 0, 10e18, address(this), address(launcher), address(splitter), address(this)
         );
 
-        implementation = new POLend();
+        implementation = new POLendUpgradeable();
 
         vm.expectRevert(IPOLend.InvalidConfig.selector);
         _deployPOLendWithImplementation(
             implementation, 1e18 + 1, 10e18, address(this), address(launcher), address(splitter), address(this)
         );
 
-        implementation = new POLend();
+        implementation = new POLendUpgradeable();
 
         vm.expectRevert(IPOLend.ZeroInput.selector);
         _deployPOLendWithImplementation(
             implementation, 1e18, 0, address(this), address(launcher), address(splitter), address(this)
         );
 
-        implementation = new POLend();
+        implementation = new POLendUpgradeable();
 
-        POLend deployed = _deployPOLendWithImplementation(
+        POLendUpgradeable deployed = _deployPOLendWithImplementation(
             implementation,
             1e18,
             MAX_LEVERAGED_DEBT_FACTOR,
@@ -361,7 +361,7 @@ contract POLendTest is Test, POLendStorageHelper {
     }
 
     function testInitialize_RevertsWhenLeveragedDebtFactorExceedsMax() external {
-        POLend implementation = new POLend();
+        POLendUpgradeable implementation = new POLendUpgradeable();
 
         vm.expectRevert(IPOLend.InvalidConfig.selector);
         _deployPOLendWithImplementation(
@@ -376,21 +376,21 @@ contract POLendTest is Test, POLendStorageHelper {
     }
 
     function testInitialize_RevertsWhenRequiredAddressesAreZero() external {
-        POLend implementation = new POLend();
+        POLendUpgradeable implementation = new POLendUpgradeable();
 
         vm.expectRevert(IPOLend.ZeroInput.selector);
         _deployPOLendWithImplementation(
             implementation, 1e17, 10e18, address(0), address(launcher), address(splitter), address(this)
         );
 
-        implementation = new POLend();
+        implementation = new POLendUpgradeable();
 
         vm.expectRevert(IPOLend.ZeroInput.selector);
         _deployPOLendWithImplementation(
             implementation, 1e17, 10e18, address(this), address(0), address(splitter), address(this)
         );
 
-        implementation = new POLend();
+        implementation = new POLendUpgradeable();
 
         vm.expectRevert(IPOLend.ZeroInput.selector);
         _deployPOLendWithImplementation(
@@ -399,7 +399,7 @@ contract POLendTest is Test, POLendStorageHelper {
     }
 
     function testImplementationInitializerIsDisabled() external {
-        POLend implementation = new POLend();
+        POLendUpgradeable implementation = new POLendUpgradeable();
 
         vm.expectRevert(INVALID_INITIALIZATION_SELECTOR);
         implementation.initialize(
@@ -427,7 +427,7 @@ contract POLendTest is Test, POLendStorageHelper {
     }
 
     function testRegisterLendMarket_RevertsWhenSettlementDustReserveUnconfigured() external {
-        POLend localPolend = _deployPOLend(1e17, 10e18, address(this), address(launcher), address(splitter));
+        POLendUpgradeable localPolend = _deployPOLend(1e17, 10e18, address(this), address(launcher), address(splitter));
         uint256 verseId = 98;
         launcher.setVerseUAsset(verseId, address(uAsset));
 
@@ -489,7 +489,7 @@ contract POLendTest is Test, POLendStorageHelper {
     function testLeveragedGenesis_UsesFullPrecisionDebtMathForLargeInterest() external {
         uint256 largeInterest = uint256(type(uint128).max) / 2;
         uint256 verseId = 101;
-        POLend localPolend = _deployPOLend(1e18, 1e18, address(this), address(launcher), address(splitter));
+        POLendUpgradeable localPolend = _deployPOLend(1e18, 1e18, address(this), address(launcher), address(splitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, 0);
         launcher.setFundMetaData(address(uAsset), largeInterest, 1);
@@ -546,7 +546,7 @@ contract POLendTest is Test, POLendStorageHelper {
     // --- leveragedGenesisWithCredit ---
 
     /// @dev Stand up a fresh MockGenesisCreditFactory + credit token, register the
-    ///      (uAsset -> credit) pair, fund `user` with `amount` and approve POLend.
+    ///      (uAsset -> credit) pair, fund `user` with `amount` and approve POLendUpgradeable.
     function _setupCreditPath(address user, uint256 amount)
         internal
         returns (BurnableMockERC20 credit, MockGenesisCreditFactory factory)
@@ -609,7 +609,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
     /// @dev GenesisCredit is fixed at 18 decimals, so a 6-dec uAsset must not enter the credit path:
     ///     its raw credit units would be treated as raw uAsset interest, scaling debt / launch gate /
-    ///     YT / residual by 1e12. POLend must reject the mismatch on first credit-token resolution
+    ///     YT / residual by 1e12. POLendUpgradeable must reject the mismatch on first credit-token resolution
     ///     (after `creditOf` succeeds, before caching) with `CreditDecimalsMismatch(uAsset, credit)`.
     function test_RevertWhen_LeveragedGenesisWithCredit_CreditDecimalsMismatch() external {
         uint256 verseId = 300;
@@ -637,7 +637,8 @@ contract POLendTest is Test, POLendStorageHelper {
         // Configure tight debt cap: interestRate=1e18, factor=2e18, minTotalFund=100 → cap=200 debt.
         uint256 verseId = 250;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, 0);
         launcher.setFundMetaData(address(uAsset), 100, 1);
@@ -674,7 +675,8 @@ contract POLendTest is Test, POLendStorageHelper {
         // Mirrors the real-uAsset aggregate case (testLeveragedGenesis_...Aggregate...).
         uint256 verseId = 251;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, type(uint128).max);
         launcher.setFundMetaData(address(uAsset), 1, 1);
@@ -706,7 +708,8 @@ contract POLendTest is Test, POLendStorageHelper {
         // Mirrors the real-uAsset cumulative case (testLeveragedGenesis_...Cumulative...).
         uint256 verseId = 252;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, uint256(type(uint128).max) - 10);
         launcher.setFundMetaData(address(uAsset), 1, 1);
@@ -762,7 +765,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
     function testRegisterLendMarket_TargetABIReadsUAssetAndDoesNotInitializeTokens() external {
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e17, 10e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e17, 10e18, address(this), address(launcher), address(localSplitter));
         uint256 verseId = 99;
         launcher.setVerseUAsset(verseId, address(uAsset));
         localPolend.setMaxSettlementDustReserve(address(uAsset), uint128(MAX_SETTLEMENT_DUST));
@@ -781,7 +785,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
     function testRegisterLendMarket_RevertsOnDuplicateVerse() external {
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e17, 10e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e17, 10e18, address(this), address(launcher), address(localSplitter));
         uint256 verseId = 100;
         launcher.setVerseUAsset(verseId, address(uAsset));
         localPolend.setMaxSettlementDustReserve(address(uAsset), uint128(MAX_SETTLEMENT_DUST));
@@ -797,7 +802,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
     function testRegisterLendMarket_TreatsExistingUAssetAsRegisteredWhenRateIsZero() external {
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e17, 10e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e17, 10e18, address(this), address(launcher), address(localSplitter));
         uint256 verseId = 101;
         launcher.setVerseUAsset(verseId, address(uAsset));
         localPolend.setMaxSettlementDustReserve(address(uAsset), uint128(MAX_SETTLEMENT_DUST));
@@ -810,7 +816,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
     function testRegisterLendMarket_RevertsWhenLauncherReturnsZeroUAsset() external {
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e17, 10e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e17, 10e18, address(this), address(launcher), address(localSplitter));
         uint256 verseId = 102;
 
         vm.prank(address(launcher));
@@ -820,7 +827,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
     function testSetDefaultInterestRate_RevertsWhenDebtFactorAndRateCannotReachThreshold() external {
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e18, 1e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e18, 1e18, address(this), address(launcher), address(localSplitter));
 
         vm.expectRevert(IPOLend.InvalidConfig.selector);
         localPolend.setDefaultInterestRate(1);
@@ -831,7 +839,8 @@ contract POLendTest is Test, POLendStorageHelper {
     function testDebtCapacityAndLeveragedGenesis_DoNotPanicAtLargeFactorAndLargeFundBase() external {
         uint256 largeFactor = 2e18;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e18, largeFactor, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e18, largeFactor, address(this), address(launcher), address(localSplitter));
         uint256 verseId = 103;
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, 0);
@@ -852,7 +861,8 @@ contract POLendTest is Test, POLendStorageHelper {
         uint256 rate = 5e17;
         uint256 largeFactor = MAX_LEVERAGED_DEBT_FACTOR;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(rate, largeFactor, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(rate, largeFactor, address(this), address(launcher), address(localSplitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, 0);
         launcher.setFundMetaData(address(uAsset), type(uint128).max, 1);
@@ -872,7 +882,8 @@ contract POLendTest is Test, POLendStorageHelper {
         uint256 verseId = 108;
         uint256 rate = 1e18;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(rate, 2e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(rate, 2e18, address(this), address(launcher), address(localSplitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, type(uint128).max);
         launcher.setFundMetaData(address(uAsset), 1, 1);
@@ -893,7 +904,8 @@ contract POLendTest is Test, POLendStorageHelper {
     {
         uint256 verseId = 109;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, uint256(type(uint128).max) - 10);
         launcher.setFundMetaData(address(uAsset), 1, 1);
@@ -923,7 +935,8 @@ contract POLendTest is Test, POLendStorageHelper {
         // Then: borrow 1 more interest => debt would be 201 > 200 => reverts
         uint256 verseId = 150;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
-        POLend localPolend = _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, 0);
         launcher.setFundMetaData(address(uAsset), 100, 1);
@@ -950,7 +963,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
     function testGetLeveragedDebtInfo_UsesCeilDerivedRemainingInterestCapacity() external {
         uint256 verseId = 106;
-        POLend localPolend = _deployPOLend(0.7 ether, 2 ether, address(this), address(launcher), address(splitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(0.7 ether, 2 ether, address(this), address(launcher), address(splitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         launcher.setGenesisFunds(verseId, 0);
         launcher.setFundMetaData(address(uAsset), 1, 1);
@@ -1016,7 +1030,7 @@ contract POLendTest is Test, POLendStorageHelper {
     // --- finalizeLeveragedGenesis: credit-aware split & burn ---
 
     /// @notice Mixed-source finalize: the full real-uAsset slice sweeps to the treasury; the
-    ///         credit-funded slice is burned in-place from POLend's escrow.
+    ///         credit-funded slice is burned in-place from POLendUpgradeable's escrow.
     function test_Finalize_RealInterestSweepsToTreasuryCreditBurned() external {
         // Real 100e18 (uAsset) + credit 50e18 (mock credit) => aggregate 150e18 interest,
         // debt = 150e18 / 0.1e18 = 1_500e18.
@@ -1210,7 +1224,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
     function testClaimRefund_BlocksReentrantClaim() external {
         ReentrantClaimMockERC20 hookedUAsset = new ReentrantClaimMockERC20("HOOK", "HOOK");
-        POLend localPolend = _deployPOLend(1e17, 10e18, address(this), address(launcher), address(splitter));
+        POLendUpgradeable localPolend = _deployPOLend(1e17, 10e18, address(this), address(launcher), address(splitter));
         uint256 verseId = 201;
         launcher.setVerseUAsset(verseId, address(hookedUAsset));
         localPolend.setMaxSettlementDustReserve(address(hookedUAsset), uint128(MAX_SETTLEMENT_DUST));
@@ -1367,7 +1381,7 @@ contract POLendTest is Test, POLendStorageHelper {
     }
 
     /// @dev Stand up a fresh MockGenesisCreditFactory + credit token for the given uAsset and
-    ///      wire it into POLend. Returns the credit token so tests can mint/inspect balances.
+    ///      wire it into POLendUpgradeable. Returns the credit token so tests can mint/inspect balances.
     function _wireCreditFactoryForUAsset(address uAsset_) internal returns (BurnableMockERC20 credit) {
         MockGenesisCreditFactory factory = new MockGenesisCreditFactory();
         credit = new BurnableMockERC20("CREDIT", "CREDIT");
@@ -1412,7 +1426,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
     function testClaimLeveragedYT_UsesInterestShareInsteadOfRoundedDebtShare() external {
         uint256 verseId = 104;
-        POLend localPolend = _deployPOLend(3, 1e36, address(this), address(launcher), address(splitter));
+        POLendUpgradeable localPolend = _deployPOLend(3, 1e36, address(this), address(launcher), address(splitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         localPolend.setMaxSettlementDustReserve(address(uAsset), uint128(MAX_SETTLEMENT_DUST));
         vm.prank(address(launcher));
@@ -1547,7 +1561,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
     function testClaimResidual_UsesInterestShareInsteadOfRoundedDebtShare() external {
         uint256 verseId = 105;
-        POLend localPolend = _deployPOLend(3, 1e36, address(this), address(launcher), address(splitter));
+        POLendUpgradeable localPolend = _deployPOLend(3, 1e36, address(this), address(launcher), address(splitter));
         launcher.setVerseUAsset(verseId, address(uAsset));
         localPolend.setMaxSettlementDustReserve(address(uAsset), uint128(MAX_SETTLEMENT_DUST));
         vm.prank(address(launcher));
@@ -1672,7 +1686,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
     /// @notice F-38 lock-in (spec settlement-and-fees.md L769): residual payout floors to
     ///         `mulDiv(residual, paid, totalLeveragedInterest)`. Non-divisible shares leave the
-    ///         rounding dust on POLend's balance forever (L558: no sweep), and both participants'
+    ///         rounding dust on POLendUpgradeable's balance forever (L558: no sweep), and both participants'
     ///         claim flags are consumed even though Σ payout < residual.
     function testClaimResidual_NonDivisibleShares_LeavesDustInPOLend() external {
         // ALICE 1 / BOB 2 of totalLeveragedInterest 3; rate 1e17 => debt = 30 wei.
@@ -1698,8 +1712,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
         uint256 totalClaimed = aliceUAsset + bobUAsset;
         assertLt(totalClaimed, residualUAsset, "sum of floor shares < residual");
-        // L558 design: the 1 wei rounding dust is never swept and stays on POLend's balance.
-        assertEq(uAsset.balanceOf(address(polend)), residualUAsset - totalClaimed, "dust stays in POLend");
+        // L558 design: the 1 wei rounding dust is never swept and stays on POLendUpgradeable's balance.
+        assertEq(uAsset.balanceOf(address(polend)), residualUAsset - totalClaimed, "dust stays in POLendUpgradeable");
         assertEq(uAsset.balanceOf(CAROL), totalClaimed, "recipient received exactly the floor shares");
 
         // Both claim flags consumed: a second call reverts InvalidClaim.
@@ -1733,7 +1747,7 @@ contract POLendTest is Test, POLendStorageHelper {
         assertEq(uAssetAmount, 0, "zero uAsset payout");
         assertEq(memecoinAmount, 0, "zero memecoin payout");
         assertEq(uAsset.balanceOf(CAROL), 0, "nothing transferred");
-        assertEq(uAsset.balanceOf(address(polend)), 1, "residual stays in POLend");
+        assertEq(uAsset.balanceOf(address(polend)), 1, "residual stays in POLendUpgradeable");
 
         // Flag consumed despite zero payout.
         vm.prank(ALICE);
@@ -1941,7 +1955,8 @@ contract POLendTest is Test, POLendStorageHelper {
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
         localSplitter.setTokens(address(pt), address(yt));
         localSplitter.setSplitInfo(address(pol), address(memecoin), address(uAsset));
-        POLend localPolend = _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
+        POLendUpgradeable localPolend =
+            _deployPOLend(1e18, 2e18, address(this), address(launcher), address(localSplitter));
 
         uint256 verseId = 200;
         launcher.setVerseUAsset(verseId, address(uAsset));

@@ -8,7 +8,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
@@ -85,7 +85,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
     IMemeverseLauncher internal launcher;
     address internal launcherProxy;
     IMemeverseFeePreviewReader internal feePreviewReader;
-    /// @notice Pure proxy (implementation = MemeverseLauncher without *ForTest helpers)
+    /// @notice Pure proxy (implementation = MemeverseLauncherUpgradeable without *ForTest helpers)
     ///         for selector/ABI surface validation independent of test-only state helpers.
     address internal pureLauncher;
     MockERC20 internal uAssetToken;
@@ -100,12 +100,12 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         ytToken = new MockERC20("YT", "YT", 18);
         polend = new MockPOLendForViews();
         splitter = new MockPOLSplitterForViews(address(ytToken));
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -132,14 +132,14 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));
         feePreviewReader = new MemeverseFeePreviewReader(launcherProxy);
 
-        // Deploy a pure proxy (implementation = pure MemeverseLauncher, no *ForTest helpers)
+        // Deploy a pure proxy (implementation = pure MemeverseLauncherUpgradeable, no *ForTest helpers)
         // for selector / ABI surface validation.
-        MemeverseLauncher pureImpl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable pureImpl = new MemeverseLauncherUpgradeable();
         pureLauncher = address(
             new ERC1967Proxy(
                 address(pureImpl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -557,17 +557,17 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
         launcher.genesis(1, 0, ALICE);
 
-        MemeverseLauncher(launcherProxy).pause();
+        MemeverseLauncherUpgradeable(launcherProxy).pause();
         vm.expectRevert(Pausable.EnforcedPause.selector);
         launcher.genesis(1, 1 ether, ALICE);
-        MemeverseLauncher(launcherProxy).unpause();
+        MemeverseLauncherUpgradeable(launcherProxy).unpause();
 
         uAssetToken.mint(address(this), 1 ether);
         uAssetToken.approve(address(launcher), type(uint256).max);
         launcher.genesis(1, 1 ether, ALICE);
 
-        uint256 _totalNormalFunds = MemeverseLauncher(launcherProxy).totalNormalFunds(1);
-        (uint256 genesisFund,,) = MemeverseLauncher(launcherProxy).userGenesisData(1, ALICE);
+        uint256 _totalNormalFunds = MemeverseLauncherUpgradeable(launcherProxy).totalNormalFunds(1);
+        (uint256 genesisFund,,) = MemeverseLauncherUpgradeable(launcherProxy).userGenesisData(1, ALICE);
         assertEq(_totalNormalFunds, 1 ether);
         assertEq(genesisFund, 1 ether);
     }
@@ -584,11 +584,11 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         launcher.genesis(1, 1 ether, ALICE);
 
         assertEq(
-            MemeverseLauncher(launcherProxy).totalNormalFunds(1),
+            MemeverseLauncherUpgradeable(launcherProxy).totalNormalFunds(1),
             MAX_SUPPORTED_FUND_BASED_AMOUNT + 1 ether,
             "funds increased"
         );
-        (uint256 genesisFund,,) = MemeverseLauncher(launcherProxy).userGenesisData(1, ALICE);
+        (uint256 genesisFund,,) = MemeverseLauncherUpgradeable(launcherProxy).userGenesisData(1, ALICE);
         assertEq(genesisFund, 1 ether, "genesis fund tracked");
     }
 
@@ -604,11 +604,11 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         launcher.genesis(1, 10, ALICE);
 
         assertEq(
-            MemeverseLauncher(launcherProxy).totalNormalFunds(1),
+            MemeverseLauncherUpgradeable(launcherProxy).totalNormalFunds(1),
             MAX_SUPPORTED_FUND_BASED_AMOUNT + 5,
             "funds crossed old cap"
         );
-        (uint256 genesisFund,,) = MemeverseLauncher(launcherProxy).userGenesisData(1, ALICE);
+        (uint256 genesisFund,,) = MemeverseLauncherUpgradeable(launcherProxy).userGenesisData(1, ALICE);
         assertEq(genesisFund, 10, "genesis fund recorded");
     }
 
@@ -642,7 +642,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         vm.prank(ALICE);
         uint256 refunded = launcher.refund(1);
 
-        (uint256 genesisFund, bool isRefunded,) = MemeverseLauncher(launcherProxy).userGenesisData(1, ALICE);
+        (uint256 genesisFund, bool isRefunded,) = MemeverseLauncherUpgradeable(launcherProxy).userGenesisData(1, ALICE);
         assertEq(refunded, 1 ether);
         assertEq(genesisFund, 1 ether);
         assertTrue(isRefunded);
@@ -663,7 +663,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         vm.expectRevert(IMemeverseLauncher.InvalidClaim.selector);
         launcher.claimNormalYT(1);
 
-        MemeverseLauncher(launcherProxy).pause();
+        MemeverseLauncherUpgradeable(launcherProxy).pause();
         vm.prank(ALICE);
         vm.expectRevert(Pausable.EnforcedPause.selector);
         launcher.claimNormalYT(1);
@@ -709,7 +709,8 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
 
         launcher.preorder(1, 1 ether, ALICE);
 
-        (uint256 preorderFunds,, bool isRefunded) = MemeverseLauncher(launcherProxy).userPreorderData(1, ALICE);
+        (uint256 preorderFunds,, bool isRefunded) =
+            MemeverseLauncherUpgradeable(launcherProxy).userPreorderData(1, ALICE);
         assertEq(preorderFunds, 1 ether, "preorder accepted");
         assertFalse(isRefunded, "not refunded");
     }
@@ -727,7 +728,8 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
 
         launcher.preorder(1, 1, ALICE);
 
-        (uint256 preorderFunds,, bool isRefunded) = MemeverseLauncher(launcherProxy).userPreorderData(1, ALICE);
+        (uint256 preorderFunds,, bool isRefunded) =
+            MemeverseLauncherUpgradeable(launcherProxy).userPreorderData(1, ALICE);
         assertEq(preorderFunds, 1, "preorder accepted");
         assertFalse(isRefunded, "not refunded");
     }

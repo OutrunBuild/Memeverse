@@ -9,7 +9,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
@@ -17,7 +17,7 @@ import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
@@ -37,9 +37,9 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
     uint32 internal constant REMOTE_EID = 302;
 
     MockPoolManagerForRouterTest internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseSwapRouter internal router;
-    MemeverseLauncher internal launcher;
+    MemeverseLauncherUpgradeable internal launcher;
     MockLauncherIntegrationProxyDeployer internal proxyDeployer;
     MockLauncherIntegrationLzEndpointRegistry internal registry;
     MockPOLendForPreorderIntegration internal polend;
@@ -58,9 +58,9 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
         yt = new MockERC20("YT", "YT", 18);
         polend = new MockPOLendForPreorderIntegration();
         splitter = new MockPOLSplitterForPreorderIntegration(address(pt), address(yt));
-        MemeverseLauncher launcherImplementation = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable launcherImplementation = new MemeverseLauncherUpgradeable();
         bytes memory launcherInitData = abi.encodeCall(
-            MemeverseLauncher.initialize,
+            MemeverseLauncherUpgradeable.initialize,
             (
                 address(this),
                 address(0x1111),
@@ -77,13 +77,14 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
                 7 days
             )
         );
-        launcher = MemeverseLauncher(address(new ERC1967Proxy(address(launcherImplementation), launcherInitData)));
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
+        launcher =
+            MemeverseLauncherUpgradeable(address(new ERC1967Proxy(address(launcherImplementation), launcherInitData)));
+        // Real MemeverseUniswapHookUpgradeable deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
         // hookOwner = address(this), treasury = address(this).
         address hookProxy =
             deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), address(this), address(launcher));
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),

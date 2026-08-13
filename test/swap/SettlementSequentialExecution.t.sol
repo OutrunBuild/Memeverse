@@ -14,7 +14,7 @@ import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 
@@ -27,7 +27,7 @@ contract SettlementSequentialExecutionTest is Test, HookStorageHelper {
     uint256 internal constant Q128 = uint256(1) << 128;
 
     IPoolManager internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MockERC20 internal inputToken;
     MockERC20 internal outputToken;
     PoolKey internal settlementPoolKey;
@@ -42,7 +42,7 @@ contract SettlementSequentialExecutionTest is Test, HookStorageHelper {
         outputToken.mint(address(this), 1_000_000 ether);
 
         address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
 
         hook.setPoolInitializer(address(this));
         inputToken.approve(address(hook), type(uint256).max);

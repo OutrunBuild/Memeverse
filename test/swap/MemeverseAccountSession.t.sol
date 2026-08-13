@@ -14,7 +14,7 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
@@ -42,7 +42,7 @@ contract MemeverseAccountSessionTest is Test, HookStorageHelper {
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MockPoolManagerForHookLiquidity internal mockManager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MockERC20 internal token0;
     MockERC20 internal token1;
     PoolKey internal key;
@@ -269,9 +269,9 @@ contract MemeverseAccountSessionTest is Test, HookStorageHelper {
         this.test_RevertIf_AfterSwapWithoutMatchingContext();
     }
 
-    function _deployHookProxy(address owner_, address treasury_) internal returns (MemeverseUniswapHook) {
+    function _deployHookProxy(address owner_, address treasury_) internal returns (MemeverseUniswapHookUpgradeable) {
         address hookProxy = deployHookAtFlagAddress(IPoolManager(address(mockManager)), owner_, treasury_);
-        return MemeverseUniswapHook(hookProxy);
+        return MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
     function _addLiquidity() internal {
@@ -380,7 +380,7 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
     uint160 internal constant REAL_SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     IPoolManager internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     SessionSwapIntegrator internal integrator;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -413,7 +413,7 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
 
         // 3. Real flag-address hook (UUPS proxy + 3 facets + LP impl), treasury = address(this).
         address hookProxy = deployHookAtFlagAddress(manager, address(this), address(this));
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         vm.label(hookProxy, "HookProxy");
 
         // 4. No-trader real-v4 integrator.

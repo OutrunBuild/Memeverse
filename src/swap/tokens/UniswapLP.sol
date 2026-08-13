@@ -6,7 +6,7 @@ import {Owned} from "solmate/auth/Owned.sol";
 import {OutrunERC20PermitInit} from "../../common/token/OutrunERC20PermitInit.sol";
 import {IMemeverseUniswapHook, PoolId} from "../interfaces/IMemeverseUniswapHook.sol";
 
-/// @notice LP Token For MemeverseUniswapHook
+/// @notice LP Token For MemeverseUniswapHookUpgradeable
 /// @dev The ERC20 + EIP-2612 permit surface is inherited from the common `OutrunERC20PermitInit` base
 ///      (`OutrunERC20Init` / `OutrunNoncesInit` / `OutrunEIP712Init`); this contract adds only the
 ///      clone-specific pool fields, the owner-gated mint/burn, and the transfer snapshot callback.

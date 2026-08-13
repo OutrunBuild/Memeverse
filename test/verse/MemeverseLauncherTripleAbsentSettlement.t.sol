@@ -11,18 +11,18 @@ import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {RealisticSwapManagerHarness} from "../swap/helpers/RealisticSwapManagerHarness.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
-import {POLend} from "../../src/polend/POLend.sol";
-import {POLSplitter} from "../../src/polend/POLSplitter.sol";
+import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
+import {POLSplitterUpgradeable} from "../../src/polend/POLSplitterUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
@@ -35,16 +35,16 @@ import {MockGenesisCreditFactory} from "../mocks/credit/MockGenesisCreditFactory
 
 /// @notice Probes the "triple-absent" verse: NO normal genesis funds, NO preorder, and leveraged
 ///         genesis funded ENTIRELY via GenesisCredit. Drives the REAL swap stack (PoolManager + Hook +
-///         Router) + real POLend/POLSplitter all the way Genesis -> Locked -> Unlocked so that
-///         POLSplitter.settle() and POLend.executeGlobalSettlement() run against genuine LP removal /
+///         Router) + real POLendUpgradeable/POLSplitterUpgradeable all the way Genesis -> Locked -> Unlocked so that
+///         POLSplitterUpgradeable.settle() and POLendUpgradeable.executeGlobalSettlement() run against genuine LP removal /
 ///         PT redemption, exposing any dust-gap revert that preset-mock tests cannot reach.
 ///
 /// @dev This isolates reserve underfunding after removing interest auto-refill. With credit-only
 ///      leverage and no normal funds, finalize contributes no real-uAsset interest to the reserve;
 ///      the only automatic reserve seed is the bootstrap deployment residual. That residual under-covers
 ///      the settlement-side LP-removal/PT-redeem rounding deficit by ~1 wei, so `executeGlobalSettlement`
-///      reverts `SettlementDustInsufficient`. `POLSplitter.settle()` is expected to pass; the failure is
-///      POLend reserve coverage. (Exact wei magnitudes are v4 rounding artifacts — see the selector-only
+///      reverts `SettlementDustInsufficient`. `POLSplitterUpgradeable.settle()` is expected to pass; the failure is
+///      POLendUpgradeable reserve coverage. (Exact wei magnitudes are v4 rounding artifacts — see the selector-only
 ///      expectPartialRevert in the test body, which deliberately avoids pinning them.)
 contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherTestHelper, HookStorageHelper {
     using PoolIdLibrary for Currency;
@@ -56,14 +56,14 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
 
     // ── Real Uniswap v4 swap stack ──
     RealisticSwapManagerHarness internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseSwapRouter internal router;
 
-    // ── Real Launcher proxy + production POLend/POLSplitter ──
-    MemeverseLauncher internal launcher;
+    // ── Real Launcher proxy + production POLendUpgradeable/POLSplitterUpgradeable ──
+    MemeverseLauncherUpgradeable internal launcher;
     address internal launcherProxy;
-    POLend internal polend;
-    POLSplitter internal splitter;
+    POLendUpgradeable internal polend;
+    POLSplitterUpgradeable internal splitter;
 
     // ── Mocked periphery only ──
     MockLauncherSwapIntegrationProxyDeployer internal proxyDeployer;
@@ -85,15 +85,15 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
         dispatcher = new MockOFTDispatcher();
         uAsset = new UniversalAssetForPOLendSettlementInvariant();
 
-        // 3. Launcher proxy with placeholder POLend/Splitter (real ones injected afterwards).
+        // 3. Launcher proxy with placeholder POLendUpgradeable/Splitter (real ones injected afterwards).
         address placeholderPolend = address(0x10);
         address placeholderSplitter = address(0x11);
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1111),
@@ -112,12 +112,12 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
                 )
             )
         );
-        launcher = MemeverseLauncher(launcherProxy);
+        launcher = MemeverseLauncherUpgradeable(launcherProxy);
 
         // 4. Real Hook + Router.
         address hookProxy =
             deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY, address(launcher));
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
@@ -130,26 +130,27 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
         creditFactory = new MockGenesisCreditFactory();
         creditFactory.setCreditOf(address(uAsset), address(credit));
 
-        // 6. Real POLSplitter then real POLend. POLend's creditFactory now points at the real factory
+        // 6. Real POLSplitterUpgradeable then real POLendUpgradeable. POLendUpgradeable's creditFactory now points at the real factory
         //    (not the address(this) placeholder used by the non-credit settlement integration test).
-        POLSplitter splitterImpl = new POLSplitter();
-        splitter = POLSplitter(
+        POLSplitterUpgradeable splitterImpl = new POLSplitterUpgradeable();
+        splitter = POLSplitterUpgradeable(
             address(
                 new ERC1967Proxy(
-                    address(splitterImpl), abi.encodeCall(POLSplitter.initialize, (address(this), launcherProxy))
+                    address(splitterImpl),
+                    abi.encodeCall(POLSplitterUpgradeable.initialize, (address(this), launcherProxy))
                 )
             )
         );
-        POLend polendImpl = new POLend();
+        POLendUpgradeable polendImpl = new POLendUpgradeable();
         // interestRate = 0.1e18, leveragedDebtFactor = 10e18: 1 ether credit interest -> 10 ether debt,
         // which lands exactly on the debt cap (capBase collapses to minTotalFund = 1 ether at zero normal
         // funds, cap = 10 * 1 ether). Strict `>` gate accepts the equality.
-        polend = POLend(
+        polend = POLendUpgradeable(
             address(
                 new ERC1967Proxy(
                     address(polendImpl),
                     abi.encodeCall(
-                        POLend.initialize,
+                        POLendUpgradeable.initialize,
                         (
                             address(this),
                             0.1 ether,
@@ -164,7 +165,7 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
             )
         );
 
-        // 7. Inject real POLend/Splitter into Launcher proxy storage and allow unlimited dust reserve.
+        // 7. Inject real POLendUpgradeable/Splitter into Launcher proxy storage and allow unlimited dust reserve.
         setPolendForTest(launcherProxy, address(polend));
         setPolSplitterForTest(launcherProxy, address(splitter));
         polend.setMaxSettlementDustReserve(address(uAsset), type(uint128).max);
@@ -206,7 +207,7 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
         hook.setProtocolFeeCurrency(Currency.wrap(verse.pol), true);
     }
 
-    /// @dev Locks the verse by supplying 1 ether of GenesisCredit through the real POLend, then
+    /// @dev Locks the verse by supplying 1 ether of GenesisCredit through the real POLendUpgradeable, then
     ///      advancing the stage. No normal genesis() and no preorder() are ever called. finalize (run
     ///      inside the Genesis->Locked transition) mints 10 ether of uAsset debt to the launcher, burns
     ///      the escrowed credit, and — because realInterest == 0 — credits NOTHING to the dust reserve
@@ -222,7 +223,7 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
     }
 
     /// @dev Warps past unlockTime and advances the stage. The Locked -> Unlocked transition triggers
-    ///      POLSplitter.settle and, because leveraged debt is non-zero, POLend.executeGlobalSettlement.
+    ///      POLSplitterUpgradeable.settle and, because leveraged debt is non-zero, POLendUpgradeable.executeGlobalSettlement.
     function _unlockAndSettle() internal {
         IMemeverseLauncher.Memeverse memory verse = launcher.getMemeverseByVerseId(VERSE_ID);
         vm.warp(uint256(verse.unlockTime) + 1);
@@ -233,9 +234,9 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
     ///         real-stack settlement. Logs the reserve / debt magnitudes after lock so the bootstrap
     ///         residual and any settlement gap are observable in the trace.
     ///
-    /// @dev If POLSplitter.settle() reverts, the failure reason is `InvalidClaim` from the PT-backing
+    /// @dev If POLSplitterUpgradeable.settle() reverts, the failure reason is `InvalidClaim` from the PT-backing
     ///      invariant (settlementUAsset < _ptToUAsset(pt.totalSupply())) — zero preorder surplus means
-    ///      no margin against LP-removal rounding. If POLend.executeGlobalSettlement() reverts, the
+    ///      no margin against LP-removal rounding. If POLendUpgradeable.executeGlobalSettlement() reverts, the
     ///      reason is `SettlementDustInsufficient` — the bootstrap residual was too small to cover the
     ///      settlement-side rounding. If neither reverts, the triple-absent scenario is safe by
     ///      construction and the earlier concern was overcautious.
@@ -257,8 +258,8 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
         //    settlement deficit by 1 wei. realInterest == 0 (credit-only) so finalize credits no
         //    interest to the reserve; normalFunds == 0 so there is no normal-share surplus either.
         //    The settlement-side LP-removal / PT-redeem rounding is therefore uncovered, and
-        //    executeGlobalSettlement reverts SettlementDustInsufficient. POLSplitter.settle() passes;
-        //    the only revert is in POLend.executeGlobalSettlement.
+        //    executeGlobalSettlement reverts SettlementDustInsufficient. POLSplitterUpgradeable.settle() passes;
+        //    the only revert is in POLendUpgradeable.executeGlobalSettlement.
         // Inline the unlock so vm.expectPartialRevert sits immediately before the changeStage external call
         // (placing it before _unlockAndSettle() would consume the view getter getMemeverseByVerseId).
         // Selector-only match via expectPartialRevert: the invariant under test is "settlement reverts

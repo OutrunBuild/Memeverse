@@ -16,15 +16,15 @@ import {YieldToken} from "./tokens/YieldToken.sol";
 import {IMemeverseLauncher} from "../verse/interfaces/IMemeverseLauncher.sol";
 import {OutrunOwnableUpgradeable} from "../common/access/OutrunOwnableUpgradeable.sol";
 
-/// @title POLSplitter
+/// @title POLSplitterUpgradeable
 /// @notice Splits a verse's POL collateral into equal amounts of PrincipalToken (PT) and
 ///         YieldToken (YT), then after the verse settles redeems the collateral through the
 ///         launcher and distributes the recovered uAsset and memecoin to PT/YT holders.
 ///         PT (principal token) claims the fixed uAsset backing; YT (yield token) claims the
 ///         uAsset left after PT coverage plus all recovered memecoin — see `redeemPT`/`redeemYT`.
-///         Access model: the launcher deploys verses and settles them (onlyLauncher); POLend
+///         Access model: the launcher deploys verses and settles them (onlyLauncher); POLendUpgradeable
 ///         pre-redeems the PT fee for leveraged positions (onlyPOLend).
-contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
+contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
     is
     Initializable,
     OutrunOwnableUpgradeable,
@@ -156,10 +156,10 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         _;
     }
 
-    /// @notice One-time proxy initializer. Sets the owner, resolves the launcher and POLend
+    /// @notice One-time proxy initializer. Sets the owner, resolves the launcher and POLendUpgradeable
     ///         pointers, and deploys the PT/YT clone implementations used by `initializeVerse`.
     /// @dev Deployment-order dependency: `_launcher` must already be deployed with its `polend()`
-    ///      pointer set — the POLend address is read from the launcher here, not passed in.
+    ///      pointer set — the POLendUpgradeable address is read from the launcher here, not passed in.
     function initialize(address initialOwner, address _launcher) external initializer {
         if (_launcher == address(0)) revert ZeroInput();
 
@@ -255,7 +255,7 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         (settlementUAsset, settlementMemecoin) = _settlePOLCollateral(verseId, info);
         // `preRedeemPTFee` (called earlier from the launcher) already minted uAsset backing for a
         // PT-fee portion and recorded it here; that backing is not part of the PT-holder redemption
-        // pool, so deduct it before checking PT coverage and burn it back to POLend below.
+        // pool, so deduct it before checking PT coverage and burn it back to POLendUpgradeable below.
         PreRedeemedState storage state = polSplitterStorage.preRedeemedStates[verseId];
         uint256 preRedeemedUAssetBacking = state.uAssetBacking;
         if (settlementUAsset < preRedeemedUAssetBacking) revert InvalidClaim();
@@ -263,7 +263,7 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         // PT-solvency invariant: the remaining settlement uAsset must cover every outstanding PT
         // (total supply) at the recorded backing ratio, so all PT holders can always redeem in full.
         if (settlementUAsset < _ptReservedUAsset(info)) revert InvalidClaim();
-        // Reverse the earlier `preRedeemPTFee` accrual: repay the pre-redeemed uAsset to POLend so
+        // Reverse the earlier `preRedeemPTFee` accrual: repay the pre-redeemed uAsset to POLendUpgradeable so
         // its global debt ledger stays consistent, then clear the pre-redeemed record.
         if (preRedeemedUAssetBacking != 0) {
             address _polend = polSplitterStorage.polend;
@@ -305,13 +305,13 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
     }
 
     /// @notice Pre-redeem a PT-fee amount by burning PT held by the launcher (onlyPOLend). Called
-    ///         by POLend's `preRedeemPTFee` while the verse is Locked: POLend mints the uAsset
+    ///         by POLendUpgradeable's `preRedeemPTFee` while the verse is Locked: POLendUpgradeable mints the uAsset
     ///         backing to the caller-chosen `mintTo` (governance fee sink) and records the amount
-    ///         here in `preRedeemedStates`; `settle` later repays that amount to POLend out of the
+    ///         here in `preRedeemedStates`; `settle` later repays that amount to POLendUpgradeable out of the
     ///         settled uAsset, so the PT-holder redemption pool excludes the pre-redeemed portion.
     /// @dev Precondition: the launcher must hold at least `ptAmount` PT — the burn target is
     ///      always `polSplitterStorage.launcher`, so a missing balance reverts silently here.
-    ///      The backing uAsset itself is minted by POLend to `mintTo`, not to this contract.
+    ///      The backing uAsset itself is minted by POLendUpgradeable to `mintTo`, not to this contract.
     function preRedeemPTFee(uint256 verseId, uint256 ptAmount) external onlyPOLend returns (uint256 uAssetBacking) {
         SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
         if (info.settled) revert AlreadySettled();

@@ -6,7 +6,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {POLSplitter} from "../../src/polend/POLSplitter.sol";
+import {POLSplitterUpgradeable} from "../../src/polend/POLSplitterUpgradeable.sol";
 import {IPOLSplitter} from "../../src/polend/interfaces/IPOLSplitter.sol";
 import {PrincipalToken} from "../../src/polend/tokens/PrincipalToken.sol";
 import {YieldToken} from "../../src/polend/tokens/YieldToken.sol";
@@ -18,7 +18,7 @@ import {POLSplitterStorageHelper} from "../mocks/polend/POLSplitterStorageHelper
 
 contract MockLauncher {
     // Boundary note:
-    // This mock only drives launcher stage and unwrap selector wiring for POLSplitter unit tests.
+    // This mock only drives launcher stage and unwrap selector wiring for POLSplitterUpgradeable unit tests.
     // It does not prove real launcher/router asset-flow semantics.
     struct RedemptionSeed {
         uint256 uAssetAmount;
@@ -129,7 +129,7 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
     MockPOL internal otherPol;
     MockLauncher internal launcher;
     MockPOLendForSplitter internal polend;
-    POLSplitter internal splitter;
+    POLSplitterUpgradeable internal splitter;
     PrincipalToken internal pt;
     YieldToken internal yt;
 
@@ -159,14 +159,14 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
         yt = YieldToken(ytAddress);
     }
 
-    function _deploySplitter(address launcher_) internal returns (POLSplitter deployed) {
-        POLSplitter implementation = new POLSplitter();
-        bytes memory data = abi.encodeCall(POLSplitter.initialize, (address(this), launcher_));
-        return POLSplitter(address(new ERC1967Proxy(address(implementation), data)));
+    function _deploySplitter(address launcher_) internal returns (POLSplitterUpgradeable deployed) {
+        POLSplitterUpgradeable implementation = new POLSplitterUpgradeable();
+        bytes memory data = abi.encodeCall(POLSplitterUpgradeable.initialize, (address(this), launcher_));
+        return POLSplitterUpgradeable(address(new ERC1967Proxy(address(implementation), data)));
     }
 
     function testDeployTokens_RevertForNonLauncherOrRepeatDeployment() external {
-        POLSplitter otherSplitter = _deploySplitter(address(launcher));
+        POLSplitterUpgradeable otherSplitter = _deploySplitter(address(launcher));
 
         vm.prank(ALICE);
         vm.expectRevert(IPOLSplitter.PermissionDenied.selector);
@@ -269,7 +269,7 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
     }
 
     function testInitializeVerse_RejectsConfiguredPOLend() external {
-        POLSplitter otherSplitter = _deploySplitter(address(launcher));
+        POLSplitterUpgradeable otherSplitter = _deploySplitter(address(launcher));
         launcher.setPolend(ALICE);
 
         vm.prank(ALICE);
@@ -278,15 +278,15 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
     }
 
     function testImplementationInitializerIsDisabled() external {
-        POLSplitter implementation = new POLSplitter();
+        POLSplitterUpgradeable implementation = new POLSplitterUpgradeable();
 
         vm.expectRevert(INVALID_INITIALIZATION_SELECTOR);
         implementation.initialize(address(this), address(launcher));
     }
 
     function testProxyInitialization_RevertsOnZeroLauncher() external {
-        POLSplitter implementation = new POLSplitter();
-        bytes memory data = abi.encodeCall(POLSplitter.initialize, (address(this), address(0)));
+        POLSplitterUpgradeable implementation = new POLSplitterUpgradeable();
+        bytes memory data = abi.encodeCall(POLSplitterUpgradeable.initialize, (address(this), address(0)));
 
         vm.expectRevert(ZERO_INPUT_SELECTOR);
         new ERC1967Proxy(address(implementation), data);
@@ -779,7 +779,7 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
     ///      implementations (Clones.cloneDeterministic with salt bytes32(verseId)), so the
     ///      asserted addresses equal the actually deployed tokens.
     function testInitializeVerse_EmitsVerseInitializedEvent() external {
-        POLSplitter otherSplitter = _deploySplitter(address(launcher));
+        POLSplitterUpgradeable otherSplitter = _deploySplitter(address(launcher));
         address expectedPt = Clones.predictDeterministicAddress(
             otherSplitter.principalTokenImplementation(), bytes32(VERSE_ID), address(otherSplitter)
         );

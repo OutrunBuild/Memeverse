@@ -12,7 +12,7 @@ import {MockMessagingComposerEndpoint} from "../../mocks/infrastructure/MockMess
 /// @dev Pins the guard matrix of the shared fund-gate library `OFTComposeSettleVerify.verifySettle` directly, in order:
 ///      (1) zero queue slot -> NotDelivered, (2) RECEIVED sentinel -> AlreadyExecuted, (3) keccak256(message) mismatch
 ///      -> InvalidProof, (4) frame < COMPOSE_HEADER_LENGTH (76) -> MalformedComposeMsg, (5) success decodes amountLD
-///      ([12:44]) and composeMsg ([76:]) from the verified frame. The composer suites (YieldDispatcher /
+///      ([12:44]) and composeMsg ([76:]) from the verified frame. The composer suites (YieldDispatcherUpgradeable /
 ///      OmnichainMemecoinStaker) cover this library only through their own `settlePendingCompose` paths; this file
 ///      isolates the library so a guard regression is attributed to the gate itself, not to a caller-side change.
 ///      The library's `internal` function cannot be invoked through the test contract directly in a way that

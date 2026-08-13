@@ -10,7 +10,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
@@ -40,7 +40,7 @@ import {SettlementSettleReenterer} from "../mocks/swap/SettlementSettleReenterer
 ///      transferFrom-window case (inner completes) is covered by `SettlementReentrancyRealV4Test`.
 ///
 ///      Does NOT inherit any upgradeable production contract — `HookStorageHelper` is a standalone Test helper
-///      and all hook interaction is via the external `MemeverseUniswapHook` interface.
+///      and all hook interaction is via the external `MemeverseUniswapHookUpgradeable` interface.
 contract SettlementTransferFromSamePoolReentrancyTest is Test, HookStorageHelper {
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
@@ -50,7 +50,7 @@ contract SettlementTransferFromSamePoolReentrancyTest is Test, HookStorageHelper
     bytes4 internal constant _WRAPPED_ERROR_SELECTOR = bytes4(0x90bfb865);
 
     IPoolManager internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     SettlementSettleReenterer internal callbackToken;
     MockERC20 internal token1;
     PoolKey internal settlementPoolKey;
@@ -70,7 +70,7 @@ contract SettlementTransferFromSamePoolReentrancyTest is Test, HookStorageHelper
         callbackToken.mint(address(callbackToken), 100 ether);
 
         address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         hook.setPoolInitializer(address(this));
 
         token1.approve(address(hook), type(uint256).max);

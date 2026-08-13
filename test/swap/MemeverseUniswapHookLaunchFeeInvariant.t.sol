@@ -14,7 +14,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {wadExp} from "solmate/utils/SignedWadMath.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
@@ -26,12 +26,12 @@ function _validExecutionPriceLimit(bool zeroForOne) pure returns (uint160) {
 }
 
 contract LaunchFeeQuoteHandler is Test {
-    MemeverseUniswapHook internal immutable hook;
+    MemeverseUniswapHookUpgradeable internal immutable hook;
     MemeverseUniswapHookLens internal immutable lens;
     PoolKey internal key;
     uint256 public lastObservedFeeBps;
 
-    constructor(MemeverseUniswapHook _hook, MemeverseUniswapHookLens _lens, PoolKey memory _key) {
+    constructor(MemeverseUniswapHookUpgradeable _hook, MemeverseUniswapHookLens _lens, PoolKey memory _key) {
         hook = _hook;
         lens = _lens;
         key = _key;
@@ -112,7 +112,7 @@ contract DirectPreorderSettlementHandler is Test {
     uint256 internal constant PROTOCOL_FEE_BPS = 35;
     uint256 internal constant LP_FEE_BPS = 65;
     uint256 internal constant BPS_BASE = 10_000;
-    MemeverseUniswapHook internal immutable hook;
+    MemeverseUniswapHookUpgradeable internal immutable hook;
     address internal immutable owner;
     address public immutable settlementRecipient;
     MockERC20 internal immutable token0;
@@ -129,7 +129,7 @@ contract DirectPreorderSettlementHandler is Test {
     bool internal expectedBalancesInitialized;
 
     constructor(
-        MemeverseUniswapHook _hook,
+        MemeverseUniswapHookUpgradeable _hook,
         PoolKey memory _key,
         MockERC20 _token0,
         MockERC20 _token1,
@@ -241,7 +241,7 @@ contract MemeverseUniswapHookLaunchFeeQuoteInvariantTest is StdInvariant, Test, 
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MockPoolManagerForHookLiquidity internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseUniswapHookLens internal lens;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -251,12 +251,12 @@ contract MemeverseUniswapHookLaunchFeeQuoteInvariantTest is StdInvariant, Test, 
 
     function _deployHookProxy(IPoolManager manager_, address owner_, address treasury_)
         internal
-        returns (MemeverseUniswapHook deployed)
+        returns (MemeverseUniswapHookUpgradeable deployed)
     {
-        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // Deploy the real MemeverseUniswapHookUpgradeable behind a CREATE2-mined flag-address proxy so production
         // `_validateProxyHookAddress` and facet bindings are exercised.
         address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
-        return MemeverseUniswapHook(hookProxy);
+        return MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
     /// @notice Test helper for setUp.
@@ -342,7 +342,7 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MockPoolManagerForRouterTest internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseUniswapHookLens internal lens;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -354,12 +354,12 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
 
     function _deployRouterHookProxy(IPoolManager manager_, address owner_, address treasury_, address launcher_)
         internal
-        returns (MemeverseUniswapHook deployed)
+        returns (MemeverseUniswapHookUpgradeable deployed)
     {
-        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // Deploy the real MemeverseUniswapHookUpgradeable behind a CREATE2-mined flag-address proxy so production
         // `_validateProxyHookAddress` and facet bindings are exercised.
         address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_, launcher_);
-        deployed = MemeverseUniswapHook(hookProxy);
+        deployed = MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
     /// @notice Test helper for setUp.

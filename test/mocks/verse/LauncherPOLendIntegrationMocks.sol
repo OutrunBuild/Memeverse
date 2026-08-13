@@ -10,7 +10,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
-import {MemeverseLauncher} from "../../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {IMemeverseLauncher} from "../../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {IMemeverseOFTEnum} from "../../../src/common/types/IMemeverseOFTEnum.sol";
 import {IMemeverseProxyDeployer} from "../../../src/verse/interfaces/IMemeverseProxyDeployer.sol";
@@ -307,7 +307,7 @@ contract MockRouterForPOLendIntegration {
         removeLiquidityCallCount++;
         if (observedLauncher != address(0)) {
             (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount) =
-                MemeverseLauncher(observedLauncher).auxiliaryLiquidities(observedVerseId);
+                MemeverseLauncherUpgradeable(observedLauncher).auxiliaryLiquidities(observedVerseId);
             observedPolUAssetLpByCall[removeLiquidityCallCount] = polUAssetLpAmount;
             observedPtUAssetLpByCall[removeLiquidityCallCount] = ptUAssetLpAmount;
             observedPtPolLpByCall[removeLiquidityCallCount] = ptPolLpAmount;

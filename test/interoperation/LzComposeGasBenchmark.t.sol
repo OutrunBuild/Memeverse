@@ -12,7 +12,7 @@ import {IMemeverseOFTEnum} from "../../src/common/types/IMemeverseOFTEnum.sol";
 import {IBurnable} from "../../src/common/interfaces/IBurnable.sol";
 import {Memecoin} from "../../src/token/Memecoin.sol";
 import {MemecoinYieldVault} from "../../src/yield/MemecoinYieldVault.sol";
-import {YieldDispatcher} from "../../src/verse/YieldDispatcher.sol";
+import {YieldDispatcherUpgradeable} from "../../src/verse/YieldDispatcherUpgradeable.sol";
 
 import {MockMessagingComposerEndpoint} from "../mocks/infrastructure/MockMessagingComposerEndpoint.sol";
 import {ComposerEndpointFixture} from "../mocks/infrastructure/ComposerEndpointFixture.sol";
@@ -64,7 +64,7 @@ contract GasBurnableToken is MockERC20, IBurnable {
 ///         _parseCompose dual slices, mutex SLOAD+SSTORE). Each test reports the measured gas and asserts a ceiling
 ///         at the measured warm footprint + ~40% regression margin. The deployment budgets these are checked
 ///         against are `omnichainStakingGasLimit` = 135000 (staking compose, `MemeverseOmnichainInteroperation`
-///         constructor arg 6) and `yieldDispatcherGasLimit` = 135000 (yield compose, `MemeverseLauncher.initialize`
+///         constructor arg 6) and `yieldDispatcherGasLimit` = 135000 (yield compose, `MemeverseLauncherUpgradeable.initialize`
 ///         arg 11); the staking arg 5 `oftReceiveGasLimit` = 115000 is the OFT *receive* gas, NOT the compose budget.
 ///
 /// @dev === WHAT THE NUMBER COVERS ===
@@ -102,7 +102,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     MemecoinYieldVault internal vault;
 
     // --- Dispatcher fixtures (real dispatcher + mirror vault/governor/burnable token) ---
-    YieldDispatcher internal dispatcher;
+    YieldDispatcherUpgradeable internal dispatcher;
     GasBurnableToken internal burnToken;
     GasVault internal dispatchVault;
     GasGovernor internal governor;
@@ -134,12 +134,14 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
         // keyed by (from=memecoin OFT, to=staker) and the dispatcher's by (from=token, to=dispatcher), so they never
         // collide even on the shared etched mock. The dispatcher is measured through its proxy (impl+proxy+initialize).
         _etchComposer();
-        YieldDispatcher dispatcherImpl = new YieldDispatcher();
-        dispatcher = YieldDispatcher(
+        YieldDispatcherUpgradeable dispatcherImpl = new YieldDispatcherUpgradeable();
+        dispatcher = YieldDispatcherUpgradeable(
             address(
                 new ERC1967Proxy(
                     address(dispatcherImpl),
-                    abi.encodeCall(YieldDispatcher.initialize, (address(this), LOCAL_ENDPOINT, LAUNCHER, address(this)))
+                    abi.encodeCall(
+                        YieldDispatcherUpgradeable.initialize, (address(this), LOCAL_ENDPOINT, LAUNCHER, address(this))
+                    )
                 )
             )
         );
@@ -264,7 +266,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     }
 
     // -----------------------------------------------------------------------------------------------
-    // YieldDispatcher.lzCompose
+    // YieldDispatcherUpgradeable.lzCompose
     // -----------------------------------------------------------------------------------------------
 
     /// @notice Dispatcher MEMECOIN branch: binds delivered token to `receiver.asset()`, then pulls via

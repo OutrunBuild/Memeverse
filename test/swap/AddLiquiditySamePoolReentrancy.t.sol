@@ -11,7 +11,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
@@ -46,7 +46,7 @@ import {AddLiquiditySettleReenterer} from "../mocks/swap/AddLiquiditySettleReent
 ///      gate.
 ///
 ///      Does NOT inherit any upgradeable production contract — `HookStorageHelper` is a standalone Test helper
-///      and all hook interaction is via the external `MemeverseUniswapHook` interface.
+///      and all hook interaction is via the external `MemeverseUniswapHookUpgradeable` interface.
 contract AddLiquiditySamePoolReentrancyTest is Test, HookStorageHelper {
     using PoolIdLibrary for PoolKey;
 
@@ -57,7 +57,7 @@ contract AddLiquiditySamePoolReentrancyTest is Test, HookStorageHelper {
     bytes4 internal constant _WRAPPED_ERROR_SELECTOR = bytes4(0x90bfb865);
 
     IPoolManager internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     AddLiquiditySettleReenterer internal callbackToken;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -83,7 +83,7 @@ contract AddLiquiditySamePoolReentrancyTest is Test, HookStorageHelper {
         callbackToken.mint(address(callbackToken), 100 ether);
 
         address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         hook.setPoolInitializer(address(this));
 
         token0.approve(address(hook), type(uint256).max);

@@ -15,7 +15,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
@@ -26,7 +26,7 @@ import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRout
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {
     MockSwapRouter,
     MockOFTDispatcher,
@@ -65,12 +65,12 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
 
     function _deployHookProxy(IPoolManager manager_, address owner_, address treasury_, address launcher_)
         internal
-        returns (MemeverseUniswapHook deployed)
+        returns (MemeverseUniswapHookUpgradeable deployed)
     {
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
+        // Real MemeverseUniswapHookUpgradeable deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (replaces the former Testable subclass that bypassed `_validateProxyHookAddress`).
         address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_, launcher_);
-        deployed = MemeverseUniswapHook(hookProxy);
+        deployed = MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
     function setUp() external {
@@ -87,12 +87,12 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         polend = new MockPOLendForLifecycle();
         splitter = new MockPOLSplitterForLifecycle(address(pt), address(yt));
         registry = new MockLzEndpointRegistry();
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -155,7 +155,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         IMemeverseLauncher localLauncher = IMemeverseLauncher(localProxy);
         _setLockedVerseReadyToUnlock(localLauncher, verseId);
         MockPoolManagerForRouterTest guardedManager = new MockPoolManagerForRouterTest();
-        MemeverseUniswapHook guardedHook =
+        MemeverseUniswapHookUpgradeable guardedHook =
             _deployHookProxy(IPoolManager(address(guardedManager)), address(this), address(1), address(localLauncher));
         MemeverseSwapRouter guardedRouter = new MemeverseSwapRouter(
             IPoolManager(address(guardedManager)),
@@ -374,7 +374,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
     }
 
     function _initializeHookPool(
-        MemeverseUniswapHook targetHook,
+        MemeverseUniswapHookUpgradeable targetHook,
         MockPoolManagerForRouterTest targetManager,
         address tokenA,
         address tokenB
@@ -390,12 +390,12 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
     }
 
     function _deployLauncherProxy(address polendAddr, address splitterAddr) internal returns (address proxy) {
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         proxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),

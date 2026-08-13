@@ -16,7 +16,7 @@ import {MemeversePoolKeyLib} from "../../src/swap/libraries/MemeversePoolKeyLib.
 
 /// @notice Forward byte-equality drift guard: proves `bytes.concat(innerSelector, msg.data[4:])` is byte-identical to
 ///         `abi.encodeCall(innerFunc, (args))` for every thin entry whose inner `*Logic` signature mirrors
-///         the outer entry 1:1. This is the invariant that lets `MemeverseUniswapHook._forwardCalldata`
+///         the outer entry 1:1. This is the invariant that lets `MemeverseUniswapHookUpgradeable._forwardCalldata`
 ///         skip abi re-encoding. If a future signature change breaks the 1:1 mirror, the matching probe
 ///         call reverts here instead of silently corrupting the facet dispatch.
 contract ForwardByteEqProbe {

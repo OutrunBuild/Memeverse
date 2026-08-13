@@ -14,7 +14,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {ISignatureTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/ISignatureTransfer.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRouter.sol";
@@ -80,7 +80,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     }
 
     MockPoolManagerForPermit2RouterTest internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseUniswapHookLens internal lens;
     MockPermit2ForRouterTest internal mockPermit2;
     SignatureVerifyingPermit2ForRouterTest internal realPermit2;
@@ -104,12 +104,12 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
 
     function _deployHookProxyForManager(IPoolManager manager_, address owner_, address treasury_)
         internal
-        returns (MemeverseUniswapHook deployed)
+        returns (MemeverseUniswapHookUpgradeable deployed)
     {
-        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // Deploy the real MemeverseUniswapHookUpgradeable behind a CREATE2-mined flag-address proxy so production
         // `_validateProxyHookAddress` and facet bindings are exercised.
         address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
-        deployed = MemeverseUniswapHook(hookProxy);
+        deployed = MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
     /// @notice Deploys the permit2 test harness, mocks, and seeded pool state.
@@ -229,7 +229,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @dev Uses hook-local pool protection while still funding the input through Permit2 first.
     function testSwapWithPermit2_RevertsDuringPostUnlockProtectionWindow() external {
         MockPoolManagerForPermit2RouterTest guardedManager = new MockPoolManagerForPermit2RouterTest();
-        MemeverseUniswapHook guardedHook =
+        MemeverseUniswapHookUpgradeable guardedHook =
             _deployHookProxyForManager(IPoolManager(address(guardedManager)), address(this), treasury);
         MemeverseSwapRouter guardedRouter = new MemeverseSwapRouter(
             IPoolManager(address(guardedManager)),

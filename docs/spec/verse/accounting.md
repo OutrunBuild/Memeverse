@@ -17,10 +17,10 @@
 
 ### 2.2 杠杆 Genesis
 
-- 杠杆创世由 `POLend` 记录用户支付的利息，并按 market 固定利率推导债务：
+- 杠杆创世由 `POLendUpgradeable` 记录用户支付的利息，并按 market 固定利率推导债务：
 `totalLeveragedDebt = totalLeveragedInterest * 1e18 / market.interestRate`
 - 成功 `genesis` / `leveragedGenesis` 写入后都必须保持 `totalNormalFunds + totalLeveragedDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`，其中 `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = type(uint128).max`；`leveragedGenesis` 写入前必须按累计 `nextTotalLeveragedInterest = totalLeveragedInterest + interestAmount` 推导 `previewDebt = nextTotalLeveragedInterest * 1e18 / market.interestRate`，并同时满足 `previewDebt <= debtCap` 与 `totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`，不能只看当前调用 delta。
-- `Genesis` 阶段不 mint 杠杆 `uAsset`；只有成功进入 `Locked` 时才由 `POLend.finalizeLeveragedGenesis` mint 推导债务并计入按 `uAsset` 维度的系统债务。
+- `Genesis` 阶段不 mint 杠杆 `uAsset`；只有成功进入 `Locked` 时才由 `POLendUpgradeable.finalizeLeveragedGenesis` mint 推导债务并计入按 `uAsset` 维度的系统债务。
 - `setLeveragedDebtFactor` 只改未来 `None / Genesis` market 的 debt cap / 容量预览口径，不追溯改变已注册 market 利率、已 mint 债务、退款、结算或 claim 账本。
 - 杠杆退款、初始 `YT`、残值、PT fee 预兑付与全局结算规则以 [docs/spec/polend/settlement-and-fees.md](../polend/settlement-and-fees.md) 为准。
 
@@ -42,7 +42,7 @@
   - `base = totalNormalFunds + totalLeveragedDebt`
   - `cap = base * 70% * preorderCapRatio / RATIO`
   - `remaining = max(cap - preorderState.totalFunds, 0)`
-- `totalLeveragedDebt` 来自 `POLend`。
+- `totalLeveragedDebt` 来自 `POLendUpgradeable`。
 - `previewGenesisMakerFees(uint256 verseId) returns (uint256 uAssetFee,uint256 memecoinFee)` 预览可分发 genesis maker fee。该函数与 `quoteDistributionLzFee`（见 §5.4）由独立 view 合约 `MemeverseFeePreviewReader` 暴露，调用地址取 `getLauncherContracts().feePreviewReader`（见 [operations.md §3.3](../../operations.md)）；`previewPreorderCapacity` 由 Launcher 暴露。
 - ABI 前置条件：校验 `verseId` 有效，且 verse stage 必须 `>= Locked`；无效 verse 或阶段不满足时按当前实现错误 revert。
 - 该预览聚合主池 `memecoin/uAsset` claimable fees 与辅助池 gov-fee pools：`uAsset` 侧走 DAO/governor 路径，`memecoin` 侧走 yield vault 路径。
@@ -58,7 +58,7 @@
 `totalGenesisFunds = totalNormalFunds + totalLeveragedDebt`
 - `totalGenesisFunds` 不等于退款资金池，也不包含 preorder。
 - 成功路径必须保持 `totalGenesisFunds <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`，其中 `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = type(uint128).max`。
-- `POLSplitter.initializeVerse` 在四池部署前调用；PT/YT 初始化不依赖是否有杠杆参与。
+- `POLSplitterUpgradeable.initializeVerse` 在四池部署前调用；PT/YT 初始化不依赖是否有杠杆参与。
 
 ### 3.2 四池部署
 
@@ -90,7 +90,7 @@
 `totalNormalClaimableYT = totalYT * totalNormalFunds / totalGenesisFunds`
 `totalLeveragedYT = totalYT - totalNormalClaimableYT`
 - 普通初始 `YT` 由 `Launcher` 托管并按 `userGenesisFund / totalNormalFunds` 领取。
-- 杠杆初始 `YT` 由 `POLend` 托管并按 `userInterestPaid / totalLeveragedInterest` 领取。
+- 杠杆初始 `YT` 由 `POLendUpgradeable` 托管并按 `userInterestPaid / totalLeveragedInterest` 领取。
 
 ### 4.2 preorder 线性解锁
 
@@ -108,9 +108,9 @@
 - 该路径是 `Unlocked` 退出路径；解锁后保护窗口内仍允许执行，但不是公开 swap。
 - `redeemAuxiliaryLiquidity`：普通用户在 `Unlocked` 后一次性领取三个辅助池普通份额 LP token，份额基准为 `userGenesisFund / totalNormalFunds`。
 - 该路径还负责分发 bootstrap residual 的 normal share：`normalResidualPOL` 与 `normalResidualPT` 按同一 `userGenesisFund / totalNormalFunds` 比例分给普通用户。
-- 若存在杠杆债务，`Locked -> Unlocked` 的同一笔交易内先执行 POLend 全局结算并切走杠杆份额 LP；普通用户只能领取结算后剩余的普通份额。
-- 杠杆残值由 `POLend` 记录并按 `userInterestPaid / totalLeveragedInterest` 领取；残值不属于 `POLSplitter` 的 PT/YT 兑付池。
-- 当前退出路径由 `redeemMemecoinLiquidity`、`redeemAuxiliaryLiquidity` 与 `POLend.claimResidual` 分别承载主池、普通辅助池和杠杆残值权益。
+- 若存在杠杆债务，`Locked -> Unlocked` 的同一笔交易内先执行 POLendUpgradeable 全局结算并切走杠杆份额 LP；普通用户只能领取结算后剩余的普通份额。
+- 杠杆残值由 `POLendUpgradeable` 记录并按 `userInterestPaid / totalLeveragedInterest` 领取；残值不属于 `POLSplitterUpgradeable` 的 PT/YT 兑付池。
+- 当前退出路径由 `redeemMemecoinLiquidity`、`redeemAuxiliaryLiquidity` 与 `POLendUpgradeable.claimResidual` 分别承载主池、普通辅助池和杠杆残值权益。
 
 ## 5. Fee 记账与分发
 
@@ -129,7 +129,7 @@
   - `govPTFee = fullPrecisionMulDiv(totalPTFee, totalLeveragedDebt, totalGenesisFunds)`
   - 取整差额归普通侧
   - 普通侧进入 `normalFeeStates`，用户按 `userGenesisFund / totalNormalFunds` 领取。
-  - 杠杆侧最终转换为 `uAsset` 后进入 Memeverse DAO governor 路径，不进入 `POLend.protocolTreasury`。
+  - 杠杆侧最终转换为 `uAsset` 后进入 Memeverse DAO governor 路径，不进入 `POLendUpgradeable.protocolTreasury`。
 - `claimNormalFees` 的普通侧 entitlement 计算也必须使用 full-precision `mulDiv`：
   - `entitledUAsset = fullPrecisionMulDiv(accUAssetFee, userGenesisFund, totalNormalFunds)`
   - `entitledPT = fullPrecisionMulDiv(accPTFee, userGenesisFund, totalNormalFunds)`
@@ -144,7 +144,7 @@
 ### 5.3 执行者奖励与治理收入
 
 - 对主池 `memecoin/uAsset` 的 `uAsset` fee，`executorReward` 必须使用 full-precision `mulDiv` 或等价 overflow-safe 实现计算：`executorReward = fullPrecisionMulDiv(mainPoolUAssetFee, executorRewardRate, 10000)`。
-- `executorRewardRate` 单位为 protocol ratio units（分母 `RATIO = 10000`，即 bps）。合法区间 `[0, 10000)`：`src/verse/MemeverseLauncher.sol::initialize` 与 `src/verse/MemeverseLauncher.sol::setExecutorRewardRate` 均校验 `executorRewardRate < RATIO`，越界 revert `FeeRateOverFlow`（owner 经 `setExecutorRewardRate` 配置）。部署脚本默认值 `25`（0.25%）。
+- `executorRewardRate` 单位为 protocol ratio units（分母 `RATIO = 10000`，即 bps）。合法区间 `[0, 10000)`：`src/verse/MemeverseLauncherUpgradeable.sol::initialize` 与 `src/verse/MemeverseLauncherUpgradeable.sol::setExecutorRewardRate` 均校验 `executorRewardRate < RATIO`，越界 revert `FeeRateOverFlow`（owner 经 `setExecutorRewardRate` 配置）。部署脚本默认值 `25`（0.25%）。
 - `mainPoolGovFee = mainPoolUAssetFee - executorReward`，减法必须保持 checked arithmetic 语义。
 - 执行者奖励直接发给 `rewardReceiver`。
 - `quoteDistributionLzFee` 与 `redeemAndDistributeFees` 必须共享同一套执行者奖励分账算术语义；quote 口径不得因中间乘法溢出而偏离 redeem 实际执行结果。
@@ -161,8 +161,8 @@
   - 已累积在 `pendingAuxiliaryGovFeeStates.pendingUAssetFee` 的辅助池 gov `uAsset` fee
   - 当前 preview/claim 到的辅助池 gov `uAsset` fee
   - 辅助池 gov `PT` fee 按当前阶段转换成的 `uAsset`
-    - `Locked`：经 `POLend.preRedeemPTFee(...)`
-    - `Unlocked/settled`：经 `POLSplitter.redeemPT(...)`
+    - `Locked`：经 `POLendUpgradeable.preRedeemPTFee(...)`
+    - `Unlocked/settled`：经 `POLSplitterUpgradeable.redeemPT(...)`
 - 若治理链为本链或异链，token 的最终 receiver 映射（合约 receiver：`UASSET` → `Governor.receiveTreasuryIncome`、`MEMECOIN` → `YieldVault.accumulateYields`；非合约 receiver 按 tokenType 分流：MEMECOIN → burn、UASSET → `protocolTreasury`）以 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3 为跨链终点 canonical；本链/异链路径见 §3.1/§3.2。
 - 目标：`redeemAndDistributeFees` 的 native payment 必须精确等于 required fee；underpay 与 overpay 都会 revert（实现要求“等于”，不是“大于等于”）。
 - 目标：若本次没有任何 fee 被分发，required fee 为 `0`，因此非零 `msg.value` 应 revert。
@@ -175,7 +175,7 @@ Governor / Incentivizer 的 custody 与 ledger 分层、token 准入、周期结
 - YieldVault `totalSupply == 0` 时 yield burn（V20）：见 `governance-yield-details.md` §5。
 - 周期结算 `rewardRatio` 划拨、reward payout 调用链与账本回卷语义：见 `governance-yield-details.md` §6–§8。
 
-accounting.md 只保留对 Launcher 侧记账入口的引用：launcher 把 fee/yield 经 `YieldDispatcher` 推到 `Governor.receiveTreasuryIncome` / `YieldVault.accumulateYields`，跨链终点的 token-to-receiver 映射见 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3。
+accounting.md 只保留对 Launcher 侧记账入口的引用：launcher 把 fee/yield 经 `YieldDispatcherUpgradeable` 推到 `Governor.receiveTreasuryIncome` / `YieldVault.accumulateYields`，跨链终点的 token-to-receiver 映射见 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3。
 
 ## 7. Launch Fee 记账
 

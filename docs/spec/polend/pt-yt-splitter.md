@@ -1,10 +1,10 @@
-# POLend PT/YT Splitter
+# POLendUpgradeable PT/YT Splitter
 
-本文件覆盖 POLSplitter 的 PT/YT 生命周期（`recordPTBackingRatio` / `split` / `merge` / `preview`）、settle 编排与 PT/YT 兑付。POLend 子系统整体导航见 [polend/README.md](README.md)。
+本文件覆盖 POLSplitterUpgradeable 的 PT/YT 生命周期（`recordPTBackingRatio` / `split` / `merge` / `preview`）、settle 编排与 PT/YT 兑付。POLendUpgradeable 子系统整体导航见 [polend/README.md](README.md)。
 
 ## 1. PT / YT 生命周期
 
-`POLSplitter.initializeVerse`：
+`POLSplitterUpgradeable.initializeVerse`：
 
 - 只由 `Launcher` 调用
 - 每个 `verseId` 只能调用一次
@@ -14,11 +14,11 @@
 - 绑定该 verse 的 `uAsset / memecoin / pol / pt / yt`
 - 允许纯普通创世调用
 
-`POLSplitter.recordPTBackingRatio`：
+`POLSplitterUpgradeable.recordPTBackingRatio`：
 
 - 只由 `Launcher` 调用
 - 每个 `verseId` 只能调用一次
-- 只能在 `POLSplitter.initializeVerse` 后调用
+- 只能在 `POLSplitterUpgradeable.initializeVerse` 后调用
 - 必须在任何 `split / preRedeemPTFee / redeemPT / redeemYT` 路径前调用
 - `numerator > 0`
 - `denominator > 0`
@@ -28,7 +28,7 @@
 
 `split / merge`：
 
-- 只在 `POLSplitter.initializeVerse` 后开放
+- 只在 `POLSplitterUpgradeable.initializeVerse` 后开放
 - 只在 `recordPTBackingRatio` 后开放
 - 只在 `settled=false` 时开放
 - 只在 Launcher verse 尚未 `Unlocked` 时开放
@@ -48,7 +48,7 @@
 
 `redeemPT / redeemYT` 由 `Splitter` burn `msg.sender` 持有的 token，不需要 approve。
 
-`PT / YT` 合约是 `SplitterToken`（`PrincipalToken` / `YieldToken` 继承它）。`SplitterToken.initialize(name, symbol, splitter)` 把 `splitter` 设为 `mint / burn` 的唯一授权地址（`onlySplitter` 修饰符）；`POLSplitter.initializeVerse` 为每个 verse 部署 PT/YT 实例时把自身设为该 `splitter`，因此只有 `POLSplitter` 能 mint/burn 用户持有的 PT/YT。`SplitterToken` 不继承 `OutrunOwnableInit`，PT/YT 无 owner 角色、无 `transferOwnership`、不可升级；访问控制仅由 `splitter` 字段 + `onlySplitter` 修饰符承担。
+`PT / YT` 合约是 `SplitterToken`（`PrincipalToken` / `YieldToken` 继承它）。`SplitterToken.initialize(name, symbol, splitter)` 把 `splitter` 设为 `mint / burn` 的唯一授权地址（`onlySplitter` 修饰符）；`POLSplitterUpgradeable.initializeVerse` 为每个 verse 部署 PT/YT 实例时把自身设为该 `splitter`，因此只有 `POLSplitterUpgradeable` 能 mint/burn 用户持有的 PT/YT。`SplitterToken` 不继承 `OutrunOwnableInit`，PT/YT 无 owner 角色、无 `transferOwnership`、不可升级；访问控制仅由 `splitter` 字段 + `onlySplitter` 修饰符承担。
 
 `Splitter.preRedeemPTFee` 只用于固定 burn `Launcher` 持有的杠杆侧 PT fee，不接受任意 account 作为 burn 来源，也不需要 `Launcher` approve。
 
@@ -60,14 +60,14 @@ previewPTToUAsset(verseId, ptAmount) = Math.mulDiv(ptAmount, ptBackingNumerator,
 
 `Splitter` 的 YT preview 语义：
 
-- `POLSplitter.sol::previewRedeemYTUAsset` 在 settle 前恒返回 0（settle 前 `settlementUAsset` 未写入，YT 可赎回池定义上为 0，与 `outstandingYT == 0` 的零返回同族）
+- `POLSplitterUpgradeable.sol::previewRedeemYTUAsset` 在 settle 前恒返回 0（settle 前 `settlementUAsset` 未写入，YT 可赎回池定义上为 0，与 `outstandingYT == 0` 的零返回同族）
 - settle 后才按 §3.2（即本文件「PT / YT 兑付」节的公式 `ytRedeemableUAssetPool = settlementUAsset - reservedUAssetForPT`）计算
 
-所有 `preRedeemPTFee`、`redeemPT`、`redeemYT` 的 PT reserve、settle 时预兑付 backing burn、`POLend.executeGlobalSettlement` 回收 PT settlement 都必须使用该转换后的 `uAsset` 数量，不得直接把 `ptAmount` 当作 `uAsset` 数量。
+所有 `preRedeemPTFee`、`redeemPT`、`redeemYT` 的 PT reserve、settle 时预兑付 backing burn、`POLendUpgradeable.executeGlobalSettlement` 回收 PT settlement 都必须使用该转换后的 `uAsset` 数量，不得直接把 `ptAmount` 当作 `uAsset` 数量。
 
 `mintPOLToken` 在 `Locked` 后使用 exact-liquidity minting。fixed PT backing ratio 由启动时记录的 `ptBackingNumerator / ptBackingDenominator` 定义；报价后的实际执行必须 mint 出请求的 LP/POL 数量，否则整笔 mint fail closed。额外 backing 不得改写该 PT/YT 经济关系。
 
-## 2. POLSplitter settle
+## 2. POLSplitterUpgradeable settle
 
 `settle` 语义：
 
@@ -77,8 +77,8 @@ burn POL collateral
 -> 得到 totalRedeemedUAsset + settlementMemecoin
 -> 若 preRedeemedPT > 0：
      preRedeemedUAssetBacking = preRedeemedPT.uAssetBacking
-     Splitter approve 该 verse uAsset 给 POLend，金额为 preRedeemedUAssetBacking
-     POLend repay Splitter 持有的 preRedeemedUAssetBacking
+     Splitter approve 该 verse uAsset 给 POLendUpgradeable，金额为 preRedeemedUAssetBacking
+     POLendUpgradeable repay Splitter 持有的 preRedeemedUAssetBacking
      settlementUAsset = totalRedeemedUAsset - preRedeemedUAssetBacking
      delete preRedeemedPT
 -> 写入 settlementUAsset / settlementMemecoin

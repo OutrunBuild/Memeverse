@@ -70,7 +70,7 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
         // length == message.length - 76); `message.length >= 76` is already required at the header guard above, so
         // this subtraction cannot underflow. Read the two tuple words straight from calldata at fixed offsets, instead
         // of `OFTComposeMsgCodec.composeMsg(message)` (a `bytes memory` slice) + `abi.decode`, to avoid the 64-byte
-        // calldata→memory copy and keep this parse pure-calldata — mirroring `YieldDispatcher._parseCompose`.
+        // calldata→memory copy and keep this parse pure-calldata — mirroring `YieldDispatcherUpgradeable._parseCompose`.
         require(message.length - OFTComposeSettleVerify.COMPOSE_HEADER_LENGTH == 64, MalformedComposeMsg());
         // Decode as uint256, not (address, address): solc's strict ABI decoder validates address words (160-bit clean)
         // and would revert with an EMPTY unreadable revert on dirty-high-bit words, pinning the endpoint queue forever

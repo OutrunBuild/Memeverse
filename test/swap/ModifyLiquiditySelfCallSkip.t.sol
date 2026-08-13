@@ -16,7 +16,7 @@ import {RealisticSwapManagerHarness} from "../mocks/swap/RealisticSwapMocks.sol"
 
 /// @notice Locks the modifyLiquidity self-call skip in RealisticSwapManagerHarness.
 /// @dev Background: production `addLiquidityCore`/`removeLiquidityCore` route through
-///      `poolManager.unlock()` reentry (MemeverseUniswapHook.sol:647), so `msg.sender` to
+///      `poolManager.unlock()` reentry (MemeverseUniswapHookUpgradeable.sol:647), so `msg.sender` to
 ///      `poolManager.modifyLiquidity` is `address(hook)` itself. Real v4 skips
 ///      beforeModifyLiquidity/afterModifyLiquidity callbacks when `msg.sender == address(key.hooks)`
 ///      (Hooks.sol `noSelfCall` guard). The mock must replicate this skip, otherwise it

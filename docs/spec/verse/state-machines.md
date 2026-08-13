@@ -26,7 +26,7 @@
 | `Locked` | `changeStage` | `currentTime <= unlockTime` | 保持 `Locked` | 不回退，仍发 `ChangeStage(Locked)` 事件 | 当前规则（代码已证） |
 | `Refund`/`Unlocked` | `changeStage` | 任意 | 回退 `ReachedFinalStage` | 无 | 当前规则（代码已证） |
 
-注：Genesis 行的 `minTotalFund` 取 `MemeverseLauncher.sol::changeStage` 执行时刻 `MemeverseLauncher.sol::fundMetaDatas` 的当前值（活读），非注册时值；owner 在 Genesis 期间变更 `MemeverseLauncher.sol::setFundMetaData` 会改变达标判断（Genesis→Locked / Genesis→Refund），为预期语义（详见 config-matrix.md §2 注）。
+注：Genesis 行的 `minTotalFund` 取 `MemeverseLauncherUpgradeable.sol::changeStage` 执行时刻 `MemeverseLauncherUpgradeable.sol::fundMetaDatas` 的当前值（活读），非注册时值；owner 在 Genesis 期间变更 `MemeverseLauncherUpgradeable.sol::setFundMetaData` 会改变达标判断（Genesis→Locked / Genesis→Refund），为预期语义（详见 config-matrix.md §2 注）。
 
 ### 2.2 `flashGenesis` 子状态语义
 
@@ -42,15 +42,15 @@
 | `preorder` | 允许 | 禁止 | 禁止 | 禁止 | 当前规则（代码已证） |
 | `genesisAndPreorder` | 允许 | 禁止 | 禁止 | 禁止 | 当前规则（代码已证） |
 | `refund` / `refundPreorder` | 禁止 | 允许（每地址一次） | 禁止 | 禁止 | 当前规则（代码已证） |
-| `claimNormalYT` | 禁止 | 禁止 | 允许 | 允许 | 当前规则（POLend 四池） |
+| `claimNormalYT` | 禁止 | 禁止 | 允许 | 允许 | 当前规则（POLendUpgradeable 四池） |
 | `claimNormalFees` | 禁止 | 禁止 | 允许 | 允许 | 当前规则（代码已证） |
 | `mintPOLToken` | 禁止 | 禁止 | 允许 | 允许 | 当前规则（代码已证） |
 | `redeemAndDistributeFees` | 禁止 | 禁止 | 允许 | 允许 | 当前规则（代码已证） |
-| `redeemMemecoinLiquidity` / `redeemAuxiliaryLiquidity` | 禁止 | 禁止 | 禁止 | 允许 | 当前规则（POLend 四池） |
-| `POLSplitter.redeemPT` / `POLSplitter.redeemYT` | 禁止 | 禁止 | 禁止 | 允许（settle 后） | 当前规则（POLend 四池） |
+| `redeemMemecoinLiquidity` / `redeemAuxiliaryLiquidity` | 禁止 | 禁止 | 禁止 | 允许 | 当前规则（POLendUpgradeable 四池） |
+| `POLSplitterUpgradeable.redeemPT` / `POLSplitterUpgradeable.redeemYT` | 禁止 | 禁止 | 禁止 | 允许（settle 后） | 当前规则（POLendUpgradeable 四池） |
 | `claimUnlockedPreorderMemecoin` | 禁止 | 禁止 | 允许（按线性解锁） | 允许 | 当前规则（代码已证） |
 
-`genesis` 成功写入后必须保持 `totalNormalFunds + totalLeveragedDebt <= type(uint128).max`；实现上先更新普通创世账本再执行 uAsset 拉取，使 callback-capable token 重入 POLend 时读取到累计普通资金。POLend `leveragedGenesis` 使用累计 `nextTotalLeveragedInterest -> previewDebt` 做同一聚合上限预检。
+`genesis` 成功写入后必须保持 `totalNormalFunds + totalLeveragedDebt <= type(uint128).max`；实现上先更新普通创世账本再执行 uAsset 拉取，使 callback-capable token 重入 POLendUpgradeable 时读取到累计普通资金。POLendUpgradeable `leveragedGenesis` 使用累计 `nextTotalLeveragedInterest -> previewDebt` 做同一聚合上限预检。
 
 bootstrap auxiliary pool creation 的 auxiliary underspend 处置（actual spend 记账、不施加独立 bootstrap backing / equality guard、不依赖独立 rounding-envelope 规则）见 [docs/spec/invariants.md](../invariants.md) INV-04。
 

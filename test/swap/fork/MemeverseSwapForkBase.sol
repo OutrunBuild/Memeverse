@@ -16,7 +16,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {MemeverseSwapRouter} from "../../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../../src/swap/MemeverseUniswapHookLens.sol";
-import {MemeverseUniswapHook} from "../../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 
 import {HookStorageHelper} from "../../mocks/swap/HookStorageHelper.sol";
@@ -100,8 +100,8 @@ abstract contract MemeverseSwapForkBase is Test, HookStorageHelper {
     // Returns the concrete hook type (cast, not inherited) so tests can call owner-only setters
     // like setProtocolFeeCurrency that are NOT on IMemeverseUniswapHook. Mirrors the existing
     // harness pattern at test/swap/helpers/RealisticSwapManagerHarness.sol:198.
-    function _hook() internal view returns (MemeverseUniswapHook) {
-        return MemeverseUniswapHook(address(key.hooks));
+    function _hook() internal view returns (MemeverseUniswapHookUpgradeable) {
+        return MemeverseUniswapHookUpgradeable(address(key.hooks));
     }
 
     /// @dev Wraps StateLibrary.getSlot0 so subclasses (which do not re-declare the `using` for IPoolManager)

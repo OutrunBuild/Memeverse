@@ -15,7 +15,7 @@ import {IMemeverseFeePreviewReader} from "./interfaces/IMemeverseFeePreviewReade
 
 /// @title MemeverseFeePreviewReader
 /// @notice Independent view contract that previews genesis maker fees and quotes the LayerZero fee for
-///         fee distribution. Relocated from the MemeverseLauncher facade (Step C).
+///         fee distribution. Relocated from the MemeverseLauncherUpgradeable facade (Step C).
 /// @dev Unlike the delegatecall siblings (MemeverseLaunchImpl, MemeverseSettlementImpl, MemeverseLiquidityImpl), this reader does
 ///      NOT bind the launcher ERC-7201 slot and does NOT receive delegatecalls. It staticcalls the proxy's
 ///      public getters to read state, so it cannot mutate proxy storage. `address(this)` in the original
@@ -27,7 +27,7 @@ import {IMemeverseFeePreviewReader} from "./interfaces/IMemeverseFeePreviewReade
 contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
     using OptionsBuilder for bytes;
 
-    /// @notice The MemeverseLauncher proxy whose fee state this reader previews.
+    /// @notice The MemeverseLauncherUpgradeable proxy whose fee state this reader previews.
     address public immutable PROXY;
 
     constructor(address _proxy) {
@@ -35,7 +35,7 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         PROXY = _proxy;
     }
 
-    // === relocated preview chain (from MemeverseLauncher) ===
+    // === relocated preview chain (from MemeverseLauncherUpgradeable) ===
     //
     // Nested types (Memeverse, Stage, TokenType, LauncherContracts, LauncherParameters) are declared
     // inside interface IMemeverseLauncher / IMemeverseOFTEnum. This contract does not inherit them, so

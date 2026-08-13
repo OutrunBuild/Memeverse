@@ -15,12 +15,12 @@ import {IYieldDispatcher} from "./interfaces/IYieldDispatcher.sol";
 import {IMemecoinDaoGovernor} from "../governance/interfaces/IMemecoinDaoGovernor.sol";
 
 /**
- * @title Yield Dispatcher
+ * @title YieldDispatcherUpgradeable
  * @dev Routes bridged or same-chain launcher fee proceeds to the yield vault or governor treasury.
  *      Cross-chain deliveries arrive through LayerZero's OFT compose flow (`lzCompose`); the launcher's
  *      same-chain fast path uses the dedicated `distributeSameChain` entry.
  */
-contract YieldDispatcher layout at erc7201("outrun.storage.YieldDispatcher")
+contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispatcher")
     is
     IYieldDispatcher,
     ISettleCompose,
@@ -38,7 +38,7 @@ contract YieldDispatcher layout at erc7201("outrun.storage.YieldDispatcher")
     uint256 private constant RECEIVER_OFFSET = COMPOSE_FROM_OFFSET + 32;
     uint256 private constant TOKEN_TYPE_OFFSET = COMPOSE_FROM_OFFSET + TUPLE_LENGTH;
 
-    /// @notice Storage layout for the YieldDispatcher ERC-7201 namespace.
+    /// @notice Storage layout for the YieldDispatcherUpgradeable ERC-7201 namespace.
     ///         When adding fields in upgrades, append only at the end. Never reorder or insert fields.
     /// @custom:storage-location erc7201:outrun.storage.YieldDispatcher
     struct YieldDispatcherStorage {

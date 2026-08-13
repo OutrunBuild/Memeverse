@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {POLend} from "../../src/polend/POLend.sol";
+import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {MintableToken, BurnableMockERC20} from "../mocks/polend/POLendMocks.sol";
@@ -13,7 +13,7 @@ import {MockPOL} from "../mocks/polend/MockPOL.sol";
 import {MockGenesisCreditFactory} from "../mocks/credit/MockGenesisCreditFactory.sol";
 
 /// @notice Launcher mock that drives a verse through Genesis -> Locked -> Settled for the
-///         mixed real+credit integration test. Unlike the POLend unit-test launcher mock, it
+///         mixed real+credit integration test. Unlike the POLendUpgradeable unit-test launcher mock, it
 ///         implements `redeemMemecoinLiquidity` so the settlement POL-burn path can produce both
 ///         uAsset and memecoin residuals end-to-end (the unit-test mock reverts on that call).
 contract IntegrationLauncher {
@@ -76,7 +76,7 @@ contract IntegrationLauncher {
         _endTimes[verseId] = endTime;
     }
 
-    // --- IMemeverseLauncher surface exercised by POLend ---
+    // --- IMemeverseLauncher surface exercised by POLendUpgradeable ---
 
     function totalNormalFunds(uint256 verseId) external view returns (uint256) {
         return _normalFunds[verseId];
@@ -87,13 +87,13 @@ contract IntegrationLauncher {
     }
 
     /// @dev Returns the tracked stage; defaults to Genesis (enum 0) until `changeStage` advances it.
-    ///      POLend reads this during `leveragedGenesis` / `leveragedGenesisWithCredit`, which require
+    ///      POLendUpgradeable reads this during `leveragedGenesis` / `leveragedGenesisWithCredit`, which require
     ///      Genesis, so credit participation must precede `changeStage`.
     function getStageByVerseId(uint256 verseId) external view returns (IMemeverseLauncher.Stage) {
         return _stages[verseId];
     }
 
-    /// @dev Mirrors `MemeverseLauncher._handleGenesisStage` launch gate: a verse leaves Genesis when
+    /// @dev Mirrors `MemeverseLauncherUpgradeable._handleGenesisStage` launch gate: a verse leaves Genesis when
     ///      `totalNormalFunds >= minTotalFund || totalLeveragedInterest >= minTotalFund`. Credit-funded
     ///      interest counts toward the second clause, so a pure-credit self-bootstrap
     ///      (`totalNormalFunds == 0`) can still lock. Only the gate + stage transition are simulated;
@@ -139,9 +139,9 @@ contract IntegrationLauncher {
         return (_polAmounts[verseId], 0, _lpUAssets[verseId]);
     }
 
-    /// @dev POLend approved `polAmount` of POL to this launcher. Consume it and send the
-    ///      pre-configured uAsset + memecoin redemption back to the caller (POLend). The amounts
-    ///      transferred become the `_burnSettledPol` deltas POLend measures via balance diffs.
+    /// @dev POLendUpgradeable approved `polAmount` of POL to this launcher. Consume it and send the
+    ///      pre-configured uAsset + memecoin redemption back to the caller (POLendUpgradeable). The amounts
+    ///      transferred become the `_burnSettledPol` deltas POLendUpgradeable measures via balance diffs.
     function redeemMemecoinLiquidity(uint256 verseId, uint256 polAmount, bool) external returns (uint256) {
         require(_pol.transferFrom(msg.sender, address(this), polAmount), "POL transferFrom failed");
         RedeemOutput memory out = _redeemOutputs[verseId];
@@ -156,7 +156,7 @@ contract IntegrationLauncher {
 }
 
 /// @notice Minimal splitter mock: returns the configured POL and memecoin addresses. Only the
-///         methods POLend touches during `executeGlobalSettlement` and `claimResidual` are
+///         methods POLendUpgradeable touches during `executeGlobalSettlement` and `claimResidual` are
 ///         implemented (`getPOLAndMemecoin`, `getMemecoin`).
 contract IntegrationSplitter {
     address internal _pol;
@@ -177,7 +177,7 @@ contract IntegrationSplitter {
 }
 
 /// @notice End-to-end integration of mixed real-uAsset + GenesisCredit participation across the
-///         full POLend lifecycle (Genesis -> Locked -> Settled). Verifies the credit-path
+///         full POLendUpgradeable lifecycle (Genesis -> Locked -> Settled). Verifies the credit-path
 ///         invariants that the per-function unit tests in `POLend.t.sol` cannot exercise together:
 ///         - GenesisCredit escrowed at genesis, burned at finalize (supply reduced, no stray transfer).
 ///         - Debt minted from the aggregate (real + credit) interest, while the full real-uAsset
@@ -202,7 +202,7 @@ contract GenesisCreditPOLendIntegration is Test {
     IntegrationLauncher internal launcher;
     IntegrationSplitter internal splitter;
     MockGenesisCreditFactory internal creditFactory;
-    POLend internal polend;
+    POLendUpgradeable internal polend;
 
     function setUp() external {
         uAsset = new BurnableMockERC20("UASSET", "UASSET");
@@ -224,7 +224,7 @@ contract GenesisCreditPOLendIntegration is Test {
 
         // interestRate = 0.1e18 => debt = interest * 10; leveragedDebtFactor = 10e18.
         polend = _deployPOLend(1e17, 10e18, address(this), address(launcher), address(splitter), address(creditFactory));
-        // Wire the launcher mock back to POLend so `changeStage` can read the real aggregate interest
+        // Wire the launcher mock back to POLendUpgradeable so `changeStage` can read the real aggregate interest
         // for the launch-gate simulation.
         launcher.setPolend(address(polend));
 
@@ -240,19 +240,19 @@ contract GenesisCreditPOLendIntegration is Test {
         address launcher_,
         address splitter_,
         address creditFactory_
-    ) internal returns (POLend) {
-        POLend impl = new POLend();
+    ) internal returns (POLendUpgradeable) {
+        POLendUpgradeable impl = new POLendUpgradeable();
         bytes memory data = abi.encodeCall(
-            POLend.initialize,
+            POLendUpgradeable.initialize,
             (address(this), interestRate, leveragedDebtFactor, treasury, launcher_, splitter_, creditFactory_)
         );
-        return POLend(address(new ERC1967Proxy(address(impl), data)));
+        return POLendUpgradeable(address(new ERC1967Proxy(address(impl), data)));
     }
 
-    /// @dev Arm the settlement POL-redeem path: POLend recovers `uAssetOut` uAsset and
-    ///      `memecoinOut` memecoin by burning `polAmount` of POL. Mints the POL to POLend (so its
+    /// @dev Arm the settlement POL-redeem path: POLendUpgradeable recovers `uAssetOut` uAsset and
+    ///      `memecoinOut` memecoin by burning `polAmount` of POL. Mints the POL to POLendUpgradeable (so its
     ///      approve + the launcher's transferFrom succeed) and the redemption output to the launcher
-    ///      (so its transfers back to POLend succeed). `uAssetOut` must equal `debt + residualUAsset`.
+    ///      (so its transfers back to POLendUpgradeable succeed). `uAssetOut` must equal `debt + residualUAsset`.
     function _armSettlement(uint256 polAmount, uint256 uAssetOut, uint256 memecoinOut) internal {
         launcher.setSettlementResult(VERSE_ID, polAmount, 0);
         launcher.setRedeemOutput(VERSE_ID, uAssetOut, memecoinOut);
@@ -494,7 +494,7 @@ contract GenesisCreditPOLendIntegration is Test {
     // ===== Mixed pool: two verses sharing one uAsset + one GenesisCredit token =====
 
     /// @dev Two verses A + B share the same uAsset, so the credit factory keys them to a single
-    ///      GenesisCredit token (creditOf is keyed by uAsset). POLend escrows both verses' credit
+    ///      GenesisCredit token (creditOf is keyed by uAsset). POLendUpgradeable escrows both verses' credit
     ///      interest in one balance (the mixed pool). Verse A finalizes, which must burn exactly A's
     ///      `totalCreditInterest` and leave B's escrowed share untouched; verse B then fails into
     ///      Refund and returns B's credit to the user. Conservation: the shared escrow drops by A's

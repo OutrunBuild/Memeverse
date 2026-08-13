@@ -1,6 +1,6 @@
-# POLend Genesis
+# POLendUpgradeable Genesis
 
-本文件覆盖 POLend 创世流程：普通创世、Preorder、门槛与杠杆上限、杠杆创世、Genesis→Locked 迁移与初始 YT claim。POLend 子系统整体导航见 [polend/README.md](README.md)。
+本文件覆盖 POLendUpgradeable 创世流程：普通创世、Preorder、门槛与杠杆上限、杠杆创世、Genesis→Locked 迁移与初始 YT claim。POLendUpgradeable 子系统整体导航见 [polend/README.md](README.md)。
 
 ## 1. 普通创世状态
 
@@ -90,7 +90,7 @@ totalPreorderFunds + amount <= preorderCap
 
 `genesisAndPreorder(verseId, genesisAmount, preorderAmount, user)` 是 `genesis` 与 `preorder` 的原子合并入口（`MemeverseLaunchImpl.sol::genesisAndPreorder`），在同一笔交易内先执行 genesis 步撑大预购容量、再执行 preorder 步占用该容量，消除「两笔独立交易之间，自己撑大的预购容量被其他地址抢占」的竞态。
 
-- 落点与 `genesis`/`preorder` 同处 `MemeverseLaunchImpl`；facade `MemeverseLauncher` 做 1:1 薄 `functionDelegateCall` 转发（与 `genesis`/`preorder` 同构），接口 `IMemeverseLauncher` / `IMemeverseLaunchImpl` 各补声明；仅 `onlyDelegatecall`。
+- 落点与 `genesis`/`preorder` 同处 `MemeverseLaunchImpl`；facade `MemeverseLauncherUpgradeable` 做 1:1 薄 `functionDelegateCall` 转发（与 `genesis`/`preorder` 同构），接口 `IMemeverseLauncher` / `IMemeverseLaunchImpl` 各补声明；仅 `onlyDelegatecall`。
 - `genesisAmount` 与 `preorderAmount` 均须 > 0，均由调用方显式给定；合约内部按既有 preorder 容量公式实时校验，不做系统自动算预购量。
 - `user` 是 genesis 与 preorder 两步的共同受益人，`msg.sender` 是 payer（与单函数一致，支持代付）。
 - 容量校验：内部先执行 genesis 步（写 `totalNormalFunds[verseId]`），再执行 preorder 步；preorder 步实时读取已含本次 genesis 增量的 `totalNormalFunds` + `totalLeveragedDebt`，按本节既有 `preorderCap` 公式计算并校验 `totalPreorderFunds + preorderAmount <= preorderCap`，不足 revert `InvalidLength`（沿用既有 preorder 容量校验错误），不引入新口径。
@@ -128,7 +128,7 @@ debtCap = min(rawDebtCap, MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - totalNormalFunds)
 totalLeveragedDebt <= debtCap
 ```
 
-`minTotalFund` 经 `MemeverseLauncher.sol::getDebtCapBaseByVerseId` 按交易实时读取当前配置（活读，非注册时快照）；Genesis 期间 owner 变更 `MemeverseLauncher.sol::setFundMetaData` 立即改变杠杆债务上限（调高 `minTotalFund` 扩大上限、调低收窄），为预期语义。
+`minTotalFund` 经 `MemeverseLauncherUpgradeable.sol::getDebtCapBaseByVerseId` 按交易实时读取当前配置（活读，非注册时快照）；Genesis 期间 owner 变更 `MemeverseLauncherUpgradeable.sol::setFundMetaData` 立即改变杠杆债务上限（调高 `minTotalFund` 扩大上限、调低收窄），为预期语义。
 
 `leveragedDebtFactor` 是全局杠杆债务上限系数，所有 verse 共享，不是单用户倍数。对单个 verse 而言，factor 推导出的原始杠杆债务上限为 `fullPrecisionMulDiv(leveragedDebtFactor, max(totalNormalFunds, minTotalFund), 1e18)`，实际有效上限还必须受 aggregate genesis funds 剩余容量限制。
 
@@ -192,7 +192,7 @@ totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS
 - `interestAmount` 必须大于 0
 - 要求该 verse 的 `uAsset` 已完成全局 reserve 配置：`settlementDustStates[uAsset].maxReserve > 0`
 - 参与地址为 `msg.sender`，没有 user-address 输入
-- 从用户转入该 verse 的 `uAsset` 到 `POLend`
+- 从用户转入该 verse 的 `uAsset` 到 `POLendUpgradeable`
 - 只累计 `leveragedInterestPaid[verseId][msg.sender]`
 - 只累计 `market.totalLeveragedInterest`
 - 不 mint `uAsset`
@@ -209,7 +209,7 @@ event LeveragedGenesis(uint256 indexed verseId, address indexed user, uint256 in
 
 `leveragedGenesisWithCredit(verseId, creditAmount)`：冷启动期允许用户用 GenesisCredit（与该 verse `uAsset` raw-unit 1:1 对应的 ERC20/OFT）抵扣杠杆利息，等价于"免费借贷参与创世"。
 
-GenesisCredit 当前固定 18 decimals，因此 credit path 只支持 `uAsset.decimals() == 18` 的 verse。`GenesisCreditFactory.deployCredit` 必须拒绝非 18-dec `uAsset`（revert `InvalidUAssetDecimals`），`POLend.leveragedGenesisWithCredit` 在该 verse 首次解析 credit token 的流程内（经 `creditOf(uAsset)` 取得地址后、写入 `market.creditToken` 缓存前）校验 `uAsset` 与 GenesisCredit 均为 18 decimals；不满足时 revert `CreditDecimalsMismatch`。非 18-dec `uAsset` 仍可走普通 `genesis` 与真付 `uAsset` 的 `leveragedGenesis`，但不得启用 GenesisCredit credit path。
+GenesisCredit 当前固定 18 decimals，因此 credit path 只支持 `uAsset.decimals() == 18` 的 verse。`GenesisCreditFactory.deployCredit` 必须拒绝非 18-dec `uAsset`（revert `InvalidUAssetDecimals`），`POLendUpgradeable.leveragedGenesisWithCredit` 在该 verse 首次解析 credit token 的流程内（经 `creditOf(uAsset)` 取得地址后、写入 `market.creditToken` 缓存前）校验 `uAsset` 与 GenesisCredit 均为 18 decimals；不满足时 revert `CreditDecimalsMismatch`。非 18-dec `uAsset` 仍可走普通 `genesis` 与真付 `uAsset` 的 `leveragedGenesis`，但不得启用 GenesisCredit credit path。
 
 - 只允许 Launcher 已注册的 verse
 - 只允许 Launcher verse 处于 `Genesis`
@@ -218,7 +218,7 @@ GenesisCredit 当前固定 18 decimals，因此 credit path 只支持 `uAsset.de
 - `creditAmount > 0`
 - 要求该 verse 的 `uAsset` 已完成全局 reserve 配置
 - 经 `GenesisCreditFactory` 查该 `uAsset` 对应的 GenesisCredit 地址；无则 revert `NoCreditForUAsset`（credit 是可选路径，不影响正常 `leveragedGenesis`）
-- `GenesisCredit.transferFrom(msg.sender, POLend, creditAmount)` → 托管到 `POLend`（**不 burn**，finalize 时统一 burn）
+- `GenesisCredit.transferFrom(msg.sender, POLendUpgradeable, creditAmount)` → 托管到 `POLendUpgradeable`（**不 burn**，finalize 时统一 burn）
 - `creditInterestPaid[verseId][msg.sender] += creditAmount`
 - `market.totalCreditInterest += creditAmount`
 - `market.totalLeveragedInterest += creditAmount`（real + credit 合计，用于 launch gate + D 推导 + debt cap 预检）
@@ -244,7 +244,7 @@ event LeveragedGenesisWithCredit(uint256 indexed verseId, address indexed user, 
 `Genesis -> Refund` 时，只有 `getTotalLeveragedDebt(verseId) > 0` 才调用：
 
 ```text
-POLend.markRefundable(verseId)
+POLendUpgradeable.markRefundable(verseId)
 ```
 
 无杠杆参与时，market 保持 `None`，不记录 `Refund`，因为没有杠杆利息可退。
@@ -263,7 +263,7 @@ POLend.markRefundable(verseId)
 - 权益和领取标记基于 `msg.sender`
 - `to != address(0)`，退款转给 `to`
 - real 部分：按 `leveragedInterestPaid[verseId][msg.sender]` 退回该 verse 的 `uAsset`，退回成功 emit `ClaimRefund(verseId, user, to, amount)`
-- credit 部分：按 `creditInterestPaid[verseId][msg.sender]` 从 POLend 托管余额 `GenesisCredit.transfer(to, amount)` 退回 GenesisCredit token（不凭空 materialize uAsset）
+- credit 部分：按 `creditInterestPaid[verseId][msg.sender]` 从 POLendUpgradeable 托管余额 `GenesisCredit.transfer(to, amount)` 退回 GenesisCredit token（不凭空 materialize uAsset）
 - 一次性领取（real 与 credit 合并一次 claim）
 - 不清零 `leveragedInterestPaid` / `creditInterestPaid`
 - 用 `refundClaimed` 标记
@@ -279,23 +279,23 @@ real 用户退 uAsset、credit 用户退 GenesisCredit，两条物理隔离；�
 
 `Launcher.changeStage` 从 `Genesis` 进入 `Locked` 时：
 
-1. 若 `getTotalLeveragedDebt(verseId) > 0`，调用 `POLend.finalizeLeveragedGenesis(verseId)`
-2. 调用 `POLSplitter.initializeVerse(verseId, pol, memecoin, uAsset, name, symbol)`
+1. 若 `getTotalLeveragedDebt(verseId) > 0`，调用 `POLendUpgradeable.finalizeLeveragedGenesis(verseId)`
+2. 调用 `POLSplitterUpgradeable.initializeVerse(verseId, pol, memecoin, uAsset, name, symbol)`
 3. 部署 `memecoin/uAsset` 主池
 4. 执行 preorder 首笔交易
-5. Router 主池执行完成、主池实际消耗 `uAsset` 与主池 LP/POL raw amount 已知后，调用 `POLSplitter.recordPTBackingRatio(verseId, mainPoolUAssetUsed, mainPoolPOLAmount)`
+5. Router 主池执行完成、主池实际消耗 `uAsset` 与主池 LP/POL raw amount 已知后，调用 `POLSplitterUpgradeable.recordPTBackingRatio(verseId, mainPoolUAssetUsed, mainPoolPOLAmount)`
 6. split 用于辅助池的 `POL`，部署三个辅助池
-7. 若 `getTotalLeveragedDebt(verseId) > 0`，转移杠杆初始 `YT` 给 `POLend`
-8. 若 `getTotalLeveragedDebt(verseId) > 0`，调用 `POLend.recordLeveragedYT(verseId, yt, totalLeveragedYT)`
+7. 若 `getTotalLeveragedDebt(verseId) > 0`，转移杠杆初始 `YT` 给 `POLendUpgradeable`
+8. 若 `getTotalLeveragedDebt(verseId) > 0`，调用 `POLendUpgradeable.recordLeveragedYT(verseId, yt, totalLeveragedYT)`
 
-`POLSplitter.initializeVerse` 无论有没有杠杆参与都必须调用。PT/YT 是 POL 拆分体系，与是否有杠杆创世无关。
+`POLSplitterUpgradeable.initializeVerse` 无论有没有杠杆参与都必须调用。PT/YT 是 POL 拆分体系，与是否有杠杆创世无关。
 
 纯普通创世时：
 
 - 不调用 `finalizeLeveragedGenesis`
 - 不调用 `recordLeveragedYT`
 - 所有初始 `YT` 都归普通初始 claim 池
-- POLend 不托管 `YT`
+- POLendUpgradeable 不托管 `YT`
 - market 保持 `None`
 
 ### 5.1 finalizeLeveragedGenesis
@@ -308,8 +308,8 @@ real 用户退 uAsset、credit 用户退 GenesisCredit，两条物理隔离；�
 - 只在 `getTotalLeveragedDebt(verseId) > 0` 时调用
 - 先把 market 状态设为 `Locked`
 - mint `totalLeveragedDebt` 数量的该 verse `uAsset` 到 `Launcher`（基于合计 `totalLeveragedInterest`，real + credit 一同推导）
-- 把真付部分 realInterest 全额清扫至 `protocolTreasury`：`realInterest = market.totalLeveragedInterest - market.totalCreditInterest`，该 `uAsset` 全额转给 `POLend.protocolTreasury`，不做 reserve 拆分。settlement dust reserve 仅由 Launcher bootstrap unused `uAsset`（`_handleBootstrapResiduals` → `fundSettlementDustReserve`）与手动 `fundSettlementDustReserve` 注入。credit 部分无 token 流入，跳过 treasury 清扫
-- 若 `market.totalCreditInterest > 0`：**burn 托管的 GenesisCredit** `GenesisCredit.burn(market.totalCreditInterest)`（POLend 烧自己托管的 credit 余额，permissionless 自烧，无需 burner 权限模型），并 emit `CreditBurned(verseId, uAsset, totalCreditInterest)`。`totalCreditInterest == 0` 的 real-only finalize 跳过 burn 与事件——`GenesisCredit.burn(0)` 会 `revert ZeroInput()`，且无销毁发生不应发审计事件
+- 把真付部分 realInterest 全额清扫至 `protocolTreasury`：`realInterest = market.totalLeveragedInterest - market.totalCreditInterest`，该 `uAsset` 全额转给 `POLendUpgradeable.protocolTreasury`，不做 reserve 拆分。settlement dust reserve 仅由 Launcher bootstrap unused `uAsset`（`_handleBootstrapResiduals` → `fundSettlementDustReserve`）与手动 `fundSettlementDustReserve` 注入。credit 部分无 token 流入，跳过 treasury 清扫
+- 若 `market.totalCreditInterest > 0`：**burn 托管的 GenesisCredit** `GenesisCredit.burn(market.totalCreditInterest)`（POLendUpgradeable 烧自己托管的 credit 余额，permissionless 自烧，无需 burner 权限模型），并 emit `CreditBurned(verseId, uAsset, totalCreditInterest)`。`totalCreditInterest == 0` 的 real-only finalize 跳过 burn 与事件——`GenesisCredit.burn(0)` 会 `revert ZeroInput()`，且无销毁发生不应发审计事件
 - 无论 credit 与否,函数尾无条件 emit `LeveragedGenesisFinalized(verseId, uAsset, debt, realInterestSwept, creditBurned)`(real-only 时 `creditBurned == 0`;credit-only 时 `realInterestSwept == 0` 且无 treasury 转账)
 - `globalDebtByUAsset[market.uAsset] += totalLeveragedDebt`
 
@@ -321,7 +321,7 @@ mintedUAsset = totalLeveragedInterest * 1e18 / market.interestRate
 
 `finalizeLeveragedGenesis` 不重复检查 debt cap。
 
-混池 burn 安全性：POLend 对某 uAsset 的 GenesisCredit 托管余额是该 uAsset 所有 verse 的 credit 利息合计（混池）。`markRefundable` 与 `finalizeLeveragedGenesis` 都 `require market.state == Genesis` 并分别迁移到 `Refund` / `Locked`（状态机互斥），同一 verse 的 refund 与 finalize 不会都发生，故 finalize 时刻该 verse 的 `totalCreditInterest` 仍精确等于其未退走的托管量，按 `market.totalCreditInterest` burn 不会误烧其他 verse 的份额（详见 [core.md §6.3](core.md)）。
+混池 burn 安全性：POLendUpgradeable 对某 uAsset 的 GenesisCredit 托管余额是该 uAsset 所有 verse 的 credit 利息合计（混池）。`markRefundable` 与 `finalizeLeveragedGenesis` 都 `require market.state == Genesis` 并分别迁移到 `Refund` / `Locked`（状态机互斥），同一 verse 的 refund 与 finalize 不会都发生，故 finalize 时刻该 verse 的 `totalCreditInterest` 仍精确等于其未退走的托管量，按 `market.totalCreditInterest` burn 不会误烧其他 verse 的份额（详见 [core.md §6.3](core.md)）。
 
 `finalizeLeveragedGenesis` 完成成功路径的利息 treasury 清扫后，`claimRefund` 不可用。
 
@@ -351,7 +351,7 @@ totalAuxiliaryFunds = totalGenesisFunds - totalMemecoinFunds
 
 主池铸造 `POL`。主池 LP token 即为 POL。POL mint 数量由主池部署时的 uAsset 存入量和初始价格决定，初始价格由 `fundBasedAmount` 参数定义。`fundBasedAmount` 配置语义见 [docs/spec/verse/config-matrix.md](../verse/config-matrix.md)。
 
-`ptBackingNumerator / ptBackingDenominator` 的唯一权威写入点是 `POLSplitter.recordPTBackingRatio(verseId, numerator, denominator)`。`Launcher` 必须在主池 LP/POL 实际 mint 后、任何 `split` 或 PT 相关辅助池创建前调用一次；之后不可变。
+`ptBackingNumerator / ptBackingDenominator` 的唯一权威写入点是 `POLSplitterUpgradeable.recordPTBackingRatio(verseId, numerator, denominator)`。`Launcher` 必须在主池 LP/POL 实际 mint 后、任何 `split` 或 PT 相关辅助池创建前调用一次；之后不可变。
 
 记录参数：
 
@@ -412,10 +412,10 @@ totalLeveragedYT = totalYT - totalNormalClaimableYT
 
 普通初始 `YT` 托管在 `Launcher`。
 
-杠杆初始 `YT` 必须先转给 `POLend`，再调用：
+杠杆初始 `YT` 必须先转给 `POLendUpgradeable`，再调用：
 
 ```text
-POLend.recordLeveragedYT(verseId, yt, totalLeveragedYT)
+POLendUpgradeable.recordLeveragedYT(verseId, yt, totalLeveragedYT)
 ```
 
 `recordLeveragedYT`：
@@ -446,7 +446,7 @@ PT/YT 生命周期（`initializeVerse` / `recordPTBackingRatio` / `split`-`merge
 
 杠杆初始 `YT`：
 
-- 依赖 `POLend` market 成功路径
+- 依赖 `POLendUpgradeable` market 成功路径
 - 只在 market 处于 `Locked` 或 `Settled` 状态时可领取
 - `None / Genesis / Refund` 时 revert `InvalidState`
 - `Unlocked` 后补领也允许，补领后可立即 `redeemYT`

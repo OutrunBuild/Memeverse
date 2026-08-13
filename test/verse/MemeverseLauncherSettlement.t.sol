@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
@@ -39,12 +39,12 @@ contract MemeverseLauncherSettlementTest is Test, MemeverseLauncherTestHelper {
         pol = new MockERC20("POL", "POL", 18);
         polend = new MockPOLendForLifecycle();
         splitter = new MockPOLSplitterForLifecycle(address(pol), address(uAsset));
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -103,7 +103,7 @@ contract MemeverseLauncherSettlementTest is Test, MemeverseLauncherTestHelper {
 
     /// @notice Verifies `changeStage` (Locked->Unlocked) reverts when `settlementImpl` is unset.
     /// @dev The Locked->Unlocked branch delegatecalls the sibling's `unlockFromLocked` (which captures auxiliary
-    ///      fees, advances the stage, settles POLSplitter/POLend, and arms public-swap protection); the guard
+    ///      fees, advances the stage, settles POLSplitterUpgradeable/POLendUpgradeable, and arms public-swap protection); the guard
     ///      surfaces as `SettlementImplNotSet` before the delegatecall, leaving the stage untouched.
     function test_revertsWhenSettlementImplNotSet_changeStageUnlock() external {
         uint256 verseId = 1;

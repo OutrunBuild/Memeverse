@@ -162,27 +162,27 @@
       "check": "assembly",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/polend/POLend.sol#L825-L842",
-      "summary": "POLend._mulDiv1e18Saturating(uint256,uint256) uses assembly",
-      "key": "assembly|src/polend/POLend.sol|POLend._mulDiv1e18Saturating(uint256,uint256) uses assembly"
+      "location": "src/polend/POLendUpgradeable.sol#L825-L842",
+      "summary": "POLendUpgradeable._mulDiv1e18Saturating(uint256,uint256) uses assembly",
+      "key": "assembly|src/polend/POLendUpgradeable.sol|POLendUpgradeable._mulDiv1e18Saturating(uint256,uint256) uses assembly"
     },
     {
       "id": "59195aa80cd03f23d1e7c5bd3695d44e501c0abd10e2d1492e3a7016f1e0616a",
       "check": "assembly",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/swap/MemeverseUniswapHook.sol#L274-L279",
-      "summary": "MemeverseUniswapHook._forwardCalldataAndReturn(address,bytes4) uses assembly",
-      "key": "assembly|src/swap/MemeverseUniswapHook.sol|MemeverseUniswapHook._forwardCalldataAndReturn(address,bytes4) uses assembly"
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L274-L279",
+      "summary": "MemeverseUniswapHookUpgradeable._forwardCalldataAndReturn(address,bytes4) uses assembly",
+      "key": "assembly|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable._forwardCalldataAndReturn(address,bytes4) uses assembly"
     },
     {
       "id": "39e9d6cee7c7062f85e0afe7aa23bafc2a352418c813966dc75b5cd97c42a3b3",
       "check": "assembly",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/swap/MemeverseUniswapHook.sol#L846-L882",
-      "summary": "MemeverseUniswapHook.quoteSwapFeeWithContext(PoolId,SwapParams,address,uint160,uint128,bool) uses assembly",
-      "key": "assembly|src/swap/MemeverseUniswapHook.sol|MemeverseUniswapHook.quoteSwapFeeWithContext(PoolId,SwapParams,address,uint160,uint128,bool) uses assembly"
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L846-L882",
+      "summary": "MemeverseUniswapHookUpgradeable.quoteSwapFeeWithContext(PoolId,SwapParams,address,uint160,uint128,bool) uses assembly",
+      "key": "assembly|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable.quoteSwapFeeWithContext(PoolId,SwapParams,address,uint160,uint128,bool) uses assembly"
     },
     {
       "id": "49a0e3779876050a3c7867ac11619db0e4ac3cf1cab0fa4ada5897784173b384",
@@ -279,9 +279,9 @@
       "check": "cyclomatic-complexity",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/polend/POLend.sol#L259-L320",
-      "summary": "POLend.leveragedGenesisWithCredit(uint256,uint256) has a high cyclomatic complexity (12).",
-      "key": "cyclomatic-complexity|src/polend/POLend.sol|POLend.leveragedGenesisWithCredit(uint256,uint256) has a high cyclomatic complexity (12)."
+      "location": "src/polend/POLendUpgradeable.sol#L259-L320",
+      "summary": "POLendUpgradeable.leveragedGenesisWithCredit(uint256,uint256) has a high cyclomatic complexity (12).",
+      "key": "cyclomatic-complexity|src/polend/POLendUpgradeable.sol|POLendUpgradeable.leveragedGenesisWithCredit(uint256,uint256) has a high cyclomatic complexity (12)."
     },
     {
       "id": "e0f71e5afddb68e8d4db6f808b5b32aaf159403862d4a72b2b64102c45a115f9",
@@ -531,9 +531,9 @@
       "check": "incorrect-equality",
       "impact": "Medium",
       "confidence": "High",
-      "location": "src/polend/POLSplitter.sol#L392-L396",
-      "summary": "POLSplitter._isUnlocked(uint256) uses a dangerous strict equality:",
-      "key": "incorrect-equality|src/polend/POLSplitter.sol|POLSplitter._isUnlocked(uint256) uses a dangerous strict equality:"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L392-L396",
+      "summary": "POLSplitterUpgradeable._isUnlocked(uint256) uses a dangerous strict equality:",
+      "key": "incorrect-equality|src/polend/POLSplitterUpgradeable.sol|POLSplitterUpgradeable._isUnlocked(uint256) uses a dangerous strict equality:"
     },
     {
       "id": "810391c5b5836e5de1ba5da37244b287f51abc7c3b1cbdfba673272082df843b",
@@ -810,9 +810,9 @@
       "check": "reentrancy-balance",
       "impact": "High",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L400-L459",
-      "summary": "Reentrancy in POLend.executeGlobalSettlement(uint256):",
-      "key": "reentrancy-balance|src/polend/POLend.sol|Reentrancy in POLend.executeGlobalSettlement(uint256):"
+      "location": "src/polend/POLendUpgradeable.sol#L400-L459",
+      "summary": "Reentrancy in POLendUpgradeable.executeGlobalSettlement(uint256):",
+      "key": "reentrancy-balance|src/polend/POLendUpgradeable.sol|Reentrancy in POLendUpgradeable.executeGlobalSettlement(uint256):"
     },
     {
       "id": "7a6d560ab76167547c601166cb51a5dde5d385d4f47415a304558e08299e4b39",
@@ -999,36 +999,36 @@
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L174-L206",
-      "summary": "Reentrancy in POLSplitter.initializeVerse(uint256,address,address,address,string,string):",
-      "key": "reentrancy-events|src/polend/POLSplitter.sol|Reentrancy in POLSplitter.initializeVerse(uint256,address,address,address,string,string):"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L174-L206",
+      "summary": "Reentrancy in POLSplitterUpgradeable.initializeVerse(uint256,address,address,address,string,string):",
+      "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.initializeVerse(uint256,address,address,address,string,string):"
     },
     {
       "id": "df27a10b1c77b3b33ef12f93c55ac6ee0bdaa9e1388b0821e4f698897b614147",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L242-L280",
-      "summary": "Reentrancy in POLSplitter.settle(uint256):",
-      "key": "reentrancy-events|src/polend/POLSplitter.sol|Reentrancy in POLSplitter.settle(uint256):"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L242-L280",
+      "summary": "Reentrancy in POLSplitterUpgradeable.settle(uint256):",
+      "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.settle(uint256):"
     },
     {
       "id": "9ef191f01351887e8b4518236a49ea99bf1aee9f14b17190f5e8a4d95e6377e5",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L340-L379",
-      "summary": "Reentrancy in POLend.finalizeLeveragedGenesis(uint256):",
-      "key": "reentrancy-events|src/polend/POLend.sol|Reentrancy in POLend.finalizeLeveragedGenesis(uint256):"
+      "location": "src/polend/POLendUpgradeable.sol#L340-L379",
+      "summary": "Reentrancy in POLendUpgradeable.finalizeLeveragedGenesis(uint256):",
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|Reentrancy in POLendUpgradeable.finalizeLeveragedGenesis(uint256):"
     },
     {
       "id": "5b658ef3cab8eabc84d7a86006a43187612de76312c2ce60ab11c1fb8ce36600",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L501-L515",
-      "summary": "Reentrancy in POLend.preRedeemPTFee(uint256,uint256,address):",
-      "key": "reentrancy-events|src/polend/POLend.sol|Reentrancy in POLend.preRedeemPTFee(uint256,uint256,address):"
+      "location": "src/polend/POLendUpgradeable.sol#L501-L515",
+      "summary": "Reentrancy in POLendUpgradeable.preRedeemPTFee(uint256,uint256,address):",
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|Reentrancy in POLendUpgradeable.preRedeemPTFee(uint256,uint256,address):"
     },
     {
       "id": "ed94e311dfc82002dbccb395c50a6012f79ea48244ef7cf78be23a1102a7f652",
@@ -1116,9 +1116,9 @@
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncher.sol#L796-L801",
-      "summary": "Reentrancy in MemeverseLauncher.removeGasDust(address):",
-      "key": "reentrancy-events|src/verse/MemeverseLauncher.sol|Reentrancy in MemeverseLauncher.removeGasDust(address):"
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L796-L801",
+      "summary": "Reentrancy in MemeverseLauncherUpgradeable.removeGasDust(address):",
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|Reentrancy in MemeverseLauncherUpgradeable.removeGasDust(address):"
     },
     {
       "id": "dfe2cfa6e1b385a554d3a70f6320b1c9b42491f2853c5030367b9ef686db53da",
@@ -1206,27 +1206,27 @@
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/YieldDispatcher.sol#L108-L112",
-      "summary": "Reentrancy in YieldDispatcher.distributeSameChain(address,address,IMemeverseOFTEnum.TokenType,uint256):",
-      "key": "reentrancy-events|src/verse/YieldDispatcher.sol|Reentrancy in YieldDispatcher.distributeSameChain(address,address,IMemeverseOFTEnum.TokenType,uint256):"
+      "location": "src/verse/YieldDispatcherUpgradeable.sol#L108-L112",
+      "summary": "Reentrancy in YieldDispatcherUpgradeable.distributeSameChain(address,address,IMemeverseOFTEnum.TokenType,uint256):",
+      "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|Reentrancy in YieldDispatcherUpgradeable.distributeSameChain(address,address,IMemeverseOFTEnum.TokenType,uint256):"
     },
     {
       "id": "c7a58970906e4ace8c6405c8489823826dc4a34fee6f2122859f4a987eeb1c10",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/YieldDispatcher.sol#L64-L105",
-      "summary": "Reentrancy in YieldDispatcher.lzCompose(address,bytes32,bytes,address,bytes):",
-      "key": "reentrancy-events|src/verse/YieldDispatcher.sol|Reentrancy in YieldDispatcher.lzCompose(address,bytes32,bytes,address,bytes):"
+      "location": "src/verse/YieldDispatcherUpgradeable.sol#L64-L105",
+      "summary": "Reentrancy in YieldDispatcherUpgradeable.lzCompose(address,bytes32,bytes,address,bytes):",
+      "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|Reentrancy in YieldDispatcherUpgradeable.lzCompose(address,bytes32,bytes,address,bytes):"
     },
     {
       "id": "0278110fb7f4c99e70454115844e088abb55911bfeb352edeb5fc18d56060cbe",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/YieldDispatcher.sol#L115-L141",
-      "summary": "Reentrancy in YieldDispatcher.settlePendingCompose(address,bytes32,bytes):",
-      "key": "reentrancy-events|src/verse/YieldDispatcher.sol|Reentrancy in YieldDispatcher.settlePendingCompose(address,bytes32,bytes):"
+      "location": "src/verse/YieldDispatcherUpgradeable.sol#L115-L141",
+      "summary": "Reentrancy in YieldDispatcherUpgradeable.settlePendingCompose(address,bytes32,bytes):",
+      "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|Reentrancy in YieldDispatcherUpgradeable.settlePendingCompose(address,bytes32,bytes):"
     },
     {
       "id": "942d97df34cd583739b98e0309a7737a9ab8a8847203974a8b91ae282b7ea45b",
@@ -1287,81 +1287,81 @@
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L174-L206",
-      "summary": "Reentrancy in POLSplitter.initializeVerse(uint256,address,address,address,string,string):",
-      "key": "reentrancy-no-eth|src/polend/POLSplitter.sol|Reentrancy in POLSplitter.initializeVerse(uint256,address,address,address,string,string):"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L174-L206",
+      "summary": "Reentrancy in POLSplitterUpgradeable.initializeVerse(uint256,address,address,address,string,string):",
+      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.initializeVerse(uint256,address,address,address,string,string):"
     },
     {
       "id": "45e75d88a2b9a1c7e4c5caa5ace466ad812ddfc2720170d59d5fa40c1c8260f0",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L315-L325",
-      "summary": "Reentrancy in POLSplitter.preRedeemPTFee(uint256,uint256):",
-      "key": "reentrancy-no-eth|src/polend/POLSplitter.sol|Reentrancy in POLSplitter.preRedeemPTFee(uint256,uint256):"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L315-L325",
+      "summary": "Reentrancy in POLSplitterUpgradeable.preRedeemPTFee(uint256,uint256):",
+      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.preRedeemPTFee(uint256,uint256):"
     },
     {
       "id": "997655ee81a94dd02314d3b3b3cf1bc251213ab7eb523ffb55ddec88b7a2577e",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L327-L347",
-      "summary": "Reentrancy in POLSplitter.redeemPT(uint256,uint256,address):",
-      "key": "reentrancy-no-eth|src/polend/POLSplitter.sol|Reentrancy in POLSplitter.redeemPT(uint256,uint256,address):"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L327-L347",
+      "summary": "Reentrancy in POLSplitterUpgradeable.redeemPT(uint256,uint256,address):",
+      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.redeemPT(uint256,uint256,address):"
     },
     {
       "id": "7b112c917c69e7fec81976daa4971e6c4492e0ab4a19955e608f1b7e2817aa67",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L349-L376",
-      "summary": "Reentrancy in POLSplitter.redeemYT(uint256,uint256,address):",
-      "key": "reentrancy-no-eth|src/polend/POLSplitter.sol|Reentrancy in POLSplitter.redeemYT(uint256,uint256,address):"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L349-L376",
+      "summary": "Reentrancy in POLSplitterUpgradeable.redeemYT(uint256,uint256,address):",
+      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.redeemYT(uint256,uint256,address):"
     },
     {
       "id": "345be173c861d836b19da85afe9c9fa250345de3a392afa8b431f1fb292ad824",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L242-L280",
-      "summary": "Reentrancy in POLSplitter.settle(uint256):",
-      "key": "reentrancy-no-eth|src/polend/POLSplitter.sol|Reentrancy in POLSplitter.settle(uint256):"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L242-L280",
+      "summary": "Reentrancy in POLSplitterUpgradeable.settle(uint256):",
+      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.settle(uint256):"
     },
     {
       "id": "7ad5e37094d3cf22c5a3293664f0b6bd77c44111122e262d81cb6f8e4e8611e3",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L400-L459",
-      "summary": "Reentrancy in POLend.executeGlobalSettlement(uint256):",
-      "key": "reentrancy-no-eth|src/polend/POLend.sol|Reentrancy in POLend.executeGlobalSettlement(uint256):"
+      "location": "src/polend/POLendUpgradeable.sol#L400-L459",
+      "summary": "Reentrancy in POLendUpgradeable.executeGlobalSettlement(uint256):",
+      "key": "reentrancy-no-eth|src/polend/POLendUpgradeable.sol|Reentrancy in POLendUpgradeable.executeGlobalSettlement(uint256):"
     },
     {
       "id": "98a037068edd89201c1eaffc9d80d98f02b9ea550a5262dd51bb2cf7e3eb3971",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L501-L515",
-      "summary": "Reentrancy in POLend.preRedeemPTFee(uint256,uint256,address):",
-      "key": "reentrancy-no-eth|src/polend/POLend.sol|Reentrancy in POLend.preRedeemPTFee(uint256,uint256,address):"
+      "location": "src/polend/POLendUpgradeable.sol#L501-L515",
+      "summary": "Reentrancy in POLendUpgradeable.preRedeemPTFee(uint256,uint256,address):",
+      "key": "reentrancy-no-eth|src/polend/POLendUpgradeable.sol|Reentrancy in POLendUpgradeable.preRedeemPTFee(uint256,uint256,address):"
     },
     {
       "id": "1a42f3400f48ba331774736367c25b0dce01fcc11df9231ef487d92ecb877bcc",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHook.sol#L532-L574",
-      "summary": "Reentrancy in MemeverseUniswapHook._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address):",
-      "key": "reentrancy-no-eth|src/swap/MemeverseUniswapHook.sol|Reentrancy in MemeverseUniswapHook._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address):"
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L532-L574",
+      "summary": "Reentrancy in MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address):",
+      "key": "reentrancy-no-eth|src/swap/MemeverseUniswapHookUpgradeable.sol|Reentrancy in MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address):"
     },
     {
       "id": "2d0ff7c2bb644135b7cc5a8e44693dfd7e7a81b69c3cd8637d31019a5732f7a8",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHook.sol#L590-L621",
-      "summary": "Reentrancy in MemeverseUniswapHook._removeLiquidityCore(IMemeverseUniswapHook.RemoveLiquidityCoreParams):",
-      "key": "reentrancy-no-eth|src/swap/MemeverseUniswapHook.sol|Reentrancy in MemeverseUniswapHook._removeLiquidityCore(IMemeverseUniswapHook.RemoveLiquidityCoreParams):"
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L590-L621",
+      "summary": "Reentrancy in MemeverseUniswapHookUpgradeable._removeLiquidityCore(IMemeverseUniswapHook.RemoveLiquidityCoreParams):",
+      "key": "reentrancy-no-eth|src/swap/MemeverseUniswapHookUpgradeable.sol|Reentrancy in MemeverseUniswapHookUpgradeable._removeLiquidityCore(IMemeverseUniswapHook.RemoveLiquidityCoreParams):"
     },
     {
       "id": "ffbba2807148bb6d101bff9fa11d52f4d036764c0d3aaf49280aa72740f471d3",
@@ -1512,54 +1512,54 @@
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/polend/POLSplitter.sol#L409",
-      "summary": "POLSplitter._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo).launcher shadows:",
-      "key": "shadowing-local|src/polend/POLSplitter.sol|POLSplitter._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo).launcher shadows:"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L409",
+      "summary": "POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo).launcher shadows:",
+      "key": "shadowing-local|src/polend/POLSplitterUpgradeable.sol|POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo).launcher shadows:"
     },
     {
       "id": "cd6b91ad8b340fbba06ce5fc873b24e0849f5bb8f0624ef20b6863a1a5185676",
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/polend/POLend.sol#L863",
-      "summary": "POLend._burnSettledPol(uint256,uint256).launcher shadows:",
-      "key": "shadowing-local|src/polend/POLend.sol|POLend._burnSettledPol(uint256,uint256).launcher shadows:"
+      "location": "src/polend/POLendUpgradeable.sol#L863",
+      "summary": "POLendUpgradeable._burnSettledPol(uint256,uint256).launcher shadows:",
+      "key": "shadowing-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable._burnSettledPol(uint256,uint256).launcher shadows:"
     },
     {
       "id": "94a2424b6615d5e34b8916f9ac71c41c26a683b7a7ccdb15f62c8fa71d20e191",
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/polend/POLend.sol#L820",
-      "summary": "POLend._debtCap(uint256,address).launcher shadows:",
-      "key": "shadowing-local|src/polend/POLend.sol|POLend._debtCap(uint256,address).launcher shadows:"
+      "location": "src/polend/POLendUpgradeable.sol#L820",
+      "summary": "POLendUpgradeable._debtCap(uint256,address).launcher shadows:",
+      "key": "shadowing-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable._debtCap(uint256,address).launcher shadows:"
     },
     {
       "id": "c81b0ccb05f4eb1bfc746c07314d8bcdd0fd936a6c37e006661f74f6cf5ac6fd",
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/polend/POLend.sol#L790",
-      "summary": "POLend._debtCapacity(uint256,IPOLend.LendMarket).launcher shadows:",
-      "key": "shadowing-local|src/polend/POLend.sol|POLend._debtCapacity(uint256,IPOLend.LendMarket).launcher shadows:"
+      "location": "src/polend/POLendUpgradeable.sol#L790",
+      "summary": "POLendUpgradeable._debtCapacity(uint256,IPOLend.LendMarket).launcher shadows:",
+      "key": "shadowing-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable._debtCapacity(uint256,IPOLend.LendMarket).launcher shadows:"
     },
     {
       "id": "3fb004ba17ab494e5de21455b8ee84f74b95aced0bd538766de5d87f9f603a14",
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/polend/POLend.sol#L229",
-      "summary": "POLend.leveragedGenesis(uint256,uint256).launcher shadows:",
-      "key": "shadowing-local|src/polend/POLend.sol|POLend.leveragedGenesis(uint256,uint256).launcher shadows:"
+      "location": "src/polend/POLendUpgradeable.sol#L229",
+      "summary": "POLendUpgradeable.leveragedGenesis(uint256,uint256).launcher shadows:",
+      "key": "shadowing-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable.leveragedGenesis(uint256,uint256).launcher shadows:"
     },
     {
       "id": "ffc64a3cad46bc72317f87cf38853525bb1e241b15056a7c7b64a62a0c7ac5a0",
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/polend/POLend.sol#L276",
-      "summary": "POLend.leveragedGenesisWithCredit(uint256,uint256).launcher shadows:",
-      "key": "shadowing-local|src/polend/POLend.sol|POLend.leveragedGenesisWithCredit(uint256,uint256).launcher shadows:"
+      "location": "src/polend/POLendUpgradeable.sol#L276",
+      "summary": "POLendUpgradeable.leveragedGenesisWithCredit(uint256,uint256).launcher shadows:",
+      "key": "shadowing-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable.leveragedGenesisWithCredit(uint256,uint256).launcher shadows:"
     },
     {
       "id": "1784d2f3612944a1d4799c1c88475a971f8e9a430501ddecd59a74f0c4b0d755",
@@ -1953,27 +1953,27 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L424",
-      "summary": "POLend.executeGlobalSettlement(uint256).consumedSettlementDustReserve is a local variable never initialized",
-      "key": "uninitialized-local|src/polend/POLend.sol|POLend.executeGlobalSettlement(uint256).consumedSettlementDustReserve is a local variable never initialized"
+      "location": "src/polend/POLendUpgradeable.sol#L424",
+      "summary": "POLendUpgradeable.executeGlobalSettlement(uint256).consumedSettlementDustReserve is a local variable never initialized",
+      "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable.executeGlobalSettlement(uint256).consumedSettlementDustReserve is a local variable never initialized"
     },
     {
       "id": "f9840dac78709a312e3cb6e451d2c9d9c2e629b57ec42713eb1355889dda24af",
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L410",
-      "summary": "POLend.executeGlobalSettlement(uint256).redeemedPtUAsset is a local variable never initialized",
-      "key": "uninitialized-local|src/polend/POLend.sol|POLend.executeGlobalSettlement(uint256).redeemedPtUAsset is a local variable never initialized"
+      "location": "src/polend/POLendUpgradeable.sol#L410",
+      "summary": "POLendUpgradeable.executeGlobalSettlement(uint256).redeemedPtUAsset is a local variable never initialized",
+      "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable.executeGlobalSettlement(uint256).redeemedPtUAsset is a local variable never initialized"
     },
     {
       "id": "91615f6c30af806c81251d21e1c1829d473c12e29ccc84674837f48053fa9347",
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L425",
-      "summary": "POLend.executeGlobalSettlement(uint256).residualUAsset is a local variable never initialized",
-      "key": "uninitialized-local|src/polend/POLend.sol|POLend.executeGlobalSettlement(uint256).residualUAsset is a local variable never initialized"
+      "location": "src/polend/POLendUpgradeable.sol#L425",
+      "summary": "POLendUpgradeable.executeGlobalSettlement(uint256).residualUAsset is a local variable never initialized",
+      "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable.executeGlobalSettlement(uint256).residualUAsset is a local variable never initialized"
     },
     {
       "id": "e3bed0bef37b6d902dbf2e642fad084cdb29558d6b2937dd8b7b494e5b3baf02",
@@ -1998,9 +1998,9 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHook.sol#L1091",
-      "summary": "MemeverseUniswapHook.setFacet(bytes32,address).old is a local variable never initialized",
-      "key": "uninitialized-local|src/swap/MemeverseUniswapHook.sol|MemeverseUniswapHook.setFacet(bytes32,address).old is a local variable never initialized"
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L1091",
+      "summary": "MemeverseUniswapHookUpgradeable.setFacet(bytes32,address).old is a local variable never initialized",
+      "key": "uninitialized-local|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable.setFacet(bytes32,address).old is a local variable never initialized"
     },
     {
       "id": "f203dbf8f21ace14fa547cf1a858b2be33e02d73bce1baa4d8a41af2e37b9d7c",
@@ -2169,45 +2169,45 @@
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L402-L418",
-      "summary": "POLSplitter._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IERC20(info.pol).approve(launcher,polAmount)",
-      "key": "unused-return|src/polend/POLSplitter.sol|POLSplitter._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IERC20(info.pol).approve(launcher,polAmount)"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L402-L418",
+      "summary": "POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IERC20(info.pol).approve(launcher,polAmount)",
+      "key": "unused-return|src/polend/POLSplitterUpgradeable.sol|POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IERC20(info.pol).approve(launcher,polAmount)"
     },
     {
       "id": "b6d2925f45ca79e5e12390704d9eaf80bb4b3e2e4ad2c80980c9cfdb083861f8",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L402-L418",
-      "summary": "POLSplitter._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)",
-      "key": "unused-return|src/polend/POLSplitter.sol|POLSplitter._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L402-L418",
+      "summary": "POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)",
+      "key": "unused-return|src/polend/POLSplitterUpgradeable.sol|POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)"
     },
     {
       "id": "ffdc7ed90247c2d73fff86322fd6792deda478c27b522a8548dffd686d6968fb",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitter.sol#L242-L280",
-      "summary": "POLSplitter.settle(uint256) ignores return value by IERC20(info.uAsset).approve(_polend,preRedeemedUAssetBacking)",
-      "key": "unused-return|src/polend/POLSplitter.sol|POLSplitter.settle(uint256) ignores return value by IERC20(info.uAsset).approve(_polend,preRedeemedUAssetBacking)"
+      "location": "src/polend/POLSplitterUpgradeable.sol#L242-L280",
+      "summary": "POLSplitterUpgradeable.settle(uint256) ignores return value by IERC20(info.uAsset).approve(_polend,preRedeemedUAssetBacking)",
+      "key": "unused-return|src/polend/POLSplitterUpgradeable.sol|POLSplitterUpgradeable.settle(uint256) ignores return value by IERC20(info.uAsset).approve(_polend,preRedeemedUAssetBacking)"
     },
     {
       "id": "9f2e232f047af56303cb756027b40d51316161afd1dc4ebcae25ba3bd600a73a",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L854-L872",
-      "summary": "POLend._burnSettledPol(uint256,uint256) ignores return value by IERC20(pol).approve(launcher,polAmount)",
-      "key": "unused-return|src/polend/POLend.sol|POLend._burnSettledPol(uint256,uint256) ignores return value by IERC20(pol).approve(launcher,polAmount)"
+      "location": "src/polend/POLendUpgradeable.sol#L854-L872",
+      "summary": "POLendUpgradeable._burnSettledPol(uint256,uint256) ignores return value by IERC20(pol).approve(launcher,polAmount)",
+      "key": "unused-return|src/polend/POLendUpgradeable.sol|POLendUpgradeable._burnSettledPol(uint256,uint256) ignores return value by IERC20(pol).approve(launcher,polAmount)"
     },
     {
       "id": "e2db0a51b0578e64dfd1dd30bc0e87818fd68659136a50b96c7ac04a537e6d8d",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLend.sol#L854-L872",
-      "summary": "POLend._burnSettledPol(uint256,uint256) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)",
-      "key": "unused-return|src/polend/POLend.sol|POLend._burnSettledPol(uint256,uint256) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)"
+      "location": "src/polend/POLendUpgradeable.sol#L854-L872",
+      "summary": "POLendUpgradeable._burnSettledPol(uint256,uint256) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)",
+      "key": "unused-return|src/polend/POLendUpgradeable.sol|POLendUpgradeable._burnSettledPol(uint256,uint256) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)"
     },
     {
       "id": "c24757d616c5fe9d7a2a720ef472dfa602fcdb6a8ca5f287c8cc2e5a26b2ce30",
@@ -2259,27 +2259,27 @@
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHook.sol#L532-L574",
-      "summary": "MemeverseUniswapHook._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (liquidity,None,None) = LiquidityQuote.quote(sqrtPriceX96,params.amount0Desired,params.amount1Desired)",
-      "key": "unused-return|src/swap/MemeverseUniswapHook.sol|MemeverseUniswapHook._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (liquidity,None,None) = LiquidityQuote.quote(sqrtPriceX96,params.amount0Desired,params.amount1Desired)"
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L532-L574",
+      "summary": "MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (liquidity,None,None) = LiquidityQuote.quote(sqrtPriceX96,params.amount0Desired,params.amount1Desired)",
+      "key": "unused-return|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (liquidity,None,None) = LiquidityQuote.quote(sqrtPriceX96,params.amount0Desired,params.amount1Desired)"
     },
     {
       "id": "6fbbe568fb20051ab9bd855f6e93472b42760de1988e1406688434c5817243b3",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHook.sol#L532-L574",
-      "summary": "MemeverseUniswapHook._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)",
-      "key": "unused-return|src/swap/MemeverseUniswapHook.sol|MemeverseUniswapHook._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)"
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L532-L574",
+      "summary": "MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)",
+      "key": "unused-return|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)"
     },
     {
       "id": "a23f27f7d318219df9f80c15f7295a6ac06ca1d65ae6aabe50e64eb2d08aa6ce",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHook.sol#L686-L717",
-      "summary": "MemeverseUniswapHook.unlockCallback(bytes) ignores return value by (delta,None) = poolManager.modifyLiquidity(data.key,data.params,bytes())",
-      "key": "unused-return|src/swap/MemeverseUniswapHook.sol|MemeverseUniswapHook.unlockCallback(bytes) ignores return value by (delta,None) = poolManager.modifyLiquidity(data.key,data.params,bytes())"
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L686-L717",
+      "summary": "MemeverseUniswapHookUpgradeable.unlockCallback(bytes) ignores return value by (delta,None) = poolManager.modifyLiquidity(data.key,data.params,bytes())",
+      "key": "unused-return|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable.unlockCallback(bytes) ignores return value by (delta,None) = poolManager.modifyLiquidity(data.key,data.params,bytes())"
     },
     {
       "id": "001bb3d08c8657eae72b10c2bd02a3160b0b3bc19e87d931f67617915c727f9e",
@@ -2403,36 +2403,36 @@
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncher.sol#L373-L387",
-      "summary": "MemeverseLauncher.genesis(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesis.selector,verseId,amountInUAsset,user))",
-      "key": "unused-return|src/verse/MemeverseLauncher.sol|MemeverseLauncher.genesis(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesis.selector,verseId,amountInUAsset,user))"
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L373-L387",
+      "summary": "MemeverseLauncherUpgradeable.genesis(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesis.selector,verseId,amountInUAsset,user))",
+      "key": "unused-return|src/verse/MemeverseLauncherUpgradeable.sol|MemeverseLauncherUpgradeable.genesis(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesis.selector,verseId,amountInUAsset,user))"
     },
     {
       "id": "e4b60f903fdda9673eff6caca384439f33b2e0944d9dfe1d96f519249e9ee6b2",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncher.sol#L422-L435",
-      "summary": "MemeverseLauncher.genesisAndPreorder(uint256,uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesisAndPreorder.selector,verseId,genesisAmount,preorderAmount,user))",
-      "key": "unused-return|src/verse/MemeverseLauncher.sol|MemeverseLauncher.genesisAndPreorder(uint256,uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesisAndPreorder.selector,verseId,genesisAmount,preorderAmount,user))"
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L422-L435",
+      "summary": "MemeverseLauncherUpgradeable.genesisAndPreorder(uint256,uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesisAndPreorder.selector,verseId,genesisAmount,preorderAmount,user))",
+      "key": "unused-return|src/verse/MemeverseLauncherUpgradeable.sol|MemeverseLauncherUpgradeable.genesisAndPreorder(uint256,uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesisAndPreorder.selector,verseId,genesisAmount,preorderAmount,user))"
     },
     {
       "id": "e711200f2087b4e934c22e1c439150552ffd2f43609c3d7dd0feae0773ae216b",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncher.sol#L396-L409",
-      "summary": "MemeverseLauncher.preorder(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.preorder.selector,verseId,amountInUAsset,user))",
-      "key": "unused-return|src/verse/MemeverseLauncher.sol|MemeverseLauncher.preorder(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.preorder.selector,verseId,amountInUAsset,user))"
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L396-L409",
+      "summary": "MemeverseLauncherUpgradeable.preorder(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.preorder.selector,verseId,amountInUAsset,user))",
+      "key": "unused-return|src/verse/MemeverseLauncherUpgradeable.sol|MemeverseLauncherUpgradeable.preorder(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.preorder.selector,verseId,amountInUAsset,user))"
     },
     {
       "id": "3ac6d82fdef03a20b473f6a7a6c0271cf7c82410174fd1b054067cab58c1a666",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncher.sol#L760-L789",
-      "summary": "MemeverseLauncher.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.registerMemeverse.selector,name,symbol,uniqueId,endTime,unlockTime,omnichainIds,uAsset,flashGenesis))",
-      "key": "unused-return|src/verse/MemeverseLauncher.sol|MemeverseLauncher.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.registerMemeverse.selector,name,symbol,uniqueId,endTime,unlockTime,omnichainIds,uAsset,flashGenesis))"
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L760-L789",
+      "summary": "MemeverseLauncherUpgradeable.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.registerMemeverse.selector,name,symbol,uniqueId,endTime,unlockTime,omnichainIds,uAsset,flashGenesis))",
+      "key": "unused-return|src/verse/MemeverseLauncherUpgradeable.sol|MemeverseLauncherUpgradeable.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.registerMemeverse.selector,name,symbol,uniqueId,endTime,unlockTime,omnichainIds,uAsset,flashGenesis))"
     },
     {
       "id": "34918ffd182fecd80c767e7b75b8fa485ce190023c3d8079e1822fcd7b809337",
@@ -2547,18 +2547,18 @@
       "check": "unused-state",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/verse/YieldDispatcher.sol#L30",
-      "summary": "YieldDispatcher.RECEIVER_OFFSET is never used in YieldDispatcher",
-      "key": "unused-state|src/verse/YieldDispatcher.sol|YieldDispatcher.RECEIVER_OFFSET is never used in YieldDispatcher"
+      "location": "src/verse/YieldDispatcherUpgradeable.sol#L30",
+      "summary": "YieldDispatcherUpgradeable.RECEIVER_OFFSET is never used in YieldDispatcherUpgradeable",
+      "key": "unused-state|src/verse/YieldDispatcherUpgradeable.sol|YieldDispatcherUpgradeable.RECEIVER_OFFSET is never used in YieldDispatcherUpgradeable"
     },
     {
       "id": "d3acc74f4de57a18846ede552c0996df6166a04e78fcb51baf49cb00bf7dd847",
       "check": "unused-state",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/verse/YieldDispatcher.sol#L31",
-      "summary": "YieldDispatcher.TOKEN_TYPE_OFFSET is never used in YieldDispatcher",
-      "key": "unused-state|src/verse/YieldDispatcher.sol|YieldDispatcher.TOKEN_TYPE_OFFSET is never used in YieldDispatcher"
+      "location": "src/verse/YieldDispatcherUpgradeable.sol#L31",
+      "summary": "YieldDispatcherUpgradeable.TOKEN_TYPE_OFFSET is never used in YieldDispatcherUpgradeable",
+      "key": "unused-state|src/verse/YieldDispatcherUpgradeable.sol|YieldDispatcherUpgradeable.TOKEN_TYPE_OFFSET is never used in YieldDispatcherUpgradeable"
     }
   ]
 }

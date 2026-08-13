@@ -7,8 +7,8 @@ import {Vm} from "forge-std/Vm.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {POLend} from "../../src/polend/POLend.sol";
-import {POLSplitter} from "../../src/polend/POLSplitter.sol";
+import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
+import {POLSplitterUpgradeable} from "../../src/polend/POLSplitterUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {
@@ -24,7 +24,7 @@ import {
     UniversalAssetForPOLendSettlementInvariant
 } from "../mocks/verse/LauncherSettlementMocks.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
@@ -48,8 +48,8 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
     UniversalAssetForPOLendSettlementInvariant internal uAsset;
     MockMemecoinForPOLendIntegration internal memecoin;
     MockPolForPOLendIntegration internal pol;
-    POLend internal polend;
-    POLSplitter internal splitter;
+    POLendUpgradeable internal polend;
+    POLSplitterUpgradeable internal splitter;
     RouterForPOLendSettlementInvariant internal router;
     HookForPOLendSettlementInvariant internal hook;
     MockYieldDispatcherForPOLendIntegration internal dispatcher;
@@ -57,12 +57,12 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
     LPTokenForPOLendSettlementInvariant internal polUAssetLp;
 
     function setUp() external {
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -167,7 +167,7 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
 
         IPOLend.LendMarket memory market = polend.getLendMarket(VERSE_ID);
         (uint256 residualUAsset,) = polend.residualStates(VERSE_ID);
-        (uint256 accUAssetFee, uint256 accPTFee) = MemeverseLauncher(launcherProxy).normalFeeStates(VERSE_ID);
+        (uint256 accUAssetFee, uint256 accPTFee) = MemeverseLauncherUpgradeable(launcherProxy).normalFeeStates(VERSE_ID);
         (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount) = _auxiliaryLiquidities();
 
         assertEq(uint256(market.state), uint256(IPOLend.MarketState.Settled), "market settled");
@@ -235,7 +235,7 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
         assertEq(polUAssetLpAmount, 0, "pol/uAsset lp consumed");
         assertEq(ptUAssetLpAmount, 0, "pt/uAsset lp consumed");
         assertEq(ptPolLpAmount, 0, "pt/pol lp consumed");
-        assertEq(MemeverseLauncher(launcherProxy).totalNormalClaimableYT(VERSE_ID), 0, "no normal yt");
+        assertEq(MemeverseLauncherUpgradeable(launcherProxy).totalNormalClaimableYT(VERSE_ID), 0, "no normal yt");
         assertEq(uAsset.repaidAmount(), LEVERAGED_DEBT, "debt repaid");
     }
 
@@ -412,18 +412,19 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
         assertGe(splitterSettlementUAsset, settlementPTBacking, "settlementUAsset >= PT backing");
     }
 
-    function _deploySplitter() internal returns (POLSplitter deployedSplitter) {
-        POLSplitter implementation = new POLSplitter();
-        bytes memory data = abi.encodeCall(POLSplitter.initialize, (address(this), launcherProxy));
-        return POLSplitter(address(new ERC1967Proxy(address(implementation), data)));
+    function _deploySplitter() internal returns (POLSplitterUpgradeable deployedSplitter) {
+        POLSplitterUpgradeable implementation = new POLSplitterUpgradeable();
+        bytes memory data = abi.encodeCall(POLSplitterUpgradeable.initialize, (address(this), launcherProxy));
+        return POLSplitterUpgradeable(address(new ERC1967Proxy(address(implementation), data)));
     }
 
-    function _deployPOLend(address splitter_) internal returns (POLend deployedPOLend) {
-        POLend implementation = new POLend();
+    function _deployPOLend(address splitter_) internal returns (POLendUpgradeable deployedPOLend) {
+        POLendUpgradeable implementation = new POLendUpgradeable();
         bytes memory data = abi.encodeCall(
-            POLend.initialize, (address(this), 0.1 ether, 10 ether, TREASURY, launcherProxy, splitter_, address(this))
+            POLendUpgradeable.initialize,
+            (address(this), 0.1 ether, 10 ether, TREASURY, launcherProxy, splitter_, address(this))
         );
-        return POLend(address(new ERC1967Proxy(address(implementation), data)));
+        return POLendUpgradeable(address(new ERC1967Proxy(address(implementation), data)));
     }
 
     function _setGenesisVerse(uint128 endTime) internal {
@@ -477,7 +478,7 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
         view
         returns (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount)
     {
-        return MemeverseLauncher(launcherProxy).auxiliaryLiquidities(VERSE_ID);
+        return MemeverseLauncherUpgradeable(launcherProxy).auxiliaryLiquidities(VERSE_ID);
     }
 }
 
@@ -549,8 +550,8 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
     HookForPOLendSettlementInvariant internal hook;
     RouterForPOLendSettlementInvariant internal router;
     MockYieldDispatcherForPOLendIntegration internal dispatcher;
-    POLSplitter internal splitter;
-    POLend internal polend;
+    POLSplitterUpgradeable internal splitter;
+    POLendUpgradeable internal polend;
 
     constructor() {
         _deployLauncher();
@@ -713,7 +714,7 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
         view
         returns (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount)
     {
-        return MemeverseLauncher(launcherProxy).auxiliaryLiquidities(VERSE_ID);
+        return MemeverseLauncherUpgradeable(launcherProxy).auxiliaryLiquidities(VERSE_ID);
     }
 
     function expectedDeficit() external view returns (uint256) {
@@ -753,12 +754,12 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
     }
 
     function _deployLauncher() internal {
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -780,19 +781,19 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
         launcher = IMemeverseLauncher(launcherProxy);
     }
 
-    function _deploySplitter(address launcher_) internal returns (POLSplitter) {
-        POLSplitter implementation = new POLSplitter();
-        bytes memory data = abi.encodeCall(POLSplitter.initialize, (address(this), launcher_));
-        return POLSplitter(address(new ERC1967Proxy(address(implementation), data)));
+    function _deploySplitter(address launcher_) internal returns (POLSplitterUpgradeable) {
+        POLSplitterUpgradeable implementation = new POLSplitterUpgradeable();
+        bytes memory data = abi.encodeCall(POLSplitterUpgradeable.initialize, (address(this), launcher_));
+        return POLSplitterUpgradeable(address(new ERC1967Proxy(address(implementation), data)));
     }
 
-    function _deployPOLend(address launcher_, POLSplitter splitter_) internal returns (POLend) {
-        POLend implementation = new POLend();
+    function _deployPOLend(address launcher_, POLSplitterUpgradeable splitter_) internal returns (POLendUpgradeable) {
+        POLendUpgradeable implementation = new POLendUpgradeable();
         bytes memory data = abi.encodeCall(
-            POLend.initialize,
+            POLendUpgradeable.initialize,
             (address(this), 0.1 ether, 10 ether, TREASURY, launcher_, address(splitter_), address(this))
         );
-        return POLend(address(new ERC1967Proxy(address(implementation), data)));
+        return POLendUpgradeable(address(new ERC1967Proxy(address(implementation), data)));
     }
 
     function _createOtherOutstandingMarket(uint256 interestAmount) internal {
@@ -810,8 +811,8 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
         RouterForPOLendSettlementInvariant router_,
         HookForPOLendSettlementInvariant hook_,
         MockYieldDispatcherForPOLendIntegration dispatcher_,
-        POLSplitter splitter_,
-        POLend polend_
+        POLSplitterUpgradeable splitter_,
+        POLendUpgradeable polend_
     ) internal {
         IMemeverseLauncher(launcher_).setMemeverseUniswapHook(address(hook_));
         hook_.setPoolInitializer(address(router_));
@@ -889,7 +890,7 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
     }
 
     function _leveragedGenesis(
-        POLend polend_,
+        POLendUpgradeable polend_,
         UniversalAssetForPOLendSettlementInvariant uAsset_,
         uint256 interestAmount
     ) internal {
@@ -897,7 +898,7 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
     }
 
     function _leveragedGenesisFor(
-        POLend polend_,
+        POLendUpgradeable polend_,
         UniversalAssetForPOLendSettlementInvariant uAsset_,
         uint256 verseId,
         address user,

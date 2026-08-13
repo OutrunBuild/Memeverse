@@ -11,7 +11,7 @@ import {ImmutableState} from "@uniswap/v4-periphery/src/base/ImmutableState.sol"
 import {DeployMemeverseHookProxy} from "../../script/DeployMemeverseHookProxy.s.sol";
 import {IOutrunDeployer} from "../../script/IOutrunDeployer.sol";
 import {OutrunDeployer} from "../../script/deployment/OutrunDeployer.sol";
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {FakeDeploymentHook} from "../mocks/swap/FakeDeploymentHook.sol";
 import {MemeverseUniswapHookV2} from "../mocks/upgrade/MemeverseUniswapHookV2.sol";
 
@@ -189,7 +189,7 @@ contract DeployMemeverseHookProxyTest is Test {
             HOOK_LAUNCHER
         );
         DeployMemeverseHookProxy.DeploymentResult memory r = _deployHookProxyForTest();
-        MemeverseUniswapHook hook = MemeverseUniswapHook(r.hookProxy);
+        MemeverseUniswapHookUpgradeable hook = MemeverseUniswapHookUpgradeable(r.hookProxy);
 
         assertEq(outrunDeployer.getDeployed(address(script), salt), predictedProxy);
         assertEq(r.hookProxy, predictedProxy);
@@ -253,7 +253,9 @@ contract DeployMemeverseHookProxyTest is Test {
         assertEq(r.swapFacet, expectedSwapFacet);
         assertEq(r.dynamicFeeFacet, expectedDynamicFeeFacet);
         assertEq(r.settlementFacet, expectedSettlementFacet);
-        assertEq(MemeverseUniswapHook(r.hookProxy).launcher(), HOOK_LAUNCHER, "hook launcher bound at deploy");
+        assertEq(
+            MemeverseUniswapHookUpgradeable(r.hookProxy).launcher(), HOOK_LAUNCHER, "hook launcher bound at deploy"
+        );
         assertGt(r.hookProxy.code.length, 0);
         assertEq(outrunDeployer.getDeployed(deploymentSender, expectedHookImplSalt), expectedHookImpl);
         assertEq(outrunDeployer.getDeployed(deploymentSender, expectedLpTokenImplSalt), expectedLpTokenImpl);
@@ -316,12 +318,12 @@ contract DeployMemeverseHookProxyTest is Test {
         assertEq(second.settlementFacet, first.settlementFacet);
 
         // State is intact: owner, poolManager, and facet bindings unchanged.
-        assertEq(MemeverseUniswapHook(second.hookProxy).owner(), HOOK_OWNER);
-        assertEq(address(MemeverseUniswapHook(second.hookProxy).poolManager()), POOL_MANAGER);
-        assertEq(MemeverseUniswapHook(second.hookProxy).lpTokenImplementation(), first.lpTokenImplementation);
-        assertEq(MemeverseUniswapHook(second.hookProxy).swapFacet(), first.swapFacet);
-        assertEq(MemeverseUniswapHook(second.hookProxy).dynamicFeeFacet(), first.dynamicFeeFacet);
-        assertEq(MemeverseUniswapHook(second.hookProxy).settlementFacet(), first.settlementFacet);
+        assertEq(MemeverseUniswapHookUpgradeable(second.hookProxy).owner(), HOOK_OWNER);
+        assertEq(address(MemeverseUniswapHookUpgradeable(second.hookProxy).poolManager()), POOL_MANAGER);
+        assertEq(MemeverseUniswapHookUpgradeable(second.hookProxy).lpTokenImplementation(), first.lpTokenImplementation);
+        assertEq(MemeverseUniswapHookUpgradeable(second.hookProxy).swapFacet(), first.swapFacet);
+        assertEq(MemeverseUniswapHookUpgradeable(second.hookProxy).dynamicFeeFacet(), first.dynamicFeeFacet);
+        assertEq(MemeverseUniswapHookUpgradeable(second.hookProxy).settlementFacet(), first.settlementFacet);
     }
 
     function testSameNonceReuseRejectsStaleHookImplementationBytecode() external {
@@ -513,7 +515,7 @@ contract DeployMemeverseHookProxyTest is Test {
     function testOwnerCanUpgradeViaUUPS() external {
         DeployMemeverseHookProxy.DeploymentResult memory r = _deployHookProxyForTest();
 
-        MemeverseUniswapHook hook = MemeverseUniswapHook(r.hookProxy);
+        MemeverseUniswapHookUpgradeable hook = MemeverseUniswapHookUpgradeable(r.hookProxy);
         address newOwner = address(0xB0B0);
 
         assertEq(hook.owner(), HOOK_OWNER);
@@ -547,11 +549,12 @@ contract DeployMemeverseHookProxyTest is Test {
 
         assertTrue(second.hookProxy != first.hookProxy);
         assertGt(second.hookProxy.code.length, 0);
-        assertGt(MemeverseUniswapHook(second.hookProxy).swapFacet().code.length, 0);
-        assertGt(MemeverseUniswapHook(second.hookProxy).dynamicFeeFacet().code.length, 0);
-        assertGt(MemeverseUniswapHook(second.hookProxy).settlementFacet().code.length, 0);
+        assertGt(MemeverseUniswapHookUpgradeable(second.hookProxy).swapFacet().code.length, 0);
+        assertGt(MemeverseUniswapHookUpgradeable(second.hookProxy).dynamicFeeFacet().code.length, 0);
+        assertGt(MemeverseUniswapHookUpgradeable(second.hookProxy).settlementFacet().code.length, 0);
         assertEq(
-            address(ImmutableState(MemeverseUniswapHook(second.hookProxy).swapFacet()).poolManager()), POOL_MANAGER
+            address(ImmutableState(MemeverseUniswapHookUpgradeable(second.hookProxy).swapFacet()).poolManager()),
+            POOL_MANAGER
         );
     }
 
@@ -563,10 +566,13 @@ contract DeployMemeverseHookProxyTest is Test {
 
         assertTrue(r.hookProxy != globalFirstProxy);
         assertGt(r.hookProxy.code.length, 0);
-        assertGt(MemeverseUniswapHook(r.hookProxy).swapFacet().code.length, 0);
-        assertGt(MemeverseUniswapHook(r.hookProxy).dynamicFeeFacet().code.length, 0);
-        assertGt(MemeverseUniswapHook(r.hookProxy).settlementFacet().code.length, 0);
-        assertEq(address(ImmutableState(MemeverseUniswapHook(r.hookProxy).swapFacet()).poolManager()), POOL_MANAGER);
+        assertGt(MemeverseUniswapHookUpgradeable(r.hookProxy).swapFacet().code.length, 0);
+        assertGt(MemeverseUniswapHookUpgradeable(r.hookProxy).dynamicFeeFacet().code.length, 0);
+        assertGt(MemeverseUniswapHookUpgradeable(r.hookProxy).settlementFacet().code.length, 0);
+        assertEq(
+            address(ImmutableState(MemeverseUniswapHookUpgradeable(r.hookProxy).swapFacet()).poolManager()),
+            POOL_MANAGER
+        );
     }
 
     function testNonceScopedPredictedProxyMatchesDeployedProxy() external {
@@ -862,13 +868,13 @@ contract DeployMemeverseHookProxyTest is Test {
         address hookImplementation = address(uint160(uint256(vm.load(proxy, ERC1967Utils.IMPLEMENTATION_SLOT))));
         vm.setEnv("EXPECTED_HOOK_PROXY_CODEHASH", vm.toString(proxy.codehash));
         vm.setEnv("EXPECTED_HOOK_IMPLEMENTATION_CODEHASH", vm.toString(hookImplementation.codehash));
-        address lpTokenImplementation = MemeverseUniswapHook(proxy).lpTokenImplementation();
+        address lpTokenImplementation = MemeverseUniswapHookUpgradeable(proxy).lpTokenImplementation();
         vm.setEnv("EXPECTED_LP_TOKEN_IMPLEMENTATION_CODEHASH", vm.toString(lpTokenImplementation.codehash));
-        address swapFacet = MemeverseUniswapHook(proxy).swapFacet();
+        address swapFacet = MemeverseUniswapHookUpgradeable(proxy).swapFacet();
         vm.setEnv("EXPECTED_SWAP_FACET_CODEHASH", vm.toString(swapFacet.codehash));
-        address dynamicFeeFacet = MemeverseUniswapHook(proxy).dynamicFeeFacet();
+        address dynamicFeeFacet = MemeverseUniswapHookUpgradeable(proxy).dynamicFeeFacet();
         vm.setEnv("EXPECTED_DYNAMIC_FEE_FACET_CODEHASH", vm.toString(dynamicFeeFacet.codehash));
-        address settlementFacet = MemeverseUniswapHook(proxy).settlementFacet();
+        address settlementFacet = MemeverseUniswapHookUpgradeable(proxy).settlementFacet();
         vm.setEnv("EXPECTED_SETTLEMENT_FACET_CODEHASH", vm.toString(settlementFacet.codehash));
     }
 }

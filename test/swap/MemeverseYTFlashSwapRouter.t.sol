@@ -658,7 +658,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     ///      `ytMinted != c.ytAmount`). Each clause is exercised with an exact revert assertion against a script where the
     ///      other leg is correct, so dropping either clause would let its case slip past the guard and break this test.
     ///
-    ///      The guard is unreachable for the canonical POLSplitter: real `split` mints exactly `y` PT and `y` YT, and
+    ///      The guard is unreachable for the canonical POLSplitterUpgradeable: real `split` mints exactly `y` PT and `y` YT, and
     ///      `_validateAndResolve` locks the immutable `splitter` to the canonical address on every entry. This test uses
     ///      the mock splitter to deviate from 1:1, simulating a post-upgrade buggy/malicious canonical Splitter or a
     ///      non-canonical malformed one. It is therefore a defense-in-depth / upgrade-safety check, NOT proof that
@@ -1255,7 +1255,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
 
     /// @dev The splitter returns one-less POL than the merged PT+YT; the result guard fires after the merge.
     ///
-    ///      Like its buy-side twin, this guard is unreachable for the canonical POLSplitter: real `merge` returns the
+    ///      Like its buy-side twin, this guard is unreachable for the canonical POLSplitterUpgradeable: real `merge` returns the
     ///      exact requested POL amount, and `_validateAndResolve` locks the immutable `splitter` to the canonical address
     ///      on every entry. The mock deviates from 1:1 here to simulate a post-upgrade buggy/malicious canonical Splitter
     ///      or a non-canonical malformed one. It is a defense-in-depth / upgrade-safety check, NOT proof that merge

@@ -11,19 +11,19 @@
 fee claim 需要单独区分两类能力：
 
 - `MemeverseSwapRouter.previewClaimableFees(...)`：只读预览 helper，仅返回 claimable fee 估算值
-- `MemeverseUniswapHook.claimFeesCore(...)`：可执行 self-claim 的 Hook Core 入口
+- `MemeverseUniswapHookUpgradeable.claimFeesCore(...)`：可执行 self-claim 的 Hook Core 入口
 
 当前推荐的分层是：
 
 - `MemeverseSwapRouter`：公开 Periphery / 普通交易与流动性统一入口
-- `MemeverseUniswapHook`：Core 引擎 / 低层 API / 可执行 fee claim
+- `MemeverseUniswapHookUpgradeable`：Core 引擎 / 低层 API / 可执行 fee claim
 - 启动期建池与首笔流动性：收敛到 `MemeverseSwapRouter.createPoolAndAddLiquidity(...)`
 
 推荐理解为：
 
 - **普通集成方 / 链上 SDK：只认 `MemeverseSwapRouter`**
-- **fee claim 执行路径：直接认 `MemeverseUniswapHook.claimFeesCore(...)`**
-- **高级集成方 / 自定义 Router：可直接接 `MemeverseUniswapHook` 的 Core API**
+- **fee claim 执行路径：直接认 `MemeverseUniswapHookUpgradeable.claimFeesCore(...)`**
+- **高级集成方 / 自定义 Router：可直接接 `MemeverseUniswapHookUpgradeable` 的 Core API**
 
 另外还有一个重要运维约束：
 
@@ -61,7 +61,7 @@ fee claim 需要单独区分两类能力：
 如果需要直接接入 Hook，应把它理解为：
 
 - `MemeverseSwapRouter` = **Recommended Public Entry Points**
-- `MemeverseUniswapHook` 的 Core 接口 = **Low-level Core APIs**
+- `MemeverseUniswapHookUpgradeable` 的 Core 接口 = **Low-level Core APIs**
 
 ### 1.1 Smart EOA transient session 集成契约 `[代码已证]`
 
@@ -85,8 +85,8 @@ fee claim 需要单独区分两类能力：
 - 返佣（referral rebate）切流：普通 swap 若 `hookData` 前 20 字节 packed 携带非零 referrer，protocol fee 收取路径（主体 SwapFacet 的 `_collectProtocolFee`，经 Router entry `delegatecall` 到 SwapFacet 执行；rebate 公式提取为 `_computeRebate`，记账 + treasury take + emit 提取为 `_settleProtocolFee`；beforeSwap 主路径不经 `_collectProtocolFee`，改走 `_computeRebate` + `_settleProtocolFee` + 合并 take）先计算 `rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`，再 split：
   - `toTreasury = protocolFee - rebate` 经 `_takeToTreasury` 到 treasury；
   - `_settleProtocolFee` 先内联累加 Router storage 的 `pendingRebate[referrer][currency]` 并 emit `ReferralRebateAccrued`（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 转出 `toTreasury`（interaction），最后 emit `ProtocolFeeCollected`；这段记账本身是纯 storage effect，无 facet→facet delegatecall 或 PoolManager 调用。ledger effect 先于 treasury take 与调用方的 rebate take，helper 现为严格 CEI（effect → interaction → event）：treasury take 不触发 v4 hook callback，ERC20 currency 仍会执行外部 `transfer` token 代码。beforeSwap 主路径将 rebate 与 LP fee 合并 take，afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立 take rebate。任一步骤失败都会回滚整笔 swap。
-- rebate custody 在 hook proxy（与 LP fee 同地址，但 `pendingRebate` 账本与 LP per-share accounting 分离）；rebate currency 与该 swap 的 protocol fee currency 一致，in-kind，不进入 treasury、不经过下游 uAsset / POLend 转换。
-- rebate 为 pull 模式：swap 时只记账 + take，referrer 须主动调 `MemeverseUniswapHook::claimRebate(currency, recipient)` 领取（入口在 hook，Router 直接实现；从 hook custody 将 caller/referrer 名下的 rebate 转给 `recipient`——任意非零 payout destination，不必等于 referrer；仅 self-claim，不支持第三方代领 / 签名 claim）。
+- rebate custody 在 hook proxy（与 LP fee 同地址，但 `pendingRebate` 账本与 LP per-share accounting 分离）；rebate currency 与该 swap 的 protocol fee currency 一致，in-kind，不进入 treasury、不经过下游 uAsset / POLendUpgradeable 转换。
+- rebate 为 pull 模式：swap 时只记账 + take，referrer 须主动调 `MemeverseUniswapHookUpgradeable::claimRebate(currency, recipient)` 领取（入口在 hook，Router 直接实现；从 hook custody 将 caller/referrer 名下的 rebate 转给 `recipient`——任意非零 payout destination，不必等于 referrer；仅 self-claim，不支持第三方代领 / 签名 claim）。
 - `ProtocolFeeCollected.amount`（on hook）始终是 treasury 实收（`toTreasury = protocolFee - rebate`）。仅当 `rebate > 0` 时 `toTreasury < protocolFee`，差额见 hook 上 emit 的 `ReferralRebateAccrued`；`rebate` 在 `referrerRebateBps == 0` 或小额 `mulDiv` 向下取整为 0 时可为 0，此时 `toTreasury == protocolFee` 且不 emit rebate 事件。索引器统计 protocol 总收入须按 `ProtocolFeeCollected.amount +（若存在）ReferralRebateAccrued.amount` 求和，不要仅凭「是否带 referrer」推断国库金额。
 - 无 referrer（`hookData` 空或前 20 字节为零）时不切 rebate，treasury 收全额 protocol fee。
 - preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，不参与返佣；其 `ProtocolFeeCollected.amount` 仍是完整 protocol fee。
@@ -109,7 +109,7 @@ fee claim 需要单独区分两类能力：
 当前启动期保护语义是：
 
 - 普通路径：`launch fee window` 费率衰减
-- 特殊路径：`MemeverseLauncher -> MemeverseUniswapHook.executePreorderSettlement(...)` 固定费率（数值定义见 [docs/spec/verse/accounting.md §7.4](../verse/accounting.md)）
+- 特殊路径：`MemeverseLauncherUpgradeable -> MemeverseUniswapHookUpgradeable.executePreorderSettlement(...)` 固定费率（数值定义见 [docs/spec/verse/accounting.md §7.4](../verse/accounting.md)）
 
 ---
 
@@ -190,7 +190,7 @@ function quoteSwap(PoolKey calldata key, SwapParams calldata params, address tra
 
 其中 `previewClaimableFees(...)` 是只读 preview-only helper，用于查询当前可领取 fee 估算值，不执行任何结算。
 
-当前 fee claim 执行入口是 `MemeverseUniswapHook.claimFeesCore(...)`。
+当前 fee claim 执行入口是 `MemeverseUniswapHookUpgradeable.claimFeesCore(...)`。
 
 - 调用方必须是 fee owner；owner 严格由 `msg.sender` 推导
 - 参数中的 `recipient` 可指定实际收款地址
@@ -260,10 +260,10 @@ Permit2 入口是并行路径，不替代现有 approve 路径。集成时应注
 ## 5. Preorder Settlement 集成注意事项
 
 - 这是启动结算专用通道，不是普通用户交易接口。
-- `MemeverseLauncher` 直接调用 `MemeverseUniswapHook.executePreorderSettlement(...)`，Hook Router delegatecall `SettlementFacet` 并使用 typed settlement unlock callback。
+- `MemeverseLauncherUpgradeable` 直接调用 `MemeverseUniswapHookUpgradeable.executePreorderSettlement(...)`，Hook Router delegatecall `SettlementFacet` 并使用 typed settlement unlock callback。
 - Hook 侧 caller 约束（`msg.sender == launcher`）见 [docs/spec/invariants.md](../invariants.md) INV-04（权限视角见 [docs/spec/access-control.md §5](../access-control.md)）。
 - 该路径使用固定总费率（数值定义见 [docs/spec/verse/accounting.md §7.4](../verse/accounting.md)）。
-- `MemeverseLauncher` 接入 Router 时的 set-time 三重校验与 `Genesis -> Locked` launch-time preflight 见 [docs/spec/invariants.md](../invariants.md) INV-04（权限视角见 [docs/spec/access-control.md](../access-control.md) §5）。
+- `MemeverseLauncherUpgradeable` 接入 Router 时的 set-time 三重校验与 `Genesis -> Locked` launch-time preflight 见 [docs/spec/invariants.md](../invariants.md) INV-04（权限视角见 [docs/spec/access-control.md](../access-control.md) §5）。
 
 ### 5.1 资金流与 approve 路径
 

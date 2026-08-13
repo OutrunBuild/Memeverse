@@ -17,14 +17,14 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {MemeverseYTFlashSwapRouter} from "../../src/swap/MemeverseYTFlashSwapRouter.sol";
 import {IMemeverseYTFlashSwapRouter} from "../../src/swap/interfaces/IMemeverseYTFlashSwapRouter.sol";
 import {MemeversePoolKeyLib} from "../../src/swap/libraries/MemeversePoolKeyLib.sol";
-import {POLSplitter} from "../../src/polend/POLSplitter.sol";
+import {POLSplitterUpgradeable} from "../../src/polend/POLSplitterUpgradeable.sol";
 import {IPOLSplitter} from "../../src/polend/interfaces/IPOLSplitter.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 
@@ -32,12 +32,12 @@ import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 import {AtomicSessionAccount} from "../mocks/swap/AccountSessionMocks.sol";
 
 /// @title MemeverseYTFlashSwapRouterIntegrationTest
-/// @notice Real v4 PoolManager + real Memeverse hook + real POLSplitter integration coverage for the YT Flash Swap
+/// @notice Real v4 PoolManager + real Memeverse hook + real POLSplitterUpgradeable integration coverage for the YT Flash Swap
 ///         Router (Plan Task 6). Proves the flash settlement leg is equivalent to an ordinary PT/POL swap on the same
 ///         pool, that referrer rebates accrue only to the packed referrer, that the read-only Lens quote matches the
 ///         realized settlement, and that price bounds, Splitter Unlocked/settled state atomically roll back.
 /// @dev The fixture deploys the genuine v4-core PoolManager bytecode, a flag-address hook diamond proxy, and an
-///      ERC1967 POLSplitter proxy bound to a minimal in-file `FakeLauncher`. The fake launcher is mutable so the
+///      ERC1967 POLSplitterUpgradeable proxy bound to a minimal in-file `FakeLauncher`. The fake launcher is mutable so the
 ///      Unlocked/settled rollback cases can flip the verse stage without a production launcher. The test contract never
 ///      inherits an upgradeable production contract: it talks to the proxy addresses via interfaces and `HookStorageHelper`.
 contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
@@ -67,9 +67,9 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
     // =====================================================================================
 
     IPoolManager internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     FakeLauncher internal fakeLauncher;
-    POLSplitter internal splitter;
+    POLSplitterUpgradeable internal splitter;
     MemeverseYTFlashSwapRouter internal router;
     MemeverseUniswapHookLens internal lens;
     OrdinarySwapSettler internal settler;
@@ -121,19 +121,19 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
         // contract, created at nonce N+6.
         address predictedFakeLauncher = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 6);
         address hookProxy = deployHookAtFlagAddress(manager, address(this), address(this), predictedFakeLauncher);
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         vm.label(hookProxy, "HookProxy");
 
         // ── 3. Fake launcher bound to the hook proxy (splitter wired after it is deployed) ──
         fakeLauncher = new FakeLauncher(hookProxy, address(this), uAsset, pol);
 
-        // ── 4. Real POLSplitter behind an ERC1967 proxy, launcher = fakeLauncher ──
-        POLSplitter splitterImpl = new POLSplitter();
-        splitter = POLSplitter(
+        // ── 4. Real POLSplitterUpgradeable behind an ERC1967 proxy, launcher = fakeLauncher ──
+        POLSplitterUpgradeable splitterImpl = new POLSplitterUpgradeable();
+        splitter = POLSplitterUpgradeable(
             address(
                 new ERC1967Proxy(
                     address(splitterImpl),
-                    abi.encodeCall(POLSplitter.initialize, (address(this), address(fakeLauncher)))
+                    abi.encodeCall(POLSplitterUpgradeable.initialize, (address(this), address(fakeLauncher)))
                 )
             )
         );
@@ -985,7 +985,7 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
     bytes4 internal constant _FINAL_TARGET_NOT_EXECUTABLE_SELECTOR = bytes4(0x5698f557);
     bytes4 internal constant _HOOK_CALL_FAILED_SELECTOR = bytes4(0xa9e35b2f);
 
-    /// @notice When the launcher reports `Stage.Unlocked`, both buy and sell revert with POLSplitter.AlreadyUnlocked
+    /// @notice When the launcher reports `Stage.Unlocked`, both buy and sell revert with POLSplitterUpgradeable.AlreadyUnlocked
     ///         and the whole flash rolls back atomically.
     function test_RevertWhen_RealSplitterUnlockedStageRollsBackBuyAndSell() external {
         fakeLauncher.setUnlocked();
@@ -1020,7 +1020,7 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
 
     /// @notice Once the Splitter is genuinely settled, restoring `Stage.Locked` does NOT reopen split/merge: the
     ///         `info.settled` guard still reverts AlreadyUnlocked. This isolates the settled guard from the stage guard.
-    /// @dev The fixture completes a REAL `POLSplitter.settle` first (FakeLauncher.redeemMemecoinLiquidity mints 1:1
+    /// @dev The fixture completes a REAL `POLSplitterUpgradeable.settle` first (FakeLauncher.redeemMemecoinLiquidity mints 1:1
     ///      uAsset so the settlement accounting balances), then flips the stage back to Locked. Production lifecycle
     ///      never returns from Unlocked to Locked; this test fakes it ONLY to isolate the settled guard.
     function test_RevertWhen_RealSplitterSettledRollsBackBuyAndSell() external {
@@ -1395,9 +1395,9 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
 
 /// @title FakeLauncher
 /// @notice Minimal `IMemeverseLauncher` subset used by the YT Flash Swap integration fixture: it advertises the
-///         canonical hook+splitter pair, reports a mutable verse stage, and backs `POLSplitter.settle` with 1:1 uAsset.
+///         canonical hook+splitter pair, reports a mutable verse stage, and backs `POLSplitterUpgradeable.settle` with 1:1 uAsset.
 /// @dev Production launcher methods not exercised here are intentionally absent. `redeemMemecoinLiquidity` mints uAsset
-///      1:1 against the POL collateral so `POLSplitter.settle` accounting balances; it does NOT model real memecoin LP.
+///      1:1 against the POL collateral so `POLSplitterUpgradeable.settle` accounting balances; it does NOT model real memecoin LP.
 contract FakeLauncher {
     IMemeverseLauncher.Stage internal _stage = IMemeverseLauncher.Stage.Locked;
     address public immutable hookProxy;
@@ -1417,7 +1417,7 @@ contract FakeLauncher {
         splitter = splitter_;
     }
 
-    /// @notice Flips the reported stage to `Unlocked` so POLSplitter split/merge revert and settle becomes callable.
+    /// @notice Flips the reported stage to `Unlocked` so POLSplitterUpgradeable split/merge revert and settle becomes callable.
     function setUnlocked() external {
         _stage = IMemeverseLauncher.Stage.Unlocked;
     }
@@ -1441,7 +1441,7 @@ contract FakeLauncher {
     }
 
     /// @notice Minimal settle backing: pull the POL collateral the Splitter approved and mint 1:1 uAsset back so the
-    ///         `settlementUAsset >= ptTotalSupply` invariant in `POLSplitter.settle` holds at a 1:1 backing ratio.
+    ///         `settlementUAsset >= ptTotalSupply` invariant in `POLSplitterUpgradeable.settle` holds at a 1:1 backing ratio.
     function redeemMemecoinLiquidity(
         uint256,
         /* verseId */

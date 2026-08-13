@@ -4,12 +4,12 @@
 
 ### 1.1 启动与生命周期核心
 
-- `src/verse/MemeverseLauncher.sol`：facade，verse 生命周期状态机与资金主编排（Genesis/Refund/Locked/Unlocked）的唯一外部入口与 delegatecall 调度方。
+- `src/verse/MemeverseLauncherUpgradeable.sol`：facade，verse 生命周期状态机与资金主编排（Genesis/Refund/Locked/Unlocked）的唯一外部入口与 delegatecall 调度方。
 - `src/verse/MemeverseLaunchImpl.sol`：delegatecall sibling，承载 launch 生命周期链（registerMemeverse / genesis / preorder / genesisAndPreorder / `changeStage` stage dispatcher / 治理组件部署编排）。与 facade 共享同一 ERC-7201 storage namespace `outrun.storage.MemeverseLauncher`，在 proxy 存储上下文执行；owner 经 `setLaunchImpl` 替换。`changeStage` 在 Genesis→Locked 成功路径内嵌套 delegatecall `MemeverseLiquidityImpl`，Locked→Unlocked 路径内嵌套 delegatecall `MemeverseSettlementImpl`。
 - `src/verse/MemeverseSettlementImpl.sol`：delegatecall sibling，承载 settlement / claim / fee 链（refund / refundPreorder / claimNormalYT / claimNormalFees / claimUnlockedPreorderMemecoin / redeemAndDistributeFees / fee 捕获+collect+distribute，含 Locked→Unlocked 解算编排与 post-unlock 公开 swap 保护）。同 ERC-7201 namespace；owner 经 `setSettlementImpl` 替换。
 - `src/verse/MemeverseLiquidityImpl.sol`：delegatecall sibling，承载 bootstrap 流动性 / POL mint / LP 赎回链（主池+三辅助池创建、preorder settlement 接线、residual 处置、mintPOLToken、redeemAuxiliaryLiquidity、settleLeveragedAuxiliaryLiquidity、redeemMemecoinLiquidity、LP helper）。同 ERC-7201 namespace；owner 经 `setLiquidityImpl` 替换。bootstrap 入口为 `deployBootstrapLiquidity`（原 `deployLiquidity`，selector 变）。
 - `src/verse/MemeverseFeePreviewReader.sol`：独立 view 合约（非 sibling），不绑 ERC-7201、不收 delegatecall，经 immutable `PROXY` staticcall 读 proxy getter 预览 genesis maker fee 与 LayerZero 分发报价；EOA 直调为正常用法，owner 经 `setFeePreviewReader` 替换。
-- 普通创世与 POLend 杠杆创世共享 `totalNormalFunds + totalLeveragedDebt <= type(uint128).max` 的聚合上限；`genesis` 先写入普通创世账本再拉取 uAsset，避免 callback-capable token 在转账中重入 POLend 时读到旧账本。
+- 普通创世与 POLendUpgradeable 杠杆创世共享 `totalNormalFunds + totalLeveragedDebt <= type(uint128).max` 的聚合上限；`genesis` 先写入普通创世账本再拉取 uAsset，避免 callback-capable token 在转账中重入 POLendUpgradeable 时读到旧账本。
 
 ### 1.2 注册与跨链注册
 
@@ -21,11 +21,11 @@
 ### 1.3 交易与流动性
 
 - `src/swap/MemeverseSwapRouter.sol`
-- `src/swap/MemeverseYTFlashSwapRouter.sol`：无独立 YT AMM 的 POL↔YT flash swap Router，复用既有 PT/POL v4 池 + Hook fee/referral/account-session + POLSplitter split/merge，独立于 `MemeverseSwapRouter`（两个入口、真实 BalanceDelta 结算、无 Permit2/quote 入参）。`[代码已证]`
-- `src/swap/MemeverseUniswapHook.sol`（diamond Router）
+- `src/swap/MemeverseYTFlashSwapRouter.sol`：无独立 YT AMM 的 POL↔YT flash swap Router，复用既有 PT/POL v4 池 + Hook fee/referral/account-session + POLSplitterUpgradeable split/merge，独立于 `MemeverseSwapRouter`（两个入口、真实 BalanceDelta 结算、无 Permit2/quote 入参）。`[代码已证]`
+- `src/swap/MemeverseUniswapHookUpgradeable.sol`（diamond Router）
 - `src/swap/SwapFacet.sol` / `src/swap/DynamicFeeFacet.sol` / `src/swap/SettlementFacet.sol`（共享 hook storage 的 DELEGATECALL facet）
 - 负责 swap、加减流动性、LP fee claim、启动期费用语义与 preorder settlement 通道。
-- **Diamond / 多 facet 架构**：`MemeverseUniswapHook` 是 Router（UUPS implementation，`ERC1967Proxy` + `UUPSUpgradeable`），保留 admin/view/liquidity 直接实现 + 全部 modifier + 统一 storage struct，callback/fee/settlement entry 经 delegatecall 分发到 3 个 facet（1:1 签名细入口用 `_forwardCalldata` 做 selector 置换 + calldata 转发，非 1:1 签名入口如 `quoteSwapFeeWithContext` 仍用 `_facetDelegatecall` + `abi.encodeCall`）——`SwapFacet`（callback 主体 + fee 分账 + LP per-share accounting + 返佣记账 `_settleProtocolFee` 内联写 `pendingRebate`，`_collectProtocolFee` 调用）、`DynamicFeeFacet`（`DynamicFeeState` 读写 + `quote`）、`SettlementFacet`（preorder swap/settle/take + typed settlement callback，`[代码已证]`）。所有 facet 共享 Router 的 ERC7201 storage（`outrun.storage.MemeverseUniswapHook`），经 DELEGATECALL 在 hook proxy storage 上下文执行；facet 间用 internal delegatecall 链协作（如 `SwapFacet` delegatecall `DynamicFeeFacet.prepareSwapFee`）。外部观测所有 entry 都在 hook 地址（统一 ABI）。
+- **Diamond / 多 facet 架构**：`MemeverseUniswapHookUpgradeable` 是 Router（UUPS implementation，`ERC1967Proxy` + `UUPSUpgradeable`），保留 admin/view/liquidity 直接实现 + 全部 modifier + 统一 storage struct，callback/fee/settlement entry 经 delegatecall 分发到 3 个 facet（1:1 签名细入口用 `_forwardCalldata` 做 selector 置换 + calldata 转发，非 1:1 签名入口如 `quoteSwapFeeWithContext` 仍用 `_facetDelegatecall` + `abi.encodeCall`）——`SwapFacet`（callback 主体 + fee 分账 + LP per-share accounting + 返佣记账 `_settleProtocolFee` 内联写 `pendingRebate`，`_collectProtocolFee` 调用）、`DynamicFeeFacet`（`DynamicFeeState` 读写 + `quote`）、`SettlementFacet`（preorder swap/settle/take + typed settlement callback，`[代码已证]`）。所有 facet 共享 Router 的 ERC7201 storage（`outrun.storage.MemeverseUniswapHook`），经 DELEGATECALL 在 hook proxy storage 上下文执行；facet 间用 internal delegatecall 链协作（如 `SwapFacet` delegatecall `DynamicFeeFacet.prepareSwapFee`）。外部观测所有 entry 都在 hook 地址（统一 ABI）。
 - **Typed unlock callback 路由**：共享 Hook 接口定义 `UnlockCallbackKind { ModifyLiquidity, Settlement }`；每个 unlock 发起方直接编码 `abi.encode(kind, typedStruct)`。Router 先把首个 ABI word 读为 `uint256`，只接受当前明确支持的两个 raw 值，其他值统一回退 `InvalidUnlockCallbackKind(rawKind)`。Settlement 的 callback 入参与返回结构定义在 `ISettlementFacet`；因 `SettlementCallbackData` 当前全静态，Router 在 kind 校验后用 `bytes.concat(ISettlementFacet.settlementUnlockCallback.selector, rawData[32:])` 前缀转发到 SettlementFacet（跳过 memory decode + 二次 encode；与 `abi.encodeCall` 字节等价），并把 facet 的原始 ABI returndata 直接交还 PoolManager，外层 settlement logic 只解码一次。若 `SettlementCallbackData` 未来引入动态字段，须回到 `abi.encodeCall`。外部 v4 `unlockCallback(bytes)` ABI 保持不变。该路由已实现。`[代码已证]`
 
 #### Facet / Router 关键函数
@@ -69,7 +69,7 @@
 
 | 函数 | 源 | 作用 |
 |---|---|---|
-| `executePreorderSettlement` | `MemeverseUniswapHook::executePreorderSettlement`（Router，经 delegatecall `SettlementFacet::executeSettlementLogic`） | Launcher 入口：计算 fixed 1% preorder fee，先收 input 侧 fee，netInput 留在 hook proxy，由 hook 发起 unlock/swap/settle/take。 |
+| `executePreorderSettlement` | `MemeverseUniswapHookUpgradeable::executePreorderSettlement`（Router，经 delegatecall `SettlementFacet::executeSettlementLogic`） | Launcher 入口：计算 fixed 1% preorder fee，先收 input 侧 fee，netInput 留在 hook proxy，由 hook 发起 unlock/swap/settle/take。 |
 | `executeSettlementLogic` | `SettlementFacet::executeSettlementLogic` | 执行 PoolManager unlock / swap / take；以 `abi.encode(UnlockCallbackKind.Settlement, SettlementCallbackData)` 发起 unlock，接收并一次解码 typed `SettlementResult`，并在 `protocolFeeOnInput == false` 时从 output 侧扣除 protocol fee。`[代码已证]` |
 | `_collectPreorderSettlementInputFees` | `SettlementFacet::_collectPreorderSettlementInputFees` | LP fee 经 `_accrueLpFee` 记入 per-share 累计（纯记账，token 拉款不在本函数），protocol fee 经 `transferFrom` 直接转给 treasury；LP fee token 由 `executeSettlementLogic` 与 netInput 合并一次 `transferFrom` 拉到 hook proxy（同源同收款人，省一次 transferFrom）。 |
 
@@ -81,7 +81,7 @@
 | `_collectLpFee` | `SwapFacet::_collectLpFee` | 先调用 `_accrueLpFee` 入账（per-share 累计），再从 PoolManager `take` 出 LP fee 到 Hook 合约；遵循 CEI（effect → interaction）。 |
 | `updateUserSnapshotLogic` | `SwapFacet::updateUserSnapshotLogic` | 根据 LP token 余额和 per-share 累计值，将用户自上次快照以来的可 claim fee 累加到 `pendingFee0` / `pendingFee1`，并更新 offset。 |
 | `claimableFees` | `MemeverseUniswapHookLens::claimableFees` | view 函数：返回用户当前可 claim 的 fee0 / fee1，包含已记录 pending 和尚未 snapshot 的增量。 |
-| `_claimFees` | `MemeverseUniswapHook::_claimFees`（Router 直接实现；仅 snapshot 子步经 delegatecall `SwapFacet::updateUserSnapshotLogic`） | 执行 LP fee claim：先 `updateUserSnapshotLogic` 取快照；清零 pending（effect）后经 `CurrencySettler.transferWithGuard` 转给 recipient（interaction），完成后触发 `FeesClaimed`；遵循 CEI。`transferWithGuard` 见下表（`[文档已对齐实现]`）。 |
+| `_claimFees` | `MemeverseUniswapHookUpgradeable::_claimFees`（Router 直接实现；仅 snapshot 子步经 delegatecall `SwapFacet::updateUserSnapshotLogic`） | 执行 LP fee claim：先 `updateUserSnapshotLogic` 取快照；清零 pending（effect）后经 `CurrencySettler.transferWithGuard` 转给 recipient（interaction），完成后触发 `FeesClaimed`；遵循 CEI。`transferWithGuard` 见下表（`[文档已对齐实现]`）。 |
 
 **协议费收取**
 
@@ -98,7 +98,7 @@
 | 无 referrer | 65% | 35% | 0% |
 | 有 referrer（默认 `referrerRebateBps = 1000`） | 65% | 25% | 10% |
 
-rebate 公式：`rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`（提取为 `SwapFacet::_computeRebate`，两级向下取整语义见 [docs/spec/invariants.md INV-20](spec/invariants.md)）。rebate custody 在 `MemeverseUniswapHook`(Router，hook proxy 地址)；`SwapFacet::_settleProtocolFee`（`_collectProtocolFee` 调用；beforeSwap 主路径直接调）先内联写 hook storage `pendingRebate[referrer][currency] += rebate` 并 emit `ReferralRebateAccrued`（rebate>0 时；effect；记账部分是纯 storage 写，无 facet→facet delegatecall、无额外 PoolManager 调用），再做 treasury take（`_takeToTreasury`：`toTreasury = protocolFee - rebate` 经 `poolManager.take(feeCurrency, treasury, toTreasury)` 到 treasury；interaction），最后 emit `ProtocolFeeCollected`。rebate take 由调用方执行（afterSwap / beforeSwap 边界经 `_collectProtocolFee` 内独立 `poolManager.take(feeCurrency, address(this), rebate)`；beforeSwap 主路径与 LP fee 合并 take）。因此 ledger effect 先于 treasury take 与 caller-side rebate take，`_settleProtocolFee` 现为严格 CEI：treasury take 不触发 v4 hook callback，ERC20 currency 仍会执行外部 `transfer` token 代码。该顺序依赖 fee currency 为标准 ERC20（注册的协议费代币；普通池下为输入代币）、treasury 保持被动收款，以及 swap 事务的整体回滚保证。referrer 经 `MemeverseUniswapHook::claimRebate`（Router 直接实现，不经 facet；CEI 清零后 transfer）pull 领取。take 与记账都经 hook（v4 `PoolManager.take` 的 delta 记在 take 的 caller 上——take 是经 DELEGATECALL 从 `address(this)`（=hook proxy）发起的外部 CALL，故 PoolManager 所见 `msg.sender` 为 hook，只有 hook 的 specifiedDelta credit 能抵消；注意 facet 帧内自身的 `msg.sender` 是 callback 下的 PoolManager（delegatecall 保留外层 msg.sender），而非 hook），custody / 记账 / claim 都在 hook。
+rebate 公式：`rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`（提取为 `SwapFacet::_computeRebate`，两级向下取整语义见 [docs/spec/invariants.md INV-20](spec/invariants.md)）。rebate custody 在 `MemeverseUniswapHookUpgradeable`(Router，hook proxy 地址)；`SwapFacet::_settleProtocolFee`（`_collectProtocolFee` 调用；beforeSwap 主路径直接调）先内联写 hook storage `pendingRebate[referrer][currency] += rebate` 并 emit `ReferralRebateAccrued`（rebate>0 时；effect；记账部分是纯 storage 写，无 facet→facet delegatecall、无额外 PoolManager 调用），再做 treasury take（`_takeToTreasury`：`toTreasury = protocolFee - rebate` 经 `poolManager.take(feeCurrency, treasury, toTreasury)` 到 treasury；interaction），最后 emit `ProtocolFeeCollected`。rebate take 由调用方执行（afterSwap / beforeSwap 边界经 `_collectProtocolFee` 内独立 `poolManager.take(feeCurrency, address(this), rebate)`；beforeSwap 主路径与 LP fee 合并 take）。因此 ledger effect 先于 treasury take 与 caller-side rebate take，`_settleProtocolFee` 现为严格 CEI：treasury take 不触发 v4 hook callback，ERC20 currency 仍会执行外部 `transfer` token 代码。该顺序依赖 fee currency 为标准 ERC20（注册的协议费代币；普通池下为输入代币）、treasury 保持被动收款，以及 swap 事务的整体回滚保证。referrer 经 `MemeverseUniswapHookUpgradeable::claimRebate`（Router 直接实现，不经 facet；CEI 清零后 transfer）pull 领取。take 与记账都经 hook（v4 `PoolManager.take` 的 delta 记在 take 的 caller 上——take 是经 DELEGATECALL 从 `address(this)`（=hook proxy）发起的外部 CALL，故 PoolManager 所见 `msg.sender` 为 hook，只有 hook 的 specifiedDelta credit 能抵消；注意 facet 帧内自身的 `msg.sender` 是 callback 下的 PoolManager（delegatecall 保留外层 msg.sender），而非 hook），custody / 记账 / claim 都在 hook。
 
 hook 侧返佣路径锚点：
 
@@ -114,8 +114,8 @@ preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，
 
 | 函数 | 源 | 作用 |
 |---|---|---|
-| `_settleDeltas` | `MemeverseUniswapHook::_settleDeltas` | 向 PoolManager settle 负 delta（用户欠池子的资金）。在 swap 栈语义下仅处理 ERC20/ERC20 pair；任一侧为 `address(0)` 直接 `revert NativeCurrencyUnsupported`。 |
-| `_takeDeltas` | `MemeverseUniswapHook::_takeDeltas` | 从 PoolManager take 正 delta（池子欠用户的资金）到 recipient。 |
+| `_settleDeltas` | `MemeverseUniswapHookUpgradeable::_settleDeltas` | 向 PoolManager settle 负 delta（用户欠池子的资金）。在 swap 栈语义下仅处理 ERC20/ERC20 pair；任一侧为 `address(0)` 直接 `revert NativeCurrencyUnsupported`。 |
+| `_takeDeltas` | `MemeverseUniswapHookUpgradeable::_takeDeltas` | 从 PoolManager take 正 delta（池子欠用户的资金）到 recipient。 |
 | `transferWithGuard` | `CurrencySettler::transferWithGuard`（Hook 与 Router 共用，两侧均已 `using CurrencySettler for Currency;`） | ERC20 转账 helper，已由 Hook/Router 各自的私有 `_transferCurrency` 副本迁移到 `CurrencySettler` 共享库以消除逐字重复。guards（`amount == 0` 早退、`to == address(0)` revert）+ `OutrunSafeERC20.safeTransfer` 处理非合规 ERC20 返回值（返回 `false` 或非 bool 数据）。失败抛 `OutrunSafeERC20.SafeERC20FailedOperation(address token)`。注：`CurrencySettler` 库的 `settle`/`take` 可处理 native 与 ERC20，但 `transferWithGuard` 自身仅 ERC20（swap 栈文义上也只允许 ERC20 结算）。`[文档已对齐实现]` |
 
 ### 1.4 资产层
@@ -133,7 +133,7 @@ preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，
 
 ### 1.6 跨链互操作
 
-- `src/verse/YieldDispatcher.sol`
+- `src/verse/YieldDispatcherUpgradeable.sol`
 - `src/interoperation/MemeverseOmnichainInteroperation.sol`
 - `src/interoperation/OmnichainMemecoinStaker.sol`
 - 负责治理收益跨链投递与 memecoin 跨链 staking。
@@ -141,10 +141,10 @@ preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，
 ### 1.7 GenesisCredit 冷启动层
 
 - `src/credit/GenesisCredit.sol` + `src/credit/GenesisCreditFactory.sol`
-- 负责 GenesisCredit（per-uAsset ERC20+OFT 凭证）的部署、跨链 merkle claim 与自烧路径，支撑 `POLend.leveragedGenesisWithCredit` 的冷启动抵扣。GenesisCredit 是 plain contract，直接继承 LayerZero 官方 `OFT`（非 minimal-proxy / clone），由 `GenesisCreditFactory.deployCredit` CREATE3 直接部署完整合约。
+- 负责 GenesisCredit（per-uAsset ERC20+OFT 凭证）的部署、跨链 merkle claim 与自烧路径，支撑 `POLendUpgradeable.leveragedGenesisWithCredit` 的冷启动抵扣。GenesisCredit 是 plain contract，直接继承 LayerZero 官方 `OFT`（非 minimal-proxy / clone），由 `GenesisCreditFactory.deployCredit` CREATE3 直接部署完整合约。
 - per-uAsset 本链确定性地址：`GenesisCreditFactory.deployCredit(uAsset, ...)` 以 `CREATE3 salt = keccak256(abi.encode(uAsset))` 部署，`creditOf / predictCredit` 可在本链确定性地解析/预测地址，不依赖运行期可变指针（CREATE3 地址与构造参数无关，故各链 `lzEndpoint` 不同也不影响地址）。跨链同址不是合约保证：仅当 `factory` 与 `uAsset` 均跨链同址时才成立，而 `uAsset`（Outrun UniversalAssets）是外部资产，其跨链同址性是部署前提、非本代码所校验。`setPeer` 必须逐链查询各链实际 `creditOf(localUAsset)`，不得复用 home 链地址。
 - 跨链拓扑：home 链（Ethereum 主网）写入 merkle root 单点写入 → 用户在 home 链 `claim(...)`（permissionless merkle 校验，单次防重领）→ GenesisCredit 作为 OFT 经 LayerZero 桥到目标链 → 目标链上 GenesisCredit 持有人用 `burn` 或 `leveragedGenesisWithCredit` 抵扣。
-- `POLend.finalizeLeveragedGenesis` 成功路径按该 verse `market.totalCreditInterest` 调 `GenesisCredit.burn` 烧掉 POLend 托管的 GenesisCredit；`Refund` 终态经 `claimRefund` 把 GenesisCredit token 退回给 credit 用户。会计约束见 [docs/spec/invariants.md INV-21](spec/invariants.md)，定义见 [docs/GLOSSARY.md](GLOSSARY.md) `GenesisCredit`。
+- `POLendUpgradeable.finalizeLeveragedGenesis` 成功路径按该 verse `market.totalCreditInterest` 调 `GenesisCredit.burn` 烧掉 POLendUpgradeable 托管的 GenesisCredit；`Refund` 终态经 `claimRefund` 把 GenesisCredit token 退回给 credit 用户。会计约束见 [docs/spec/invariants.md INV-21](spec/invariants.md)，定义见 [docs/GLOSSARY.md](GLOSSARY.md) `GenesisCredit`。
 
 ## 2. 文档分层
 
@@ -262,7 +262,7 @@ Preorder settlement 的当前实现不使用 transient state 路由。`Settlemen
 
 ### 4.6 Smart EOA transient session `[代码已证]`
 
-本小节描述已落地的 Smart EOA transient session。源码已实现 `beginAccountSession()` / `endAccountSession()` ABI（`MemeverseUniswapHook.sol`）、Hook-owned transient `activePrincipal` slot、`SwapContext.principal` 第四字段与 `AccountSession*` 错误语义，并接入 `beforeSwap` / `afterSwap` callback 路径。
+本小节描述已落地的 Smart EOA transient session。源码已实现 `beginAccountSession()` / `endAccountSession()` ABI（`MemeverseUniswapHookUpgradeable.sol`）、Hook-owned transient `activePrincipal` slot、`SwapContext.principal` 第四字段与 `AccountSession*` 错误语义，并接入 `beforeSwap` / `afterSwap` callback 路径。
 
 - Hook ABI 由合约账户直接调用：`beginAccountSession()` 只从直接 `msg.sender` 捕获 principal。写入前必须同时满足 `msg.sender.code.length != 0`、`activePrincipal == address(0)` 与 `swapContextDepth() == 0`；任一不满足都拒绝，不能覆盖或继承残留 context。code-length 只排除传统 EOA，不是账户认证或 allowlist，EIP-7702 delegated account 仍可被接受。
 - 布局另设 Hook-owned transient `activePrincipal` 槽位，并为每层 `SwapContext.principal` 设按 `(poolId, depth)` 定位的独立槽位。context 共传递 principal、编码费率/协议费币腿、`preSqrtPriceX96` 与 `coreTarget` 四项；principal 非零是其唯一 presence marker。

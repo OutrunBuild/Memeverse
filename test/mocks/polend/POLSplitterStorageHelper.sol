@@ -6,16 +6,16 @@ import {StorageSlotPrimitives} from "../StorageSlotPrimitives.sol";
 import {PrincipalToken} from "../../../src/polend/tokens/PrincipalToken.sol";
 import {YieldToken} from "../../../src/polend/tokens/YieldToken.sol";
 
-/// @notice Standalone white-box accessor for POLSplitter proxy storage.
+/// @notice Standalone white-box accessor for POLSplitterUpgradeable proxy storage.
 ///         Does not inherit any src/ contract. Reads/writes proxy storage slots via vm.load/vm.store
 ///         and replays the privileged mint path (PT/YT mint is only callable by the splitter proxy),
 ///         replicating the writes previously performed by the test-only POLSplitterHarness.
 ///         Your test contract should inherit this helper (`is Test, POLSplitterStorageHelper`).
 abstract contract POLSplitterStorageHelper is StorageSlotPrimitives {
-    // erc7201:outrun.storage.POLSplitter namespace location (src/polend/POLSplitter.sol:35-36).
+    // erc7201:outrun.storage.POLSplitter namespace location (src/polend/POLSplitterUpgradeable.sol:35-36).
     bytes32 internal constant POL_SPLITTER_SLOT = 0xab504a6dee30096d32ccac13a30a002829c5eeb4c38a0196ed16a6c4e9faca00;
 
-    // Struct field slot offsets in POLSplitterStorage (src/polend/POLSplitter.sol:25-32).
+    // Struct field slot offsets in POLSplitterStorage (src/polend/POLSplitterUpgradeable.sol:25-32).
     uint256 internal constant OFF_SPLIT_INFOS = 0; // mapping(uint256 => SplitInfo)
     uint256 internal constant OFF_PRE_REDEEMED = 1; // mapping(uint256 => PreRedeemedState)
     uint256 internal constant OFF_LAUNCHER = 2; // address
@@ -68,7 +68,7 @@ abstract contract POLSplitterStorageHelper is StorageSlotPrimitives {
     }
 
     /// @notice Mint PT to `to`. PT.mint is gated by `onlySplitter`, so the call must come from the
-    ///         splitter proxy itself (matches POLSplitterHarness.mintPT, which inherited POLSplitter).
+    ///         splitter proxy itself (matches POLSplitterHarness.mintPT, which inherited POLSplitterUpgradeable).
     function mintPTForTest(address proxy, uint256 verseId, address to, uint256 amount) internal {
         address pt = _readPT(proxy, verseId);
         vm.prank(proxy);

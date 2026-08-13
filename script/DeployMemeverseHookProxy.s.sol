@@ -9,7 +9,7 @@ import {ImmutableState} from "@uniswap/v4-periphery/src/base/ImmutableState.sol"
 
 import {BaseScript} from "./BaseScript.s.sol";
 import {IOutrunDeployer} from "./IOutrunDeployer.sol";
-import {MemeverseUniswapHook} from "../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {SwapFacet} from "../src/swap/SwapFacet.sol";
 import {DynamicFeeFacet} from "../src/swap/DynamicFeeFacet.sol";
 import {SettlementFacet} from "../src/swap/SettlementFacet.sol";
@@ -221,10 +221,10 @@ contract DeployMemeverseHookProxy is BaseScript {
         if (reuseExistingProxy) {
             result.hookProxy = selectedProxy;
             result.hookImplementation = _getExistingImplementation(result.hookProxy);
-            result.lpTokenImplementation = MemeverseUniswapHook(result.hookProxy).lpTokenImplementation();
-            result.swapFacet = MemeverseUniswapHook(result.hookProxy).swapFacet();
-            result.dynamicFeeFacet = MemeverseUniswapHook(result.hookProxy).dynamicFeeFacet();
-            result.settlementFacet = MemeverseUniswapHook(result.hookProxy).settlementFacet();
+            result.lpTokenImplementation = MemeverseUniswapHookUpgradeable(result.hookProxy).lpTokenImplementation();
+            result.swapFacet = MemeverseUniswapHookUpgradeable(result.hookProxy).swapFacet();
+            result.dynamicFeeFacet = MemeverseUniswapHookUpgradeable(result.hookProxy).dynamicFeeFacet();
+            result.settlementFacet = MemeverseUniswapHookUpgradeable(result.hookProxy).settlementFacet();
             return result;
         }
 
@@ -290,7 +290,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     /// @notice Builds ERC1967Proxy (UUPS) creation code for CREATE3 deployment.
     /// @dev UUPS proxies carry no ProxyAdmin; upgrade authorization lives on the implementation via
     ///      `_authorizeUpgrade`. The hook owner is encoded inside `initializeData` (the first arg of
-    ///      `MemeverseUniswapHook.initialize`), so only the implementation and initializer data are appended.
+    ///      `MemeverseUniswapHookUpgradeable.initialize`), so only the implementation and initializer data are appended.
     /// @param implementation Hook implementation address passed to the proxy constructor.
     /// @param initializeData Initializer calldata (encodes hook owner + treasury + facet pointers) passed to
     ///        the proxy constructor.
@@ -435,7 +435,7 @@ contract DeployMemeverseHookProxy is BaseScript {
 
             // Resolve remaining addresses (owner/treasury/poolManager) once. Safe to call getters without
             // try/catch: `_validateExistingImplementationCodehashes` validated the proxy codehash above,
-            // guaranteeing the proxy is valid MemeverseUniswapHook bytecode whose getters cannot revert.
+            // guaranteeing the proxy is valid MemeverseUniswapHookUpgradeable bytecode whose getters cannot revert.
             ResolvedDeployment memory actual = _resolveDeployment(
                 proxy,
                 actualImplementation,
@@ -645,7 +645,7 @@ contract DeployMemeverseHookProxy is BaseScript {
             deployerNamespace,
             nonce,
             HOOK_IMPL_SALT_SEED,
-            abi.encodePacked(type(MemeverseUniswapHook).creationCode, abi.encode(poolManager))
+            abi.encodePacked(type(MemeverseUniswapHookUpgradeable).creationCode, abi.encode(poolManager))
         );
     }
 
@@ -673,7 +673,7 @@ contract DeployMemeverseHookProxy is BaseScript {
         if (create3Proxy.code.length != 0) revert Create3SaltConsumed(salt, create3Proxy);
 
         bytes memory initializeData = abi.encodeCall(
-            MemeverseUniswapHook.initialize,
+            MemeverseUniswapHookUpgradeable.initialize,
             (hookOwner, hookTreasury, lpTokenImplementation, swapFacet, dynamicFeeFacet, settlementFacet, launcher_)
         );
         bytes memory creationCode = proxyCreationCode(implementation, initializeData);
@@ -733,7 +733,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     ///      proxy. If a future caller cannot pre-resolve an artifact, surface it explicitly instead of
     ///      silently falling back to a zero-derived proxy read — that would mask a caller bug.
     ///      Safe to call getters without try/catch: on the reuse path `_validateExistingImplementationCodehashes`
-    ///      has already validated the proxy codehash, guaranteeing valid MemeverseUniswapHook bytecode; on the
+    ///      has already validated the proxy codehash, guaranteeing valid MemeverseUniswapHookUpgradeable bytecode; on the
     ///      deploy path the proxy was just deployed by this script.
     function _resolveDeployment(
         address proxy,
@@ -745,7 +745,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     ) internal view returns (ResolvedDeployment memory actual) {
         actual.implementation = implementation;
 
-        MemeverseUniswapHook hook = MemeverseUniswapHook(proxy);
+        MemeverseUniswapHookUpgradeable hook = MemeverseUniswapHookUpgradeable(proxy);
         actual.hookOwner = hook.owner();
         actual.hookTreasury = hook.treasury();
         actual.poolManager = hook.poolManager();
@@ -849,16 +849,16 @@ contract DeployMemeverseHookProxy is BaseScript {
 
         _requireCodehashMatch(implementation, "EXPECTED_HOOK_IMPLEMENTATION_CODEHASH");
 
-        lpTokenImplementation = MemeverseUniswapHook(proxy).lpTokenImplementation();
+        lpTokenImplementation = MemeverseUniswapHookUpgradeable(proxy).lpTokenImplementation();
         _requireCodehashMatch(lpTokenImplementation, "EXPECTED_LP_TOKEN_IMPLEMENTATION_CODEHASH");
 
-        swapFacet = MemeverseUniswapHook(proxy).swapFacet();
+        swapFacet = MemeverseUniswapHookUpgradeable(proxy).swapFacet();
         _requireCodehashMatch(swapFacet, "EXPECTED_SWAP_FACET_CODEHASH");
 
-        dynamicFeeFacet = MemeverseUniswapHook(proxy).dynamicFeeFacet();
+        dynamicFeeFacet = MemeverseUniswapHookUpgradeable(proxy).dynamicFeeFacet();
         _requireCodehashMatch(dynamicFeeFacet, "EXPECTED_DYNAMIC_FEE_FACET_CODEHASH");
 
-        settlementFacet = MemeverseUniswapHook(proxy).settlementFacet();
+        settlementFacet = MemeverseUniswapHookUpgradeable(proxy).settlementFacet();
         _requireCodehashMatch(settlementFacet, "EXPECTED_SETTLEMENT_FACET_CODEHASH");
     }
 

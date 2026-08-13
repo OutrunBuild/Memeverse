@@ -569,7 +569,7 @@ cat <<'JSON'
         "check": "reentrancy-eth",
         "impact": "High",
         "confidence": "High",
-        "first_markdown_element": "src/verse/MemeverseLauncher.sol#L1-L4",
+        "first_markdown_element": "src/verse/MemeverseLauncherUpgradeable.sol#L1-L4",
         "description": "New detector finding"
       }
     ]
@@ -759,8 +759,8 @@ jq -e '
 ' "$test_record" >/dev/null
 assert_no_removed_fields "$test_record"
 
-src_changed="$(write_changed_files srcsol src/verse/MemeverseLauncher.sol)"
-src_diff="$(write_diff srcsol src/verse/MemeverseLauncher.sol 'uint256 oldAmount = amount;' 'uint256 newAmount = amount + 1;')"
+src_changed="$(write_changed_files srcsol src/verse/MemeverseLauncherUpgradeable.sol)"
+src_diff="$(write_diff srcsol src/verse/MemeverseLauncherUpgradeable.sol 'uint256 oldAmount = amount;' 'uint256 newAmount = amount + 1;')"
 src_record="$(run_classify srcsol "$src_changed" "$src_diff")"
 jq -e '
   .change_class == "prod-semantic" and
@@ -773,9 +773,9 @@ jq -e '
 ' "$src_record" >/dev/null
 assert_no_removed_fields "$src_record"
 
-planned_src_record="$(run_classify_with_changed_args plannedsrc 0 --planned-files src/verse/MemeverseLauncher.sol)"
+planned_src_record="$(run_classify_with_changed_args plannedsrc 0 --planned-files src/verse/MemeverseLauncherUpgradeable.sol)"
 jq -e '
-  .changed_files == ["src/verse/MemeverseLauncher.sol"] and
+  .changed_files == ["src/verse/MemeverseLauncherUpgradeable.sol"] and
   .file_input_mode == "planned-files" and
   .change_class == "prod-semantic" and
   .orchestration_profile == "full-review" and
@@ -817,7 +817,7 @@ jq -e '
 ' "$planned_non_spec_record" >/dev/null
 assert_no_removed_fields "$planned_non_spec_record"
 
-mixed_changed="$(write_changed_files mixed src/verse/MemeverseLauncher.sol docs/spec/verse/state-machines.md)"
+mixed_changed="$(write_changed_files mixed src/verse/MemeverseLauncherUpgradeable.sol docs/spec/verse/state-machines.md)"
 mixed_record="$(run_classify mixed "$mixed_changed" "$src_diff")"
 jq -e '
   .change_class == "prod-semantic" and
@@ -849,9 +849,9 @@ jq -e '
 ' "$multi_direct_record" >/dev/null
 assert_no_removed_fields "$multi_direct_record"
 
-subdir_repo_relative_record="$(run_classify_from_subdir subdirrepo docs 1 src/verse/MemeverseLauncher.sol)"
+subdir_repo_relative_record="$(run_classify_from_subdir subdirrepo docs 1 src/verse/MemeverseLauncherUpgradeable.sol)"
 jq -e '
-  .changed_files == ["src/verse/MemeverseLauncher.sol"] and
+  .changed_files == ["src/verse/MemeverseLauncherUpgradeable.sol"] and
   .surfaces == "solidity_prod" and
   .change_class == "blocked" and
   .final_verdict == "blocked" and
@@ -861,9 +861,9 @@ jq -e '
 ' "$subdir_repo_relative_record" >/dev/null
 assert_no_removed_fields "$subdir_repo_relative_record"
 
-absolute_inside_record="$(run_classify_with_changed_args absinside 1 --changed-files "$repo_root/src/verse/MemeverseLauncher.sol")"
+absolute_inside_record="$(run_classify_with_changed_args absinside 1 --changed-files "$repo_root/src/verse/MemeverseLauncherUpgradeable.sol")"
 jq -e '
-  .changed_files == ["src/verse/MemeverseLauncher.sol"] and
+  .changed_files == ["src/verse/MemeverseLauncherUpgradeable.sol"] and
   .surfaces == "solidity_prod" and
   .change_class == "blocked" and
   .semantic_prod_files == [] and
@@ -924,8 +924,8 @@ if grep -qx -- "--changed-files" "$diff_capture/argv"; then
 fi
 [ ! -s "$diff_capture/diff_path" ]
 
-slither_changed="$(write_changed_files slither src/verse/MemeverseLauncher.sol)"
-slither_diff="$(write_diff slither src/verse/MemeverseLauncher.sol 'uint256 oldAmount = amount;' 'uint256 newAmount = amount + 1;')"
+slither_changed="$(write_changed_files slither src/verse/MemeverseLauncherUpgradeable.sol)"
+slither_diff="$(write_diff slither src/verse/MemeverseLauncherUpgradeable.sol 'uint256 oldAmount = amount;' 'uint256 newAmount = amount + 1;')"
 mapfile -t slither_run < <(run_gate_full_capture slither "$slither_changed" "$slither_diff")
 slither_status="${slither_run[0]}"
 slither_record="${slither_run[1]}"

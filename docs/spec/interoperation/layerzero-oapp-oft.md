@@ -16,9 +16,9 @@
  - `OutrunOApp*` 初始化基类（peer/delegate）
 - OFT 路径：
  - `Memecoin`、`MemePol`（基于 `OutrunOFTInit`）
- - `MemeverseLauncher`（`IOFT.quoteSend/send` 分发 fee）
+ - `MemeverseLauncherUpgradeable`（`IOFT.quoteSend/send` 分发 fee）
  - `MemeverseOmnichainInteroperation`（跨链 staking）
- - `YieldDispatcher`、`OmnichainMemecoinStaker`（compose 接收处理）
+ - `YieldDispatcherUpgradeable`、`OmnichainMemecoinStaker`（compose 接收处理）
 
 以上为 `[代码已证]`。
 
@@ -48,7 +48,7 @@
 
 - 源端 `send` 经 `_debit` 在源链 burn 1X（`OutrunOFTInit::_debit`）。
 - 目的端 `_lzReceive` → `_credit(...)`，`OutrunOFTInit::_credit` 仅把 `_to == address(0x0)` 重映射到 `0xdead` 并**单次** mint 该数量，mint 即终态，无 `withdrawIfNotExecuted` 可被调用。
-- 非零 `to` 时 compose 消息经 `endpoint.sendCompose` 交 composer（`YieldDispatcher`/`OmnichainMemecoinStaker`）处理，token 层无第二次增发；`to = address(0)` 时该路由与 `OFTReceived` 事件同样携带重映射前的 `address(0)`（接收方为 `address(0)`，无 composer 处理），余额落在 `0xdead` 哨兵（见 [docs/spec/events.md](../events.md)）。该 sendCompose 仍会写 endpoint `composeQueue[token][0][guid][0]` 槽且无收敛路径（`lzCompose` 对无代码目标 revert，监控按 `ComposeSent` 无 `ComposeDelivered` 识别），详见 events.md。
+- 非零 `to` 时 compose 消息经 `endpoint.sendCompose` 交 composer（`YieldDispatcherUpgradeable`/`OmnichainMemecoinStaker`）处理，token 层无第二次增发；`to = address(0)` 时该路由与 `OFTReceived` 事件同样携带重映射前的 `address(0)`（接收方为 `address(0)`，无 composer 处理），余额落在 `0xdead` 哨兵（见 [docs/spec/events.md](../events.md)）。该 sendCompose 仍会写 endpoint `composeQueue[token][0][guid][0]` 槽且无收敛路径（`lzCompose` 对无代码目标 revert，监控按 `ComposeSent` 无 `ComposeDelivered` 识别），详见 events.md。
 - 净效果：源端 burn 1X、目的端 mint 1X，跨链供给守恒，不绕过 token 层 launcher-only mint 约束（见 [docs/spec/invariants.md INV-09A](../invariants.md)）。
 
 `[代码已证]`
@@ -69,8 +69,8 @@
 ### 3.3 收益分发与 staking 边界
 
 - Launcher fee 分发：
- - 本链治理：调用 `YieldDispatcher.distributeSameChain(...)` 本地直达
- - 异链治理：调用 `IOFT.send(...)` 远程发送，目标链由 LayerZero endpoint 调用 `YieldDispatcher.lzCompose(...)`
+ - 本链治理：调用 `YieldDispatcherUpgradeable.distributeSameChain(...)` 本地直达
+ - 异链治理：调用 `IOFT.send(...)` 远程发送，目标链由 LayerZero endpoint 调用 `YieldDispatcherUpgradeable.lzCompose(...)`
 - Memecoin staking：
  - 本链治理：直接 deposit 到 yieldVault
  - 异链治理：OFT 发送到 `OmnichainMemecoinStaker`，compose 后 deposit/transfer
@@ -80,24 +80,24 @@
 ## 4. 安全与执行约束
 
 - compose 回调授权：
- - 见 [docs/spec/access-control.md §3](../access-control.md)（`YieldDispatcher.distributeSameChain` 仅 `memeverseLauncher`；远端 `YieldDispatcher.lzCompose` 由 LayerZero endpoint 调用且仅 `localEndpoint`；`OmnichainMemecoinStaker.lzCompose` 仅 `localEndpoint`）
+ - 见 [docs/spec/access-control.md §3](../access-control.md)（`YieldDispatcherUpgradeable.distributeSameChain` 仅 `memeverseLauncher`；远端 `YieldDispatcherUpgradeable.lzCompose` 由 LayerZero endpoint 调用且仅 `localEndpoint`；`OmnichainMemecoinStaker.lzCompose` 仅 `localEndpoint`）
 - compose 回调授权精确额度（无无限授权）：
- - `OmnichainMemecoinStaker.lzCompose` deposit 分支对 message 解码出的 `yieldVault` 仅授予精确 `amount` 的 memecoin 授权（`_safeApprove(memecoin, yieldVault, amount)`），不授无限额度——与 `YieldDispatcher._settleToContract` 的精确授权模式一致（其 MEMECOIN 分支本轮同步落地同款绑定，见下条，与 staker 防御栈同构）；精确授权封顶仅对真实桥接帧有语义——伪造帧（`sendCompose` 按 msg.sender 键控）的 amountLD 由攻击者自选、可至 `type(uint256).max`（`approve(max)` 无限授权），但伪造帧 token 键恒为攻击者自有地址、无限授权只覆盖其自有资产，无第三方暴露；fallback（vault 无 code 直接 transfer）与 `settlePendingCompose`（push 给 receiver）路径不涉及 vault 授权。
+ - `OmnichainMemecoinStaker.lzCompose` deposit 分支对 message 解码出的 `yieldVault` 仅授予精确 `amount` 的 memecoin 授权（`_safeApprove(memecoin, yieldVault, amount)`），不授无限额度——与 `YieldDispatcherUpgradeable._settleToContract` 的精确授权模式一致（其 MEMECOIN 分支本轮同步落地同款绑定，见下条，与 staker 防御栈同构）；精确授权封顶仅对真实桥接帧有语义——伪造帧（`sendCompose` 按 msg.sender 键控）的 amountLD 由攻击者自选、可至 `type(uint256).max`（`approve(max)` 无限授权），但伪造帧 token 键恒为攻击者自有地址、无限授权只覆盖其自有资产，无第三方暴露；fallback（vault 无 code 直接 transfer）与 `settlePendingCompose`（push 给 receiver）路径不涉及 vault 授权。
  - 防御对象：compose message 由免许可 OFT send 构造，`yieldVault` 地址虽经下述 token-vault 绑定校验（`asset() == memecoin`），但恶意合约可谎报 `asset()` 绕过该校验，故 vault 地址仍不可信；无限授权会把 staker 托管余额（含他人滞留资金）暴露给任意 message 指定地址，精确额度把损失封顶为本次 `amount`——与绑定校验构成两层防御（绑定拦截配对错误，精确授权封顶谎报资产的恶意 vault）。
- - 锚点：`src/interoperation/OmnichainMemecoinStaker.sol::lzCompose`、`src/common/token/TokenHelper.sol::_safeApprove`、`src/verse/YieldDispatcher.sol::_settleToContract`。
+ - 锚点：`src/interoperation/OmnichainMemecoinStaker.sol::lzCompose`、`src/common/token/TokenHelper.sol::_safeApprove`、`src/verse/YieldDispatcherUpgradeable.sol::_settleToContract`。
  - `[代码已证]`
 - deposit 分支 token↔vault 绑定（新增）：
  - `OmnichainMemecoinStaker.lzCompose` deposit 分支在授权/存款前校验 `require(IMemecoinYieldVault(yieldVault).asset() == memecoin, TokenVaultMismatch())`——投递 token 必须等于 vault 自身资产，伪造 (token, vault) 配对（如伪造 token + 真实 vault）在资金移动前 revert，伪造 token 无法驱动真实 vault 从 staker 拉取真实资产。
  - 防御对象：compose 消息可被免许可构造、`_from`/`yieldVault` 由消息全权决定；绑定把“消息命名什么”与“vault 实际拉取什么”强制一致，与精确授权（封顶单次 pull）构成两层防护。
-  - dispatcher 同款：`YieldDispatcher._settleToContract` MEMECOIN 分支在 approve 前同样校验 `require(IMemecoinYieldVault(receiver).asset() == token, TokenVaultMismatch())`（同 selector）——与 staker 构成同构两层防御（绑定 + 精确授权），本轮防御栈分化已消除（dispatcher 侧不再依赖“预存授权”不变量，伪造 (fakeToken, realVault) 帧在资金移动前具名 revert）。
- - 锚点：`src/interoperation/OmnichainMemecoinStaker.sol::lzCompose`、`src/verse/YieldDispatcher.sol::_settleToContract`、`src/yield/interfaces/IMemecoinYieldVault.sol::asset`、`src/interoperation/interfaces/IOmnichainMemecoinStaker.sol` 与 `src/verse/interfaces/IYieldDispatcher.sol`（均 `TokenVaultMismatch`）。
+  - dispatcher 同款：`YieldDispatcherUpgradeable._settleToContract` MEMECOIN 分支在 approve 前同样校验 `require(IMemecoinYieldVault(receiver).asset() == token, TokenVaultMismatch())`（同 selector）——与 staker 构成同构两层防御（绑定 + 精确授权），本轮防御栈分化已消除（dispatcher 侧不再依赖“预存授权”不变量，伪造 (fakeToken, realVault) 帧在资金移动前具名 revert）。
+ - 锚点：`src/interoperation/OmnichainMemecoinStaker.sol::lzCompose`、`src/verse/YieldDispatcherUpgradeable.sol::_settleToContract`、`src/yield/interfaces/IMemecoinYieldVault.sol::asset`、`src/interoperation/interfaces/IOmnichainMemecoinStaker.sol` 与 `src/verse/interfaces/IYieldDispatcher.sol`（均 `TokenVaultMismatch`）。
  - `[代码已证]`（本轮 code writer 同步落地）
 - 已投递未执行 compose 的兜底结算（token 层不再托管 compose 状态，兜底结算由 composer 自托管）：
  - OFT 合约 `_lzReceive` 回归官方 LayerZero OFTCore 语义：mint 即终态 + `endpoint.sendCompose`，不存 UBO/ComposeTxStatus，无 `withdrawIfNotExecuted`。
- - 每个 composer（`YieldDispatcher` / `OmnichainMemecoinStaker`）维护 `ComposeState{None,Settled,Released}` 互斥状态 + `settlePendingCompose(token, guid, message)` 入口，权限分列：`YieldDispatcher.settlePendingCompose` permissionless（接收方从 `message` 解码、不可篡改）；`OmnichainMemecoinStaker.settlePendingCompose` 仅接收人可调（`msg.sender == receiver`，receiver 从 hash 绑定的 `message` 解码），防第三方在 `lzCompose` 前 front-run 抢占导致用户 stake 无法入 vault 的 DoS。
+ - 每个 composer（`YieldDispatcherUpgradeable` / `OmnichainMemecoinStaker`）维护 `ComposeState{None,Settled,Released}` 互斥状态 + `settlePendingCompose(token, guid, message)` 入口，权限分列：`YieldDispatcherUpgradeable.settlePendingCompose` permissionless（接收方从 `message` 解码、不可篡改）；`OmnichainMemecoinStaker.settlePendingCompose` 仅接收人可调（`msg.sender == receiver`，receiver 从 hash 绑定的 `message` 解码），防第三方在 `lzCompose` 前 front-run 抢占导致用户 stake 无法入 vault 的 DoS。
  - `settlePendingCompose` 用 endpoint 公开 `composeQueue` 证明投递真实性（非零 = 已投递，`!= RECEIVED_MESSAGE_HASH` = lzCompose 未执行）+ `keccak256(message) == queueHash` 证明 message 真实性；接收方从 message 显式解码，调用者不可篡改。
  - `settlePendingCompose` / `MemecoinYieldVault.reAccumulateYields` 的 `message` 参数与目标链 composer 的 `ComposeSent` 事件 `message` 字段逐字节一致（由 `OutrunOFTCoreInit::_lzReceive` 经 `endpoint.sendCompose` 触发，即 `OFTComposeMsgCodec::encode` 的完整字节，布局 `[nonce(8)][srcEid(4)][amountLD(32)][composeFrom(32)][composeMsg]`）；恢复操作按 `guid` 过滤 `ComposeSent` 事件（`to` = 对应 composer、`from` = asset OFT、`index` = 0），原样拷贝 `message` 字段传入即可（注意：`ComposeSent` 字段均非 indexed，raw RPC 无法按 guid/to/from 做 topic 过滤，检索细节见 [docs/operations.md §3.13 步骤 1](../../operations.md)）；`ComposeSent` 的 `to` 即 compose 实际投递的 dispatcher（`reAccumulateYields` 的 `dispatcher` 参数取该值，尤其 launcher `setYieldDispatcher` 旋转后须传 compose 实际所在的历史/当前 dispatcher，而非 vault initialize 时绑定的指针），无需逐字段手工重组。
- - `YieldDispatcher.settlePendingCompose` 结算直接复用正向 `_settle`（单一事实源）：非合约 receiver 按 tokenType 分流（MEMECOIN → burn、UASSET → `protocolTreasury`）、越界 TokenType 在 `abi.decode` 解码边界即被拒绝（空数据回退，先于 `_settle`）；`_settle` 内的 `InvalidTokenType` 分支为当前不可达防御性 backstop——三个入口均前置过滤（`lzCompose` 经 `_parseCompose` 以 `ComposeRejected` 消费、`distributeSameChain` 经外部 calldata 解码、`settlePendingCompose` 经 `abi.decode`）；合约 receiver 按 tokenType 走 approve+pull（UASSET→governor `receiveTreasuryIncome`（pull + `treasuryBalances` 记账）、MEMECOIN→yieldVault `accumulateYields`（pull + `totalAssets` 记账））；`OmnichainMemecoinStaker.settlePendingCompose` 原币直接 push 给 receiver（`_transferOut`）。
+ - `YieldDispatcherUpgradeable.settlePendingCompose` 结算直接复用正向 `_settle`（单一事实源）：非合约 receiver 按 tokenType 分流（MEMECOIN → burn、UASSET → `protocolTreasury`）、越界 TokenType 在 `abi.decode` 解码边界即被拒绝（空数据回退，先于 `_settle`）；`_settle` 内的 `InvalidTokenType` 分支为当前不可达防御性 backstop——三个入口均前置过滤（`lzCompose` 经 `_parseCompose` 以 `ComposeRejected` 消费、`distributeSameChain` 经外部 calldata 解码、`settlePendingCompose` 经 `abi.decode`）；合约 receiver 按 tokenType 走 approve+pull（UASSET→governor `receiveTreasuryIncome`（pull + `treasuryBalances` 记账）、MEMECOIN→yieldVault `accumulateYields`（pull + `totalAssets` 记账））；`OmnichainMemecoinStaker.settlePendingCompose` 原币直接 push 给 receiver（`_transferOut`）。
  - `lzCompose` 与 `settlePendingCompose` 经 `composeStates`（按 (token, guid) 键控）单向迁移互斥（None→Settled 或 None→Released，不可逆）；键控绑定真实桥接 token，防止攻击者用伪造 token 地址写自己的 `composeQueue` 槽后烧毁真实 guid 的互斥锁；endpoint 的 `RECEIVED_MESSAGE_HASH` 作纵深防御（`AlreadyExecuted` 分支在正常路径下不可达——`composeStates` 先于它拦截，仅理论窗口覆盖）；`composeStates` 置位先于外部调用（CEI）；`composeStates == Released` 后 `lzCompose` 幂等放行（no-op），使 endpoint 状态机收敛到 `ComposeDelivered` 终态。
 - replay 防护：
  - composer `composeStates` 互斥（权威）+ endpoint 原生 `lzCompose` 的 `LZ_ComposeNotFound` 防重放（token 层 `getComposeTxExecutedStatus`/`notifyComposeExecuted` 已随 UBO 机制删除）。

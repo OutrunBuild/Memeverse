@@ -3,7 +3,7 @@ pragma solidity ^0.8.35;
 
 /// @title DelegatecallOnly
 /// @notice Mixin that rejects direct (non-delegatecall) entry to a contract that is meant to run in a
-///         proxy's storage context. Used by the MemeverseLauncher delegatecall siblings
+///         proxy's storage context. Used by the MemeverseLauncherUpgradeable delegatecall siblings
 ///         (`MemeverseLaunchImpl` / `MemeverseSettlementImpl` / `MemeverseLiquidityImpl`): under normal use
 ///         the facade `functionDelegateCall`s into them, so `address(this)` is the launcher proxy and every
 ///         storage read/write lands on the proxy. A direct call instead runs against the sibling's own

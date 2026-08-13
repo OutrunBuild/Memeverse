@@ -18,10 +18,10 @@ import {IGenesisCreditFactory} from "../credit/interfaces/IGenesisCreditFactory.
 import {IGenesisCredit} from "../credit/interfaces/IGenesisCredit.sol";
 import {OutrunOwnableUpgradeable} from "../common/access/OutrunOwnableUpgradeable.sol";
 
-/// @title POLend
+/// @title POLendUpgradeable
 /// @notice Leveraged-genesis lend market: escrows leveraged interest (real uAsset and GenesisCredit),
 ///         mints debt to the launcher, runs global settlement, and distributes YT/residuals pro-rata.
-contract POLend layout at erc7201("outrun.storage.POLend")
+contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
     is
     Initializable,
     OutrunOwnableUpgradeable,
@@ -88,8 +88,8 @@ contract POLend layout at erc7201("outrun.storage.POLend")
     /// @param interestRate_ Default interest rate (1e18-scaled; (0, 1e18]).
     /// @param leveragedDebtFactor_ Leveraged-debt factor applied to the launcher debt cap.
     /// @param treasury_ Protocol treasury receiving the full real-uAsset leveraged interest slice at finalize, plus dust-reserve overflow from over-capacity funding.
-    /// @param launcher_ MemeverseLauncher authorized to drive verse lifecycle.
-    /// @param splitter_ POLSplitter authorized to redeem PTs and burn backing.
+    /// @param launcher_ MemeverseLauncherUpgradeable authorized to drive verse lifecycle.
+    /// @param splitter_ POLSplitterUpgradeable authorized to redeem PTs and burn backing.
     /// @param creditFactory_ GenesisCreditFactory issuing credit tokens.
     function initialize(
         address initialOwner,
@@ -248,7 +248,7 @@ contract POLend layout at erc7201("outrun.storage.POLend")
     }
 
     /// @notice Same accounting as `leveragedGenesis`, but interest is paid in GenesisCredit
-    ///         (escrowed in POLend) instead of the verse's uAsset.
+    ///         (escrowed in POLendUpgradeable) instead of the verse's uAsset.
     /// @dev    Credit interest is tracked in a dedicated ledger (`creditInterestPaid` +
     ///         `market.totalCreditInterest`) and also added to `totalLeveragedInterest` so debt
     ///         math and downstream settlement/claim logic stay identical to the real-uAsset path.
@@ -656,13 +656,13 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         return polendStorage.treasury;
     }
 
-    /// @notice MemeverseLauncher authorized to register markets and drive the verse lifecycle.
+    /// @notice MemeverseLauncherUpgradeable authorized to register markets and drive the verse lifecycle.
     /// @return Configured launcher address.
     function launcher() external view returns (address) {
         return polendStorage.launcher;
     }
 
-    /// @notice POLSplitter authorized to redeem PTs and burn pre-redeemed backing.
+    /// @notice POLSplitterUpgradeable authorized to redeem PTs and burn pre-redeemed backing.
     /// @return Configured splitter address.
     function splitter() external view returns (address) {
         return polendStorage.splitter;

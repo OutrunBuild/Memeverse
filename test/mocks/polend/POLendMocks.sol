@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {BurnableMockERC20Base} from "../common/BurnableMockERC20Base.sol";
 
-import {POLend} from "../../../src/polend/POLend.sol";
+import {POLendUpgradeable} from "../../../src/polend/POLendUpgradeable.sol";
 
 contract MintableToken is MockERC20 {
     constructor(string memory name_, string memory symbol_) MockERC20(name_, symbol_, 18) {}
@@ -71,14 +71,14 @@ contract HookedBurnableMockERC20 is BurnableMockERC20 {
     function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
         if (hookMode == HookMode.ReenterLeveragedGenesis) {
             hookMode = HookMode.None;
-            POLend(hookPOLend).leveragedGenesis(hookVerseId, reentryInterestAmount);
+            POLendUpgradeable(hookPOLend).leveragedGenesis(hookVerseId, reentryInterestAmount);
         }
         return super.transferFrom(from, to, amount);
     }
 
     function mint(address to, uint256 value) public override {
         if (hookMode == HookMode.MintDebt) {
-            require(POLend(hookPOLend).getTotalDebtByUAsset(address(this)) == expectedDebt, "hook debt");
+            require(POLendUpgradeable(hookPOLend).getTotalDebtByUAsset(address(this)) == expectedDebt, "hook debt");
             hookMode = HookMode.None;
         }
         super.mint(to, value);
@@ -86,7 +86,7 @@ contract HookedBurnableMockERC20 is BurnableMockERC20 {
 
     function repay(address account, uint256 amount) public override {
         if (hookMode == HookMode.RepayDebt) {
-            require(POLend(hookPOLend).getTotalDebtByUAsset(address(this)) == expectedDebt, "hook debt");
+            require(POLendUpgradeable(hookPOLend).getTotalDebtByUAsset(address(this)) == expectedDebt, "hook debt");
             hookMode = HookMode.None;
         }
         super.repay(account, amount);

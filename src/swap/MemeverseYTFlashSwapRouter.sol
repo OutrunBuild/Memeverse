@@ -76,7 +76,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
     /// @param splitter_ Canonical POL splitter used to resolve verse assets and to split/merge.
     constructor(IPoolManager manager_, IMemeverseUniswapHook hook_, IPOLSplitter splitter_) SafeCallback(manager_) {
         // Fail closed at deployment: any zero-address immutable dependency would otherwise deploy silently and only
-        // surface as a confusing no-code revert at the first runtime call. Mirrors MemeverseUniswapHook / FacetGuard.
+        // surface as a confusing no-code revert at the first runtime call. Mirrors MemeverseUniswapHookUpgradeable / FacetGuard.
         if (address(manager_) == address(0) || address(hook_) == address(0) || address(splitter_) == address(0)) {
             revert ZeroAddress();
         }

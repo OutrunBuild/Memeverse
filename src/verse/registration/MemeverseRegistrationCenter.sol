@@ -268,7 +268,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     ///      this precondition is guaranteed by governance and deployment, not runtime detection
     ///      (this setter only manages whitelist membership). A callback-capable `uAsset` would
     ///      conditionally enable the LP per-share accounting reentrancy window (F-020) at
-    ///      `MemeverseUniswapHook.sol::_addLiquidityCore`.
+    ///      `MemeverseUniswapHookUpgradeable.sol::_addLiquidityCore`.
     /// @param uAsset Fundraising token address to update.
     /// @param isSupported Whether the token should be accepted for future registrations.
     function setSupportedUAsset(address uAsset, bool isSupported) external override onlyOwner {

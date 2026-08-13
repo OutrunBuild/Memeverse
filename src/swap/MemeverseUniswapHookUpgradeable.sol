@@ -34,7 +34,7 @@ import {OutrunOwnable} from "../common/access/OutrunOwnable.sol";
 import {OutrunOwnableUpgradeable} from "../common/access/OutrunOwnableUpgradeable.sol";
 
 /**
- * @title MemeverseUniswapHook
+ * @title MemeverseUniswapHookUpgradeable
  * @notice Thin diamond Router for the Memeverse Uniswap v4 hook.
  * @dev High-level flow:
  * - This contract is the single Uniswap hook address and the only storage owner. It owns the ERC7201
@@ -59,7 +59,7 @@ import {OutrunOwnableUpgradeable} from "../common/access/OutrunOwnableUpgradeabl
  * contract callers depend on. Facet addresses are owner-configurable via `setFacet`.
  */
 // solhint-disable-next-line gas-small-strings
-contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswapHook")
+contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.MemeverseUniswapHook")
     is
     IMemeverseHookStorage,
     IMemeverseUniswapHook,
@@ -202,7 +202,7 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
     /// @inheritdoc UUPSUpgradeable
     /// @dev UUPS upgrade gate. The hook proxy is upgradeable; authorization is restricted to the hook owner
     ///      so a stale caller or a compromised facet cannot swap the implementation. Mirrors the launcher
-    ///      (MemeverseLauncher.sol) UUPS pattern. Also guards against poolManager drift: a new implementation
+    ///      (MemeverseLauncherUpgradeable.sol) UUPS pattern. Also guards against poolManager drift: a new implementation
     ///      bound to a different PoolManager would silently break every swap and LP path, so we revert
     ///      `UpgradePoolManagerMismatch`. This is an operational guardrail, not a security boundary — a
     ///      malicious owner could ship a fake `poolManager()` getter, but it catches honest constructor

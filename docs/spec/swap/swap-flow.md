@@ -6,7 +6,7 @@
 相关实现主要位于：
 
 - `src/swap/MemeverseSwapRouter.sol`
-- `src/swap/MemeverseUniswapHook.sol`
+- `src/swap/MemeverseUniswapHookUpgradeable.sol`
 - `src/swap/SwapFacet.sol` / `src/swap/DynamicFeeFacet.sol` / `src/swap/SettlementFacet.sol`（diamond facet，经 Router entry `delegatecall` 分发，共享 hook storage；详见 §1.1 / §3）
 
 ---
@@ -93,9 +93,9 @@ sequenceDiagram
 
 说明：
 
-- **rebate custody 在 hook proxy**：`MemeverseUniswapHook` 的 callback/fee logic 由 SwapFacet / DynamicFeeFacet 经 Router entry `delegatecall` 执行并共享 Router storage。rebate `take` recipient = `address(this)`（hook proxy），`pendingRebate` 在 Router storage，`claimRebate`/`pendingRebateOf` 入口在 hook。
+- **rebate custody 在 hook proxy**：`MemeverseUniswapHookUpgradeable` 的 callback/fee logic 由 SwapFacet / DynamicFeeFacet 经 Router entry `delegatecall` 执行并共享 Router storage。rebate `take` recipient = `address(this)`（hook proxy），`pendingRebate` 在 Router storage，`claimRebate`/`pendingRebateOf` 入口在 hook。
 - **rebate currency = 该 swap protocol fee 的 currency**：由 `protocolFeeOnInput`（输入侧优先，否则输出侧；两侧均未注册的普通池落输入侧）决定；rebate 与 protocol fee 同币种（in-kind）。LP fee 始终位于输入侧（currencyIn），与 protocolFeeOnInput 无关。无 referrer 时不切 rebate，protocol 收全额 35%。
-- **claimRebate 在 hook 可调**：`MemeverseUniswapHook::claimRebate(currency, recipient)`（Router 直接实现）；hook 持有的 token 余额偿付能力见 [docs/spec/invariants.md](../invariants.md) INV-20。
+- **claimRebate 在 hook 可调**：`MemeverseUniswapHookUpgradeable::claimRebate(currency, recipient)`（Router 直接实现）；hook 持有的 token 余额偿付能力见 [docs/spec/invariants.md](../invariants.md) INV-20。
 - **preorder settlement 路径不携带 referrer，不参与返佣**：`executePreorderSettlement` 走 `Launcher -> Hook -> SettlementFacet`（Router entry `delegatecall`，见 §3），`hookData = bytes("")`，普通 swap 的返佣路径（beforeSwap 主路径 `_computeRebate` + 合并 take，及 beforeSwap 边界 / afterSwap 的 `_collectProtocolFee`）均不触发，protocol 收全额固定 fee 不切 rebate。
 
 ---
@@ -271,7 +271,7 @@ sequenceDiagram
     participant R as YTFlashSwapRouter
     participant PM as PoolManager
     participant H as Hook
-    participant S as POLSplitter
+    participant S as POLSplitterUpgradeable
     participant RC as Recipient
 
     U->>R: swapPOLForExactYT(verseId, y, maxPOLIn, ...)
@@ -312,7 +312,7 @@ sequenceDiagram
     participant R as YTFlashSwapRouter
     participant PM as PoolManager
     participant H as Hook
-    participant S as POLSplitter
+    participant S as POLSplitterUpgradeable
     participant RC as Recipient
 
     U->>R: swapExactYTForPOL(verseId, y, minPOLOut, ...)
@@ -325,7 +325,7 @@ sequenceDiagram
     R->>R: 验证 0<Q_actual<y, polOut=y-Q_actual>=minPOLOut（否则在 take/pull/merge 前回滚）
     R->>PM: take y PT（清正 PT delta）
     R->>U: transferFrom y YT
-    Note over R,S: POLSplitter.merge 直接 burn Router 持有的 PT/YT，不走 ERC20 approval/transferFrom
+    Note over R,S: POLSplitterUpgradeable.merge 直接 burn Router 持有的 PT/YT，不走 ERC20 approval/transferFrom
     R->>S: merge(y)（产出 y POL）
     R->>PM: settle Q_actual POL（清 -Q_actual POL delta）
     R->>RC: transfer polOut POL

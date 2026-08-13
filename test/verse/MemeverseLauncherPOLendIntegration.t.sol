@@ -7,14 +7,14 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
-import {POLend} from "../../src/polend/POLend.sol";
-import {POLSplitter} from "../../src/polend/POLSplitter.sol";
+import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
+import {POLSplitterUpgradeable} from "../../src/polend/POLSplitterUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 import {
     CallRecorder,
@@ -62,12 +62,12 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         ptUAssetLp = new MockERC20("PT-UASSET-LP", "PT-UASSET-LP", 18);
         ptPolLp = new MockERC20("PT-POL-LP", "PT-POL-LP", 18);
         splitter = new MockPOLSplitterForPOLendIntegration(address(pt), address(yt), recorder);
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -113,29 +113,29 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         router.setLpToken(address(pt), address(pol), address(ptPolLp));
     }
 
-    function _deployRealPOLend() internal returns (POLend realPolend) {
-        POLend implementation = new POLend();
+    function _deployRealPOLend() internal returns (POLendUpgradeable realPolend) {
+        POLendUpgradeable implementation = new POLendUpgradeable();
         bytes memory data = abi.encodeCall(
-            POLend.initialize,
+            POLendUpgradeable.initialize,
             (address(this), 0.1 ether, 10 ether, address(this), launcherProxy, address(splitter), address(this))
         );
-        return POLend(address(new ERC1967Proxy(address(implementation), data)));
+        return POLendUpgradeable(address(new ERC1967Proxy(address(implementation), data)));
     }
 
     function _deployRealPOLendAndSplitter()
         internal
-        returns (POLend realPolend, POLSplitter realSplitter, address realPT)
+        returns (POLendUpgradeable realPolend, POLSplitterUpgradeable realSplitter, address realPT)
     {
-        POLSplitter splitterImplementation = new POLSplitter();
-        bytes memory splitterData = abi.encodeCall(POLSplitter.initialize, (address(this), launcherProxy));
-        realSplitter = POLSplitter(address(new ERC1967Proxy(address(splitterImplementation), splitterData)));
+        POLSplitterUpgradeable splitterImplementation = new POLSplitterUpgradeable();
+        bytes memory splitterData = abi.encodeCall(POLSplitterUpgradeable.initialize, (address(this), launcherProxy));
+        realSplitter = POLSplitterUpgradeable(address(new ERC1967Proxy(address(splitterImplementation), splitterData)));
 
-        POLend polendImplementation = new POLend();
+        POLendUpgradeable polendImplementation = new POLendUpgradeable();
         bytes memory polendData = abi.encodeCall(
-            POLend.initialize,
+            POLendUpgradeable.initialize,
             (address(this), 0.1 ether, 10 ether, address(this), launcherProxy, address(realSplitter), address(this))
         );
-        realPolend = POLend(address(new ERC1967Proxy(address(polendImplementation), polendData)));
+        realPolend = POLendUpgradeable(address(new ERC1967Proxy(address(polendImplementation), polendData)));
 
         setPolendForTest(launcherProxy, address(realPolend));
         setPolSplitterForTest(launcherProxy, address(realSplitter));
@@ -237,13 +237,13 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         );
 
         (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount) =
-            MemeverseLauncher(launcherProxy).auxiliaryLiquidities(VERSE_ID);
+            MemeverseLauncherUpgradeable(launcherProxy).auxiliaryLiquidities(VERSE_ID);
         IPOLend.LendMarket memory market = polend.getLendMarket(VERSE_ID);
         assertGt(polUAssetLpAmount, 0, "pol/uAsset");
         assertGt(ptUAssetLpAmount, 0, "pt/uAsset");
         assertGt(ptPolLpAmount, 0, "pt/pol");
         assertEq(router.createPoolAndAddLiquidityCallCount(), 4, "four pools created");
-        assertEq(MemeverseLauncher(launcherProxy).totalNormalClaimableYT(VERSE_ID), 300 ether, "normal yt");
+        assertEq(MemeverseLauncherUpgradeable(launcherProxy).totalNormalClaimableYT(VERSE_ID), 300 ether, "normal yt");
         assertEq(market.totalLeveragedYT, 300 ether, "leveraged yt");
         assertEq(yt.balanceOf(address(polend)), 300 ether, "leveraged yt moved");
     }
@@ -276,7 +276,9 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         assertEq(ptPolPol, 400 ether, "pt/pol pol");
         uint256 expectedNormalYT = uint256(600 ether) * 800 / 900;
         uint256 expectedLeveragedYT = uint256(600 ether) - expectedNormalYT;
-        assertEq(MemeverseLauncher(launcherProxy).totalNormalClaimableYT(VERSE_ID), expectedNormalYT, "normal yt");
+        assertEq(
+            MemeverseLauncherUpgradeable(launcherProxy).totalNormalClaimableYT(VERSE_ID), expectedNormalYT, "normal yt"
+        );
         assertEq(polend.getLendMarket(VERSE_ID).totalLeveragedYT, expectedLeveragedYT, "leveraged yt");
     }
 
@@ -413,7 +415,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         setGenesisFundForTest(launcherProxy, VERSE_ID, 1000 ether);
         _seedLauncherAndPolendFunding(1000 ether, 0);
 
-        POLend realPolend = _deployRealPOLend();
+        POLendUpgradeable realPolend = _deployRealPOLend();
         realPolend.setMaxSettlementDustReserve(address(uAsset), uint128(1e9));
         vm.prank(address(launcher));
         realPolend.registerLendMarket(VERSE_ID);
@@ -492,7 +494,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         router.setRemoveLiquidityResult(address(pol), address(uAsset), 30 ether, 15 ether);
         router.setRemoveLiquidityResult(address(pt), address(uAsset), 12 ether, 6 ether);
         router.setRemoveLiquidityResult(address(pt), address(pol), 20 ether, 10 ether);
-        MemeverseLauncher(launcherProxy).pause();
+        MemeverseLauncherUpgradeable(launcherProxy).pause();
 
         vm.prank(address(polend));
         (uint256 polAmount, uint256 ptAmount, uint256 uAssetAmount) =
@@ -587,7 +589,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         launcher.redeemAndDistributeFees(VERSE_ID, address(0xE));
 
         assertEq(pol.burnedAmount(), expectedPolFee, "pol fees burned");
-        (uint256 accUAssetFee, uint256 accPTFee) = MemeverseLauncher(launcherProxy).normalFeeStates(VERSE_ID);
+        (uint256 accUAssetFee, uint256 accPTFee) = MemeverseLauncherUpgradeable(launcherProxy).normalFeeStates(VERSE_ID);
         assertGt(accUAssetFee, 0, "normal fee stored");
         assertGt(accPTFee, 0, "normal pt fee stored");
         assertEq(uAsset.balanceOf(verse.governor), 0, "no direct dao uasset fee");
@@ -602,7 +604,8 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         _setGenesisVerse(uint128(block.timestamp + 1 days), false);
         setGenesisFundForTest(launcherProxy, VERSE_ID, 0);
 
-        (POLend realPolend, POLSplitter realSplitter, address realPT) = _deployRealPOLendAndSplitter();
+        (POLendUpgradeable realPolend, POLSplitterUpgradeable realSplitter, address realPT) =
+            _deployRealPOLendAndSplitter();
         realPolend.setMaxSettlementDustReserve(address(uAsset), uint128(1 ether));
         vm.prank(address(launcher));
         realPolend.registerLendMarket(VERSE_ID);
@@ -627,7 +630,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
 
         launcher.redeemAndDistributeFees(VERSE_ID, address(0xE));
 
-        (, uint256 pendingPTFee) = MemeverseLauncher(launcherProxy).pendingAuxiliaryGovFeeStates(VERSE_ID);
+        (, uint256 pendingPTFee) = MemeverseLauncherUpgradeable(launcherProxy).pendingAuxiliaryGovFeeStates(VERSE_ID);
         assertEq(pendingPTFee, 1, "pt pending retained");
     }
 
@@ -696,7 +699,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         _writeVerseBack(verse);
         polend.setTotalLeveragedDebt(VERSE_ID, 1 ether);
         vm.warp(block.timestamp + 1);
-        MemeverseLauncher(launcherProxy).pause();
+        MemeverseLauncherUpgradeable(launcherProxy).pause();
 
         launcher.changeStage(VERSE_ID);
 
@@ -713,7 +716,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         verse.unlockTime = uint128(block.timestamp);
         _writeVerseBack(verse);
 
-        POLend realPolend = _deployRealPOLend();
+        POLendUpgradeable realPolend = _deployRealPOLend();
         realPolend.setMaxSettlementDustReserve(address(uAsset), uint128(1e9));
         vm.prank(address(launcher));
         realPolend.registerLendMarket(VERSE_ID);
@@ -778,7 +781,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
 
     function testPreviewPreorderCapacity_IncreasesAfterLeveragedGenesis() external {
         _setGenesisVerse(uint128(block.timestamp + 1 days), false);
-        POLend realPolend = _deployRealPOLend();
+        POLendUpgradeable realPolend = _deployRealPOLend();
         realPolend.setMaxSettlementDustReserve(address(uAsset), uint128(1e9));
         vm.prank(address(launcher));
         realPolend.registerLendMarket(VERSE_ID);
@@ -819,7 +822,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
 
         // 4 pools created, normal YT = 0, all YT to leveraged
         assertEq(router.createPoolAndAddLiquidityCallCount(), 4, "four pools");
-        assertEq(MemeverseLauncher(launcherProxy).totalNormalClaimableYT(VERSE_ID), 0, "normal yt zero");
+        assertEq(MemeverseLauncherUpgradeable(launcherProxy).totalNormalClaimableYT(VERSE_ID), 0, "normal yt zero");
         IPOLend.LendMarket memory market = polend.getLendMarket(VERSE_ID);
         assertGt(market.totalLeveragedYT, 0, "leveraged yt exists");
         assertEq(yt.balanceOf(address(polend)), market.totalLeveragedYT, "yt at polend");
@@ -863,7 +866,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
 
         // Remaining auxiliary LP should be 0 after full leveraged settlement
         (uint256 remPolUAsset, uint256 remPtUAsset, uint256 remPtPol) =
-            MemeverseLauncher(launcherProxy).auxiliaryLiquidities(VERSE_ID);
+            MemeverseLauncherUpgradeable(launcherProxy).auxiliaryLiquidities(VERSE_ID);
         assertEq(remPolUAsset, 0, "remaining pol/uAsset");
         assertEq(remPtUAsset, 0, "remaining pt/uAsset");
         assertEq(remPtPol, 0, "remaining pt/pol");

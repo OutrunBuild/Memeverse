@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 
 contract MockPreorderSettlementHookConfig {
@@ -59,7 +59,7 @@ contract MockPreorderSettlementRouterConfig {
 contract MemeverseLauncherConfigTest is Test {
     address internal constant OTHER = address(0xBEEF);
     uint256 internal constant MAX_SUPPORTED_FUND_BASED_AMOUNT = (1 << 64) - 1;
-    MemeverseLauncher internal launcher;
+    MemeverseLauncherUpgradeable internal launcher;
 
     function _launcherInitData(address initialOwner, uint256 rewardRate) internal pure returns (bytes memory) {
         return abi.encodeWithSignature(
@@ -80,7 +80,9 @@ contract MemeverseLauncherConfigTest is Test {
         );
     }
 
-    function _initializeLauncher(MemeverseLauncher target, address initialOwner, uint256 rewardRate) internal {
+    function _initializeLauncher(MemeverseLauncherUpgradeable target, address initialOwner, uint256 rewardRate)
+        internal
+    {
         target.initialize(
             initialOwner,
             address(0x1),
@@ -98,10 +100,11 @@ contract MemeverseLauncherConfigTest is Test {
         );
     }
 
-    function _deployProxyLauncher(address initialOwner) internal returns (MemeverseLauncher) {
-        MemeverseLauncher implementation = new MemeverseLauncher();
-        return
-            MemeverseLauncher(address(new ERC1967Proxy(address(implementation), _launcherInitData(initialOwner, 25))));
+    function _deployProxyLauncher(address initialOwner) internal returns (MemeverseLauncherUpgradeable) {
+        MemeverseLauncherUpgradeable implementation = new MemeverseLauncherUpgradeable();
+        return MemeverseLauncherUpgradeable(
+            address(new ERC1967Proxy(address(implementation), _launcherInitData(initialOwner, 25)))
+        );
     }
 
     function _setMemeverseUniswapHook(address hookAddress) internal returns (bool ok, bytes memory data) {
@@ -138,7 +141,7 @@ contract MemeverseLauncherConfigTest is Test {
     }
 
     function testImplementationInitializeIsDisabled() external {
-        MemeverseLauncher implementation = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable implementation = new MemeverseLauncherUpgradeable();
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         _initializeLauncher(implementation, address(this), 25);
     }
@@ -149,7 +152,7 @@ contract MemeverseLauncherConfigTest is Test {
     }
 
     function testInitializeRevertsWhenExecutorRewardRateEqualsRatio() external {
-        MemeverseLauncher implementation = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable implementation = new MemeverseLauncherUpgradeable();
         vm.expectRevert(IMemeverseLauncher.FeeRateOverFlow.selector);
         new ERC1967Proxy(address(implementation), _launcherInitData(address(this), 10_000));
     }
@@ -198,14 +201,14 @@ contract MemeverseLauncherConfigTest is Test {
     function testInitializeRevertsZeroAddressParams() external {
         // index 0: initialOwner -> ownership initialization reverts first
         {
-            MemeverseLauncher impl = new MemeverseLauncher();
+            MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
             vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableInvalidOwner.selector, address(0)));
             new ERC1967Proxy(address(impl), _launcherInitDataWithZeroAddr(0));
         }
 
         // indices 1-7: other address params → ZeroInput
         for (uint256 i = 1; i < 8; i++) {
-            MemeverseLauncher impl = new MemeverseLauncher();
+            MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
             vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
             new ERC1967Proxy(address(impl), _launcherInitDataWithZeroAddr(i));
         }
@@ -213,7 +216,7 @@ contract MemeverseLauncherConfigTest is Test {
 
     /// @notice Verifies initialize reverts ZeroInput when gas limits are zero.
     function testInitializeRevertsZeroGasLimits() external {
-        MemeverseLauncher impl1 = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl1 = new MemeverseLauncherUpgradeable();
         vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
         new ERC1967Proxy(
             address(impl1),
@@ -235,7 +238,7 @@ contract MemeverseLauncherConfigTest is Test {
             )
         );
 
-        MemeverseLauncher impl2 = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl2 = new MemeverseLauncherUpgradeable();
         vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
         new ERC1967Proxy(
             address(impl2),
@@ -260,7 +263,7 @@ contract MemeverseLauncherConfigTest is Test {
 
     /// @notice Verifies initialize reverts ZeroInput when preorder params are zero.
     function testInitializeRevertsZeroPreorderParams() external {
-        MemeverseLauncher impl1 = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl1 = new MemeverseLauncherUpgradeable();
         vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
         new ERC1967Proxy(
             address(impl1),
@@ -282,7 +285,7 @@ contract MemeverseLauncherConfigTest is Test {
             )
         );
 
-        MemeverseLauncher impl2 = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl2 = new MemeverseLauncherUpgradeable();
         vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
         new ERC1967Proxy(
             address(impl2),
@@ -306,7 +309,7 @@ contract MemeverseLauncherConfigTest is Test {
     }
 
     function testOwnerCanUpgradeAndNonOwnerCannot() external {
-        MemeverseLauncher newImplementation = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable newImplementation = new MemeverseLauncherUpgradeable();
 
         vm.prank(OTHER);
         vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, OTHER));
@@ -318,7 +321,7 @@ contract MemeverseLauncherConfigTest is Test {
     /// @notice Re-initialization through upgradeToAndCall must revert.
     /// @dev The initializer modifier checks _initialized in proxy storage, which is already 1.
     function testUpgradeToAndCall_RevertsWhenCallingInitialize() external {
-        MemeverseLauncher newImplementation = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable newImplementation = new MemeverseLauncherUpgradeable();
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         launcher.upgradeToAndCall(address(newImplementation), _launcherInitData(address(this), 25));
     }
@@ -326,7 +329,7 @@ contract MemeverseLauncherConfigTest is Test {
     /// @notice Direct upgradeToAndCall on implementation must revert (onlyProxy guard).
     /// @dev UUPSUpgradeable._checkProxy() rejects calls where address(this) == __self.
     function testImplementationUpgradeToAndCallIsDisabled() external {
-        MemeverseLauncher implementation = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable implementation = new MemeverseLauncherUpgradeable();
         vm.expectRevert(UUPSUpgradeable.UUPSUnauthorizedCallContext.selector);
         implementation.upgradeToAndCall(address(0), "");
     }
@@ -349,7 +352,7 @@ contract MemeverseLauncherConfigTest is Test {
     /// so we call it directly on the implementation.
     function testProxiableUUID_ReturnsExpectedValue() external {
         bytes32 expectedUUID = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
-        MemeverseLauncher implementation = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable implementation = new MemeverseLauncherUpgradeable();
         assertEq(implementation.proxiableUUID(), expectedUUID);
     }
 

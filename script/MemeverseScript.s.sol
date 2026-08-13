@@ -16,17 +16,17 @@ import {IOutrunDeployer} from "./IOutrunDeployer.sol";
 import {MemePol} from "../src/token/MemePol.sol";
 import {MemecoinYieldVault} from "../src/yield/MemecoinYieldVault.sol";
 import {MemeverseProxyDeployer} from "../src/verse/deployment/MemeverseProxyDeployer.sol";
-import {YieldDispatcher} from "../src/verse/YieldDispatcher.sol";
+import {YieldDispatcherUpgradeable} from "../src/verse/YieldDispatcherUpgradeable.sol";
 import {MemeverseRegistrarAtLocal} from "../src/verse/registration/MemeverseRegistrarAtLocal.sol";
 import {MemeverseRegistrationCenter} from "../src/verse/registration/MemeverseRegistrationCenter.sol";
 import {MemeverseRegistrarOmnichain} from "../src/verse/registration/MemeverseRegistrarOmnichain.sol";
-import {MemeverseLauncher, IMemeverseLauncher} from "../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable, IMemeverseLauncher} from "../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../src/verse/MemeverseFeePreviewReader.sol";
 import {MemeverseLiquidityImpl} from "../src/verse/MemeverseLiquidityImpl.sol";
-import {POLend} from "../src/polend/POLend.sol";
-import {POLSplitter} from "../src/polend/POLSplitter.sol";
+import {POLendUpgradeable} from "../src/polend/POLendUpgradeable.sol";
+import {POLSplitterUpgradeable} from "../src/polend/POLSplitterUpgradeable.sol";
 import {GenesisCreditFactory} from "../src/credit/GenesisCreditFactory.sol";
 import {OmnichainMemecoinStaker} from "../src/interoperation/OmnichainMemecoinStaker.sol";
 import {LzEndpointRegistry} from "../src/common/omnichain/LzEndpointRegistry.sol";
@@ -479,7 +479,7 @@ contract MemeverseScript is BaseScript {
         address initialOwner = owner;
         address localEndpoint = endpoints[uint32(block.chainid)];
 
-        // Predict POLend and POLSplitter proxy addresses via CREATE3 salt
+        // Predict POLendUpgradeable and POLSplitterUpgradeable proxy addresses via CREATE3 salt
         bytes32 polendSalt = _saltFrom(SALT_POLEND, nonce);
         address polendProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, polendSalt);
         bytes32 polSplitterSalt = _saltFrom(SALT_POLSPLITTER, nonce);
@@ -488,8 +488,8 @@ contract MemeverseScript is BaseScript {
         bytes32 salt = _saltFrom(SALT_MEMEVERSE_LAUNCHER, nonce);
         address predictedLauncherProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, salt);
         bytes32 implementationSalt = _saltFrom(SALT_MEMEVERSE_LAUNCHER_IMPLEMENTATION, nonce);
-        address implementation =
-            IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(MemeverseLauncher).creationCode);
+        address implementation = IOutrunDeployer(OUTRUN_DEPLOYER)
+            .deploy(implementationSalt, type(MemeverseLauncherUpgradeable).creationCode);
 
         bytes memory creationCode = _buildMemeverseLauncherCreationCode(
             implementation, initialOwner, localEndpoint, predictedLauncherProxy, polendProxy, polSplitterProxy
@@ -529,30 +529,31 @@ contract MemeverseScript is BaseScript {
         );
 
         MEMEVERSE_LAUNCHER = memeverseLauncherAddr;
-        console.log("MemeverseLauncher deployed on %s", memeverseLauncherAddr);
+        console.log("MemeverseLauncherUpgradeable deployed on %s", memeverseLauncherAddr);
     }
 
     function _deployPOLend(uint256 nonce) internal {
         address deployCaller = _memeverseLauncherDeployCaller();
         address initialOwner = owner;
 
-        // Predict Launcher and POLSplitter proxy addresses (not yet deployed)
+        // Predict Launcher and POLSplitterUpgradeable proxy addresses (not yet deployed)
         bytes32 launcherSalt = _saltFrom(SALT_MEMEVERSE_LAUNCHER, nonce);
         address predictedLauncherProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, launcherSalt);
         bytes32 polSplitterSalt = _saltFrom(SALT_POLSPLITTER, nonce);
         address predictedPOLSplitterProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, polSplitterSalt);
 
-        // Predict POLend proxy address and deploy implementation via CREATE3
+        // Predict POLendUpgradeable proxy address and deploy implementation via CREATE3
         bytes32 polendSalt = _saltFrom(SALT_POLEND, nonce);
         address predictedPolendProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, polendSalt);
         bytes32 implementationSalt = _saltFrom(SALT_POLEND_IMPLEMENTATION, nonce);
-        address implementation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(POLend).creationCode);
+        address implementation =
+            IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(POLendUpgradeable).creationCode);
 
         // Build proxy creation code with predicted dependency addresses
         bytes memory creationCode =
             _buildPOLendCreationCode(implementation, initialOwner, predictedLauncherProxy, predictedPOLSplitterProxy);
 
-        // Deploy POLend proxy via CREATE3 and verify against cached prediction
+        // Deploy POLendUpgradeable proxy via CREATE3 and verify against cached prediction
         address polendAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(polendSalt, creationCode);
         require(polendAddr == predictedPolendProxy, "POLEND_PROXY_MISMATCH");
 
@@ -562,37 +563,37 @@ contract MemeverseScript is BaseScript {
         require(_readAddress(polendAddr, "treasury()") == POLEND_TREASURY, "POLEND_TREASURY_MISMATCH");
 
         POLEND = polendAddr;
-        console.log("POLend deployed on %s", polendAddr);
+        console.log("POLendUpgradeable deployed on %s", polendAddr);
     }
 
     function _deployPOLSplitter(uint256 nonce) internal {
         address deployCaller = _memeverseLauncherDeployCaller();
         address initialOwner = owner;
-        // Launcher must already be deployed; POLSplitter.initialize reads launcher.polend()
+        // Launcher must already be deployed; POLSplitterUpgradeable.initialize reads launcher.polend()
         address launcherProxy = MEMEVERSE_LAUNCHER;
         require(launcherProxy != address(0), "ZERO_LAUNCHER_FOR_SPLITTER");
 
-        // Predict POLSplitter proxy address
+        // Predict POLSplitterUpgradeable proxy address
         bytes32 polSplitterSalt = _saltFrom(SALT_POLSPLITTER, nonce);
         address predictedPOLSplitterProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(deployCaller, polSplitterSalt);
 
-        // Deploy POLSplitter implementation via CREATE3
+        // Deploy POLSplitterUpgradeable implementation via CREATE3
         bytes32 implementationSalt = _saltFrom(SALT_POLSPLITTER_IMPLEMENTATION, nonce);
         address implementation =
-            IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(POLSplitter).creationCode);
+            IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(POLSplitterUpgradeable).creationCode);
 
         // Build proxy creation code with actual Launcher address
         bytes memory creationCode = _buildPOLSplitterCreationCode(implementation, initialOwner, launcherProxy);
 
-        // Deploy POLSplitter proxy via CREATE3
+        // Deploy POLSplitterUpgradeable proxy via CREATE3
         address polSplitterAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(polSplitterSalt, creationCode);
         require(polSplitterAddr == predictedPOLSplitterProxy, "POLSPLITTER_PROXY_MISMATCH");
 
-        // Verify wiring: polend() must match the already-deployed POLend proxy
+        // Verify wiring: polend() must match the already-deployed POLendUpgradeable proxy
         _checkPOLSplitterDeployment(polSplitterAddr, initialOwner, launcherProxy, POLEND);
 
         POLSPLITTER = polSplitterAddr;
-        console.log("POLSplitter deployed on %s", polSplitterAddr);
+        console.log("POLSplitterUpgradeable deployed on %s", polSplitterAddr);
     }
 
     /// @notice Deploys GenesisCreditFactory with the canonical home-chain eid baked in as an immutable.
@@ -699,7 +700,7 @@ contract MemeverseScript is BaseScript {
         require(UUSD != address(0), "ZERO_UUSD");
 
         bytes memory initializeData = abi.encodeCall(
-            MemeverseLauncher.initialize,
+            MemeverseLauncherUpgradeable.initialize,
             (
                 initialOwner,
                 localEndpoint,
@@ -738,18 +739,18 @@ contract MemeverseScript is BaseScript {
             POLEND_LEVERAGED_DEBT_FACTOR <= uint256(type(uint128).max) * 1e18, "POLEND_LEVERAGED_DEBT_FACTOR_OVERFLOW"
         );
 
-        // Wire the GenesisCreditFactory into POLend at initialize time. Prefer the factory
+        // Wire the GenesisCreditFactory into POLendUpgradeable at initialize time. Prefer the factory
         // deployed earlier in this script run (`_deployGenesisCreditFactory` sets CREDIT_FACTORY);
-        // fall back to the CREDIT_FACTORY_PROXY env var for a standalone POLend deploy where the
+        // fall back to the CREDIT_FACTORY_PROXY env var for a standalone POLendUpgradeable deploy where the
         // factory was deployed in a prior run. The deploy-owner fallback remains only so a
-        // standalone POLend deploy with no factory still passes initialize's zero-check;
+        // standalone POLendUpgradeable deploy with no factory still passes initialize's zero-check;
         // setCreditFactory is then the post-deploy remediation path that swaps in the real factory.
         address creditFactoryProxy =
             CREDIT_FACTORY != address(0) ? CREDIT_FACTORY : vm.envOr("CREDIT_FACTORY_PROXY", initialOwner);
         require(creditFactoryProxy != address(0), "ZERO_CREDIT_FACTORY_PROXY");
 
         bytes memory initializeData = abi.encodeCall(
-            POLend.initialize,
+            POLendUpgradeable.initialize,
             (
                 initialOwner,
                 POLEND_INTEREST_RATE,
@@ -772,7 +773,7 @@ contract MemeverseScript is BaseScript {
         require(initialOwner != address(0), "ZERO_INITIAL_OWNER");
         require(launcherProxy != address(0), "ZERO_LAUNCHER_PROXY");
 
-        bytes memory initializeData = abi.encodeCall(POLSplitter.initialize, (initialOwner, launcherProxy));
+        bytes memory initializeData = abi.encodeCall(POLSplitterUpgradeable.initialize, (initialOwner, launcherProxy));
         return abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(implementation, initializeData));
     }
 
@@ -795,14 +796,14 @@ contract MemeverseScript is BaseScript {
         address polSplitterProxy,
         bool checkFundMetaData
     ) internal view {
-        require(MemeverseLauncher(address(launcher)).owner() == initialOwner, "LAUNCHER_OWNER_MISMATCH");
+        require(MemeverseLauncherUpgradeable(address(launcher)).owner() == initialOwner, "LAUNCHER_OWNER_MISMATCH");
         require(
-            MemeverseLauncher(address(launcher)).getLauncherContracts().localLzEndpoint == localEndpoint,
+            MemeverseLauncherUpgradeable(address(launcher)).getLauncherContracts().localLzEndpoint == localEndpoint,
             "LAUNCHER_ENDPOINT_MISMATCH"
         );
-        require(MemeverseLauncher(address(launcher)).polend() == polendProxy, "LAUNCHER_POLEND_MISMATCH");
+        require(MemeverseLauncherUpgradeable(address(launcher)).polend() == polendProxy, "LAUNCHER_POLEND_MISMATCH");
         require(
-            MemeverseLauncher(address(launcher)).getLauncherContracts().polSplitter == polSplitterProxy,
+            MemeverseLauncherUpgradeable(address(launcher)).getLauncherContracts().polSplitter == polSplitterProxy,
             "LAUNCHER_SPLITTER_MISMATCH"
         );
 
@@ -851,7 +852,7 @@ contract MemeverseScript is BaseScript {
     }
 
     /// @notice One-call onboarding of a new uAsset across the four registration surfaces: launcher
-    ///      fund metadata, POLend settlement-dust reserve, optional GenesisCredit, and the
+    ///      fund metadata, POLendUpgradeable settlement-dust reserve, optional GenesisCredit, and the
     ///      RegistrationCenter whitelist. Generalizes the canonical UETH/UUSD readiness gates
     ///      (_requireFundMetaDataReady / _requireReserveReady) to an arbitrary uAsset so a
     ///      forgotten surface fails here at onboarding time instead of in a user-facing
@@ -869,7 +870,7 @@ contract MemeverseScript is BaseScript {
     /// @param uAsset The new uAsset to onboard (cannot be zero).
     /// @param minTotalFund Launcher minimum total fund for the uAsset.
     /// @param fundBasedAmount Launcher fund-based amount for the uAsset.
-    /// @param maxReserve POLend settlement-dust max reserve cap for the uAsset.
+    /// @param maxReserve POLendUpgradeable settlement-dust max reserve cap for the uAsset.
     /// @param withCredit Whether to deploy a GenesisCredit for the credit path.
     /// @param creditName GenesisCredit name (ignored unless withCredit).
     /// @param creditSymbol GenesisCredit symbol (ignored unless withCredit).
@@ -901,9 +902,9 @@ contract MemeverseScript is BaseScript {
         IMemeverseLauncher(MEMEVERSE_LAUNCHER).setFundMetaData(uAsset, minTotalFund, fundBasedAmount);
         _requireFundMetaDataReady(uAsset, "FUND_METADATA_NOT_READY");
 
-        // 2) POLend settlement-dust reserve — registerLendMarket reverts InvalidConfig (same
+        // 2) POLendUpgradeable settlement-dust reserve — registerLendMarket reverts InvalidConfig (same
         //    registration tx, after token deploy) until this is set.
-        POLend(POLEND).setMaxSettlementDustReserve(uAsset, maxReserve);
+        POLendUpgradeable(POLEND).setMaxSettlementDustReserve(uAsset, maxReserve);
         _requireReserveReady(uAsset, "RESERVE_NOT_READY");
 
         // 3) Optional GenesisCredit for the credit path (deployCredit is owner-only; per-uAsset
@@ -986,9 +987,9 @@ contract MemeverseScript is BaseScript {
         );
         require(_readAddress(POLEND, "launcher()") == MEMEVERSE_LAUNCHER, "POLEND_LAUNCHER_NOT_READY");
         require(_readAddress(POLEND, "splitter()") == POLSPLITTER, "POLEND_SPLITTER_NOT_READY");
-        // creditFactory is a POLend runtime pointer resolved on the user path
+        // creditFactory is a POLendUpgradeable runtime pointer resolved on the user path
         // (leveragedGenesisWithCredit -> IGenesisCreditFactory(creditFactory).creditOf). Like the
-        // bootstrap/fee siblings it is lazy-wired at initialize (a standalone POLend deploy with
+        // bootstrap/fee siblings it is lazy-wired at initialize (a standalone POLendUpgradeable deploy with
         // CREDIT_FACTORY_PROXY unset falls back to the deploy owner); readiness must confirm a real
         // contract is bound before opening, else the owner placeholder (an EOA with no code) lets the
         // first leveragedGenesisWithCredit silently revert until setCreditFactory. Has-code (not !=0):
@@ -1068,7 +1069,7 @@ contract MemeverseScript is BaseScript {
 
     function _requireReserveReady(address uAsset, string memory errorMessage) internal view {
         (, uint128 maxReserve) = _readSettlementDustState(uAsset);
-        // POLend refuses market registration until this cap is configured.
+        // POLendUpgradeable refuses market registration until this cap is configured.
         require(maxReserve > 0, errorMessage);
     }
 
@@ -1150,10 +1151,11 @@ contract MemeverseScript is BaseScript {
         // the cross-chain same-address property (same OutrunDeployer + same deploy caller + same saltName + nonce).
         bytes32 implementationSalt = _saltFrom(SALT_YIELD_DISPATCHER_IMPLEMENTATION, nonce);
         address implementation =
-            IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(YieldDispatcher).creationCode);
+            IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(YieldDispatcherUpgradeable).creationCode);
 
-        bytes memory initializeData =
-            abi.encodeCall(YieldDispatcher.initialize, (owner, localEndpoint, MEMEVERSE_LAUNCHER, PROTOCOL_TREASURY));
+        bytes memory initializeData = abi.encodeCall(
+            YieldDispatcherUpgradeable.initialize, (owner, localEndpoint, MEMEVERSE_LAUNCHER, PROTOCOL_TREASURY)
+        );
 
         bytes32 salt = _saltFrom(SALT_YIELD_DISPATCHER, nonce);
         // Predict the proxy address under the same CREATE3 namespace as the deploy below, then assert it lands there.
@@ -1167,7 +1169,7 @@ contract MemeverseScript is BaseScript {
         address memeverseOFTDispatcher = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
         require(memeverseOFTDispatcher == predictedDispatcher, "YIELD_DISPATCHER_PROXY_MISMATCH");
 
-        console.log("YieldDispatcher deployed on %s", memeverseOFTDispatcher);
+        console.log("YieldDispatcherUpgradeable deployed on %s", memeverseOFTDispatcher);
     }
 
     function _deployMemeverseOmnichainInteroperation(uint256 nonce) internal {

@@ -11,7 +11,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
@@ -33,7 +33,7 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MockPoolManagerForHookLiquidity internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseUniswapHookLens internal lens;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -42,13 +42,13 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
 
     function _deployHookProxy(IPoolManager manager_, address owner_, address treasury_)
         internal
-        returns (MemeverseUniswapHook deployed)
+        returns (MemeverseUniswapHookUpgradeable deployed)
     {
-        // Real MemeverseUniswapHook deployed behind a CREATE2-mined flag-address proxy via the shared
+        // Real MemeverseUniswapHookUpgradeable deployed behind a CREATE2-mined flag-address proxy via the shared
         // helper (same pattern as MemeverseUniswapHookLaunchFeeQuoteInvariantTest), so `_validateProxyHookAddress`
         // and the diamond facet wiring run identically to production.
         address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
-        return MemeverseUniswapHook(hookProxy);
+        return MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
     function setUp() external {

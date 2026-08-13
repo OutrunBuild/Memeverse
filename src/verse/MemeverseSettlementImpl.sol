@@ -22,14 +22,14 @@ import {MemeverseLauncherStorage} from "./interfaces/IMemeverseLauncherStorage.s
 import {MemeverseLauncherLib} from "./libraries/MemeverseLauncherLib.sol";
 
 /// @title MemeverseSettlementImpl
-/// @notice Delegatecall-only sibling that owns the settlement-side flows for MemeverseLauncher: genesis /
+/// @notice Delegatecall-only sibling that owns the settlement-side flows for MemeverseLauncherUpgradeable: genesis /
 ///         preorder refunds, normal YT / fee claims, unlocked preorder-memecoin claims, the fee collection
 ///         and distribution chain, and the Locked -> Unlocked stage transition.
 /// @dev Binds the SAME ERC-7201 namespace as the launcher facade
 ///      (`erc7201("outrun.storage.MemeverseLauncher")`), so under delegatecall every storage read/write lands
 ///      on the launcher proxy's MemeverseLauncherStorage. The sibling has no initializer, no owner, no own
 ///      mutable state, and intentionally no `msg.sender == launcher` guard: under delegatecall `msg.sender`
-///      is the facade's original caller (user, executor, POLend, or stage advancer) and `address(this)` is
+///      is the facade's original caller (user, executor, POLendUpgradeable, or stage advancer) and `address(this)` is
 ///      the launcher proxy. A direct (non-delegatecall) call reverts via the inherited `onlyDelegatecall`
 ///      guard (see `DelegatecallOnly`) before any storage access, so the sibling is explicitly guarded.
 ///
@@ -138,7 +138,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
      * @dev Invoked via delegatecall by the facade's `claimNormalFees`. The facade keeps the outer
      *      `versIdValidate` + `whenNotPaused` guards; this sibling owns the CEI commit, PT settlement /
      *      transfer, uAsset transfer, and emit. Under delegatecall `msg.sender` is the original caller
-     *      (fee recipient). The trust boundary is the configured POLSplitter.
+     *      (fee recipient). The trust boundary is the configured POLSplitterUpgradeable.
      * @param verseId Memeverse id.
      * @return uAssetAmount The claimed uAsset fee amount.
      * @return ptAmount The claimed PT fee amount (zero when redeemed to uAsset in place).
@@ -236,7 +236,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
      *      not the facade.
      * @param verseId Memeverse id.
      * @param rewardReceiver Receiver of the executor reward.
-     * @param polSplitter The launcher's configured POLSplitter address (forwarded by the facade).
+     * @param polSplitter The launcher's configured POLSplitterUpgradeable address (forwarded by the facade).
      * @return govFee The distributed governor fee amount.
      * @return memecoinFee The distributed memecoin fee amount.
      * @return polFee The distributed POL fee amount.
@@ -361,7 +361,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         // accounting via `distributeSameChain`, so the two lines use two deliberately different buckets.
         uint256 transferToDispatcher = govFee + auxiliaryGovUAssetHeldByLauncher;
         govFee += fees.auxiliaryGovUAssetFee;
-        // Same-chain governance routes through YieldDispatcher's dedicated same-chain entry so local and remote fee
+        // Same-chain governance routes through YieldDispatcherUpgradeable's dedicated same-chain entry so local and remote fee
         // flows share one settlement sink.
         if (govFee != 0) {
             if (transferToDispatcher != 0) {
@@ -599,19 +599,19 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
     // =========================================================================================================
 
     /**
-     * @notice Capture locked auxiliary fees, advance the verse to `Stage.Unlocked`, settle POLSplitter /
-     *         POLend, and arm post-unlock public-swap protection.
+     * @notice Capture locked auxiliary fees, advance the verse to `Stage.Unlocked`, settle POLSplitterUpgradeable /
+     *         POLendUpgradeable, and arm post-unlock public-swap protection.
      * @dev Invoked via delegatecall by the launch sibling's `changeStage` Locked->Unlocked branch. The launch
      *      sibling (not the facade) owns the `currentTime > verse.unlockTime` eligibility check and the
      *      `ChangeStage` emit; this entry owns the `Stage.Unlocked` state write and the settlement callbacks,
      *      and performs no eligibility check or emit. Under delegatecall `msg.sender` is the facade's caller
      *      (arbitrary stage advancer) and `address(this)` is the launcher proxy.
      *      Ordering invariant: `verse.currentStage = Stage.Unlocked` is written BEFORE calling
-     *      `IPOLend.executeGlobalSettlement`, because POLend re-enters the launcher during global
+     *      `IPOLend.executeGlobalSettlement`, because POLendUpgradeable re-enters the launcher during global
      *      settlement and must observe the Unlocked stage.
      * @param verseId Memeverse id.
-     * @param polSplitter The launcher's configured POLSplitter address (forwarded by the facade).
-     * @param hook The launcher's configured MemeverseUniswapHook address (forwarded by the facade).
+     * @param polSplitter The launcher's configured POLSplitterUpgradeable address (forwarded by the facade).
+     * @param hook The launcher's configured MemeverseUniswapHookUpgradeable address (forwarded by the facade).
      */
     function unlockFromLocked(uint256 verseId, address polSplitter, address hook) external onlyDelegatecall {
         address _polend = memeverseLauncherStorage.polend;
@@ -622,7 +622,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         // Safe because the intervening `settle` never writes the two slots getTotalLeveragedDebt reads
         // (totalLeveragedInterest / interestRate); see GR-001 note in _splitAuxiliaryGovFees.
         uint256 totalLeveragedDebt = _captureLockedAuxiliaryFees(verseId, verse, polSplitter, hook);
-        // Write Stage.Unlocked BEFORE the callbacks: POLend re-enters the launcher during executeGlobalSettlement
+        // Write Stage.Unlocked BEFORE the callbacks: POLendUpgradeable re-enters the launcher during executeGlobalSettlement
         // and must observe the Unlocked stage.
         verse.currentStage = IMemeverseLauncher.Stage.Unlocked;
         IPOLSplitter(polSplitter).settle(verseId);

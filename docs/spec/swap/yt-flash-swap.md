@@ -33,15 +33,15 @@ P(\mathrm{PT})+P(\mathrm{YT})=P(\mathrm{POL})
 
 ## 2. 核心架构：Router 复用 PT/POL 池
 
-新增独立的 `MemeverseYTFlashSwapRouter`。它是 PoolManager 的正常 swap 调用者，因此底层 PT/POL 腿与普通 swap 走同一条 Uniswap v4 和 `MemeverseUniswapHook` 路径。
+新增独立的 `MemeverseYTFlashSwapRouter`。它是 PoolManager 的正常 swap 调用者，因此底层 PT/POL 腿与普通 swap 走同一条 Uniswap v4 和 `MemeverseUniswapHookUpgradeable` 路径。
 
 Router 只保存以下 immutable 依赖：
 
 | 依赖 | 用途 |
 | --- | --- |
 | `PoolManager` | unlock、普通 PT/POL swap、take、settle |
-| `MemeverseUniswapHook` | 推导 canonical pool，读取当前 account-session principal |
-| `POLSplitter` | split、merge，以及从 `verseId` 解析 canonical PT/POL/YT |
+| `MemeverseUniswapHookUpgradeable` | 推导 canonical pool，读取当前 account-session principal |
+| `POLSplitterUpgradeable` | split、merge，以及从 `verseId` 解析 canonical PT/POL/YT |
 
 `MemeverseUniswapHookLens` 不保存在 Router 中：SDK 在固定历史状态用它报价，Router 只执行真实 swap 并以真实 `BalanceDelta` 结算。
 
@@ -58,7 +58,7 @@ canonical.polSplitter == address(splitter)
 
 构造期 PoolManager 对角不变量：Router 与 Hook 各自在构造期绑定一个 immutable `PoolManager`（经 `SafeCallback`/`ImmutableState`）。Router 在 `PoolManager.unlock` 内对自身 manager 调 `swap`，该 manager 再回调 `key.hooks = address(hook)` 的 `beforeSwap`/`afterSwap`，Hook 的 `onlyPoolManager` 把 `msg.sender` 比对自身 manager。若两者不同，每条 PT/POL swap（进而两条 YT Flash Swap 入口）都会在 Hook 侧回滚 `NotPoolManager`（若该 manager 上 pool 未初始化则先回滚 `PoolNotInitialized`），且 manager 为 immutable、错误不可恢复。因此构造成功前，在零地址检查之后、读取 `hook_.poolManager()` 并进行 manager 对角比较之前，必须按 `manager_`、`hook_`、`splitter_` 顺序确认这三个 immutable executable dependency 均有 deployed code；分别无 code 时回滚命名错误 `PoolManagerCodeNotReady`、`HookCodeNotReady`、`SplitterCodeNotReady`。`SafeCallback(manager_)` 在构造器 body 前已绑定 manager immutable，不能将上述 body 内检查表述为发生在该绑定之前；正确时序是部署成功前完成零地址与 code-ready 检查，再读取 getter 并进行对角比较。对角失配回滚命名错误 `RouterPoolManagerMismatch`。这与代码库对 facet（`_requireFacetPoolManager`→`FacetPoolManagerMismatch`）、UUPS upgrade（`UpgradePoolManagerMismatch`）、sibling lens（`HookLensPoolManagerMismatch`）的同对角处理一致。
 
-POLSplitter 是生命周期和 PT-backing 的唯一真源。`Stage.Locked` 是 YT Flash Swap 的正常成功阶段；`Stage.Unlocked` 或 Splitter 已 settled 时，既有 split/merge 必须失败并使整笔 flash 原子回滚。Router 不缓存阶段或维护第二套生命周期判断。Splitter split/merge 与生命周期规则以 [polend/pt-yt-splitter.md](../polend/pt-yt-splitter.md) 为准。
+POLSplitterUpgradeable 是生命周期和 PT-backing 的唯一真源。`Stage.Locked` 是 YT Flash Swap 的正常成功阶段；`Stage.Unlocked` 或 Splitter 已 settled 时，既有 split/merge 必须失败并使整笔 flash 原子回滚。Router 不缓存阶段或维护第二套生命周期判断。Splitter split/merge 与生命周期规则以 [polend/pt-yt-splitter.md](../polend/pt-yt-splitter.md) 为准。
 
 ## 3. 公开接口
 
@@ -282,7 +282,7 @@ Router 不把 baseline 中的余额视为可用流动性。正常部署后 basel
 
    不预拉 `maxPOLIn`，没有退款分支。
 
-5. Router 仅一次向 Splitter 批准恰好 \(y\) POL。调用 `split(verseId, y)`（split/merge 第一参数恒为本入口的 verseId，签名见 `src/polend/POLSplitter.sol::split` / `::merge`）后立即检查 Router 到 Splitter 的 POL allowance 为零；split 必须恰好消耗 \(y\)，非标准残余 allowance 一律 fail closed。成功路径不调用 `approve(0)`。split 后得到恰好 \(y\) PT + \(y\) YT。
+5. Router 仅一次向 Splitter 批准恰好 \(y\) POL。调用 `split(verseId, y)`（split/merge 第一参数恒为本入口的 verseId，签名见 `src/polend/POLSplitterUpgradeable.sol::split` / `::merge`）后立即检查 Router 到 Splitter 的 POL allowance 为零；split 必须恰好消耗 \(y\)，非标准残余 allowance 一律 fail closed。成功路径不调用 `approve(0)`。split 后得到恰好 \(y\) PT + \(y\) YT。
 
 6. 用得到的恰好 \(y\) PT 向 PoolManager `settle`，清除 \(-y\) PT delta。
 
@@ -331,7 +331,7 @@ callback 资金步骤或 unlock 后公共入口 postcondition 任一步失败，
 
 4. `take` 恰好 \(y\) PT，清除正 PT delta。
 
-5. 从 payer `transferFrom` 恰好 \(y\) YT。`POLSplitter.merge` 直接 burn Router 持有的 PT/YT，不走 ERC20 approval 或 transferFrom；调用 `merge(verseId, y)`（split/merge 第一参数恒为本入口的 verseId，签名见 `src/polend/POLSplitter.sol::split` / `::merge`）得到恰好 \(y\) POL。
+5. 从 payer `transferFrom` 恰好 \(y\) YT。`POLSplitterUpgradeable.merge` 直接 burn Router 持有的 PT/YT，不走 ERC20 approval 或 transferFrom；调用 `merge(verseId, y)`（split/merge 第一参数恒为本入口的 verseId，签名见 `src/polend/POLSplitterUpgradeable.sol::split` / `::merge`）得到恰好 \(y\) POL。
 
 6. 用其中恰好 `Q_actual` POL 向 PoolManager `settle`，清除 \(-Q_actual\) POL delta。
 
@@ -397,8 +397,8 @@ Router 不复制 fee 数学，不在 Splitter 前后收取额外交易费，也�
 | Router 余额未恢复 | `RouterBalanceMismatch` | 成功路径试图消费 dust（PT/YT/POL 任一余额未回到 baseline） |
 | 买入 Splitter POL allowance 残留 | `SplitterAllowanceResidual` | 成功路径留下买入所需的临时 POL 授权 |
 | ERC20 approve 返回 false | `ApprovalFailed` | 向 Splitter 批准 POL 时 ERC20 `approve` 返回 false（**新增行**） |
-| split 铸造数量不符 | `SplitResultMismatch` | Splitter split 未精确铸造请求的 PT 与 YT；对当前 Router 绑定的 canonical `POLSplitter`（`split` 严格 1:1、`_validateAndResolve` 锁定 canonical、`splitter` immutable）不可达，属 defense-in-depth / 升级安全覆盖（仅覆盖 UUPS 升级后偏离 1:1 或非 canonical/畸形 Splitter），非真实 Splitter 运行时记账安全证明（**新增行**） |
-| merge 返回 POL 不符 | `MergeResultMismatch` | Splitter merge 未精确返回请求的 POL；对当前 Router 绑定的 canonical `POLSplitter`（`merge` 严格按量返回、`_validateAndResolve` 锁定 canonical、`splitter` immutable）不可达，属 defense-in-depth / 升级安全覆盖（仅覆盖 UUPS 升级后偏离或非 canonical/畸形 Splitter），非真实 Splitter 运行时记账安全证明（**新增行**） |
+| split 铸造数量不符 | `SplitResultMismatch` | Splitter split 未精确铸造请求的 PT 与 YT；对当前 Router 绑定的 canonical `POLSplitterUpgradeable`（`split` 严格 1:1、`_validateAndResolve` 锁定 canonical、`splitter` immutable）不可达，属 defense-in-depth / 升级安全覆盖（仅覆盖 UUPS 升级后偏离 1:1 或非 canonical/畸形 Splitter），非真实 Splitter 运行时记账安全证明（**新增行**） |
+| merge 返回 POL 不符 | `MergeResultMismatch` | Splitter merge 未精确返回请求的 POL；对当前 Router 绑定的 canonical `POLSplitterUpgradeable`（`merge` 严格按量返回、`_validateAndResolve` 锁定 canonical、`splitter` immutable）不可达，属 defense-in-depth / 升级安全覆盖（仅覆盖 UUPS 升级后偏离或非 canonical/畸形 Splitter），非真实 Splitter 运行时记账安全证明（**新增行**） |
 
 不保留任何与离线搜索参数、搜索轮数、搜索区间或历史报价相等性有关的错误。
 
@@ -424,7 +424,7 @@ YTFlashSwapYTForPOL(
 | --- | --- |
 | `src/swap/MemeverseYTFlashSwapRouter.sol` | 两个用户入口、PoolManager unlock callback、真实 delta 结算、baseline/allowance/reentrancy 保护 |
 | `src/swap/interfaces/IMemeverseYTFlashSwapRouter.sol` | 两个公开接口、事件、错误和返回值 |
-| 现有 `src/swap/MemeverseUniswapHook.sol` | 增加只读 transient-principal getter，不改 session 生命周期 |
+| 现有 `src/swap/MemeverseUniswapHookUpgradeable.sol` | 增加只读 transient-principal getter，不改 session 生命周期 |
 | 现有 `src/swap/interfaces/IMemeverseUniswapHook.sol` | 声明 `activeAccountSessionPrincipal()` |
 | Router、Hook session、invariant 与 mock 测试文件 | 覆盖本稿验收条件 |
 
@@ -433,7 +433,7 @@ YTFlashSwapYTForPOL(
 | 路径或组件 | 边界 |
 | --- | --- |
 | 现有 `src/swap/MemeverseUniswapHookLens.sol` | 仅供 SDK 做固定 `blockHash` 报价；不是 Router immutable，不是 planned edit |
-| 现有 `POLSplitter` | 保持 split/merge 和生命周期/PT-backing 的唯一真源；Router 只调用其既有检查 |
+| 现有 `POLSplitterUpgradeable` | 保持 split/merge 和生命周期/PT-backing 的唯一真源；Router 只调用其既有检查 |
 
 不新增 approximation math 库及其测试，不新增 Hook Facet，不新增 Permit2 Router，也不把报价逻辑嵌入 Router。
 

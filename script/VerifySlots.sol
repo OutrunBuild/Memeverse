@@ -47,11 +47,11 @@ contract VerifySlots {
         console2.logBytes32(s7);
         console2.log("MemecoinDaoGovernor:");
         console2.logBytes32(s8);
-        console2.log("POLend:");
+        console2.log("POLendUpgradeable:");
         console2.logBytes32(s9);
-        console2.log("POLSplitter:");
+        console2.log("POLSplitterUpgradeable:");
         console2.logBytes32(s10);
-        console2.log("MemeverseUniswapHook:");
+        console2.log("MemeverseUniswapHookUpgradeable:");
         console2.logBytes32(s11);
         console2.log("OAppCore:");
         console2.logBytes32(s12);

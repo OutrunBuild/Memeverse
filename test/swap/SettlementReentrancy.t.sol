@@ -12,7 +12,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
@@ -37,7 +37,7 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
     uint256 internal constant Q128 = uint256(1) << 128;
 
     MockPoolManagerForHookLiquidity internal mockManager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MockERC20 internal token0;
     MockERC20 internal token1;
     /// @dev Main pool (token0/token1). Used as the reentrant swap target (forgedKey) and as the public-swap
@@ -58,7 +58,7 @@ contract SettlementReentrancyTest is Test, HookStorageHelper {
         // The 3-arg deployHookAtFlagAddress binds the launcher to this test contract at initialize;
         // settlement entry is launcher-gated.
         address hookProxy = deployHookAtFlagAddress(IPoolManager(address(mockManager)), address(this), treasury);
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
 
         key = _dynamicPoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)));
         poolId = key.toId();

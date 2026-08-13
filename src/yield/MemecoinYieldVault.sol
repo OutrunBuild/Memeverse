@@ -204,14 +204,14 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     ///      uint256 return reverts with EMPTY revert data — no named error, and error-name monitoring must not
     ///      expect `ComposeSettlementFailed` for this class (operations.md §3.13; verify the address was sourced
     ///      from the endpoint's `ComposeSent` event `to` field).
-    /// @param dispatcher YieldDispatcher that the stuck compose was delivered to (ComposeSent `to`).
+    /// @param dispatcher YieldDispatcherUpgradeable that the stuck compose was delivered to (ComposeSent `to`).
     /// @param guid LayerZero guid.
     /// @param message The original compose payload.
     function reAccumulateYields(address dispatcher, bytes32 guid, bytes calldata message) external override {
         // The compose's beneficiary is fixed by the message (hash-bound to the guid by the endpoint queue), so only
         // a message whose inner receiver is this vault can settle yield into this vault. The receiver word sits at
         // [76:108] — OFTComposeMsgCodec's COMPOSE_FROM_OFFSET plus the first word of the (address, TokenType) tuple
-        // (the offsets YieldDispatcher parses in _parseCompose). A message shorter than 108 bytes cannot carry the
+        // (the offsets YieldDispatcherUpgradeable parses in _parseCompose). A message shorter than 108 bytes cannot carry the
         // word and can never settle (verifySettle needs the full header and the tuple needs 64 more bytes), so it
         // fails here with a named error before reaching the dispatcher.
         require(message.length >= 108, ComposeMessageTooShort());

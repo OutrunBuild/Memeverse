@@ -1,6 +1,6 @@
-# POLend Settlement & Fees
+# POLendUpgradeable Settlement & Fees
 
-本文件覆盖 POLend 的辅助池/普通 fee 归集与领取、Locked→Unlocked 结算编排、杠杆残值领取、YieldDispatcher 分发、uAsset mint/repay 权限、权限配置与 Target ABI。POLend 子系统整体导航见 [polend/README.md](README.md)。
+本文件覆盖 POLendUpgradeable 的辅助池/普通 fee 归集与领取、Locked→Unlocked 结算编排、杠杆残值领取、YieldDispatcherUpgradeable 分发、uAsset mint/repay 权限、权限配置与 Target ABI。POLendUpgradeable 子系统整体导航见 [polend/README.md](README.md)。
 
 ## Fee
 
@@ -41,7 +41,7 @@ normalPTFee = totalPTFee - govPTFee
 
 - 杠杆侧 `uAsset fee` 走 Memeverse DAO governor 分发
 - 杠杆侧 `PT fee` 必须转换成等值 `uAsset` 后走 Memeverse DAO governor 分发
-- 杠杆侧 fee 不进入 `POLend.protocolTreasury`
+- 杠杆侧 fee 不进入 `POLendUpgradeable.protocolTreasury`
 - 杠杆侧 fee 不进入普通 fee 累计池
 
 #### 1.2 Locked 阶段主动分发
@@ -52,12 +52,12 @@ normalPTFee = totalPTFee - govPTFee
 - `POL fee` burn
 - 普通侧 `uAsset fee / PT fee` 写入 `normalFeeStates`
 - 杠杆侧 `uAsset fee` 本次直接分发
-- 杠杆侧 `PT fee` 必须走 `POLend.preRedeemPTFee` 预兑付成 `uAsset` 后本次直接分发
+- 杠杆侧 `PT fee` 必须走 `POLendUpgradeable.preRedeemPTFee` 预兑付成 `uAsset` 后本次直接分发
 - 不写 `pendingAuxiliaryGovFeeStates`
 
 #### 1.3 Locked -> Unlocked 最后捕获
 
-`Locked -> Unlocked` 时，facade `src/verse/MemeverseLauncher.sol::changeStage` 经 delegatecall 入 `src/verse/MemeverseLaunchImpl.sol::changeStage` dispatcher，dispatcher 在 Locked 分支经嵌套 delegatecall 调用 `src/verse/MemeverseSettlementImpl.sol::unlockFromLocked(verseId, polSplitter, hook)`，其内部首步 `_captureLockedAuxiliaryFees` 作为 `Locked` 阶段最后一次辅助池 fee 捕获（stage 翻转为 `Unlocked` 之前完成）。
+`Locked -> Unlocked` 时，facade `src/verse/MemeverseLauncherUpgradeable.sol::changeStage` 经 delegatecall 入 `src/verse/MemeverseLaunchImpl.sol::changeStage` dispatcher，dispatcher 在 Locked 分支经嵌套 delegatecall 调用 `src/verse/MemeverseSettlementImpl.sol::unlockFromLocked(verseId, polSplitter, hook)`，其内部首步 `_captureLockedAuxiliaryFees` 作为 `Locked` 阶段最后一次辅助池 fee 捕获（stage 翻转为 `Unlocked` 之前完成）。
 
 `_captureLockedAuxiliaryFees`：
 
@@ -263,15 +263,15 @@ normal share 取余数，不能另建永久 launcher bucket。
 
 `Launcher.changeStage` 在 `Locked -> Unlocked` 时按顺序执行（以下步骤在同一笔交易内原子执行，任一步骤失败则全部回滚）：
 
-1. 经 delegatecall 委托 `src/verse/MemeverseSettlementImpl.sol::unlockFromLocked(verseId, polSplitter, hook)`（由 facade `src/verse/MemeverseLauncher.sol::changeStage` 经 `src/verse/MemeverseLaunchImpl.sol::changeStage` dispatcher 的 Locked 分支嵌套 delegatecall 发起；`unlockFromLocked` 内部首步 `_captureLockedAuxiliaryFees` 完成捕获，stage 翻转为 Unlocked 之前完成）
+1. 经 delegatecall 委托 `src/verse/MemeverseSettlementImpl.sol::unlockFromLocked(verseId, polSplitter, hook)`（由 facade `src/verse/MemeverseLauncherUpgradeable.sol::changeStage` 经 `src/verse/MemeverseLaunchImpl.sol::changeStage` dispatcher 的 Locked 分支嵌套 delegatecall 发起；`unlockFromLocked` 内部首步 `_captureLockedAuxiliaryFees` 完成捕获，stage 翻转为 Unlocked 之前完成）
 2. `verse.currentStage = Unlocked`
-3. `POLSplitter.settle(verseId)`
-4. 若 `getTotalLeveragedDebt(verseId) > 0`，调用 `POLend.executeGlobalSettlement(verseId)`
+3. `POLSplitterUpgradeable.settle(verseId)`
+4. 若 `getTotalLeveragedDebt(verseId) > 0`，调用 `POLendUpgradeable.executeGlobalSettlement(verseId)`
 5. 激活 unlock 后 public swap protection
 
 `Splitter.settle` 只由 `Launcher` 调一次。
 
-`POLend.executeGlobalSettlement` 只由 `Launcher` 调一次。纯普通创世没有杠杆份额 LP，不调用该函数。
+`POLendUpgradeable.executeGlobalSettlement` 只由 `Launcher` 调一次。纯普通创世没有杠杆份额 LP，不调用该函数。
 
 无杠杆参与时不调用：
 
@@ -287,15 +287,15 @@ normal share 取余数，不能另建永久 launcher bucket。
 `Locked` 阶段主动调用 `redeemAndDistributeFees` 时，若捕获到杠杆侧 PT fee，由于 `Splitter` 尚未 settle，必须走预兑付：
 
 ```text
-POLend.preRedeemPTFee(verseId, ptAmount, mintTo)
+POLendUpgradeable.preRedeemPTFee(verseId, ptAmount, mintTo)
 ```
 
-`POLend.preRedeemPTFee`：
+`POLendUpgradeable.preRedeemPTFee`：
 
 - 只由 `Launcher` 调用
 - `mintTo != address(0)`
 - 返回 `uAssetBacking`
-- 不调用 `YieldDispatcher.distributeSameChain`
+- 不调用 `YieldDispatcherUpgradeable.distributeSameChain`
 - 不调用 `IOFT.send`
 - 不重新 claim fee
 - 不重新拆分普通侧 / 杠杆侧
@@ -305,16 +305,16 @@ POLend.preRedeemPTFee(verseId, ptAmount, mintTo)
 流程：
 
 ```text
-POLend.preRedeemPTFee
+POLendUpgradeable.preRedeemPTFee
 -> uAssetBacking = Splitter.preRedeemPTFee(verseId, ptAmount)
--> POLend mint uAssetBacking uAsset 到 mintTo
+-> POLendUpgradeable mint uAssetBacking uAsset 到 mintTo
 -> globalDebtByUAsset[market.uAsset] += uAssetBacking
 -> emit PreRedeemPTFee(verseId, market.uAsset, ptAmount, uAssetBacking, mintTo)
 ```
 
 `Splitter.preRedeemPTFee`：
 
-- 只允许 `POLend` 调用
+- 只允许 `POLendUpgradeable` 调用
 - burn account 固定为 `Launcher`
 - 返回 `uAssetBacking = previewPTToUAsset(verseId, ptAmount)`
 - 若 `ptAmount > 0` 但 `uAssetBacking == 0`，revert，不得 burn PT 或记录预兑付
@@ -342,22 +342,22 @@ genesis + leveragedGenesis
 
 `preRedeemPTFee` 的 `mintTo` 是 token 接收地址，不是最终业务 receiver：
 
-- 本链：`mintTo = YieldDispatcher`
+- 本链：`mintTo = YieldDispatcherUpgradeable`
 - 异链：`mintTo = Launcher`
 
 本链路径：
 
 ```text
-POLend.preRedeemPTFee(..., mintTo=yieldDispatcher)
-Launcher 同笔调用 YieldDispatcher.distributeSameChain(uAsset, governor, TokenType.UASSET, amount)
+POLendUpgradeable.preRedeemPTFee(..., mintTo=yieldDispatcher)
+Launcher 同笔调用 YieldDispatcherUpgradeable.distributeSameChain(uAsset, governor, TokenType.UASSET, amount)
 ```
 
 异链路径：
 
 ```text
-POLend.preRedeemPTFee(..., mintTo=Launcher)
-Launcher 同笔 IOFT.send 到远端 YieldDispatcher
-LayerZero endpoint 在远端调用 YieldDispatcher.lzCompose
+POLendUpgradeable.preRedeemPTFee(..., mintTo=Launcher)
+Launcher 同笔 IOFT.send 到远端 YieldDispatcherUpgradeable
+LayerZero endpoint 在远端调用 YieldDispatcherUpgradeable.lzCompose
 compose receiver = governor
 ```
 
@@ -375,9 +375,9 @@ event PreRedeemPTFee(uint256 indexed verseId, address indexed uAsset, uint256 pt
 
 `Splitter.settle` 遇到 `preRedeemedPT > 0` 时：
 
-1. `Splitter` approve 该 verse `uAsset` 给 `POLend`，金额为 `preRedeemedPT.uAssetBacking`
-2. `Splitter` 调用 `POLend.burnPreRedeemedBacking(verseId, preRedeemedPT.uAssetBacking)`
-3. `POLend` 调 `uAsset.repay(address(splitter), preRedeemedPT.uAssetBacking)`
+1. `Splitter` approve 该 verse `uAsset` 给 `POLendUpgradeable`，金额为 `preRedeemedPT.uAssetBacking`
+2. `Splitter` 调用 `POLendUpgradeable.burnPreRedeemedBacking(verseId, preRedeemedPT.uAssetBacking)`
+3. `POLendUpgradeable` 调 `uAsset.repay(address(splitter), preRedeemedPT.uAssetBacking)`
 4. `globalDebtByUAsset[market.uAsset] -= preRedeemedPT.uAssetBacking`
 5. `Splitter` 设置 `settlementUAsset = totalRedeemedUAsset - preRedeemedPT.uAssetBacking`
 6. `Splitter` delete `preRedeemedPT[verseId]`
@@ -401,14 +401,14 @@ Splitter.redeemPT(verseId, ptAmount, receiver)
 
 本链：
 
-- `receiver = YieldDispatcher`
-- Launcher 同笔调用 `YieldDispatcher.distributeSameChain(... governor ...)`
+- `receiver = YieldDispatcherUpgradeable`
+- Launcher 同笔调用 `YieldDispatcherUpgradeable.distributeSameChain(... governor ...)`
 
 异链：
 
 - `receiver = Launcher`
-- Launcher 同笔 `IOFT.send` 到远端 `YieldDispatcher`
-- LayerZero endpoint 在远端调用 `YieldDispatcher.lzCompose`
+- Launcher 同笔 `IOFT.send` 到远端 `YieldDispatcherUpgradeable`
+- LayerZero endpoint 在远端调用 `YieldDispatcherUpgradeable.lzCompose`
 - compose receiver 是 `governor`
 
 settle 后这条路径：
@@ -422,9 +422,9 @@ settle 后这条路径：
 
 `pendingAuxiliaryGovFeeStates.pendingPTFee` 在后续 settled 后分发时走本路径。
 
-### 6. POLend 全局结算
+### 6. POLendUpgradeable 全局结算
 
-`POLend.executeGlobalSettlement(verseId)`：
+`POLendUpgradeable.executeGlobalSettlement(verseId)`：
 
 - 只由 `Launcher` 调用
 - 只在 `Locked -> Unlocked` 编排中调用一次
@@ -448,7 +448,7 @@ remainingPtPolLpAmount = ptPolLpAmount - leveragedPtPolLpAmount
 
 `auxiliaryLiquidities` 更新为三个 `remaining...` 数量。用减法得到普通剩余 LP，避免比例取整导致 LP 丢失。取整差额归普通侧。
 
-平仓结果进入 `POLend`：
+平仓结果进入 `POLendUpgradeable`：
 
 - `POL`
 - `PT`
@@ -459,14 +459,14 @@ remainingPtPolLpAmount = ptPolLpAmount - leveragedPtPolLpAmount
 - 不经过 `Splitter.settle`
 - 直接调用 `Launcher.redeemMemecoinLiquidity(..., unwrap=true)` burn POL LP token
 - 取回底层 `uAsset + memecoin`
-- 输出进入 `POLend`
+- 输出进入 `POLendUpgradeable`
 
 回收的 `PT`：
 
-- 调用 `Splitter.redeemPT(verseId, ptAmount, address(POLend))`
+- 调用 `Splitter.redeemPT(verseId, ptAmount, address(POLendUpgradeable))`
 - 按 `previewPTToUAsset(verseId, ptAmount)` 兑回 `uAsset`
 - 不得把非零 `PT` 静默当作 0 backing 处理
-- 输出进入 `POLend`
+- 输出进入 `POLendUpgradeable`
 
 回收的 `uAsset` 汇总后先偿还该 verse 全部债务。若出现有上限的整数舍入缺口，只能由对应 `uAsset` 的全局 settlement dust reserve 补足：
 
@@ -486,12 +486,12 @@ if deficit > 0:
     residualUAsset = 0
 
 globalDebtByUAsset[market.uAsset] -= verseDebt
-uAsset.repay(address(POLend), verseDebt)
+uAsset.repay(address(POLendUpgradeable), verseDebt)
 ```
 
 `recoveredUAsset + consumedSettlementDustReserve >= verseDebt` 是必须成立的产品不变量。`consumedSettlementDustReserve` 只能覆盖正确执行固定 PT backing ratio 转换后的辅助 LP unwind、POL 赎回、PT 兑付和 full-range LP 数学中的整数舍入 dust；不得覆盖真实资不抵债、PT backing ratio / 模型错误、错误 LP 份额或 fee 账务缺口。
 
-如果 `deficit > settlementDustStates[market.uAsset].reserve`，该缺口超出可补偿 dust 边界，`executeGlobalSettlement` 必须 revert。该 revert 边界由 `POLend.executeGlobalSettlement`（`POLend.sol` 的 `if (deficit > reserveBeforeSettlement) revert SettlementDustInsufficient(...)`）实现，并由 `MemeverseLauncherPOLendSettlementInvariant` 不变量套件证明：覆盖辅助 LP unwind、POL 赎回、PT 兑付、fee、整数舍入、极端价格状态，并断言任意允许 dust 补偿都被 `maxReserve` 全局容量约束（`assertLe(consumedSettlementDust, maxReserve)`）。
+如果 `deficit > settlementDustStates[market.uAsset].reserve`，该缺口超出可补偿 dust 边界，`executeGlobalSettlement` 必须 revert。该 revert 边界由 `POLendUpgradeable.executeGlobalSettlement`（`POLendUpgradeable.sol` 的 `if (deficit > reserveBeforeSettlement) revert SettlementDustInsufficient(...)`）实现，并由 `MemeverseLauncherPOLendSettlementInvariant` 不变量套件证明：覆盖辅助 LP unwind、POL 赎回、PT 兑付、fee、整数舍入、极端价格状态，并断言任意允许 dust 补偿都被 `maxReserve` 全局容量约束（`assertLe(consumedSettlementDust, maxReserve)`）。
 
 不设计：
 
@@ -510,13 +510,13 @@ residualMemecoin = recoveredMemecoin
 
 若使用 reserve 补足 dust，`residualUAsset = 0`。`residualUAsset / residualMemecoin` 只从实际回收数量记录，任一项都可以为 0。
 
-settlement 成功后不得清空该 `uAsset` 的全局 reserve，也不得把未消耗 reserve 转入 `POLend.protocolTreasury`。全局 reserve 只扣减实际消耗量，剩余余额保留给后续使用同一 `uAsset` 的 settlement。
+settlement 成功后不得清空该 `uAsset` 的全局 reserve，也不得把未消耗 reserve 转入 `POLendUpgradeable.protocolTreasury`。全局 reserve 只扣减实际消耗量，剩余余额保留给后续使用同一 `uAsset` 的 settlement。
 
 完成后 market state 变为 `Settled`。
 
 安全要求：
 
-- `POLend.executeGlobalSettlement` 和 `POLSplitter.redeemYT` 必须使用重入锁
+- `POLendUpgradeable.executeGlobalSettlement` 和 `POLSplitterUpgradeable.redeemYT` 必须使用重入锁
 - `executeGlobalSettlement` 分三阶段执行，阶段之间不可交叉：
   1. **资产回收**：外部调用回收辅助池 LP、burn POL 赎回底层资产、PT→uAsset 兑付，获取 `totalRecoveredUAsset`
   2. **状态写入**：写入 `market.state = Settled`、防重复 settlement 状态、全局 reserve 实际消耗量、`residualStates`、`globalDebtByUAsset`
@@ -555,46 +555,46 @@ memecoinAmount = residualMemecoin * userInterestPaid / totalLeveragedInterest
 
 所有 `YT` 的价值兑现都从 `Splitter.redeemYT` 完成，和残值无关。
 
-残值整数舍入 dust 永久留在 `POLend`，不提供 sweep。`claimResidual` 永久可领，不能用 owner sweep 或 last claimer 规则改变用户残值分配。
+残值整数舍入 dust 永久留在 `POLendUpgradeable`，不提供 sweep。`claimResidual` 永久可领，不能用 owner sweep 或 last claimer 规则改变用户残值分配。
 
 #### 7.1 用户级 floor dust 统一规则
 
 所有用户级 floor allocation 产生的 dust 永久留在相关 custody contract，不提供 sweep，不给 last claimer：
 
 - 普通初始 `YT` dust 留在 `Launcher`
-- 杠杆初始 `YT` dust 留在 `POLend`
+- 杠杆初始 `YT` dust 留在 `POLendUpgradeable`
 - 普通 fee dust 留在 `Launcher`
 - 普通辅助 LP dust 留在 `Launcher`
-- 杠杆残值 dust 留在 `POLend`
+- 杠杆残值 dust 留在 `POLendUpgradeable`
 - `PT / YT` redeem dust 留在 `Splitter`
 
 Settlement dust reserve 不属于用户级 floor allocation dust。它只在 `executeGlobalSettlement` 中按 `settlementDustStates[uAsset].reserve` 可用余额消耗，未消耗部分继续留在该 `uAsset` 全局 reserve 池中。
 
-该全局池无主动回收面：余额只增（`POLend.sol::fundSettlementDustReserve`）只减（bounded deficit 消耗），上限不可归零、下调不得低于当前 reserve（`POLend.sol::setMaxSettlementDustReserve`）；退役 uAsset 的未消耗余额永久滞留，唯一回收通道是协议升级。完整生命周期约束见 [core.md §6.7](core.md)。
+该全局池无主动回收面：余额只增（`POLendUpgradeable.sol::fundSettlementDustReserve`）只减（bounded deficit 消耗），上限不可归零、下调不得低于当前 reserve（`POLendUpgradeable.sol::setMaxSettlementDustReserve`）；退役 uAsset 的未消耗余额永久滞留，唯一回收通道是协议升级。完整生命周期约束见 [core.md §6.7](core.md)。
 
 ## Dispatch
 
-### 8. YieldDispatcher 分发路径
+### 8. YieldDispatcherUpgradeable 分发路径
 
-Memeverse DAO governor fee 无论本链还是异链，都统一经过 `YieldDispatcher`。
+Memeverse DAO governor fee 无论本链还是异链，都统一经过 `YieldDispatcherUpgradeable`。
 
 本链路径：
 
 ```text
-Launcher / POLend 使 uAsset 到达 YieldDispatcher
-Launcher 调 YieldDispatcher.distributeSameChain(
+Launcher / POLendUpgradeable 使 uAsset 到达 YieldDispatcherUpgradeable
+Launcher 调 YieldDispatcherUpgradeable.distributeSameChain(
     uAsset,
     governor,
     TokenType.UASSET,
     amount
 )
-YieldDispatcher 调 Governor.receiveTreasuryIncome
+YieldDispatcherUpgradeable 调 Governor.receiveTreasuryIncome
 ```
 
 `distributeSameChain` 的 `amount` 是**两桶合计**（见 `MemeverseSettlementImpl._distributeRedeemedFees` 的双桶注释），对账时不能只按「launcher 转入 dispatcher 的 `Transfer` 事件金额」核对 governor 入账，否则会漏算 PT 赎回直达桶：
 
 - **持币桶**：launcher 物理持有的 uAsset（`govFee` 基数 + 快照的 `auxiliaryGovUAssetFee`），经 `_transferOut` 转账到 dispatcher，产生可见的 `Transfer` 事件。
-- **PT 赎回直达桶**：杠杆侧 PT fee 经 `preRedeemPTFee`（settle 前）/ `redeemPT`（settle 后）兑换成 uAsset，第三参 `mintTo = YieldDispatcher`，兑换出的 uAsset **直接 mint/redeem 到 dispatcher**，不经过 launcher 余额，无 launcher→dispatcher 的 `Transfer` 事件。
+- **PT 赎回直达桶**：杠杆侧 PT fee 经 `preRedeemPTFee`（settle 前）/ `redeemPT`（settle 后）兑换成 uAsset，第三参 `mintTo = YieldDispatcherUpgradeable`，兑换出的 uAsset **直接 mint/redeem 到 dispatcher**，不经过 launcher 余额，无 launcher→dispatcher 的 `Transfer` 事件。
 
 链下对账 governor 的 `TreasuryIncomeRecorded` 入账时，须把两桶相加，不能仅凭 launcher→dispatcher 的 `Transfer` 金额核对。`amount` 口径的接口层同步见 `IYieldDispatcher.distributeSameChain` @dev。
 
@@ -603,18 +603,18 @@ YieldDispatcher 调 Governor.receiveTreasuryIncome
 ```text
 Launcher 持有待发送 uAsset
 Launcher 构造 OFT SendParam
-SendParam.to = remote YieldDispatcher
+SendParam.to = remote YieldDispatcherUpgradeable
 SendParam.composeMsg = abi.encode(governor, TokenType.UASSET)
 Launcher 调 IOFT.send
-LayerZero endpoint 在远端调用 YieldDispatcher.lzCompose
-YieldDispatcher 调 Governor.receiveTreasuryIncome
+LayerZero endpoint 在远端调用 YieldDispatcherUpgradeable.lzCompose
+YieldDispatcherUpgradeable 调 Governor.receiveTreasuryIncome
 ```
 
 最终业务接收者是 DAO governor。
 
-`YieldDispatcher` 是 token 落点和 compose 分发器。
+`YieldDispatcherUpgradeable` 是 token 落点和 compose 分发器。
 
-`POLend.protocolTreasury` 与 Memeverse DAO governor fee 没有任何关系。
+`POLendUpgradeable.protocolTreasury` 与 Memeverse DAO governor fee 没有任何关系。
 
 ## Interfaces
 
@@ -622,7 +622,7 @@ YieldDispatcher 调 Governor.receiveTreasuryIncome
 
 每个 verse 的 `uAsset` 必须是受支持的 mint / repay / OFT 资产，由注册中心或 `Launcher` 在注册阶段保证。
 
-`POLend` 不重复维护 supported asset 鉴权。
+`POLendUpgradeable` 不重复维护 supported asset 鉴权。
 
 #### 9.1 uAsset 信任边界（无回调要求）
 
@@ -634,14 +634,14 @@ YieldDispatcher 调 Governor.receiveTreasuryIncome
 - 不支持带“转账钩子 / 回调执行器 / 可插拔外部逻辑”的 `uAsset` 变体作为产品资产。
 - 该约束由注册中心、部署流程与治理配置共同保证；违反该约束的资产不属于本协议支持范围。
 
-该要求是产品级前置条件，不依赖运行时检测；其目的是确保 `POLend` 与 `Launcher` 的资金路径在面对 `uAsset` 调用时不引入额外可重入攻击面。
+该要求是产品级前置条件，不依赖运行时检测；其目的是确保 `POLendUpgradeable` 与 `Launcher` 的资金路径在面对 `uAsset` 调用时不引入额外可重入攻击面。
 
-`POLend` 必须拥有对所有 supported `uAsset` 的 mint 权限，用于：
+`POLendUpgradeable` 必须拥有对所有 supported `uAsset` 的 mint 权限，用于：
 
 - `finalizeLeveragedGenesis`
 - settle 前 `preRedeemPTFee`
 
-`POLend` 必须能对所有 supported `uAsset` 执行 repay，用于：
+`POLendUpgradeable` 必须能对所有 supported `uAsset` 执行 repay，用于：
 
 - `executeGlobalSettlement` 偿还 verseDebt
 - `burnPreRedeemedBacking` 偿还预兑付 PT fee backing
@@ -674,23 +674,23 @@ repay(account, amount) 减少 mintingStatusTable[msg.sender].amountInMinted
 `executeGlobalSettlement` 偿还 verseDebt：
 
 ```text
-uAsset.repay(address(POLend), verseDebt)
+uAsset.repay(address(POLendUpgradeable), verseDebt)
 ```
 
-POLend 自己 repay 自己持有的 recovered `uAsset` 不需要 self-approve。
+POLendUpgradeable 自己 repay 自己持有的 recovered `uAsset` 不需要 self-approve。
 
 `burnPreRedeemedBacking` 偿还预兑付 PT fee backing：
 
 ```text
-Splitter approve POLend exact converted uAssetBacking amount
-POLend calls uAsset.repay(address(splitter), amount)
+Splitter approve POLendUpgradeable exact converted uAssetBacking amount
+POLendUpgradeable calls uAsset.repay(address(splitter), amount)
 ```
 
-Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金额，用完后不为兼容未知 token 做额外 approve-to-zero。`uAsset` 由实现了 `IUniversalAssets` 的合约发行，支持非零到非零的 approve 变更。
+Splitter 给 POLendUpgradeable 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金额，用完后不为兼容未知 token 做额外 approve-to-zero。`uAsset` 由实现了 `IUniversalAssets` 的合约发行，支持非零到非零的 approve 变更。
 
 ### 10. 权限与配置
 
-`POLend.initialize` 必须配置：
+`POLendUpgradeable.initialize` 必须配置：
 
 - `initialOwner`
 - `defaultInterestRate`
@@ -770,7 +770,7 @@ Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金�
 | `finalizeLeveragedGenesis` | `Launcher` | `Genesis -> Locked` 流程；market 为 `Genesis` | `totalLeveragedDebt > 0` | 状态改为 `Locked`，mint debt（基于合计 `totalLeveragedInterest`），真付部分 realInterest = totalLeveragedInterest - totalCreditInterest 全额转 `protocolTreasury`（credit 部分无 token 流入，跳过），burn 该 verse `totalCreditInterest` 对应的托管 GenesisCredit，emit `CreditBurned`。另无条件 emit `LeveragedGenesisFinalized`(real-only 市场 `creditBurned==0`)。finalize 不读 `maxReserve`，reserve 配置由 `registerLendMarket` 在注册时强制 |
 | `recordLeveragedYT` | `Launcher` | market 为 `Locked` | `yt != address(0)`，`totalLeveragedYT > 0`，防重复 | 记录杠杆初始 `YT`;emit `LeveragedYTRecorded` |
 | `preRedeemPTFee` | `Launcher` | market 为 `Locked`，Splitter 未 settled | `ptAmount > 0`，`mintTo != address(0)`，converted `uAssetBacking > 0` | `PreRedeemPTFee`，增加 debt |
-| `burnPreRedeemedBacking` | `Splitter` | Splitter settle 流程 | `amount > 0`；`amount == preRedeemedPT.uAssetBacking` 由 `onlySplitter` 调用约束保证，不由 POLend 运行时校验 | 减少 debt |
+| `burnPreRedeemedBacking` | `Splitter` | Splitter settle 流程 | `amount > 0`；`amount == preRedeemedPT.uAssetBacking` 由 `onlySplitter` 调用约束保证，不由 POLendUpgradeable 运行时校验 | 减少 debt |
 | `executeGlobalSettlement` | `Launcher` | `Locked -> Unlocked` 编排；market 为 `Locked` | 只处理一次；若 `recoveredUAsset < verseDebt`，缺口必须等于实际 `deficit`，且 `<= settlementDustStates[uAsset].reserve` | 状态改为 `Settled`，只扣减实际 reserve 消耗，emit `SettlementDustReserveConsumed` 与 `GlobalSettlementExecuted` |
 | `fundSettlementDustReserve` | 任意地址 | reserve 已配置；不受 pause 阻断 | `amount > 0`；非 `Launcher` 成功路径要求 `amount <= remaining capacity` | 注入该 `uAsset` 全局 settlement dust reserve，无 claim 权利 |
 | `claimRefund` | 用户 | market 为 `Refund` | `to != address(0)`，有未领取利息 | 标记 `refundClaimed` |
@@ -782,7 +782,7 @@ Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金�
 | `setMaxSettlementDustReserve` | owner | 任意 | `uAsset != address(0)`，`maxReserve > 0`，且下调时当前 `reserve <= maxReserve` | 配置该 `uAsset` 全局 settlement dust reserve 上限；不支持用 0 作为 launch-supported 运行模式 |
 | `setCreditFactory` | owner | 任意 | `newFactory != address(0)` | 替换 `GenesisCreditFactory` 地址指针，影响后续 `leveragedGenesisWithCredit` 按 `uAsset` 查 GenesisCredit 的路径;emit `CreditFactoryChanged` |
 | upgrade authorization | owner（UUPS `_authorizeUpgrade`） | 按升级框架 | 新实现初始化与存储布局必须兼容 | 不改变既有 market 语义 |
-| pause behavior | pauser / owner policy | 任意 | pause 不得阻断必要的 unlock / refund / repay 安全出口；`fundSettlementDustReserve` 视为 unlock / repay 安全出口 | pause 只限制新增资金入口和非必要领取入口。受 `whenNotPaused` 阻断的 Launcher 入口：`MemeverseLauncher.genesis`、`MemeverseLauncher.preorder`、`MemeverseLauncher.genesisAndPreorder`、`MemeverseLauncher.claimNormalYT`、`MemeverseLauncher.claimNormalFees`、`MemeverseLauncher.redeemAuxiliaryLiquidity`、`MemeverseLauncher.claimUnlockedPreorderMemecoin`、`MemeverseLauncher.redeemAndDistributeFees`、`MemeverseLauncher.mintPOLToken`、`MemeverseLauncher.registerMemeverse`。受 `whenNotPaused` 阻断的 POLend 入口：`POLend.leveragedGenesis`、`POLend.leveragedGenesisWithCredit`。不受 pause 阻断的安全出口：`POLend.claimRefund`、`POLend.claimLeveragedYT`、`POLend.claimResidual`、`POLend.fundSettlementDustReserve`、`POLend.executeGlobalSettlement`、`POLSplitter.redeemPT`、`POLSplitter.redeemYT`、`POLSplitter.settle` |
+| pause behavior | pauser / owner policy | 任意 | pause 不得阻断必要的 unlock / refund / repay 安全出口；`fundSettlementDustReserve` 视为 unlock / repay 安全出口 | pause 只限制新增资金入口和非必要领取入口。受 `whenNotPaused` 阻断的 Launcher 入口：`MemeverseLauncherUpgradeable.genesis`、`MemeverseLauncherUpgradeable.preorder`、`MemeverseLauncherUpgradeable.genesisAndPreorder`、`MemeverseLauncherUpgradeable.claimNormalYT`、`MemeverseLauncherUpgradeable.claimNormalFees`、`MemeverseLauncherUpgradeable.redeemAuxiliaryLiquidity`、`MemeverseLauncherUpgradeable.claimUnlockedPreorderMemecoin`、`MemeverseLauncherUpgradeable.redeemAndDistributeFees`、`MemeverseLauncherUpgradeable.mintPOLToken`、`MemeverseLauncherUpgradeable.registerMemeverse`。受 `whenNotPaused` 阻断的 POLendUpgradeable 入口：`POLendUpgradeable.leveragedGenesis`、`POLendUpgradeable.leveragedGenesisWithCredit`。不受 pause 阻断的安全出口：`POLendUpgradeable.claimRefund`、`POLendUpgradeable.claimLeveragedYT`、`POLendUpgradeable.claimResidual`、`POLendUpgradeable.fundSettlementDustReserve`、`POLendUpgradeable.executeGlobalSettlement`、`POLSplitterUpgradeable.redeemPT`、`POLSplitterUpgradeable.redeemYT`、`POLSplitterUpgradeable.settle` |
 
 #### 10.2 输入校验矩阵
 
@@ -802,15 +802,15 @@ Splitter 给 POLend 的 allowance 只在 `preRedeemedPT > 0` 时设置精确金�
 
 本节区分 deployment / proxy 初始化 ABI 与 runtime integration ABI。
 
-`initialize(...)` 是 proxy 初始化入口，用于部署编排和升级工具，不属于 Launcher / POLend / POLSplitter 运行期集成接口。`IPOLend` 与 `IPOLSplitter` 表达 runtime integration ABI；若部署脚本需要强类型 initializer，可使用单独的 initializer-only interface，不能把初始化入口误解为 per-verse 产品动作。
+`initialize(...)` 是 proxy 初始化入口，用于部署编排和升级工具，不属于 Launcher / POLendUpgradeable / POLSplitterUpgradeable 运行期集成接口。`IPOLend` 与 `IPOLSplitter` 表达 runtime integration ABI；若部署脚本需要强类型 initializer，可使用单独的 initializer-only interface，不能把初始化入口误解为 per-verse 产品动作。
 
-`POLend` deployment / proxy 初始化 ABI：
+`POLendUpgradeable` deployment / proxy 初始化 ABI：
 
 ```solidity
 function initialize(address initialOwner, uint256 interestRate_, uint256 leveragedDebtFactor_, address treasury_, address launcher_, address splitter_, address creditFactory_) external;
 ```
 
-`POLend` runtime integration ABI：
+`POLendUpgradeable` runtime integration ABI：
 
 ```solidity
 function registerLendMarket(uint256 verseId) external;
@@ -843,13 +843,13 @@ function getTotalCreditInterest(uint256 verseId) external view returns (uint256)
 function settlementDustStates(address uAsset) external view returns (uint128 reserve, uint128 maxReserve);
 ```
 
-`POLSplitter` deployment / proxy 初始化 ABI：
+`POLSplitterUpgradeable` deployment / proxy 初始化 ABI：
 
 ```solidity
 function initialize(address initialOwner, address launcher) external;
 ```
 
-`POLSplitter` runtime integration ABI：
+`POLSplitterUpgradeable` runtime integration ABI：
 
 ```solidity
 function initializeVerse(uint256 verseId, address pol, address memecoin, address uAsset, string calldata name, string calldata symbol) external returns (address pt, address yt);
@@ -874,7 +874,7 @@ function launcher() external view returns (address);
 function polend() external view returns (address);
 ```
 
-`POLSplitter.initialize` 是 proxy 初始化入口，不是 per-verse 产品动作：
+`POLSplitterUpgradeable.initialize` 是 proxy 初始化入口，不是 per-verse 产品动作：
 
 - 只在 proxy 初始化时调用一次
 - `initialOwner != address(0)`
@@ -883,7 +883,7 @@ function polend() external view returns (address);
 - 初始化 `PrincipalToken / YieldToken` implementation
 - 必须先于任何 `initializeVerse / split / settle / redeem` 路径完成
 
-`MemeverseSettlementImpl` 是 delegatecall-only sibling：无 owner 入口、无独立业务入口，由 facade `src/verse/MemeverseLauncher.sol` 经 delegatecall 调用。七个 facade 入口与 sibling selector 一一对应：`refund`→`refund`、`refundPreorder`→`refundPreorder`、`claimNormalYT`→`claimNormalYT`、`claimNormalFees`→`claimNormalFees`、`claimUnlockedPreorderMemecoin`→`claimUnlockedPreorderMemecoin`、`redeemAndDistributeFees`→`collectAndDistributeFees`、`changeStage`（经 `MemeverseLaunchImpl::changeStage` dispatcher 的 Locked 分支嵌套 delegatecall）→`unlockFromLocked`。runtime integration ABI（`IMemeverseSettlementImpl`）：
+`MemeverseSettlementImpl` 是 delegatecall-only sibling：无 owner 入口、无独立业务入口，由 facade `src/verse/MemeverseLauncherUpgradeable.sol` 经 delegatecall 调用。七个 facade 入口与 sibling selector 一一对应：`refund`→`refund`、`refundPreorder`→`refundPreorder`、`claimNormalYT`→`claimNormalYT`、`claimNormalFees`→`claimNormalFees`、`claimUnlockedPreorderMemecoin`→`claimUnlockedPreorderMemecoin`、`redeemAndDistributeFees`→`collectAndDistributeFees`、`changeStage`（经 `MemeverseLaunchImpl::changeStage` dispatcher 的 Locked 分支嵌套 delegatecall）→`unlockFromLocked`。runtime integration ABI（`IMemeverseSettlementImpl`）：
 
 ```solidity
 function refund(uint256 verseId) external returns (uint256 genesisFund);

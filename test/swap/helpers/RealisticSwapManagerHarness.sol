@@ -19,7 +19,7 @@ import {ISignatureTransfer} from "permit2/src/interfaces/ISignatureTransfer.sol"
 
 import {MemeverseSwapRouter} from "../../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../../src/swap/MemeverseUniswapHookLens.sol";
-import {MemeverseUniswapHook} from "../../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseSwapRouter} from "../../../src/swap/interfaces/IMemeverseSwapRouter.sol";
 import {IMemeverseUniswapHook} from "../../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 
@@ -167,7 +167,7 @@ abstract contract RealisticSwapIntegrationBase is Test, HookStorageHelper {
     }
 
     RealisticSwapManagerHarness internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseUniswapHookLens internal lens;
     MemeverseSwapRouter internal router;
     UnlockSwapIntegrator internal integrator;
@@ -191,11 +191,11 @@ abstract contract RealisticSwapIntegrationBase is Test, HookStorageHelper {
         token0.mint(alice, 1_000_000 ether);
         token1.mint(alice, 1_000_000 ether);
 
-        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // Deploy the real MemeverseUniswapHookUpgradeable behind a CREATE2-mined flag-address proxy so production
         // `_validateProxyHookAddress` and facet bindings are exercised.
         // hookOwner = address(this), treasury = treasury.
         address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), treasury);
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         lens = new MemeverseUniswapHookLens(IPoolManager(address(manager)));
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)), IMemeverseUniswapHook(address(hook)), lens, permit2_

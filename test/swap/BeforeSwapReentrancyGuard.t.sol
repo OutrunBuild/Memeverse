@@ -12,7 +12,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
@@ -28,7 +28,7 @@ contract BeforeSwapReentrancyGuardTest is Test, HookStorageHelper {
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     IPoolManager internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     BeforeSwapReenterer internal callbackToken;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -51,7 +51,7 @@ contract BeforeSwapReentrancyGuardTest is Test, HookStorageHelper {
         callbackToken.mint(address(callbackToken), 100 ether);
 
         address hookProxy = deployHookAtFlagAddress(manager, address(this), treasury);
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         hook.setPoolInitializer(address(this));
 
         token0.approve(address(hook), type(uint256).max);

@@ -7,7 +7,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {CallRecorder, MockPOLendForPOLendIntegration} from "../mocks/verse/LauncherPOLendIntegrationMocks.sol";
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 
@@ -23,12 +23,12 @@ contract MemeverseLauncherGenesisThresholdRegressionTest is Test, MemeverseLaunc
         uAsset = new MockERC20("UASSET", "UASSET", 18);
         polend = new MockPOLendForPOLendIntegration(uAsset, new CallRecorder());
 
-        MemeverseLauncher implementation = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable implementation = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(implementation),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),

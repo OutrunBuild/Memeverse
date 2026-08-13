@@ -13,7 +13,7 @@ import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
 import {OFTComposeSettleVerify} from "../../src/common/omnichain/OFTComposeSettleVerify.sol";
 import {IBurnable} from "../../src/common/interfaces/IBurnable.sol";
-import {YieldDispatcher} from "../../src/verse/YieldDispatcher.sol";
+import {YieldDispatcherUpgradeable} from "../../src/verse/YieldDispatcherUpgradeable.sol";
 import {IYieldDispatcher} from "../../src/verse/interfaces/IYieldDispatcher.sol";
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
 import {IMemeverseOFTEnum} from "../../src/common/types/IMemeverseOFTEnum.sol";
@@ -102,14 +102,14 @@ contract MockDispatcherGovernor is YieldDispatcherMockBase {
 ///         `composeStates` mutex — a same-guid reentry reverts `AlreadyResolved`, not `ReentrancyGuardReentrantCall`.
 contract ReentrantDispatcherVault {
     address public token;
-    YieldDispatcher internal immutable dispatcher;
+    YieldDispatcherUpgradeable internal immutable dispatcher;
     address internal reentryToken;
     bytes32 internal reentryGuid;
     bytes internal reentryMessage;
 
     constructor(address token_, address dispatcher_) {
         token = token_;
-        dispatcher = YieldDispatcher(dispatcher_);
+        dispatcher = YieldDispatcherUpgradeable(dispatcher_);
     }
 
     /// @notice Arm the reentry attempt with the same (token, guid, message) the outer settle is processing.
@@ -130,17 +130,18 @@ contract ReentrantDispatcherVault {
     }
 }
 
-/// @dev Deploys a YieldDispatcher as impl + ERC1967Proxy + initialize, returning the proxy cast to
-///      `YieldDispatcher`. `layout at erc7201(...)` contracts cannot be inherited (Solidity Error 8894), so tests
+/// @dev Deploys a YieldDispatcherUpgradeable as impl + ERC1967Proxy + initialize, returning the proxy cast to
+///      `YieldDispatcherUpgradeable`. `layout at erc7201(...)` contracts cannot be inherited (Solidity Error 8894), so tests
 ///      interact through this proxy address only. Shared by every dispatcher-instantiating contract in this file.
 function _deployYieldDispatcherProxy(address owner_, address localEndpoint, address launcher, address treasury)
-    returns (YieldDispatcher dispatcher)
+    returns (YieldDispatcherUpgradeable dispatcher)
 {
-    YieldDispatcher impl = new YieldDispatcher();
+    YieldDispatcherUpgradeable impl = new YieldDispatcherUpgradeable();
     ERC1967Proxy proxy = new ERC1967Proxy(
-        address(impl), abi.encodeCall(YieldDispatcher.initialize, (owner_, localEndpoint, launcher, treasury))
+        address(impl),
+        abi.encodeCall(YieldDispatcherUpgradeable.initialize, (owner_, localEndpoint, launcher, treasury))
     );
-    return YieldDispatcher(address(proxy));
+    return YieldDispatcherUpgradeable(address(proxy));
 }
 
 contract YieldDispatcherTest is ComposerEndpointFixture {
@@ -152,7 +153,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     address internal constant ALICE = address(0xA11CE);
     address internal constant TREASURY = address(0x7EAE);
 
-    YieldDispatcher internal dispatcher;
+    YieldDispatcherUpgradeable internal dispatcher;
     MockDispatcherComposeToken internal token;
     MockDispatcherYieldVault internal yieldVault;
     MockDispatcherGovernor internal governor;
@@ -171,13 +172,14 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice Initialize rejects a zero local endpoint.
     function testInitializeRejectsZeroLocalEndpoint() external {
-        YieldDispatcher impl = new YieldDispatcher();
+        YieldDispatcherUpgradeable impl = new YieldDispatcherUpgradeable();
         vm.expectRevert(IYieldDispatcher.ZeroAddress.selector);
         // Cast is a no-op for revert capture; the proxy constructor delegatecalls initialize and reverts.
-        YieldDispatcher(
+        YieldDispatcherUpgradeable(
             address(
                 new ERC1967Proxy(
-                    address(impl), abi.encodeCall(YieldDispatcher.initialize, (OWNER, address(0), LAUNCHER, TREASURY))
+                    address(impl),
+                    abi.encodeCall(YieldDispatcherUpgradeable.initialize, (OWNER, address(0), LAUNCHER, TREASURY))
                 )
             )
         );
@@ -185,13 +187,13 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice Initialize rejects a zero memeverse launcher.
     function testInitializeRejectsZeroMemeverseLauncher() external {
-        YieldDispatcher impl = new YieldDispatcher();
+        YieldDispatcherUpgradeable impl = new YieldDispatcherUpgradeable();
         vm.expectRevert(IYieldDispatcher.ZeroAddress.selector);
-        YieldDispatcher(
+        YieldDispatcherUpgradeable(
             address(
                 new ERC1967Proxy(
                     address(impl),
-                    abi.encodeCall(YieldDispatcher.initialize, (OWNER, LOCAL_ENDPOINT, address(0), TREASURY))
+                    abi.encodeCall(YieldDispatcherUpgradeable.initialize, (OWNER, LOCAL_ENDPOINT, address(0), TREASURY))
                 )
             )
         );
@@ -199,13 +201,13 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice Initialize rejects a zero protocol treasury.
     function testInitializeRejectsZeroProtocolTreasury() external {
-        YieldDispatcher impl = new YieldDispatcher();
+        YieldDispatcherUpgradeable impl = new YieldDispatcherUpgradeable();
         vm.expectRevert(IYieldDispatcher.ZeroAddress.selector);
-        YieldDispatcher(
+        YieldDispatcherUpgradeable(
             address(
                 new ERC1967Proxy(
                     address(impl),
-                    abi.encodeCall(YieldDispatcher.initialize, (OWNER, LOCAL_ENDPOINT, LAUNCHER, address(0)))
+                    abi.encodeCall(YieldDispatcherUpgradeable.initialize, (OWNER, LOCAL_ENDPOINT, LAUNCHER, address(0)))
                 )
             )
         );
@@ -213,13 +215,15 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice Initialize rejects a zero owner (delegated to OutrunOwnableUpgradeable).
     function testInitializeRejectsZeroOwner() external {
-        YieldDispatcher impl = new YieldDispatcher();
+        YieldDispatcherUpgradeable impl = new YieldDispatcherUpgradeable();
         vm.expectRevert(abi.encodeWithSignature("OwnableInvalidOwner(address)", address(0)));
-        YieldDispatcher(
+        YieldDispatcherUpgradeable(
             address(
                 new ERC1967Proxy(
                     address(impl),
-                    abi.encodeCall(YieldDispatcher.initialize, (address(0), LOCAL_ENDPOINT, LAUNCHER, TREASURY))
+                    abi.encodeCall(
+                        YieldDispatcherUpgradeable.initialize, (address(0), LOCAL_ENDPOINT, LAUNCHER, TREASURY)
+                    )
                 )
             )
         );
@@ -227,7 +231,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice The implementation cannot be re-initialized after `_disableInitializers`.
     function testImplCannotBeReinitialized() external {
-        YieldDispatcher impl = new YieldDispatcher();
+        YieldDispatcherUpgradeable impl = new YieldDispatcherUpgradeable();
         // Any direct initialize call on the impl reverts (OZ Initializable blocks it).
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         impl.initialize(OWNER, LOCAL_ENDPOINT, LAUNCHER, TREASURY);
@@ -260,7 +264,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice A non-owner upgrade attempt is rejected; the owner can upgrade.
     function testUpgradeAuthorization() external {
-        YieldDispatcher newImpl = new YieldDispatcher();
+        YieldDispatcherUpgradeable newImpl = new YieldDispatcherUpgradeable();
         // Non-owner: reverts via _authorizeUpgrade's onlyOwner.
         vm.prank(ALICE);
         vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", ALICE));
@@ -2091,7 +2095,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice settlePendingCompose's approve+callback path has NO `nonReentrant` (the dispatcher's `_settleToContract`
     ///         uses `_safeApprove` + external callback, never `_transferOut`). Its reentrancy defense is the
-    ///         `composeStates` mutex (CEI: Released written before `_settle` at YieldDispatcher.sol:119). This test pins
+    ///         `composeStates` mutex (CEI: Released written before `_settle` at YieldDispatcherUpgradeable.sol:119). This test pins
     ///         that mutex as the regression guard: a malicious vault that reenters `settlePendingCompose` (same guid)
     ///         during its `accumulateYields` callback reverts `AlreadyResolved` — NOT `ReentrancyGuardReentrantCall`,
     ///         which the dispatcher's settle path cannot emit (no `nonReentrant` on it).
@@ -2158,7 +2162,7 @@ contract YieldDispatcherRealGovernorIntegrationTest is ComposerEndpointFixture {
     address internal constant ALICE = address(0xA11CE);
     address internal constant LAUNCHER = address(0x2222);
 
-    YieldDispatcher internal dispatcher;
+    YieldDispatcherUpgradeable internal dispatcher;
     MockDispatcherComposeToken internal token;
     MockMessagingComposerEndpoint internal endpoint;
     MemecoinDaoGovernorUpgradeable internal governor;
@@ -2325,7 +2329,7 @@ contract YieldDispatcherUAssetEoaBranchTest is ComposerEndpointFixture {
     address internal constant ALICE = address(0xA11CE);
     address internal constant TREASURY = address(0x7EAE);
 
-    YieldDispatcher internal dispatcher;
+    YieldDispatcherUpgradeable internal dispatcher;
     MockDispatcherComposeToken internal token;
     MockMessagingComposerEndpoint internal endpoint;
 

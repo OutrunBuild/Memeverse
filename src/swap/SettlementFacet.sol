@@ -25,7 +25,7 @@ import {MemeverseSwapFeeBase} from "./MemeverseSwapFeeBase.sol";
 /// @notice Diamond facet holding the preorder settlement swap entry plus the settlement-branch
 ///         PoolManager unlock callback logic.
 /// @dev This facet is the delegatecall target for two settlement surfaces:
-///      1. `executeSettlementLogic` — the entry the Router (`MemeverseUniswapHook`) dispatches in response
+///      1. `executeSettlementLogic` — the entry the Router (`MemeverseUniswapHookUpgradeable`) dispatches in response
 ///         to a launcher preorder-settlement call. It charges input-side fees, funds the net swap input,
 ///         opens a PoolManager `unlock`, and reconciles the callback-reported fee against the hook's own rate.
 ///      2. `settlementUnlockCallback` — the internal swap/settle/take body that the Router's `unlockCallback`

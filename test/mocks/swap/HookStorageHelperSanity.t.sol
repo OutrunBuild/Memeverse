@@ -6,7 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
-import {MemeverseUniswapHook} from "../../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {HookStorageHelper} from "./HookStorageHelper.sol";
 import {MockPoolManagerForHookLiquidity} from "./HookLiquidityMocks.sol";
 
@@ -22,15 +22,15 @@ contract HookStorageHelperSanityTest is Test, HookStorageHelper {
 
         assertEq(uint160(hookProxy) & HOOK_FLAG_MASK, HOOK_REQUIRED_FLAGS, "proxy missing flags");
 
-        assertEq(MemeverseUniswapHook(hookProxy).treasury(), treasury, "treasury");
-        assertEq(MemeverseUniswapHook(hookProxy).owner(), address(this), "owner");
+        assertEq(MemeverseUniswapHookUpgradeable(hookProxy).treasury(), treasury, "treasury");
+        assertEq(MemeverseUniswapHookUpgradeable(hookProxy).owner(), address(this), "owner");
 
         // Facet pointers are bound during Router initialization.
-        assertGt(MemeverseUniswapHook(hookProxy).swapFacet().code.length, 0, "swap facet bound");
-        assertGt(MemeverseUniswapHook(hookProxy).dynamicFeeFacet().code.length, 0, "dynamic fee facet bound");
-        assertGt(MemeverseUniswapHook(hookProxy).settlementFacet().code.length, 0, "settlement facet bound");
+        assertGt(MemeverseUniswapHookUpgradeable(hookProxy).swapFacet().code.length, 0, "swap facet bound");
+        assertGt(MemeverseUniswapHookUpgradeable(hookProxy).dynamicFeeFacet().code.length, 0, "dynamic fee facet bound");
+        assertGt(MemeverseUniswapHookUpgradeable(hookProxy).settlementFacet().code.length, 0, "settlement facet bound");
 
-        Hooks.Permissions memory perms = MemeverseUniswapHook(hookProxy).getHookPermissions();
+        Hooks.Permissions memory perms = MemeverseUniswapHookUpgradeable(hookProxy).getHookPermissions();
         assertTrue(perms.beforeInitialize, "beforeInitialize");
         assertTrue(perms.beforeAddLiquidity, "beforeAddLiquidity");
         assertTrue(perms.beforeSwap, "beforeSwap");

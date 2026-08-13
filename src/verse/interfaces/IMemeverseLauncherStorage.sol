@@ -3,8 +3,8 @@ pragma solidity ^0.8.35;
 
 import {IMemeverseLauncher} from "./IMemeverseLauncher.sol";
 
-/// @notice Storage layout for the MemeverseLauncher ERC-7201 namespace.
-///         Shared between the MemeverseLauncher facade and its delegatecall siblings
+/// @notice Storage layout for the MemeverseLauncherUpgradeable ERC-7201 namespace.
+///         Shared between the MemeverseLauncherUpgradeable facade and its delegatecall siblings
 ///         (MemeverseLaunchImpl, MemeverseSettlementImpl, MemeverseLiquidityImpl) so all bind the same struct to the same
 ///         ERC-7201 base slot via `layout at erc7201(...)`.
 ///         Nested value types (Memeverse, FundMetaData, etc.) are members of `IMemeverseLauncher`,

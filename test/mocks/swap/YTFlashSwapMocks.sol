@@ -458,7 +458,7 @@ contract MockYTSplitter {
         mergeRanBeforeGuardArmed = false;
     }
 
-    /// @dev Mirrors real `POLSplitter.split`: pull POL collateral from the caller via `transferFrom`, then mint PT and
+    /// @dev Mirrors real `POLSplitterUpgradeable.split`: pull POL collateral from the caller via `transferFrom`, then mint PT and
     ///      YT to the caller. Defaults to a faithful 1:1 split (`polAmount` in, `polAmount` PT + `polAmount` YT out,
     ///      full allowance consumed). A scripted `allowanceResidual` pulls less POL so the router->splitter allowance
     ///      stays non-zero, and scripted returns cover the mismatch/residual revert paths.
@@ -486,7 +486,7 @@ contract MockYTSplitter {
         return (ptAmount, ytAmount);
     }
 
-    /// @dev Mirrors real `POLSplitter.merge`: burn the caller's PT and YT directly (the Splitter is the minter, so no
+    /// @dev Mirrors real `POLSplitterUpgradeable.merge`: burn the caller's PT and YT directly (the Splitter is the minter, so no
     ///      ERC20 approval or `transferFrom` is involved), then send `amount` POL to the caller 1:1. Defaults to a
     ///      faithful merge; a scripted `polReturn` exercises the router's `MergeResultMismatch` guard. The mock mints
     ///      the payout rather than tracking real POL backing, matching how `split` mints PT/YT without backing.
@@ -565,7 +565,7 @@ contract YTMockERC20 {
     }
 
     /// @dev Test-only `burn` callable by the mock splitter (which plays the minter role) to mirror
-    ///      `POLSplitter.merge` burning PT/YT directly off the caller without an ERC20 approval path.
+    ///      `POLSplitterUpgradeable.merge` burning PT/YT directly off the caller without an ERC20 approval path.
     function burn(address from, uint256 amount) external {
         balanceOf[from] -= amount;
         totalSupply -= amount;

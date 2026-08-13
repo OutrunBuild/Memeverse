@@ -19,7 +19,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
-/// @notice Standalone white-box accessor for MemeverseLauncher proxy storage.
+/// @notice Standalone white-box accessor for MemeverseLauncherUpgradeable proxy storage.
 ///         Does not inherit any src/ contract. Reads/writes proxy storage slots via vm.load/vm.store.
 ///         Your test contract should inherit this helper (`is Test, MemeverseLauncherTestHelper`).
 abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
@@ -32,7 +32,7 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
         uint256 polForPtPol;
     }
 
-    // Storage layout mirrors MemeverseLauncherStorage (src/verse/MemeverseLauncher.sol:64-95).
+    // Storage layout mirrors MemeverseLauncherStorage (src/verse/MemeverseLauncherUpgradeable.sol:64-95).
     // Slot offsets below correspond to field positions in that struct.
     // Memeverse sub-struct layout: slots 0-3 = string offsets, slot+4 = uAsset|currentStage|flashGenesis (packed),
     //   slots 5-9 = addresses, 10 = endTime|unlockTime, 11 = omnichainIds length.
@@ -88,7 +88,7 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
     }
 
     /// @notice Read claimable preorder memecoin after vesting from proxy
-    ///         mirrors MemeverseLauncher.sol:435-465, uses FullMath.mulDiv
+    ///         mirrors MemeverseLauncherUpgradeable.sol:435-465, uses FullMath.mulDiv
     function claimablePreorderMemecoinForTest(address proxy, uint256 verseId, address account)
         public
         view
@@ -111,7 +111,7 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
 
         if (userFunds == 0 || totalFunds == 0) return 0;
 
-        // — Vesting calculation (mirrors MemeverseLauncher.sol:454-465) —
+        // — Vesting calculation (mirrors MemeverseLauncherUpgradeable.sol:454-465) —
         uint256 purchasedMemecoin = FullMath.mulDiv(settledMemecoin, userFunds, totalFunds);
         if (purchasedMemecoin <= claimedMemecoin) return 0;
 
@@ -299,7 +299,7 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
 
     // ── forceDeployLiquidity replica ──
     //
-    // Full replica of MemeverseLauncher._deployLiquidity + call chain.
+    // Full replica of MemeverseLauncherUpgradeable._deployLiquidity + call chain.
     // Because _deployLiquidity is internal, it cannot be called via proxy ABI.
     // This replicates its logic using vm.load/vm.store for proxy storage,
     // and direct external calls (router, hook, polend, splitter, pol, memecoin)
@@ -317,7 +317,7 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
         address polendAddr,
         address polSplitterAddr
     ) internal {
-        require(polendAddr != address(0) && polSplitterAddr != address(0), "Missing POLend or splitter");
+        require(polendAddr != address(0) && polSplitterAddr != address(0), "Missing POLendUpgradeable or splitter");
 
         // Read storage
         uint256 normalFunds = uint256(_loadSlot(proxy, _mappingSlot(OFF_TOTAL_NORMAL_FUNDS, verseId)));

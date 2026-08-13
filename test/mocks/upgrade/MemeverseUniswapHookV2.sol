@@ -11,7 +11,7 @@ import {OutrunOwnableUpgradeable} from "../../../src/common/access/OutrunOwnable
  * @dev Carries `UUPSUpgradeable` + `OutrunOwnableUpgradeable` so the proxy can keep upgrading after the
  *      V1 -> V2 jump: without UUPSUpgradeable on the new implementation, the proxy would permanently lock.
  *
- *      Does NOT inherit `MemeverseUniswapHook`: Solidity Error 8894 forbids inheriting any contract that
+ *      Does NOT inherit `MemeverseUniswapHookUpgradeable`: Solidity Error 8894 forbids inheriting any contract that
  *      declares `layout at`, and V1 uses `layout at erc7201("outrun.storage.MemeverseUniswapHook")`.
  *      Storage-layout compatibility after the V1 -> V2 upgrade is verified through raw slot reads
  *      (`vm.load` against the V1 ERC7201 namespace) in the upgrade-preservation test, so V2 only needs the

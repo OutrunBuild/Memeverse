@@ -4,15 +4,15 @@ pragma solidity ^0.8.35;
 import {StorageSlotPrimitives} from "../StorageSlotPrimitives.sol";
 import {IPOLend} from "../../../src/polend/interfaces/IPOLend.sol";
 
-/// @notice Standalone white-box accessor for POLend proxy storage.
+/// @notice Standalone white-box accessor for POLendUpgradeable proxy storage.
 ///         Does not inherit any src/ contract. Reads/writes proxy storage slots via vm.load/vm.store,
 ///         replicating the storage writes previously performed by the test-only POLendHarness.
 ///         Your test contract should inherit this helper (`is Test, POLendStorageHelper`).
 abstract contract POLendStorageHelper is StorageSlotPrimitives {
-    // erc7201:outrun.storage.POLend namespace location (src/polend/POLend.sol:44-45).
+    // erc7201:outrun.storage.POLend namespace location (src/polend/POLendUpgradeable.sol:44-45).
     bytes32 internal constant POLEND_SLOT = 0x04e0fabb81205fd4104b820a75487a0508fe84f0bc41932b7a41622326d3af00;
 
-    // Struct field slot offsets in POLendStorage (src/polend/POLend.sol:37-53).
+    // Struct field slot offsets in POLendStorage (src/polend/POLendUpgradeable.sol:37-53).
     uint256 internal constant OFF_CREDIT_INTEREST_PAID = 5; // mapping(uint256 => mapping(address => uint256))
     uint256 internal constant OFF_CREDIT_FACTORY = 6; // address
     uint256 internal constant OFF_LEND_MARKETS = 7; // mapping(uint256 => LendMarket)

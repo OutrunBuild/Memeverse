@@ -46,7 +46,7 @@ launcher 从 `memecoin/uAsset` 主池与三个辅助池捕获 fee 后，目标�
   - POL fee burn
   - 普通侧 `uAsset/PT` fee 进入普通 fee 领取账本
   - 杠杆侧 `uAsset` fee 进入 governor treasury 路径
-  - 杠杆侧 `PT` fee 在 settle 前通过 `preRedeemPTFee` 预兑付成 `uAsset` 后分发；settle 后通过 `POLSplitter.redeemPT` 兑成 `uAsset` 后分发
+  - 杠杆侧 `PT` fee 在 settle 前通过 `preRedeemPTFee` 预兑付成 `uAsset` 后分发；settle 后通过 `POLSplitterUpgradeable.redeemPT` 兑成 `uAsset` 后分发
   - settle 前捕获但未主动分发的杠杆侧 PT fee 记为 pending，后续 settled 后再 `redeemPT` 分发
   - 辅助池 fee 分流的 token 级处理与操作语义 home 在 [docs/spec/polend/settlement-and-fees.md §1](../polend/settlement-and-fees.md)，PT fee 的预兑付 / settle 后 redeem / pending 规则 home 在 [docs/spec/polend/settlement-and-fees.md §5](../polend/settlement-and-fees.md)；分账口径与 full-precision `mulDiv` 约束见 [docs/spec/verse/accounting.md](../verse/accounting.md) §5.2
 - `memecoin` yield
@@ -84,7 +84,7 @@ virtualAssets 的推导规则（固定推导，不是独立配置项）：
 virtualAssets = minTotalFund × fundBasedAmount × 7 / 1000   // 即 0.7%
 ```
 
-等价于「最小主池 memecoin 的 1%」（主池占创世资金 70%）。`minTotalFund` 与 `fundBasedAmount` 取自 `FundMetaData`（per-uAsset，现有字段，不加新字段），取值时点为治理链 deploy vault（Genesis→Locked 触发）时刻的当前值，非注册时快照；owner 在注册至 Locked 窗口内变更 `MemeverseLauncher.sol::setFundMetaData` 会改变 V 缓冲，为预期语义（vault 写入后永久固定不变）。`0.7%` 是 Launcher 端常量，不是 owner 可配项。推导口径与配置来源见 [docs/spec/verse/config-matrix.md](../verse/config-matrix.md) §3。
+等价于「最小主池 memecoin 的 1%」（主池占创世资金 70%）。`minTotalFund` 与 `fundBasedAmount` 取自 `FundMetaData`（per-uAsset，现有字段，不加新字段），取值时点为治理链 deploy vault（Genesis→Locked 触发）时刻的当前值，非注册时快照；owner 在注册至 Locked 窗口内变更 `MemeverseLauncherUpgradeable.sol::setFundMetaData` 会改变 V 缓冲，为预期语义（vault 写入后永久固定不变）。`0.7%` 是 Launcher 端常量，不是 owner 可配项。推导口径与配置来源见 [docs/spec/verse/config-matrix.md](../verse/config-matrix.md) §3。
 
 ### 4.2 为什么需要虚拟资产缓冲
 

@@ -9,7 +9,7 @@ import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 /// @title ISwapFacet
 /// @notice Diamond facet surface for the Memeverse swap hook callback logic.
-/// @dev The Router (`MemeverseUniswapHook`) forwards each v4 hook callback into the matching `*Logic`
+/// @dev The Router (`MemeverseUniswapHookUpgradeable`) forwards each v4 hook callback into the matching `*Logic`
 ///      function on the selected facet via `_forwardCalldata` (selector swap only — it reuses the outer v4
 ///      callback calldata verbatim, no `abi.encodeCall` re-encoding). Because the facet executes in the
 ///      Router's storage context via delegatecall, the parameter list mirrors the v4 `IHooks` callback

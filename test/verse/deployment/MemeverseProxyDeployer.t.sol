@@ -12,7 +12,7 @@ import {IOutrunDeployer} from "../../../script/IOutrunDeployer.sol";
 import {MemeverseScript} from "../../../script/MemeverseScript.s.sol";
 import {MemeverseUniswapHookLens} from "../../../src/swap/MemeverseUniswapHookLens.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {MemeverseLauncher} from "../../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {IMemeverseLauncher} from "../../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {LauncherReadinessMockBase} from "../../mocks/verse/LauncherReadinessMockBase.sol";
 
@@ -666,7 +666,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
 
         address proxy = outrunDeployer.deployments(deployCaller, launcherSalt);
         address implementation = address(uint160(uint256(vm.load(proxy, IMPLEMENTATION_SLOT))));
-        MemeverseLauncher deployedLauncher = MemeverseLauncher(proxy);
+        MemeverseLauncherUpgradeable deployedLauncher = MemeverseLauncherUpgradeable(proxy);
 
         assertEq(proxy, predictedProxy);
         assertNotEq(proxy, implementation);
@@ -697,7 +697,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
 
         // Verify implementation storage is completely isolated from proxy storage.
         // Direct calls on the implementation (not through the proxy) should return default values.
-        MemeverseLauncher impl = MemeverseLauncher(implementation);
+        MemeverseLauncherUpgradeable impl = MemeverseLauncherUpgradeable(implementation);
         assertEq(impl.owner(), address(0), "impl owner should be zero");
         assertEq(impl.getLauncherParameters().executorRewardRate, 0, "impl reward rate should be zero");
         assertEq(impl.getLauncherParameters().preorderCapRatio, 0, "impl preorder cap should be zero");
@@ -730,7 +730,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         scriptHarness.deployMemeverseLauncherHarness(nonce);
 
         address proxy = outrunDeployer.deployments(deployCaller, launcherSalt);
-        MemeverseLauncher deployedLauncher = MemeverseLauncher(proxy);
+        MemeverseLauncherUpgradeable deployedLauncher = MemeverseLauncherUpgradeable(proxy);
         (uint256 uethMinTotalFund, uint256 uethFundBasedAmount) = deployedLauncher.fundMetaDatas(UETH);
         (uint256 uusdMinTotalFund, uint256 uusdFundBasedAmount) = deployedLauncher.fundMetaDatas(UUSD);
 
@@ -749,7 +749,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
     ///         proxy with zero metadata, initialOwner can call setFundMetaData and
     ///         the values are stored correctly.  This proves the handoff path that
     ///         readiness and open-registration depend on actually works on the real
-    ///         MemeverseLauncher — not just on mock contracts.
+    ///         MemeverseLauncherUpgradeable — not just on mock contracts.
     function testDualRoleOwnerCanWriteFundMetaDataAfterDeployment() external {
         uint256 nonce = 4;
         address deployCaller = address(scriptHarness);
@@ -772,7 +772,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         scriptHarness.deployMemeverseLauncherHarness(nonce);
 
         address proxy = outrunDeployer.deployments(deployCaller, launcherSalt);
-        MemeverseLauncher deployedLauncher = MemeverseLauncher(proxy);
+        MemeverseLauncherUpgradeable deployedLauncher = MemeverseLauncherUpgradeable(proxy);
 
         // Phase 1: metadata is zero immediately after dual-role deployment.
         (uint256 uethMinTotalFund, uint256 uethFundBasedAmount) = deployedLauncher.fundMetaDatas(UETH);
@@ -834,7 +834,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
 
         address proxy = outrunDeployer.deployments(address(productionHarness), launcherSalt);
         assertNotEq(proxy, address(0), "launcher proxy not deployed");
-        assertEq(MemeverseLauncher(proxy).owner(), initialOwner, "owner mismatch");
+        assertEq(MemeverseLauncherUpgradeable(proxy).owner(), initialOwner, "owner mismatch");
     }
 
     function testDeployMemeverseLauncherRevertsWhenUethUnset() external {
@@ -914,7 +914,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
 
         bytes32 launcherSalt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
         address proxy = outrunDeployer.deployments(deployCaller, launcherSalt);
-        assertEq(MemeverseLauncher(proxy).polend(), expectedPolend);
+        assertEq(MemeverseLauncherUpgradeable(proxy).polend(), expectedPolend);
     }
 
     function testDeployMemeverseLauncherComputesPolSplitterAddressFromDeployer() external {
@@ -940,7 +940,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
 
         bytes32 launcherSalt = keccak256(abi.encodePacked("MemeverseLauncher", nonce));
         address proxy = outrunDeployer.deployments(deployCaller, launcherSalt);
-        assertEq(MemeverseLauncher(proxy).getLauncherContracts().polSplitter, expectedPolSplitter);
+        assertEq(MemeverseLauncherUpgradeable(proxy).getLauncherContracts().polSplitter, expectedPolSplitter);
     }
 
     function testRequireDeploymentReadyChecksLauncherBoundDependencies() external {
@@ -1007,7 +1007,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         scriptHarness.requireDeploymentReadyHarness(readySwapRouter, readySwapHook);
     }
 
-    // readiness check: POLend.creditFactory() must point to a contract with code (POLEND_CREDIT_FACTORY_NOT_READY).
+    // readiness check: POLendUpgradeable.creditFactory() must point to a contract with code (POLEND_CREDIT_FACTORY_NOT_READY).
     // This check runs before the reserve/sibling checks; after wiring all dependencies, blanking creditFactory
     // should revert immediately.
     function testRequireDeploymentReadyRevertsWhenPolendCreditFactoryHasNoCode() external {
@@ -1082,7 +1082,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         );
         polend.setDependencies(launcherAddress, address(splitter));
         splitter.setDependencies(launcherAddress, address(polend));
-        // readiness checks POLend.creditFactory() points at a contract with code
+        // readiness checks POLendUpgradeable.creditFactory() points at a contract with code
         // (POLEND_CREDIT_FACTORY_NOT_READY); wire a coded address so the check passes.
         address creditFactoryAddr = address(uint160(0x6001));
         vm.etch(creditFactoryAddr, type(MockReadinessHook).creationCode);

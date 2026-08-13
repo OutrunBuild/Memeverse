@@ -13,7 +13,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
@@ -35,7 +35,7 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MockPoolManagerForRouterTest internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseSwapRouter internal router;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -44,7 +44,7 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
     function setUp() public {
         manager = new MockPoolManagerForRouterTest();
         address hookProxy = deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), makeAddr("treasury"));
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),

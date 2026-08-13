@@ -68,7 +68,7 @@ interface IPol is IERC20 {
 
     /**
      * @notice Burns POL tokens from a target account.
-     * @dev `account` may burn directly, or a caller may burn from `account` with sufficient allowance. Burning only destroys POL; redeem underlying liquidity through MemeverseLauncher.redeemMemecoinLiquidity.
+     * @dev `account` may burn directly, or a caller may burn from `account` with sufficient allowance. Burning only destroys POL; redeem underlying liquidity through MemeverseLauncherUpgradeable.redeemMemecoinLiquidity.
      * @param account Account whose POL balance is reduced.
      * @param amount Amount of POL tokens to burn.
      */

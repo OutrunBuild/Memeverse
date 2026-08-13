@@ -12,7 +12,7 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {SettlementFacet} from "../../src/swap/SettlementFacet.sol";
 import {SwapFacet} from "../../src/swap/SwapFacet.sol";
 import {DynamicFeeFacet} from "../../src/swap/DynamicFeeFacet.sol";
@@ -45,12 +45,12 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
     using PoolIdLibrary for PoolKey;
 
     MockPoolManagerForHookLiquidity internal mockManager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
 
     function setUp() public {
         mockManager = new MockPoolManagerForHookLiquidity();
         address hookProxy = deployHookAtFlagAddress(IPoolManager(address(mockManager)), address(this), address(this));
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
     // -------------------------------------------------------------------------
@@ -147,7 +147,7 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
         address badFacet =
             badPosition == 0 ? address(swapFacet) : badPosition == 1 ? address(dynFacet) : address(settlementFacet);
 
-        MemeverseUniswapHook hookImpl = new MemeverseUniswapHook(good);
+        MemeverseUniswapHookUpgradeable hookImpl = new MemeverseUniswapHookUpgradeable(good);
         address etched = makeAddr(etchLabel);
         vm.etch(etched, address(hookImpl).code);
         UniswapLP lpImpl = new UniswapLP();
@@ -160,7 +160,7 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
                 address(freshManager)
             )
         );
-        MemeverseUniswapHook(etched)
+        MemeverseUniswapHookUpgradeable(etched)
             .initialize(
                 address(this),
                 address(this),

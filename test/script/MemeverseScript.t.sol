@@ -8,7 +8,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {MemeverseScript} from "../../script/MemeverseScript.s.sol";
 import {IOutrunDeployer} from "../../script/IOutrunDeployer.sol";
 import {OutrunDeployer} from "../../script/deployment/OutrunDeployer.sol";
-import {YieldDispatcher} from "../../src/verse/YieldDispatcher.sol";
+import {YieldDispatcherUpgradeable} from "../../src/verse/YieldDispatcherUpgradeable.sol";
 import {OmnichainMemecoinStaker} from "../../src/interoperation/OmnichainMemecoinStaker.sol";
 import {MemeverseOmnichainInteroperation} from "../../src/interoperation/MemeverseOmnichainInteroperation.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
@@ -67,7 +67,7 @@ contract MockScriptProxyDeployer {
 }
 
 // Captures the creationCode passed to OUTRUN_DEPLOYER so a test can execute the script's
-// exact constructor-arg encoding and pin its order/count against the real YieldDispatcher.
+// exact constructor-arg encoding and pin its order/count against the real YieldDispatcherUpgradeable.
 contract MockScriptOutrunDeployer is IOutrunDeployer {
     struct DeployCall {
         bytes32 salt;
@@ -338,7 +338,7 @@ contract MemeverseScriptTest is Test {
         splitter = new MockScriptPOLSplitter(address(launcher), address(0));
         polend = new MockScriptPOLend(address(launcher), address(splitter));
         splitter.setPolend(address(polend));
-        // readiness checks POLend.creditFactory() points at a contract with code
+        // readiness checks POLendUpgradeable.creditFactory() points at a contract with code
         // (POLEND_CREDIT_FACTORY_NOT_READY); wire a coded address so the check passes.
         vm.etch(address(0x6001), address(lens).code);
         polend.setCreditFactory(address(0x6001));
@@ -396,7 +396,7 @@ contract MemeverseScriptTest is Test {
         script.requireDeploymentReady(address(0), address(0));
     }
 
-    // readiness check: POLend.creditFactory() must point to a contract with code (POLEND_CREDIT_FACTORY_NOT_READY).
+    // readiness check: POLendUpgradeable.creditFactory() must point to a contract with code (POLEND_CREDIT_FACTORY_NOT_READY).
     // This check runs before the reserve/sibling checks; after wiring all dependencies, blanking creditFactory
     // should revert immediately.
     function testReadinessRevertsWhenPolendCreditFactoryHasNoCode() external {
@@ -606,7 +606,7 @@ contract MemeverseScriptTest is Test {
     }
 
     // Regression: pins _deployYieldDispatcher's two-step UUPS encoding (impl CREATE3, then ERC1967Proxy CREATE3
-    // wrapping initializeData) against the real YieldDispatcher ABI. The script builds both creation codes by
+    // wrapping initializeData) against the real YieldDispatcherUpgradeable ABI. The script builds both creation codes by
     // type-erased abi encoding, so an initialize-signature drift compiles cleanly and would silently bake a proxy
     // that initializes with wrong args. Byte-equality alone cannot catch arg-order drift (both sides keep the same
     // handwritten order), so initializeData is ALSO executed against a real impl+proxy and every arg read back: any
@@ -628,12 +628,13 @@ contract MemeverseScriptTest is Test {
         // Deploy #1: implementation (no constructor args).
         (bytes32 implSalt, bytes memory implCreationCode) = deployer.deployCalls(0);
         assertEq(implSalt, keccak256(abi.encodePacked("YieldDispatcherImplementation", uint256(2))));
-        assertEq(implCreationCode, type(YieldDispatcher).creationCode);
+        assertEq(implCreationCode, type(YieldDispatcherUpgradeable).creationCode);
 
         // Deploy #2: ERC1967Proxy wrapping (implementation, initializeData). The mock returns address(0) for the
         // impl deploy, so the encoded implementation address is address(0).
-        bytes memory initializeData =
-            abi.encodeCall(YieldDispatcher.initialize, (expectedOwner, localEndpoint, address(launcher), treasury));
+        bytes memory initializeData = abi.encodeCall(
+            YieldDispatcherUpgradeable.initialize, (expectedOwner, localEndpoint, address(launcher), treasury)
+        );
         (bytes32 proxySalt, bytes memory proxyCreationCode) = deployer.deployCalls(1);
         assertEq(proxySalt, keccak256(abi.encodePacked("YieldDispatcher", uint256(2))));
         assertEq(
@@ -641,8 +642,9 @@ contract MemeverseScriptTest is Test {
         );
 
         // Read-back: a REAL impl+proxy deploy with the identical initializeData args, read through the proxy.
-        YieldDispatcher impl = new YieldDispatcher();
-        YieldDispatcher proxy = YieldDispatcher(address(new ERC1967Proxy(address(impl), initializeData)));
+        YieldDispatcherUpgradeable impl = new YieldDispatcherUpgradeable();
+        YieldDispatcherUpgradeable proxy =
+            YieldDispatcherUpgradeable(address(new ERC1967Proxy(address(impl), initializeData)));
         assertEq(proxy.localEndpoint(), localEndpoint);
         assertEq(proxy.memeverseLauncher(), address(launcher));
         assertEq(proxy.protocolTreasury(), treasury);
@@ -667,7 +669,7 @@ contract MemeverseScriptTest is Test {
 
     // Address-stability: the proxy still lands at the CREATE3 address derived from (factory, owner, SALT_YIELD_DISPATCHER),
     // independent of the creationCode change to the UUPS proxy form. Deploys through a REAL OutrunDeployer (CREATE3)
-    // and asserts the proxy lands at getDeployed(owner, salt) and is a real initialized YieldDispatcher there.
+    // and asserts the proxy lands at getDeployed(owner, salt) and is a real initialized YieldDispatcherUpgradeable there.
     function testDeployYieldDispatcherProxyAddressIsCreate3Stable() external {
         // Real CREATE3 factory owned by the harness (= the deploy caller / owner), so its onlyOwner deploy gate passes.
         OutrunDeployer realDeployer = new OutrunDeployer(address(script));
@@ -683,10 +685,10 @@ contract MemeverseScriptTest is Test {
         address predictedProxy = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
         // The proxy is deployed and is a real initialized dispatcher at the predicted CREATE3 address.
         assertGt(predictedProxy.code.length, 0, "proxy not deployed at predicted address");
-        assertEq(YieldDispatcher(predictedProxy).localEndpoint(), localEndpoint);
-        assertEq(YieldDispatcher(predictedProxy).memeverseLauncher(), address(launcher));
-        assertEq(YieldDispatcher(predictedProxy).protocolTreasury(), treasury);
-        assertEq(YieldDispatcher(predictedProxy).owner(), address(script));
+        assertEq(YieldDispatcherUpgradeable(predictedProxy).localEndpoint(), localEndpoint);
+        assertEq(YieldDispatcherUpgradeable(predictedProxy).memeverseLauncher(), address(launcher));
+        assertEq(YieldDispatcherUpgradeable(predictedProxy).protocolTreasury(), treasury);
+        assertEq(YieldDispatcherUpgradeable(predictedProxy).owner(), address(script));
     }
 
     // F-001 regression: under the documented dual-role deployment (deployer/broadcaster != owner), the CREATE3
@@ -725,11 +727,13 @@ contract MemeverseScriptTest is Test {
         // The proxy lands at the deploy-caller-namespaced address (not owner's), proving the prediction caller is correct.
         assertGt(predictedByCaller.code.length, 0, "proxy not deployed at caller-namespaced address");
         assertEq(
-            YieldDispatcher(predictedByCaller).owner(), multisig, "dispatcher owner is the multisig, not the caller"
+            YieldDispatcherUpgradeable(predictedByCaller).owner(),
+            multisig,
+            "dispatcher owner is the multisig, not the caller"
         );
-        assertEq(YieldDispatcher(predictedByCaller).localEndpoint(), localEndpoint);
-        assertEq(YieldDispatcher(predictedByCaller).memeverseLauncher(), address(launcher));
-        assertEq(YieldDispatcher(predictedByCaller).protocolTreasury(), treasury);
+        assertEq(YieldDispatcherUpgradeable(predictedByCaller).localEndpoint(), localEndpoint);
+        assertEq(YieldDispatcherUpgradeable(predictedByCaller).memeverseLauncher(), address(launcher));
+        assertEq(YieldDispatcherUpgradeable(predictedByCaller).protocolTreasury(), treasury);
     }
 
     // Mirror of testDeployYieldDispatcherPinsConstructorArgEncoding for the staker. Same motivation:

@@ -35,8 +35,8 @@ contract MockLauncherSwapIntegrationYieldVault {
     }
 }
 
-/// @notice POLend swap-path override that turns settlement-dust hooks into no-ops.
-/// @dev Inherits the preorder integration base so the rest of the launcher-facing POLend
+/// @notice POLendUpgradeable swap-path override that turns settlement-dust hooks into no-ops.
+/// @dev Inherits the preorder integration base so the rest of the launcher-facing POLendUpgradeable
 ///      surface stays identical to the preorder test, only overriding the dust flow.
 contract MockPOLendForSwapIntegration is MockPOLendForPreorderIntegration {
     function settlementDustStates(address) external pure override returns (uint128 reserve, uint128 maxReserve) {

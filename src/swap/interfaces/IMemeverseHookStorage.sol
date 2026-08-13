@@ -8,7 +8,7 @@ import {IDynamicFeeFacet} from "./IDynamicFeeFacet.sol";
 /**
  * @title IMemeverseHookStorage
  * @notice Single source of truth for the Memeverse Uniswap v4 hook ERC-7201 storage structs.
- * @dev The hook Router (`MemeverseUniswapHook`) and its delegatecall facets
+ * @dev The hook Router (`MemeverseUniswapHookUpgradeable`) and its delegatecall facets
  *      (`SwapFacet`, `DynamicFeeFacet`, `SettlementFacet`) all bind the same
  *      `MemeverseUniswapHookStorage` struct to the same ERC-7201 namespace base via
  *      `layout at erc7201("outrun.storage.MemeverseUniswapHook")`. Solidity derives each
@@ -59,7 +59,7 @@ interface IMemeverseHookStorage {
         bool active;
     }
 
-    /// @notice Storage layout for the MemeverseUniswapHook ERC-7201 namespace.
+    /// @notice Storage layout for the MemeverseUniswapHookUpgradeable ERC-7201 namespace.
     /// @dev Field order is FROZEN. Solidity derives each storage slot from (namespace base, struct
     ///      field declaration order), so any reorder / rename / retype / insert would silently re-slot
     ///      every mapping and lose realized swap state, rebate balances, and LP per-share accounting.

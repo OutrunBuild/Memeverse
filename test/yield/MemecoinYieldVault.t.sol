@@ -12,7 +12,7 @@ import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppRec
 
 import {MemecoinYieldVault} from "../../src/yield/MemecoinYieldVault.sol";
 import {IMemecoinYieldVault} from "../../src/yield/interfaces/IMemecoinYieldVault.sol";
-import {YieldDispatcher} from "../../src/verse/YieldDispatcher.sol";
+import {YieldDispatcherUpgradeable} from "../../src/verse/YieldDispatcherUpgradeable.sol";
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
 import {IYieldDispatcher} from "../../src/verse/interfaces/IYieldDispatcher.sol";
 import {IMemeverseOFTEnum} from "../../src/common/types/IMemeverseOFTEnum.sol";
@@ -237,7 +237,7 @@ contract MemecoinYieldVaultTest is Test {
 
     /// @notice Verifies `reAccumulateYields` claims the stuck compose from the dispatcher and credits totalAssets.
     /// @dev Models the retry path used when a LayerZero compose call to `accumulateYields` previously failed:
-    ///      the vault calls YieldDispatcher.settlePendingCompose, which proves delivery via endpoint composeQueue, then
+    ///      the vault calls YieldDispatcherUpgradeable.settlePendingCompose, which proves delivery via endpoint composeQueue, then
     ///      approves this vault and calls accumulateYields (pull + totalAssets accounting).
     function testReAccumulateYieldsClaimsFromDispatcherAndAccumulates() external {
         MockComposeAsset composeAsset = new MockComposeAsset();
@@ -262,7 +262,7 @@ contract MemecoinYieldVaultTest is Test {
 
         assertEq(composeVault.totalAssets(), 15 ether, "total assets after re-accumulate");
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), guid)),
             uint256(IComposeState.ComposeState.Released),
             "dispatcher marked released"
         );
@@ -295,7 +295,7 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(composeVault.totalAssets(), 0, "totalAssets unchanged after burn-on-empty");
         assertEq(burnableAsset.balanceOf(address(composeVault)), 0, "vault holds no burned yield");
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(burnableAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(burnableAsset), guid)),
             uint256(IComposeState.ComposeState.Released),
             "dispatcher marked released"
         );
@@ -304,7 +304,7 @@ contract MemecoinYieldVaultTest is Test {
 
     /// @notice `reAccumulateYields` reverts `NotDelivered` when the guid was never delivered to the endpoint.
     /// @dev Covers the first guard of the retry chain: with no endpoint `composeQueue` entry (mock default zero),
-    ///      YieldDispatcher.settlePendingCompose cannot prove delivery and reverts before any fund movement. No queue
+    ///      YieldDispatcherUpgradeable.settlePendingCompose cannot prove delivery and reverts before any fund movement. No queue
     ///      is planted and no tokens are minted — the revert must happen before state or balance changes.
     function testReAccumulateYieldsRevertsWhenNotDelivered() external {
         MockComposeAsset composeAsset = new MockComposeAsset();
@@ -320,7 +320,7 @@ contract MemecoinYieldVaultTest is Test {
 
         // Revert is atomic: the (token, guid) mutex slot is untouched, so a funded retry can still resolve it.
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), guid)),
             uint256(IComposeState.ComposeState.None),
             "revert left guid slot unresolved"
         );
@@ -348,7 +348,7 @@ contract MemecoinYieldVaultTest is Test {
         // The hash-bound zero payload can never be settled with funds via settlePendingCompose; only the
         // endpoint's lzCompose callback can consume this guid.
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), zeroGuid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), zeroGuid)),
             uint256(IComposeState.ComposeState.None),
             "zero-input revert left guid slot unresolved"
         );
@@ -368,7 +368,7 @@ contract MemecoinYieldVaultTest is Test {
 
         // The replay revert is atomic too: the first settle pinned the guid to Released and the retry left it there.
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), guid)),
             uint256(IComposeState.ComposeState.Released),
             "replay revert kept guid pinned released"
         );
@@ -386,18 +386,19 @@ contract MemecoinYieldVaultTest is Test {
             _deployComposeVaultWithDispatcher(address(composeAsset));
 
         // dispatcherA (0xD15A7) is the vault's initialize-time storage pointer. Simulate a post-creation rotation
-        // by deploying a second YieldDispatcher whose localEndpoint points at the same mock endpoint (0x9999) the
+        // by deploying a second YieldDispatcherUpgradeable whose localEndpoint points at the same mock endpoint (0x9999) the
         // settle path reads. The stuck compose is delivered into dispatcherB's queue, not dispatcherA's.
         // Native deploy (no etch): composeStates and the composeQueue `to` key both derive from dispatcherB's own
         // address, and the ERC-7201 storage addresses are set by initialize, so a fresh impl+proxy deploy is
         // sufficient and avoids the etch-only-copies-code storage caveat that the dispatcherA setup must work around.
-        YieldDispatcher dispatcherBImpl = new YieldDispatcher();
-        YieldDispatcher dispatcherB = YieldDispatcher(
+        YieldDispatcherUpgradeable dispatcherBImpl = new YieldDispatcherUpgradeable();
+        YieldDispatcherUpgradeable dispatcherB = YieldDispatcherUpgradeable(
             address(
                 new ERC1967Proxy(
                     address(dispatcherBImpl),
                     abi.encodeCall(
-                        YieldDispatcher.initialize, (address(this), endpointAddr, address(this), address(this))
+                        YieldDispatcherUpgradeable.initialize,
+                        (address(this), endpointAddr, address(this), address(this))
                     )
                 )
             )
@@ -469,7 +470,7 @@ contract MemecoinYieldVaultTest is Test {
 
         // Revert is atomic: the (token, guid) mutex slot is untouched, so a legitimately-delivered compose can still resolve it.
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), guid)),
             uint256(IComposeState.ComposeState.None),
             "revert left guid slot unresolved"
         );
@@ -502,7 +503,7 @@ contract MemecoinYieldVaultTest is Test {
 
         // The stubbed dispatcher never ran, so its (token, guid) mutex slot stays None.
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), guid)),
             uint256(IComposeState.ComposeState.None),
             "zero-settle revert left guid slot unresolved"
         );
@@ -530,7 +531,7 @@ contract MemecoinYieldVaultTest is Test {
 
         // Revert is atomic: the (token, guid) mutex slot is untouched.
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), guid)),
             uint256(IComposeState.ComposeState.None),
             "revert left guid slot unresolved"
         );
@@ -559,7 +560,7 @@ contract MemecoinYieldVaultTest is Test {
 
         // Revert is atomic: the (token, guid) mutex slot is untouched.
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), guid)),
             uint256(IComposeState.ComposeState.None),
             "revert left guid slot unresolved"
         );
@@ -591,7 +592,7 @@ contract MemecoinYieldVaultTest is Test {
 
         // Revert is atomic: no settlement ran, so the (token, guid) mutex slot stays None.
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), guid)),
             uint256(IComposeState.ComposeState.None),
             "revert left guid slot unresolved"
         );
@@ -623,7 +624,7 @@ contract MemecoinYieldVaultTest is Test {
 
         // Revert is atomic: no settlement ran, so the (token, guid) mutex slot stays None.
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(composeAsset), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(composeAsset), guid)),
             uint256(IComposeState.ComposeState.None),
             "revert left guid slot unresolved"
         );
@@ -1795,13 +1796,13 @@ contract MemecoinYieldVaultTest is Test {
 
         assertEq(composeVault.totalAssets(), 15 ether, "total assets after re-accumulate (10 deposit + 5 yield)");
         assertEq(
-            uint256(YieldDispatcher(dispatcherAddr).composeStates(address(oft), guid)),
+            uint256(YieldDispatcherUpgradeable(dispatcherAddr).composeStates(address(oft), guid)),
             uint256(IComposeState.ComposeState.Released),
             "dispatcher marked released"
         );
     }
 
-    /// @dev Deploys a fresh compose-vault clone and a real (upgradeable) YieldDispatcher over the mock composer
+    /// @dev Deploys a fresh compose-vault clone and a real (upgradeable) YieldDispatcherUpgradeable over the mock composer
     ///      endpoint etched onto `0x9999`. The dispatcher is deployed as impl + ERC1967Proxy + initialize and the
     ///      vault is wired to the proxy address: post-upgrade the dispatcher has no immutables (its addresses live
     ///      in ERC-7201 storage set by initialize), so the prior etch-onto-a-fixed-address pattern no longer works
@@ -1814,13 +1815,14 @@ contract MemecoinYieldVaultTest is Test {
         endpointAddr = address(0x9999);
         MockMessagingComposerEndpoint endpointImpl = new MockMessagingComposerEndpoint();
         vm.etch(endpointAddr, address(endpointImpl).code);
-        YieldDispatcher dispatcherImpl = new YieldDispatcher();
-        YieldDispatcher dispatcher = YieldDispatcher(
+        YieldDispatcherUpgradeable dispatcherImpl = new YieldDispatcherUpgradeable();
+        YieldDispatcherUpgradeable dispatcher = YieldDispatcherUpgradeable(
             address(
                 new ERC1967Proxy(
                     address(dispatcherImpl),
                     abi.encodeCall(
-                        YieldDispatcher.initialize, (address(this), endpointAddr, address(this), address(this))
+                        YieldDispatcherUpgradeable.initialize,
+                        (address(this), endpointAddr, address(this), address(this))
                     )
                 )
             )

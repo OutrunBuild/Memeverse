@@ -34,7 +34,7 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
      * @dev Constructor
      * @param _owner - The owner of the contract
      * @param _lzEndpointRegistry - Address of LzEndpointRegistry
-     * @param _memeverseLauncher - Address of MemeverseLauncher
+     * @param _memeverseLauncher - Address of MemeverseLauncherUpgradeable
      * @param _omnichainMemecoinStaker - Address of OmnichainMemecoinStaker
      * @param _oftReceiveGasLimit - Gas limit for OFT receive
      * @param _omnichainStakingGasLimit - Gas limit for omnichain memecoin staking

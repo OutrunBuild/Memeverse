@@ -143,9 +143,9 @@ library MemeverseTransientState {
     ///      the caller decides the revert error (the library stays a pure logic shim). Acquired in three places:
     ///      `SwapFacet.beforeSwapLogic` (after `_revertIfPublicSwapBlocked`),
     ///      `SettlementFacet.executeSettlementLogic` (before the Phase 1 transferFrom), and
-    ///      `MemeverseUniswapHook._addLiquidityCore` (before the recipient fee snapshot), and released in their
+    ///      `MemeverseUniswapHookUpgradeable._addLiquidityCore` (before the recipient fee snapshot), and released in their
     ///      matching exit points (`SwapFacet.afterSwapLogic`, `SettlementFacet.executeSettlementLogic` tail,
-    ///      `MemeverseUniswapHook._addLiquidityCore` after the LP mint and `cachedLpTotalSupply` update).
+    ///      `MemeverseUniswapHookUpgradeable._addLiquidityCore` after the LP mint and `cachedLpTotalSupply` update).
     ///      Blocks a callback token (ERC-777/1363) from reentering `poolManager.swap` on the SAME poolId
     ///      during the outer swap's lifecycle window, which would advance `dynamicFeeState` while the outer
     ///      swap still settles with the stale fee quoted at its start. On the liquidity-add window the same
@@ -162,7 +162,7 @@ library MemeverseTransientState {
     }
 
     /// @dev Releases the per-pool lock acquired in beforeSwapLogic / executeSettlementLogic /
-    ///      `MemeverseUniswapHook._addLiquidityCore`. Paired 1:1 with acquire. Transient storage auto-clears at
+    ///      `MemeverseUniswapHookUpgradeable._addLiquidityCore`. Paired 1:1 with acquire. Transient storage auto-clears at
     ///      tx end, so a revert between acquire and release leaves no stale lock.
     function releaseSwapLifecycleLock(PoolId poolId) internal {
         bytes32 slot = _swapLifecycleLockSlot(poolId);

@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
@@ -210,12 +210,12 @@ contract MemeverseLauncherClaimRedeemInvariantTest is StdInvariant, Test, Memeve
         uint256 preorderCapRatio,
         uint256 preorderVestingDuration
     ) internal returns (IMemeverseLauncher) {
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -330,7 +330,7 @@ contract MemeverseLauncherClaimRedeemInvariantTest is StdInvariant, Test, Memeve
     function invariant_usersNeverExceedGenesisEntitlements() external view {
         for (uint256 i; i < actors.length; ++i) {
             (uint256 genesisFund,, bool isRedeemed) =
-                MemeverseLauncher(launcherProxy).userGenesisData(VERSE_ID, actors[i]);
+                MemeverseLauncherUpgradeable(launcherProxy).userGenesisData(VERSE_ID, actors[i]);
             uint256 polShare = INITIAL_CLAIMABLE_POL * genesisFund / TOTAL_GENESIS;
             uint256 polLpShare = INITIAL_POL_LP * genesisFund / TOTAL_GENESIS;
             uint256 userPolBalance = liquidProof.balanceOf(actors[i]);
@@ -372,12 +372,12 @@ contract MemeverseLauncherMintPOLInvariantTest is StdInvariant, Test, MemeverseL
         actors.push(BOB);
         actors.push(CHARLIE);
 
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),

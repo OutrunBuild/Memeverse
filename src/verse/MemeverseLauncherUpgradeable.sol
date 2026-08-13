@@ -18,7 +18,7 @@ import {OutrunOwnableUpgradeable} from "../common/access/OutrunOwnableUpgradeabl
 import {MemeverseLauncherLib} from "./libraries/MemeverseLauncherLib.sol";
 
 /**
- * @title Trapping into the memeverse
+ * @title MemeverseLauncherUpgradeable
  * @dev Reentrancy strategy: this contract inherits `ReentrancyGuard` via `TokenHelper` and applies
  *      `nonReentrant` on `_transferOut` — the single exit point for all outbound token transfers.
  *      Public entry-point functions intentionally omit `nonReentrant` to avoid double-locking with
@@ -26,7 +26,7 @@ import {MemeverseLauncherLib} from "./libraries/MemeverseLauncherLib.sol";
  *      Locked→Unlocked transition triggers cross-contract callbacks (`IPOLSplitter.settle`,
  *      `IPOLend.executeGlobalSettlement`) that must be able to re-enter the launcher.
  */
-contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
+contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.MemeverseLauncher")
     is
     IMemeverseLauncher,
     Initializable,
@@ -515,7 +515,7 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
      * @notice Claim the caller's accumulated uAsset and PT fee entitlements.
      * @dev Reads pre-committed `feeState.accUAssetFee` and `feeState.accPTFee` accumulators.
      *      Uses CEI pattern (commit `claimedXxx` before external calls)
-     *      to prevent double-claim; the trust boundary is the configured POLSplitter.
+     *      to prevent double-claim; the trust boundary is the configured POLSplitterUpgradeable.
      * @param verseId Memeverse id.
      * @return uAssetAmount The claimed uAsset fee amount.
      * @return ptAmount The claimed PT fee amount.
@@ -565,7 +565,7 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
         versIdValidate(verseId)
         returns (uint256 polAmount, uint256 ptAmount, uint256 uAssetAmount)
     {
-        // POLend-callback ABI guard stays enforced on the facade: only POLend may invoke this entrypoint,
+        // POLendUpgradeable-callback ABI guard stays enforced on the facade: only POLendUpgradeable may invoke this entrypoint,
         // and only when the verse is Unlocked. The sibling performs the LP removal + residual claim transfer.
         require(msg.sender == memeverseLauncherStorage.polend, PermissionDenied());
         Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
@@ -768,7 +768,7 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
         bool flashGenesis
     ) external override whenNotPaused {
         // Delegatecall launch sibling: it enforces the registrar ACL, deploys memecoin/POL, wires LayerZero
-        // peers, stores the verse config, registers the POLend market, AND emits RegisterMemeverse. Facade
+        // peers, stores the verse config, registers the POLendUpgradeable market, AND emits RegisterMemeverse. Facade
         // emits nothing to avoid a double-emit under delegatecall. Under delegatecall `msg.sender` is the
         // original caller (must equal `memeverseRegistrar`) and `address(this)` is the launcher proxy.
         address impl = memeverseLauncherStorage.launchImpl;
@@ -952,7 +952,7 @@ contract MemeverseLauncher layout at erc7201("outrun.storage.MemeverseLauncher")
      *      (`MemeverseSettlementImpl._sendRedeemedFeesCrossChain` via
      *      `MemeverseLauncherLib.buildSendParamAndMessagingFee`), delivered on the governance chain.
      *      The source-chain value stored here must equal the governance chain's actual
-     *      YieldDispatcher address; a mismatch routes fees to a wrong/empty address with no
+     *      YieldDispatcherUpgradeable address; a mismatch routes fees to a wrong/empty address with no
      *      recovery path (fail-closed, no third-party theft).
      * @param _yieldDispatcher - Address of the yield dispatcher contract.
      */

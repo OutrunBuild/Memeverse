@@ -2,7 +2,7 @@
 pragma solidity ^0.8.35;
 
 /// @title IMemeverseLiquidityImpl
-/// @notice Selector interface for the MemeverseLiquidityImpl delegatecall sibling. The MemeverseLauncher
+/// @notice Selector interface for the MemeverseLiquidityImpl delegatecall sibling. The MemeverseLauncherUpgradeable
 ///         facade encodes these selectors when delegatecalling into the liquidity sibling, and the
 ///         MemeverseLaunchImpl sibling uses `deployBootstrapLiquidity.selector` for its nested bootstrap
 ///         delegatecall. Each signature must match the implementation byte-for-byte so the delegatecall
@@ -44,7 +44,7 @@ interface IMemeverseLiquidityImpl {
     ///         Approve the launcher proxy as a POL spender first (the burn is executed by the proxy on the
     ///         caller's behalf).
     /// @dev Invoked via delegatecall by the facade's `redeemMemecoinLiquidity`. Under delegatecall `msg.sender`
-    ///      is the original caller (POL burner, LP/refund recipient). POLend also reaches this entry through
+    ///      is the original caller (POL burner, LP/refund recipient). POLendUpgradeable also reaches this entry through
     ///      the facade callback ABI. The POL burn is executed by the launcher proxy on the caller's behalf, so
     ///      the caller must first approve the launcher proxy as a POL spender for at least `amountInPOL`;
     ///      otherwise the call reverts with `ERC20InsufficientAllowance`.
@@ -59,9 +59,9 @@ interface IMemeverseLiquidityImpl {
         external
         returns (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount);
 
-    /// @notice Settles the leveraged auxiliary-liquidity portion on behalf of POLend.
+    /// @notice Settles the leveraged auxiliary-liquidity portion on behalf of POLendUpgradeable.
     /// @dev Invoked via delegatecall by the facade's `settleLeveragedAuxiliaryLiquidity`. The facade keeps the
-    ///      `msg.sender == polend` guard on the facade ABI, so under delegatecall `msg.sender` here is POLend.
+    ///      `msg.sender == polend` guard on the facade ABI, so under delegatecall `msg.sender` here is POLendUpgradeable.
     function settleLeveragedAuxiliaryLiquidity(uint256 verseId)
         external
         returns (uint256 polAmount, uint256 ptAmount, uint256 uAssetAmount);

@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -142,12 +142,12 @@ contract MemeverseLauncherRegistrationTest is Test, MemeverseLauncherTestHelper 
         polend = new MockLauncherRegistrationPOLend();
         memecoin = new MockLauncherRegistrationToken();
         pol = new MockLauncherRegistrationToken();
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         OWNER,
                         address(0x1),
@@ -424,7 +424,7 @@ contract MemeverseLauncherRegistrationTest is Test, MemeverseLauncherTestHelper 
         IMemeverseLauncher.Memeverse memory stored = launcher.getMemeverseByVerseId(uniqueId);
         assertEq(stored.uri, "ipfs://first");
         assertEq(stored.desc, "first");
-        assertEq(MemeverseLauncher(launcherProxy).communitiesMap(uniqueId, 0), "https://site-1");
+        assertEq(MemeverseLauncherUpgradeable(launcherProxy).communitiesMap(uniqueId, 0), "https://site-1");
     }
 
     /// @notice Returns the standard omnichain id array used by tests.

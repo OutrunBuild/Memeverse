@@ -16,7 +16,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
@@ -42,7 +42,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         bytes4(keccak256("UnauthorizedPoolInitializer()"));
 
     MockPoolManagerForHookLiquidity internal mockManager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseUniswapHookLens internal lens;
     MemeverseSwapRouter internal router;
     MockERC20 internal token0;
@@ -52,15 +52,18 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
     function _deployHookProxyForManager(IPoolManager manager_, address owner_, address treasury_)
         internal
-        returns (MemeverseUniswapHook deployed)
+        returns (MemeverseUniswapHookUpgradeable deployed)
     {
-        // Deploy the real MemeverseUniswapHook, its three facets, and the LP token implementation behind a
+        // Deploy the real MemeverseUniswapHookUpgradeable, its three facets, and the LP token implementation behind a
         // CREATE2-mined flag-address UUPS proxy so production address validation is exercised.
         address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
-        return MemeverseUniswapHook(hookProxy);
+        return MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
-    function _deployHookProxy(address owner_, address treasury_) internal returns (MemeverseUniswapHook deployed) {
+    function _deployHookProxy(address owner_, address treasury_)
+        internal
+        returns (MemeverseUniswapHookUpgradeable deployed)
+    {
         deployed = _deployHookProxyForManager(IPoolManager(address(mockManager)), owner_, treasury_);
     }
 
@@ -128,7 +131,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         (address lpToken,,) = hook.poolInfo(poolId);
 
         assertGt(lpToken.code.length, 0, "lp code");
-        assertEq(MemeverseUniswapHook(address(hook)).lpTokenImplementation().code.length > 0, true, "impl code");
+        assertEq(
+            MemeverseUniswapHookUpgradeable(address(hook)).lpTokenImplementation().code.length > 0, true, "impl code"
+        );
         assertEq(UniswapLP(lpToken).owner(), address(hook), "owner");
         assertEq(PoolId.unwrap(UniswapLP(lpToken).poolId()), PoolId.unwrap(poolId), "pool id");
         assertEq(UniswapLP(lpToken).memeverseUniswapHook(), address(hook), "hook");
@@ -169,7 +174,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
     function testBeforeInitialize_RevertsWithoutAuthorizedInitializer() external {
         MockPoolManagerForHookLiquidity freshManager = new MockPoolManagerForHookLiquidity();
-        MemeverseUniswapHook freshHook =
+        MemeverseUniswapHookUpgradeable freshHook =
             _deployHookProxyForManager(IPoolManager(address(freshManager)), address(this), address(this));
         MockERC20 freshToken0 = new MockERC20("Fresh0", "F0", 18);
         MockERC20 freshToken1 = new MockERC20("Fresh1", "F1", 18);
@@ -1277,7 +1282,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     /// @notice Verifies preorder settlement requires the pool to be initialized.
     function testExecutePreorderSettlement_RevertsWhenPoolNotInitialized() external {
         MockPoolManagerForHookLiquidity uninitializedManager = new MockPoolManagerForHookLiquidity();
-        MemeverseUniswapHook uninitializedHook =
+        MemeverseUniswapHookUpgradeable uninitializedHook =
             _deployHookProxyForManager(IPoolManager(address(uninitializedManager)), address(this), address(this));
         PoolKey memory uninitializedKey = PoolKey({
             currency0: Currency.wrap(address(token0)),
@@ -1474,7 +1479,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     }
 
     function testProxyInitializeSetsOwnerTreasuryAndLaunchFeeConfig() external {
-        MemeverseUniswapHook initialized = _deployHookProxy(address(0xA11CE), address(0xFEE));
+        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(0xA11CE), address(0xFEE));
 
         assertEq(initialized.owner(), address(0xA11CE), "owner");
         assertEq(initialized.treasury(), address(0xFEE), "treasury");
@@ -1486,14 +1491,14 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     }
 
     function testNonOwnerCannotUpgrade() external {
-        MemeverseUniswapHook initialized = _deployHookProxy(address(this), address(this));
+        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(this), address(this));
         MemeverseUniswapHookV2 newImplementation = new MemeverseUniswapHookV2(IPoolManager(address(mockManager)));
 
         // UUPS `_authorizeUpgrade` runs under onlyOwner inside the proxy delegatecall context, so a non-owner
         // caller is rejected with OwnableUnauthorizedAccount before the implementation slot is touched.
         vm.prank(address(0xB0B));
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xB0B)));
-        MemeverseUniswapHook(address(initialized)).upgradeToAndCall(address(newImplementation), "");
+        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(address(newImplementation), "");
     }
 
     /// @notice Verifies an owner-driven UUPS upgrade to the V2 shell preserves V1 hook storage (owner, treasury,
@@ -1504,7 +1509,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     ///      authorization lives on the implementation (`_authorizeUpgrade`, onlyOwner), so the owner can drive the
     ///      upgrade directly through the proxy without a ProxyAdmin.
     function testOwnerCanUpgradeAndPreserveStorage() external {
-        MemeverseUniswapHook initialized = MemeverseUniswapHook(
+        MemeverseUniswapHookUpgradeable initialized = MemeverseUniswapHookUpgradeable(
             deployHookAtFlagAddress(IPoolManager(address(mockManager)), address(this), address(0xFEE), address(0xD00D))
         );
         initialized.setPoolInitializer(address(0xBEEF));
@@ -1520,7 +1525,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         MemeverseUniswapHookV2 newImplementation = new MemeverseUniswapHookV2(IPoolManager(address(mockManager)));
 
         // Owner drives the upgrade directly through the proxy via UUPS upgradeToAndCall (no ProxyAdmin).
-        MemeverseUniswapHook(address(initialized)).upgradeToAndCall(address(newImplementation), "");
+        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(address(newImplementation), "");
 
         assertEq(MemeverseUniswapHookV2(address(initialized)).version(), 2, "version");
         assertEq(vm.load(address(initialized), ownableSlot), snapshotOwner, "owner survived");
@@ -1542,7 +1547,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     }
 
     function testOwnerCannotUpgradeToImplementationWithDifferentPoolManager() external {
-        MemeverseUniswapHook initialized = _deployHookProxy(address(this), address(this));
+        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(this), address(this));
         MockPoolManagerForHookLiquidity differentManager = new MockPoolManagerForHookLiquidity();
         MemeverseUniswapHookV2 newImplementation = new MemeverseUniswapHookV2(IPoolManager(address(differentManager)));
 
@@ -1556,17 +1561,17 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
                 address(differentManager)
             )
         );
-        MemeverseUniswapHook(address(initialized)).upgradeToAndCall(address(newImplementation), "");
+        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(address(newImplementation), "");
     }
 
     function testOwnerCannotUpgradeToCodelessImplementation() external {
-        MemeverseUniswapHook initialized = _deployHookProxy(address(this), address(this));
+        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(this), address(this));
 
         // An EOA upgrade target has no code, so the drift-check pre-check must reject it with a
         // named error before the ImmutableState external call would produce an opaque decode revert.
         address eoaTarget = address(0xDEAD);
         vm.expectRevert(abi.encodeWithSelector(IMemeverseUniswapHook.UpgradeTargetCodeNotReady.selector, eoaTarget));
-        MemeverseUniswapHook(address(initialized)).upgradeToAndCall(eoaTarget, "");
+        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(eoaTarget, "");
     }
 
     /// @notice Verifies initialize rejects a zero launcher binding (C1 write-once launcher invariant).
@@ -1574,9 +1579,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
     ///      (with dummy non-zero facets) exercises it without the multi-step deployHookAtFlagAddress path
     ///      (whose preceding sub-calls would consume vm.expectRevert).
     function testInitialize_RevertsWhenLauncherZero() external {
-        MemeverseUniswapHook hookImpl = new MemeverseUniswapHook(IPoolManager(address(1)));
+        MemeverseUniswapHookUpgradeable hookImpl = new MemeverseUniswapHookUpgradeable(IPoolManager(address(1)));
         bytes memory initData = abi.encodeCall(
-            MemeverseUniswapHook.initialize,
+            MemeverseUniswapHookUpgradeable.initialize,
             (address(this), address(this), address(1), address(1), address(1), address(1), address(0))
         );
         vm.expectRevert(IMemeverseUniswapHook.ZeroAddress.selector);
@@ -1585,7 +1590,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
     function testConstructorRevertsWhenPoolManagerIsZero() external {
         vm.expectRevert(IMemeverseUniswapHook.ZeroAddress.selector);
-        new MemeverseUniswapHook(IPoolManager(address(0)));
+        new MemeverseUniswapHookUpgradeable(IPoolManager(address(0)));
     }
 
     struct RollbackSnapshot {

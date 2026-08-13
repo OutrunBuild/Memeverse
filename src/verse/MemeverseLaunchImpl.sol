@@ -20,7 +20,7 @@ import {IMemeverseLiquidityImpl} from "./interfaces/IMemeverseLiquidityImpl.sol"
 import {IMemeverseSettlementImpl} from "./interfaces/IMemeverseSettlementImpl.sol";
 
 /// @title MemeverseLaunchImpl
-/// @notice Delegatecall-only sibling that owns the launch-lifecycle flows for MemeverseLauncher: verse
+/// @notice Delegatecall-only sibling that owns the launch-lifecycle flows for MemeverseLauncherUpgradeable: verse
 ///         registration (memecoin/POL deploy, LayerZero peer wiring, verse config storage), genesis and
 ///         preorder deposits, and the adaptive `changeStage` dispatcher (Genesis -> Locked/Refund,
 ///         Locked -> Unlocked).
@@ -48,7 +48,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
     MemeverseLauncherStorage private memeverseLauncherStorage;
 
     // =========================================================================================================
-    // Verse registration (relocated from MemeverseLauncher facade; bodies byte-for-byte, only the
+    // Verse registration (relocated from MemeverseLauncherUpgradeable facade; bodies byte-for-byte, only the
     // `whenNotPaused` modifier moved back to the facade — the `msg.sender == memeverseRegistrar` ACL stays
     // in the body because it travels correctly under delegatecall).
     // =========================================================================================================
@@ -163,7 +163,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
     }
 
     // =========================================================================================================
-    // Genesis + preorder deposits (relocated from MemeverseLauncher facade; bodies byte-for-byte, only the
+    // Genesis + preorder deposits (relocated from MemeverseLauncherUpgradeable facade; bodies byte-for-byte, only the
     // `versIdValidate` / `whenNotPaused` modifiers moved back to the facade).
     // =========================================================================================================
 
@@ -268,7 +268,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
     }
 
     // =========================================================================================================
-    // changeStage dispatcher (relocated from MemeverseLauncher facade; body byte-for-byte, only the
+    // changeStage dispatcher (relocated from MemeverseLauncherUpgradeable facade; body byte-for-byte, only the
     // `versIdValidate` modifier moved back to the facade). The Genesis branch runs the bootstrap deploy
     // chain inline and ends with a nested delegatecall into the liquidity sibling; the Locked branch issues
     // a nested delegatecall into the settlement sibling. Both nested delegatecalls are

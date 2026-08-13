@@ -5,17 +5,17 @@ import {Test} from "forge-std/Test.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {MemeverseLauncher} from "../../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLauncherTestHelper} from "./MemeverseLauncherTestHelper.sol";
 
 contract MemeverseLauncherTestHelperSanityTest is Test, MemeverseLauncherTestHelper {
     function test_slotRoundTrip_preorderState() external {
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         address proxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),

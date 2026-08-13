@@ -138,7 +138,7 @@
           "id": "swap-hook-liquidity",
           "paths": [
             "src/swap/libraries/MemeversePoolKeyLib.sol",
-            "src/swap/MemeverseUniswapHook.sol",
+            "src/swap/MemeverseUniswapHookUpgradeable.sol",
             "src/swap/libraries/LiquidityQuote.sol",
             "src/swap/tokens/UniswapLP.sol",
             "src/swap/interfaces/IMemeverseUniswapHook.sol"
@@ -176,7 +176,7 @@
           ],
           "id": "launcher-core",
           "paths": [
-            "src/verse/MemeverseLauncher.sol",
+            "src/verse/MemeverseLauncherUpgradeable.sol",
             "src/verse/interfaces/IMemeverseLauncher.sol",
             "src/verse/MemeverseLaunchImpl.sol",
             "src/verse/interfaces/IMemeverseLaunchImpl.sol"
@@ -231,11 +231,11 @@
           ],
           "id": "unlock-protection-safety",
           "paths": [
-            "src/verse/MemeverseLauncher.sol",
+            "src/verse/MemeverseLauncherUpgradeable.sol",
             "src/verse/interfaces/IMemeverseLauncher.sol",
             "src/swap/MemeverseSwapRouter.sol",
             "src/swap/interfaces/IMemeverseSwapRouter.sol",
-            "src/swap/MemeverseUniswapHook.sol",
+            "src/swap/MemeverseUniswapHookUpgradeable.sol",
             "src/swap/interfaces/IMemeverseUniswapHook.sol"
           ]
         },
@@ -287,7 +287,7 @@
           ],
           "id": "verse-dispatch-and-deployment",
           "paths": [
-            "src/verse/YieldDispatcher.sol",
+            "src/verse/YieldDispatcherUpgradeable.sol",
             "src/verse/interfaces/IYieldDispatcher.sol",
             "src/verse/deployment/MemeverseProxyDeployer.sol",
             "src/verse/interfaces/IMemeverseProxyDeployer.sol"
@@ -374,7 +374,7 @@
           ],
           "id": "polend-core",
           "paths": [
-            "src/polend/POLend.sol",
+            "src/polend/POLendUpgradeable.sol",
             "src/polend/interfaces/IPOLend.sol",
             "src/polend/interfaces/IUniversalAssets.sol"
           ]
@@ -391,7 +391,7 @@
           ],
           "id": "polsplitter-core",
           "paths": [
-            "src/polend/POLSplitter.sol",
+            "src/polend/POLSplitterUpgradeable.sol",
             "src/polend/interfaces/IPOLSplitter.sol",
             "src/polend/tokens/SplitterToken.sol",
             "src/polend/tokens/PrincipalToken.sol",
@@ -689,7 +689,7 @@
           ],
           "id": "swap-hook-settlement-routing",
           "paths": [
-            "src/swap/MemeverseUniswapHook.sol",
+            "src/swap/MemeverseUniswapHookUpgradeable.sol",
             "src/swap/interfaces/IMemeverseUniswapHook.sol",
             "src/swap/libraries/CurrencySettler.sol"
           ]
@@ -711,7 +711,7 @@
           ],
           "id": "swap-hook-direct-surface",
           "paths": [
-            "src/swap/MemeverseUniswapHook.sol",
+            "src/swap/MemeverseUniswapHookUpgradeable.sol",
             "src/swap/interfaces/IMemeverseUniswapHook.sol"
           ]
         },

@@ -9,7 +9,7 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @title MemeverseLauncherFeePreviewConsistencyTest
 /// @notice Anti-drift sentinel: `MemeverseFeePreviewReader.quoteDistributionLzFee` must return exactly the
-///         native fee that `MemeverseLauncher.redeemAndDistributeFees` requires, so a keeper funding the
+///         native fee that `MemeverseLauncherUpgradeable.redeemAndDistributeFees` requires, so a keeper funding the
 ///         quoted amount never hits `InvalidLzFee`.
 /// @dev The preview reader and the fee distributor compute the same fee split / pair-fee mapping through
 ///      shared `MemeverseLauncherLib` helpers (`splitExecutorReward`, `mapPairFees`). The auxiliary-gov

@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
-import {MemeverseUniswapHook} from "../../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {SwapFacet} from "../../../src/swap/SwapFacet.sol";
 import {DynamicFeeFacet} from "../../../src/swap/DynamicFeeFacet.sol";
 import {SettlementFacet} from "../../../src/swap/SettlementFacet.sol";
@@ -15,11 +15,11 @@ import {UniswapLP} from "../../../src/swap/tokens/UniswapLP.sol";
 
 import {RealV4PoolManagerBytecode} from "../../swap/helpers/RealV4PoolManagerBytecode.sol";
 
-/// @notice Standalone white-box helper for MemeverseUniswapHook proxy storage and flag-address deployment.
-/// @dev Does NOT inherit MemeverseUniswapHook; only inherits Test. Three responsibilities:
+/// @notice Standalone white-box helper for MemeverseUniswapHookUpgradeable proxy storage and flag-address deployment.
+/// @dev Does NOT inherit MemeverseUniswapHookUpgradeable; only inherits Test. Three responsibilities:
 ///      1. `deployRealPoolManager`: deploys the REAL v4-core PoolManager from its pinned creation bytecode
 ///         (v4-core's fixed `pragma 0.8.26` blocks importing the contract under this repo's 0.8.35 toolchain).
-///      2. `deployHookAtFlagAddress`: deploys a REAL diamond Router (MemeverseUniswapHook) behind a CREATE2-mined
+///      2. `deployHookAtFlagAddress`: deploys a REAL diamond Router (MemeverseUniswapHookUpgradeable) behind a CREATE2-mined
 ///         UUPS proxy whose address carries the v4 hook permission flags (low 14 bits == 0x28CC), together
 ///         with its three delegatecall facets (SwapFacet/DynamicFeeFacet/SettlementFacet) and the LP token impl.
 ///         Tests therefore exercise the production address validation and facet bindings.
@@ -31,7 +31,7 @@ import {RealV4PoolManagerBytecode} from "../../swap/helpers/RealV4PoolManagerByt
 abstract contract HookStorageHelper is StorageSlotPrimitives {
     using PoolIdLibrary for PoolId;
 
-    // ── Hook permission flags (must mirror MemeverseUniswapHook.getHookPermissions) ──
+    // ── Hook permission flags (must mirror MemeverseUniswapHookUpgradeable.getHookPermissions) ──
     // Bits set: beforeInitialize(13) | beforeAddLiquidity(11) | beforeSwap(7) | afterSwap(6)
     //         | beforeSwapReturnDelta(3) | afterSwapReturnDelta(2) == 0x28CC.
     uint160 internal constant HOOK_REQUIRED_FLAGS =
@@ -39,11 +39,11 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
     uint160 internal constant HOOK_FLAG_MASK = uint160((1 << 14) - 1);
 
     // erc7201:outrun.storage.MemeverseUniswapHook namespace location
-    // (src/swap/MemeverseUniswapHook.sol:147).
+    // (src/swap/MemeverseUniswapHookUpgradeable.sol:147).
     bytes32 internal constant HOOK_SLOT = 0x9f27a56b97c42ac08d93ff5a852851d11eb052b06dc4c041fc6bfa4414f7e000;
 
     // Struct field offsets in MemeverseUniswapHookStorage
-    // (src/swap/MemeverseUniswapHook.sol:131-144).
+    // (src/swap/MemeverseUniswapHookUpgradeable.sol:131-144).
     uint256 internal constant OFF_TREASURY = 0;
     uint256 internal constant OFF_LAUNCHER = 1;
     uint256 internal constant OFF_SUPPORTED_FEE_CURRENCIES = 2; // mapping(address => bool)
@@ -86,7 +86,7 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
 
     // ── Flag-address deployment ──
 
-    /// @notice Deploys a REAL diamond Router (MemeverseUniswapHook) plus its three facets behind a CREATE2-mined
+    /// @notice Deploys a REAL diamond Router (MemeverseUniswapHookUpgradeable) plus its three facets behind a CREATE2-mined
     ///         UUPS proxy whose low 14 bits equal 0x28CC, so production `_validateProxyHookAddress()` passes
     ///         at `initialize`.
     /// @dev Deployment sequence. CREATE order (nonce increments from `nonceBefore`):
@@ -94,7 +94,7 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
     ///        N+1: SwapFacet(manager)
     ///        N+2: DynamicFeeFacet(manager)
     ///        N+3: SettlementFacet(manager)
-    ///        N+4: MemeverseUniswapHook impl (manager)
+    ///        N+4: MemeverseUniswapHookUpgradeable impl (manager)
     ///      then CREATE2-mined UUPS hook proxy initialized with the Router signature
     ///      `(owner, treasury, lpTokenImpl, swapFacet, dynamicFeeFacet, settlementFacet, launcher)`. The proxy initCode
     ///      embeds the hook impl address plus all four pointer addresses (LP impl + 3 facets), every one of which
@@ -121,7 +121,7 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
 
         // (b) Assemble hook proxy initCode with the Router initialize signature.
         bytes memory hookInitData = abi.encodeCall(
-            MemeverseUniswapHook.initialize,
+            MemeverseUniswapHookUpgradeable.initialize,
             (
                 hookOwner,
                 treasury,
@@ -159,7 +159,7 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
         require(address(settlementFacet) == predictedSettlementFacet, "settlement facet drifted");
 
         // (e) Deploy the hook implementation (the REAL production Router contract).
-        MemeverseUniswapHook hookImpl = new MemeverseUniswapHook(manager);
+        MemeverseUniswapHookUpgradeable hookImpl = new MemeverseUniswapHookUpgradeable(manager);
         require(address(hookImpl) == predictedHookImpl, "hook impl drifted");
 
         // (f) CREATE2-deploy the hook proxy at the mined predictedProxy address; initialize runs here.
@@ -192,7 +192,7 @@ abstract contract HookStorageHelper is StorageSlotPrimitives {
     function seedActiveLiquiditySharesForTest(address proxy, PoolId poolId, address owner, uint256 activeShares)
         internal
     {
-        (address liquidityToken,,) = MemeverseUniswapHook(proxy).poolInfo(poolId);
+        (address liquidityToken,,) = MemeverseUniswapHookUpgradeable(proxy).poolInfo(poolId);
         require(liquidityToken != address(0), "pool not initialized");
 
         // cachedLpTotalSupply[poolId] += activeShares

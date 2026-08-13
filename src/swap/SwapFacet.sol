@@ -36,7 +36,7 @@ import {MemeverseSwapFeeBase} from "./MemeverseSwapFeeBase.sol";
 ///         LP per-share fee accounting.
 /// @dev This facet is the delegatecall target for the v4 hook callbacks (`beforeSwap` / `afterSwap` /
 ///      `beforeInitialize` / `beforeAddLiquidity`) plus the swap-side fee helpers. The Router
-///      (`MemeverseUniswapHook`) dispatches each callback by `_forwardCalldata`-ing into the matching
+///      (`MemeverseUniswapHookUpgradeable`) dispatches each callback by `_forwardCalldata`-ing into the matching
 ///      `*Logic` function; the facet then executes in the Router's (hook proxy) storage context, so
 ///      `address(this) == hook` and all storage reads/writes land in the shared hook namespace.
 ///      `onlyViaRouter` reverts on a direct CALL: under a direct CALL `address(this)` is the facet's own

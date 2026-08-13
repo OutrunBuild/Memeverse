@@ -49,7 +49,7 @@ library SwapGuardMath {
     /// @notice Reverts when a pool pair includes native (zero-address) currency; Memeverse pools are ERC20-only.
     /// @dev Single source of the pool-pair native-currency gate (was 4 hand-synced copies across
     ///      Hook / SwapFacet / Router / Lens); do not re-inline. The per-currency native-currency rejection
-    ///      in `MemeverseUniswapHook.setProtocolFeeCurrency` is a separate check and stays inline.
+    ///      in `MemeverseUniswapHookUpgradeable.setProtocolFeeCurrency` is a separate check and stays inline.
     /// @param currency0 One side of the pool pair.
     /// @param currency1 The other side of the pool pair.
     function revertIfNativeCurrencyUnsupported(Currency currency0, Currency currency1) internal pure {

@@ -60,7 +60,7 @@ MemeverseV2 的主路径可以概括为：
 
 ### 4.2 资金模型
 
-普通 Genesis 入金按 POLend 聚合账本累计：
+普通 Genesis 入金按 POLendUpgradeable 聚合账本累计：
 
 - `totalNormalFunds`
 - `userGenesisFund`
@@ -72,7 +72,7 @@ MemeverseV2 的主路径可以概括为：
 - 成功路径只按 `totalGenesisFunds = totalNormalFunds + totalLeveragedDebt` 计创世部署资金，preorder 不计入该口径，且必须满足 `totalGenesisFunds <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`，其中 `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = type(uint128).max`。
 - Genesis 期新增杠杆前，必须按累计 `nextTotalLeveragedInterest = totalLeveragedInterest + interestAmount` 推导 `previewDebt = nextTotalLeveragedInterest * 1e18 / market.interestRate`，并同时满足 `previewDebt <= debtCap` 与 `totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`，不能只看当前调用 delta。
 
-随后按 POLend 四池模型执行 `70/30` 规则，进入 `memecoin/uAsset` 主池与 `POL/uAsset`、`PT/uAsset`、`PT/POL` 三个辅助池路径。
+随后按 POLendUpgradeable 四池模型执行 `70/30` 规则，进入 `memecoin/uAsset` 主池与 `POL/uAsset`、`PT/uAsset`、`PT/POL` 三个辅助池路径。
 
 POL raw、PT raw、YT raw 与主池 LP raw 保持 1:1 raw-unit identity；PT 兑付 `uAsset` 使用 `Locked` / 四池初始化时记录的固定 backing ratio，不使用 `1 raw PT = 1 raw uAsset`。
 
@@ -103,7 +103,7 @@ POL raw、PT raw、YT raw 与主池 LP raw 保持 1:1 raw-unit identity；PT 兑
 
 - 部署 memecoin / POL
 - 按治理链位置决定是否部署或预测 `yieldVault / governor / incentivizer`
-- 按 POLend 四池模型创建 `memecoin/uAsset` 主池与 `POL/uAsset`、`PT/uAsset`、`PT/POL` 三个辅助池
+- 按 POLendUpgradeable 四池模型创建 `memecoin/uAsset` 主池与 `POL/uAsset`、`PT/uAsset`、`PT/POL` 三个辅助池
 - 若存在 preorder，则执行 preorder settlement
 - 上述四池创建采用“Launcher 给出 desired budgets，Router 返回 actual execution”模型。创建是否成功以实际 spend / actual mint 为准，不以 preview/equality 为准。
 - `memecoin/uAsset` 主池只记录实际执行后真正进入主池的资金与实际 mint 出的 `POL`；该结果同时决定 PT backing ratio 的记录口径。
@@ -120,7 +120,7 @@ POL raw、PT raw、YT raw 与主池 LP raw 保持 1:1 raw-unit identity；PT 兑
 用户可以：
 
 - 通过 `claimNormalYT` 领取普通创世初始 YT
-- 通过 POLend `claimLeveragedYT` 领取杠杆创世初始 YT
+- 通过 POLendUpgradeable `claimLeveragedYT` 领取杠杆创世初始 YT
 - 用 `uAsset + memecoin` 加池 mint 新 POL
 - 领取线性解锁的 preorder memecoin
 
@@ -130,7 +130,7 @@ POL raw、PT raw、YT raw 与主池 LP raw 保持 1:1 raw-unit identity；PT 兑
 
 - 从 `memecoin/uAsset` 主池与三个辅助池捕获 fee
 - 主池 `memecoin/uAsset` fee 按 Memeverse 规则分流：`memecoin` fee 进入 yield 路径，`uAsset` fee 拆成 `executorReward + govFee` 后进入执行者奖励与 governor treasury 路径
-- 辅助池 `POL/uAsset`、`PT/uAsset`、`PT/POL` fee 按 POLend 四池规则拆分：POL fee burn，普通侧 fee 进入普通领取账本，杠杆侧 `uAsset` fee 分发到 governor treasury 路径，杠杆侧 `PT` fee 在 settle 前走 `preRedeemPTFee`，settle 后走 `redeemPT`
+- 辅助池 `POL/uAsset`、`PT/uAsset`、`PT/POL` fee 按 POLendUpgradeable 四池规则拆分：POL fee burn，普通侧 fee 进入普通领取账本，杠杆侧 `uAsset` fee 分发到 governor treasury 路径，杠杆侧 `PT` fee 在 settle 前走 `preRedeemPTFee`，settle 后走 `redeemPT`
 - 普通用户领取历史辅助池 normal fee 时，`claimNormalFees` 使用 full-precision `mulDiv` 计算 entitlement，避免 `accUAssetFee` 或 `accPTFee` 较大时因中间乘法溢出导致可表示账本无法领取。
 - 普通 PT fee 在 `settled=false` 时直接按份额转出 `PT`；在 `settled=true` 时改为按 `previewPTToUAsset` 确认 backing 后走 `redeemPT -> uAsset`。若该 backing 为零，则本次不标记为已领，留待后续重试。
 
@@ -179,14 +179,14 @@ V2 当前已实现的启动保护是：
 
 - `redeemMemecoinLiquidity(verseId, amountInPOL)` / `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap)`：burn `amountInPOL` 后令 `amountInLP = amountInPOL`；烧毁由 launcher 代理凭 allowance 代执行，调用前须先把 launcher 代理 approve 为 POL spender（额度 ≥ `amountInPOL`），否则回退 `ERC20InsufficientAllowance`；`unwrap=false` 转出 `memecoin/uAsset` LP token，`unwrap=true` 移除 LP 并发送底层 `memecoin` 与 `uAsset`
 - `redeemAuxiliaryLiquidity`
-- `POLSplitter.redeemPT / redeemYT`
-- POLend leveraged residual claims
+- `POLSplitterUpgradeable.redeemPT / redeemYT`
+- POLendUpgradeable leveraged residual claims
 - 按产品定义允许的兼容性补池行为
 
-当前实现的解锁迁移同交易 settlement 顺序与公开 swap 恢复时间写入约束见 [docs/spec/invariants.md](../invariants.md) INV-07A（窗口存在性论证见 INV-12；数值见 [docs/spec/verse/config-matrix.md §3](config-matrix.md)）。迁移步骤为：`POLSplitter.settle(...)`、可选 `POLend.executeGlobalSettlement(...)`、hook 的 `publicSwapResumeTime` 写入；hook-side public swap protection 在该写入后生效；不声明 settlement callback window 由 launcher-side transient gate 或已生效的公开 swap block 保护。
+当前实现的解锁迁移同交易 settlement 顺序与公开 swap 恢复时间写入约束见 [docs/spec/invariants.md](../invariants.md) INV-07A（窗口存在性论证见 INV-12；数值见 [docs/spec/verse/config-matrix.md §3](config-matrix.md)）。迁移步骤为：`POLSplitterUpgradeable.settle(...)`、可选 `POLendUpgradeable.executeGlobalSettlement(...)`、hook 的 `publicSwapResumeTime` 写入；hook-side public swap protection 在该写入后生效；不声明 settlement callback window 由 launcher-side transient gate 或已生效的公开 swap block 保护。
 
 - 进入 `Unlocked` 后，普通赎回可用性由阶段与各函数自身条件决定；公开 swap 仍由 hook 的保护时间单独阻断。
-- bootstrap residual 的 normal share 通过 `redeemAuxiliaryLiquidity` 发放；leveraged share 通过 POLend 的 leveraged auxiliary settlement 输出发放。协议不保留一个永久 launcher bucket 来长期托管这类 residual。
+- bootstrap residual 的 normal share 通过 `redeemAuxiliaryLiquidity` 发放；leveraged share 通过 POLendUpgradeable 的 leveraged auxiliary settlement 输出发放。协议不保留一个永久 launcher bucket 来长期托管这类 residual。
 
 ### 7.3 保护窗口内必须禁止什么
 
@@ -238,9 +238,9 @@ V2 当前已实现的启动保护是：
 
 ## 10. 生命周期中的关键资金流
 
-- Genesis 入金按 POLend 四池规则进入主池与辅助池路径。
+- Genesis 入金按 POLendUpgradeable 四池规则进入主池与辅助池路径。
 - preorder 单独积累，直到进入 `Locked` 时统一换成 memecoin。
-- `Locked` 期主池与辅助池 fee 会按 POLend 四池规则拆成 burn、执行者奖励、governor treasury 收入、普通 fee 与 yield 收入。
+- `Locked` 期主池与辅助池 fee 会按 POLendUpgradeable 四池规则拆成 burn、执行者奖励、governor treasury 收入、普通 fee 与 yield 收入。
 - 实际 `Locked -> Unlocked` 迁移完成后，协议应优先保障 POL 与 Genesis LP 的退出，而不是立即恢复公开市场竞争。
 
 ## 11. 当前生命周期规则

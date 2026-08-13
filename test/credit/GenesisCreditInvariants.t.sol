@@ -5,15 +5,15 @@ import {Test} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {POLend} from "../../src/polend/POLend.sol";
+import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {BurnableMockERC20} from "../mocks/polend/POLendMocks.sol";
 import {MockGenesisCreditFactory} from "../mocks/credit/MockGenesisCreditFactory.sol";
 
 /// @notice Minimal launcher mock for the credit-accounting invariant. Only the launcher surface
-///         POLend reads during the credit lifecycle is implemented (genesis funds, uAsset lookup,
-///         debt-cap base, stage). The stage is pinned to Genesis: POLend's own market state machine
+///         POLendUpgradeable reads during the credit lifecycle is implemented (genesis funds, uAsset lookup,
+///         debt-cap base, stage). The stage is pinned to Genesis: POLendUpgradeable's own market state machine
 ///         (None -> Genesis -> Locked/Refund) gates re-entry, so the launcher stage never needs to
 ///         advance for these accounting invariants.
 contract InvariantLauncher {
@@ -53,8 +53,8 @@ contract InvariantLauncher {
     }
 
     // --- Settlement surface (Tier 2) ---
-    // POLend calls settleLeveragedAuxiliaryLiquidity during executeGlobalSettlement. The handler
-    // pre-loads the uAsset amount to mint to POLend (debt + a fuzzed residual) so recovered uAsset
+    // POLendUpgradeable calls settleLeveragedAuxiliaryLiquidity during executeGlobalSettlement. The handler
+    // pre-loads the uAsset amount to mint to POLendUpgradeable (debt + a fuzzed residual) so recovered uAsset
     // always covers debt — no dust-reserve shortfall — and leaves the chosen residual for
     // claimResidual. polAmount=ptAmount=0 skips the POL/splitter paths this mock does not model.
     BurnableMockERC20 internal _uAsset;
@@ -106,7 +106,7 @@ contract CreditAccountingHandler is Test {
     BurnableMockERC20 internal yt;
     InvariantLauncher internal launcher;
     MockGenesisCreditFactory internal factory;
-    POLend internal polend;
+    POLendUpgradeable internal polend;
 
     // Ghost counter incremented on each successful claimLeveragedYT. The canary test
     // (test_ClaimLifecycleReachable) uses it to prove the Locked->claim lifecycle is reachable
@@ -150,21 +150,21 @@ contract CreditAccountingHandler is Test {
         address treasury,
         address launcher_,
         address creditFactory_
-    ) internal returns (POLend) {
-        POLend impl = new POLend();
+    ) internal returns (POLendUpgradeable) {
+        POLendUpgradeable impl = new POLendUpgradeable();
         // Splitter is never exercised by the credit lifecycle (no settlement); a non-zero placeholder
         // satisfies initialize's address(0) validation.
         bytes memory data = abi.encodeCall(
-            POLend.initialize,
+            POLendUpgradeable.initialize,
             (address(this), interestRate, leveragedDebtFactor, treasury, launcher_, address(this), creditFactory_)
         );
-        return POLend(address(new ERC1967Proxy(address(impl), data)));
+        return POLendUpgradeable(address(new ERC1967Proxy(address(impl), data)));
     }
 
     // --- Fuzzer entry points (called in random order) ---
 
     /// @dev Add GenesisCredit interest to a fuzzed verse. Allow None OR Genesis: the production
-    ///      guard (POLend.sol:207) accepts both and transitions None->Genesis on first call, so a
+    ///      guard (POLendUpgradeable.sol:207) accepts both and transitions None->Genesis on first call, so a
     ///      Genesis-only filter here would freeze both verses at None and make the whole lifecycle
     ///      (finalize/recordYT/claimYT) unreachable — the invariant would run vacuously.
     ///      Skips once the verse left Genesis (Locked/Refund/Settled); swallows debt-cap reverts.
@@ -182,7 +182,7 @@ contract CreditAccountingHandler is Test {
     }
 
     /// @dev Add real-uAsset leveraged interest to a fuzzed verse. Same None||Genesis guard as
-    ///      addCreditInterest (POLend.sol:170 accepts both, transitions None->Genesis); skips once
+    ///      addCreditInterest (POLendUpgradeable.sol:170 accepts both, transitions None->Genesis); skips once
     ///      the verse left Genesis. try/catch absorbs debt-cap reverts so the run continues.
     function addRealInterest(uint256 verseSeed, uint256 amountSeed) external {
         uint256 verseId = (verseSeed % 2 == 0) ? VERSE_A : VERSE_B;
@@ -229,7 +229,7 @@ contract CreditAccountingHandler is Test {
 
     /// @dev Record the leveraged YT token on a fuzzed verse (Locked only, onlyLauncher). Skips
     ///      unless the verse is Locked and YT is unrecorded, so each verse records at most once and
-    ///      never trips recordLeveragedYT's InvalidState guard. YT is minted to POLend upfront so
+    ///      never trips recordLeveragedYT's InvalidState guard. YT is minted to POLendUpgradeable upfront so
     ///      claimLeveragedYT's safeTransfer has inventory to draw from.
     function recordYT(uint256 verseSeed, uint256 ytSeed) external {
         uint256 verseId = (verseSeed % 2 == 0) ? VERSE_A : VERSE_B;
@@ -256,7 +256,7 @@ contract CreditAccountingHandler is Test {
     }
 
     /// @dev Settle a fuzzed verse (Locked -> Settled). The launcher mock mints debt + a fuzzed
-    ///      residual of uAsset to POLend during the call, so recovered uAsset always covers debt
+    ///      residual of uAsset to POLendUpgradeable during the call, so recovered uAsset always covers debt
     ///      (no dust-reserve shortfall) and leaves the chosen residual for claimResidual.
     ///      polAmount=ptAmount=0 skips the POL/splitter paths this mock does not model. try/catch
     ///      swallows any revert so the run continues.
@@ -307,7 +307,7 @@ contract CreditAccountingHandler is Test {
         return credit.balanceOf(address(polend));
     }
 
-    /// @dev Global YT conservation for the shared YT instance: POLend's escrow plus the two
+    /// @dev Global YT conservation for the shared YT instance: POLendUpgradeable's escrow plus the two
     ///      recipients' claimed balances must equal Σ totalLeveragedYT over recorded verses. Both
     ///      verses share one YT token, so the equation is global — per-verse balances would
     ///      cross-contaminate. Returns (held, expected) for the invariant to assert strictly.
@@ -377,7 +377,7 @@ contract GenesisCreditInvariants is StdInvariant, Test {
         targetContract(address(handler));
     }
 
-    /// @dev POLend's escrowed GenesisCredit balance for the shared uAsset must always cover the
+    /// @dev POLendUpgradeable's escrowed GenesisCredit balance for the shared uAsset must always cover the
     ///      total credit interest still outstanding (verses in Genesis). Finalize burns a verse's
     ///      share and refund returns it, so both sides move in lockstep; the `>=` admits the excess
     ///      where a Refund verse's credit is still escrowed pending claim.
@@ -408,7 +408,7 @@ contract GenesisCreditInvariants is StdInvariant, Test {
         assertEq(held, expected, "YT conserved on happy path");
     }
 
-    /// @dev Leveraged YT is conserved globally across the shared-YT mixed pool: POLend's unclaimed
+    /// @dev Leveraged YT is conserved globally across the shared-YT mixed pool: POLendUpgradeable's unclaimed
     ///      escrow plus the two recipients' claimed balances equals Σ totalLeveragedYT over recorded
     ///      verses. Strict equality (not >=): in this handler no YT enters or leaves the
     ///      {polend, REC_A, REC_B} set, so a break signals out-of-band mint/burn/transfer or a

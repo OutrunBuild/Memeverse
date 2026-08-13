@@ -6,9 +6,9 @@ import {BurnableMockERC20Base} from "../common/BurnableMockERC20Base.sol";
 
 import {IPOLend} from "../../../src/polend/interfaces/IPOLend.sol";
 
-/// @notice POLend stand-in for the preorder-launcher integration test.
+/// @notice POLendUpgradeable stand-in for the preorder-launcher integration test.
 /// @dev Returns deterministic zero state for leveraged accounting; mirrors only the
-///      surface that MemeverseLauncher reads during preorder settlement.
+///      surface that MemeverseLauncherUpgradeable reads during preorder settlement.
 contract MockPOLendForPreorderIntegration {
     address internal pt_;
     address internal yt_;

@@ -14,7 +14,7 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
@@ -101,12 +101,12 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         polend = new MockPOLendForLifecycle();
         splitter = new MockPOLSplitterForLifecycle(address(pt), address(yt));
         registry = new MockLzEndpointRegistry();
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -229,10 +229,10 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
 
     /// @notice Writes a full Memeverse struct into proxy storage via the helper.
     /// @dev Bridges the struct-based test pattern to the individual-field helper.
-    /// @notice Returns the launcher cast to the concrete MemeverseLauncher type.
+    /// @notice Returns the launcher cast to the concrete MemeverseLauncherUpgradeable type.
     /// @dev Used for view functions not on IMemeverseLauncher (e.g. auxiliaryLiquidities, RATIO).
-    function _concrete() internal view returns (MemeverseLauncher) {
-        return MemeverseLauncher(launcherProxy);
+    function _concrete() internal view returns (MemeverseLauncherUpgradeable) {
+        return MemeverseLauncherUpgradeable(launcherProxy);
     }
 
     function _writeMemeverse(uint256 verseId, IMemeverseLauncher.Memeverse memory verse) internal {

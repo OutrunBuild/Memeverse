@@ -80,7 +80,7 @@ contract RealisticSwapManagerHarness {
         // `msg.sender == address(key.hooks)` skip condition is never met for initialize, and
         // beforeInitialize correctly fires in both real v4 and this mock. Also note: real v4 calls
         // afterInitialize here (PoolManager.sol:140); this mock omits it because the production
-        // hook sets `afterInitialize: false` (MemeverseUniswapHook.sol:440).
+        // hook sets `afterInitialize: false` (MemeverseUniswapHookUpgradeable.sol:440).
         PoolId poolId = key.toId();
         slot0State[poolId] = Slot0State({sqrtPriceX96: sqrtPriceX96, tick: 0, protocolFee: 0, lpFee: 0});
         _syncPoolStorage(poolId);
@@ -111,7 +111,7 @@ contract RealisticSwapManagerHarness {
         if (params.liquidityDelta > 0) {
             // Real v4 skips beforeModifyLiquidity/afterModifyLiquidity when msg.sender == address(key.hooks)
             // (Hooks.sol noSelfCall guard). Production addLiquidityCore/removeLiquidityCore route through
-            // poolManager.unlock() reentry (MemeverseUniswapHook.sol:647), so msg.sender here IS the hook;
+            // poolManager.unlock() reentry (MemeverseUniswapHookUpgradeable.sol:647), so msg.sender here IS the hook;
             // the beforeAddLiquidity callback must be skipped to match v4, otherwise the mock double-fires
             // the hook's beforeAddLiquidityLogic on every LP add/remove.
             if (msg.sender != address(key.hooks)) {

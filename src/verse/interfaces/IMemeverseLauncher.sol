@@ -5,7 +5,7 @@ import {IMemeverseOFTEnum} from "../../common/types/IMemeverseOFTEnum.sol";
 import {ICrossChainSendErrors} from "../../common/types/ICrossChainSendErrors.sol";
 
 /**
- * @title MemeverseLauncher interface
+ * @title MemeverseLauncherUpgradeable interface
  */
 interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     enum Stage {
@@ -33,7 +33,7 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     }
 
     /// @notice Storage struct. When adding fields in upgrades, append only at the end.
-    /// PT here denotes the Principal Token minted by `POLSplitter` (the principal half of a POL split; the yield
+    /// PT here denotes the Principal Token minted by `POLSplitterUpgradeable` (the principal half of a POL split; the yield
     /// half is the YT, Yield Token).
     struct BootstrapResidualClaims {
         uint256 normalResidualPOL;
@@ -162,8 +162,8 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     /// @return parameters Launcher numeric parameter bundle.
     function getLauncherParameters() external view returns (LauncherParameters memory parameters);
 
-    /// @notice Returns the configured POLend contract.
-    /// @return polend The POLend contract address.
+    /// @notice Returns the configured POLendUpgradeable contract.
+    /// @return polend The POLendUpgradeable contract address.
     function polend() external view returns (address polend);
 
     /// @notice Returns total normal genesis funds for a verse.
@@ -187,7 +187,7 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     /// @return fundBasedAmount Memecoin amount minted per unit of fundraising token.
     function fundMetaDatas(address uAsset) external view returns (uint256 minTotalFund, uint256 fundBasedAmount);
 
-    /// @notice Returns the base amount POLend should use for verse debt capacity.
+    /// @notice Returns the base amount POLendUpgradeable should use for verse debt capacity.
     /// @dev Reverts when the verse id does not map to a registered memeverse.
     /// @param verseId Verse id to inspect.
     /// @return debtCapBase Greater of current normal funds and the uAsset minimum total fund.
@@ -270,7 +270,7 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         external
         returns (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount);
 
-    /// @notice Settles the leveraged auxiliary-liquidity portion for POLend.
+    /// @notice Settles the leveraged auxiliary-liquidity portion for POLendUpgradeable.
     /// @dev Concrete settlement accounting is launcher-defined.
     /// @param verseId Verse id to inspect.
     /// @return polAmount Settled POL amount.

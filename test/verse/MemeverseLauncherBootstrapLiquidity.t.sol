@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {DelegatecallOnly} from "../../src/common/access/DelegatecallOnly.sol";
@@ -59,12 +59,12 @@ contract MemeverseLauncherBootstrapLiquidityTest is Test, MemeverseLauncherTestH
         polend = new MockPOLendForLifecycle();
         splitter = new MockPOLSplitterForLifecycle(address(pt), address(yt));
         registry = new MockLzEndpointRegistry();
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1),
@@ -169,7 +169,7 @@ contract MemeverseLauncherBootstrapLiquidityTest is Test, MemeverseLauncherTestH
         assertEq(uint256(stage), uint256(IMemeverseLauncher.Stage.Locked), "returned stage");
         assertEq(uint256(launcher.getStageByVerseId(verseId)), uint256(IMemeverseLauncher.Stage.Locked), "stored stage");
         // The liquidity sibling records the POL/uAsset LP amount in the facade's auxiliary-liquidity slot.
-        (uint256 polUAssetLp,,) = MemeverseLauncher(launcherProxy).auxiliaryLiquidities(verseId);
+        (uint256 polUAssetLp,,) = MemeverseLauncherUpgradeable(launcherProxy).auxiliaryLiquidities(verseId);
         assertGt(polUAssetLp, 0, "bootstrap deployed POL/uAsset liquidity");
     }
 

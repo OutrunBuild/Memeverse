@@ -24,14 +24,14 @@ import {IMemeverseLauncher} from "./interfaces/IMemeverseLauncher.sol";
 import {MemeverseLauncherStorage} from "./interfaces/IMemeverseLauncherStorage.sol";
 
 /// @title MemeverseLiquidityImpl
-/// @notice Delegatecall-only sibling that owns every liquidity-side flow for MemeverseLauncher: bootstrap
+/// @notice Delegatecall-only sibling that owns every liquidity-side flow for MemeverseLauncherUpgradeable: bootstrap
 ///         liquidity deployment, POL minting, auxiliary-liquidity redemption, leveraged auxiliary settlement,
 ///         and memecoin-side liquidity redemption.
 /// @dev Binds the SAME ERC-7201 namespace as the launcher facade
 ///      (`erc7201("outrun.storage.MemeverseLauncher")`), so under delegatecall every storage read/write lands
 ///      on the launcher proxy's MemeverseLauncherStorage. The sibling has no initializer, no owner, no own
 ///      mutable state, and intentionally no `msg.sender == launcher` guard: under delegatecall `msg.sender` is
-///      the facade's original caller (user or POLend), and `address(this)` is the launcher proxy. A direct
+///      the facade's original caller (user or POLendUpgradeable), and `address(this)` is the launcher proxy. A direct
 ///      (non-delegatecall) call reverts via the inherited `onlyDelegatecall` guard (see `DelegatecallOnly`)
 ///      before any storage or router access, so the sibling is explicitly guarded.
 ///
@@ -50,7 +50,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
     // =========================================================================================================
 
     /**
-     * @notice Bootstrap liquidity entrypoint. Invoked by the MemeverseLauncher facade (via the nested
+     * @notice Bootstrap liquidity entrypoint. Invoked by the MemeverseLauncherUpgradeable facade (via the nested
      *         delegatecall site `_deployLiquidity`, reached from `MemeverseLaunchImpl.changeStage`) so it
      *         writes to the proxy's MemeverseLauncherStorage.
      * @dev Delegatecall-only is enforced by the inherited `onlyDelegatecall` guard (see `DelegatecallOnly`),
@@ -733,11 +733,11 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
     }
 
     /**
-     * @notice Settles the leveraged auxiliary-liquidity portion on behalf of POLend: removes the leveraged LP
-     *         share, consumes the leveraged residual claims, and forwards all proceeds to POLend.
+     * @notice Settles the leveraged auxiliary-liquidity portion on behalf of POLendUpgradeable: removes the leveraged LP
+     *         share, consumes the leveraged residual claims, and forwards all proceeds to POLendUpgradeable.
      * @dev Invoked via delegatecall by the facade's `settleLeveragedAuxiliaryLiquidity`. The facade keeps the
      *      `msg.sender == polend` + `Stage.Unlocked` guards on the public ABI; under delegatecall `msg.sender`
-     *      here is POLend (the trusted caller). No outer `whenNotPaused` (mirrors the facade).
+     *      here is POLendUpgradeable (the trusted caller). No outer `whenNotPaused` (mirrors the facade).
      */
     function settleLeveragedAuxiliaryLiquidity(uint256 verseId)
         external
@@ -861,7 +861,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
      *         assets through the verse router.
      * @dev Invoked via delegatecall by the facade's `redeemMemecoinLiquidity`. The facade keeps the outer
      *      `versIdValidate` + `Stage.Unlocked` guards (and intentionally omits `whenNotPaused`); this sibling owns
-     *      the input-non-zero check, POL burn, LP balance check, and unwrap/transfer. POLend also reaches this
+     *      the input-non-zero check, POL burn, LP balance check, and unwrap/transfer. POLendUpgradeable also reaches this
      *      entry through the facade callback ABI. Under delegatecall `msg.sender` is the original caller (POL
      *      burner, LP/refund recipient). The 1:1 LP amount equals the burned POL amount by main-pool construction.
      *      The POL burn is executed by the launcher proxy on the caller's behalf: callers must first approve the

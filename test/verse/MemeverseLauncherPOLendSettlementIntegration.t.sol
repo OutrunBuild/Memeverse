@@ -15,18 +15,18 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {RealisticSwapManagerHarness} from "../swap/helpers/RealisticSwapManagerHarness.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
-import {MemeverseLauncher} from "../../src/verse/MemeverseLauncher.sol";
+import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewReader.sol";
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
-import {POLend} from "../../src/polend/POLend.sol";
-import {POLSplitter} from "../../src/polend/POLSplitter.sol";
+import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
+import {POLSplitterUpgradeable} from "../../src/polend/POLSplitterUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
@@ -39,11 +39,11 @@ import {
 import {MockLauncherSwapIntegrationProxyDeployer} from "../mocks/verse/LauncherSwapIntegrationMocks.sol";
 import {UniversalAssetForPOLendSettlementInvariant} from "../mocks/verse/LauncherSettlementMocks.sol";
 
-/// @notice Drives the real-stack POLend global settlement path end-to-end.
+/// @notice Drives the real-stack POLendUpgradeable global settlement path end-to-end.
 /// @dev Unlike the preset-mock A-2/A-3 tests, this contract wires the real Uniswap v4 swap stack
-///      (PoolManager + MemeverseUniswapHook + MemeverseSwapRouter) together with the real POLend
-///      and POLSplitter, then drives changeStage Genesis -> Locked -> Unlocked so that
-///      POLend.executeGlobalSettlement removes real auxiliary liquidity and repays debt on the
+///      (PoolManager + MemeverseUniswapHookUpgradeable + MemeverseSwapRouter) together with the real POLendUpgradeable
+///      and POLSplitterUpgradeable, then drives changeStage Genesis -> Locked -> Unlocked so that
+///      POLendUpgradeable.executeGlobalSettlement removes real auxiliary liquidity and repays debt on the
 ///      UniversalAsset. This is a class-A integration test: every contract in the settlement
 ///      call chain is a production artifact, only the periphery (registrar/registry/dispatcher/
 ///      proxyDeployer/uAsset) is mocked.
@@ -58,14 +58,14 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
 
     // ── Real Uniswap v4 swap stack ──
     RealisticSwapManagerHarness internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MemeverseSwapRouter internal router;
 
-    // ── Real Launcher proxy + production POLend/POLSplitter ──
-    MemeverseLauncher internal launcher;
+    // ── Real Launcher proxy + production POLendUpgradeable/POLSplitterUpgradeable ──
+    MemeverseLauncherUpgradeable internal launcher;
     address internal launcherProxy;
-    POLend internal polend;
-    POLSplitter internal splitter;
+    POLendUpgradeable internal polend;
+    POLSplitterUpgradeable internal splitter;
 
     // ── Mocked periphery only ──
     MockLauncherSwapIntegrationProxyDeployer internal proxyDeployer;
@@ -83,18 +83,18 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         dispatcher = new MockOFTDispatcher();
         uAsset = new UniversalAssetForPOLendSettlementInvariant();
 
-        // 3. Launcher proxy. POLend/Splitter slots are filled with placeholders here; real contracts
+        // 3. Launcher proxy. POLendUpgradeable/Splitter slots are filled with placeholders here; real contracts
         //    are injected afterwards via setPolendForTest/setPolSplitterForTest so initialize() can run
-        //    with non-zero addresses while the real POLend/Splitter can still be deployed with the
+        //    with non-zero addresses while the real POLendUpgradeable/Splitter can still be deployed with the
         //    correct launcher reference.
         address placeholderPolend = address(0x10);
         address placeholderSplitter = address(0x11);
-        MemeverseLauncher impl = new MemeverseLauncher();
+        MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    MemeverseLauncher.initialize,
+                    MemeverseLauncherUpgradeable.initialize,
                     (
                         address(this),
                         address(0x1111),
@@ -113,15 +113,15 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
                 )
             )
         );
-        launcher = MemeverseLauncher(launcherProxy);
+        launcher = MemeverseLauncherUpgradeable(launcherProxy);
 
-        // 4. Real MemeverseUniswapHook + MemeverseSwapRouter. The hook is deployed behind a
+        // 4. Real MemeverseUniswapHookUpgradeable + MemeverseSwapRouter. The hook is deployed behind a
         //    CREATE2-mined flag-address proxy via the shared helper (replaces the former Testable
         //    subclass that bypassed `_validateProxyHookAddress`). hookOwner = address(this),
         //    treasury = TREASURY.
         address hookProxy =
             deployHookAtFlagAddress(IPoolManager(address(manager)), address(this), TREASURY, address(launcher));
-        hook = MemeverseUniswapHook(hookProxy);
+        hook = MemeverseUniswapHookUpgradeable(hookProxy);
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
@@ -129,32 +129,33 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
             IPermit2(address(0))
         );
 
-        // 5. Real POLSplitter then real POLend. POLend's launcher reference is the Launcher proxy so
+        // 5. Real POLSplitterUpgradeable then real POLendUpgradeable. POLendUpgradeable's launcher reference is the Launcher proxy so
         //    registerLendMarket / finalizeLeveragedGenesis / executeGlobalSettlement pass onlyLauncher.
-        POLSplitter splitterImpl = new POLSplitter();
-        splitter = POLSplitter(
+        POLSplitterUpgradeable splitterImpl = new POLSplitterUpgradeable();
+        splitter = POLSplitterUpgradeable(
             address(
                 new ERC1967Proxy(
-                    address(splitterImpl), abi.encodeCall(POLSplitter.initialize, (address(this), launcherProxy))
+                    address(splitterImpl),
+                    abi.encodeCall(POLSplitterUpgradeable.initialize, (address(this), launcherProxy))
                 )
             )
         );
-        POLend polendImpl = new POLend();
+        POLendUpgradeable polendImpl = new POLendUpgradeable();
         // interestRate = 0.1e18 (1e17), leveragedDebtFactor = 10e18: 1 ether interest -> 10 ether debt,
         // debtCap = debtFactor * max(normalFunds, minTotalFund) / 1e18 = 10 * 1 ether = 10 ether (exact).
-        polend = POLend(
+        polend = POLendUpgradeable(
             address(
                 new ERC1967Proxy(
                     address(polendImpl),
                     abi.encodeCall(
-                        POLend.initialize,
+                        POLendUpgradeable.initialize,
                         (address(this), 0.1 ether, 10 ether, TREASURY, launcherProxy, address(splitter), address(this))
                     )
                 )
             )
         );
 
-        // 6. Inject real POLend/Splitter into Launcher proxy storage, then configure and seed settlement
+        // 6. Inject real POLendUpgradeable/Splitter into Launcher proxy storage, then configure and seed settlement
         //    dust coverage so pure-leverage settlement can spend rounding dust without finalize refill.
         setPolendForTest(launcherProxy, address(polend));
         setPolSplitterForTest(launcherProxy, address(splitter));
@@ -184,7 +185,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         launcher.setFundMetaData(address(uAsset), 1 ether, 1);
 
         // 9. Register the verse with real memecoin/pol deployment via proxyDeployer and a real
-        //    POLend.registerLendMarket call from the launcher.
+        //    POLendUpgradeable.registerLendMarket call from the launcher.
         uint32[] memory omnichainIds = new uint32[](1);
         omnichainIds[0] = uint32(block.chainid);
         vm.prank(REGISTRAR);
@@ -206,7 +207,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         hook.setProtocolFeeCurrency(Currency.wrap(verse.pol), true);
     }
 
-    /// @dev Locks the verse by supplying 1 ether of leveraged interest through the real POLend, then
+    /// @dev Locks the verse by supplying 1 ether of leveraged interest through the real POLendUpgradeable, then
     ///      advancing the stage. finalizeLeveragedGenesis mints 10 ether of debt to the launcher and
     ///      _deployLiquidity creates the four real Uniswap v4 pools via the real router/hook.
     function _lockWithLeveragedLiquidity() internal {
@@ -275,7 +276,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
     }
 
     /// @dev Warps past unlockTime and advances the stage. The Locked -> Unlocked transition triggers
-    ///      POLSplitter.settle and, because leveraged debt is non-zero, POLend.executeGlobalSettlement,
+    ///      POLSplitterUpgradeable.settle and, because leveraged debt is non-zero, POLendUpgradeable.executeGlobalSettlement,
     ///      which removes the auxiliary LPs and repays debt via UniversalAsset.repay.
     function _unlockAndSettle() internal {
         IMemeverseLauncher.Memeverse memory verse = launcher.getMemeverseByVerseId(VERSE_ID);
@@ -283,9 +284,9 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         assertEq(uint256(launcher.changeStage(VERSE_ID)), uint256(IMemeverseLauncher.Stage.Unlocked), "unlocked stage");
     }
 
-    /// @notice Real-stack POLend settlement burns leveraged debt and clears the per-uAsset global accounting.
+    /// @notice Real-stack POLendUpgradeable settlement burns leveraged debt and clears the per-uAsset global accounting.
     /// @dev Reproduce the A-2/A-3 attack path with no preset mocks: every settlement-relevant contract
-    ///      (Launcher, POLend, POLSplitter, Hook, Router, PoolManager, UniversalAsset) is a production
+    ///      (Launcher, POLendUpgradeable, POLSplitterUpgradeable, Hook, Router, PoolManager, UniversalAsset) is a production
     ///      artifact, so this test would fail if executeGlobalSettlement, settleLeveragedAuxiliaryLiquidity
     ///      or UniversalAsset.repay were ever short-circuited by a mock.
     function test_A3_RealPathSettlementRepaysDebtAndClearsGlobalAccounting() external {
@@ -396,14 +397,14 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
     ///      settle() settle all deltas at once (real PoolManager semantics), so the caller's
     ///      payment backs the hook's fee and take() succeeds.
     ///
-    ///      This test drives the real stack (Launcher + POLend + POLSplitter + Hook + Router +
+    ///      This test drives the real stack (Launcher + POLendUpgradeable + POLSplitterUpgradeable + Hook + Router +
     ///      PoolManager) through a pol->uAsset swap and the Locked->Unlocked settlement.
     ///
     ///      NOTE on the dust deficit path: a pol->uAsset swap does NOT trigger a dust deficit
     ///      (recoveredUAsset < debt).  Empirically it produces a SURPLUS — moving pol into the
     ///      pol/uAsset pool inflates polAmount, and that pol is burned via redeemMemecoinLiquidity
     ///      into more uAsset than the swap drained.  The memecoin->uAsset direction is blocked by
-    ///      POLSplitter.settle()'s safety invariant (settlementUAsset >= ptBacking, with zero
+    ///      POLSplitterUpgradeable.settle()'s safety invariant (settlementUAsset >= ptBacking, with zero
     ///      margin).  The dust-deficit branch is covered by the preset-mock A-3 tests, which
     ///      control LP-removal outputs directly.  This integration test targets the mock fix.
     function test_A3_RealPathSettlementDustCoversDeficitUnderReserveCap() external {

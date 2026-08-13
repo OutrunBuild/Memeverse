@@ -58,19 +58,19 @@
 | --- | --- |
 | [governance/governance-yield-details.md](governance/governance-yield-details.md) | 治理与收益细化说明 |
 
-### POLend（`polend/`）
+### POLendUpgradeable（`polend/`）
 
 | 文件 | 职责 |
 | --- | --- |
-| [polend/README.md](polend/README.md) | POLend 规格（四池模型 + PT/YT + settlement + 杠杆创世）聚合入口，下含 core/genesis/pt-yt-splitter/settlement-and-fees |
-| [polend/core.md](polend/core.md) | POLend 模块边界 / 状态 / 债务推导 / 错误语义 / 互斥关系（§1-9） |
-| [polend/genesis.md](polend/genesis.md) | POLend 创世流程（§1-7） |
-| [polend/pt-yt-splitter.md](polend/pt-yt-splitter.md) | POLend PT/YT 生命周期 / POLSplitter settle / PT-YT 兑付（§1-3） |
-| [polend/settlement-and-fees.md](polend/settlement-and-fees.md) | POLend fee 归集 / 结算编排 / 收益分发 / 权限配置 / Target ABI（§1-11） |
+| [polend/README.md](polend/README.md) | POLendUpgradeable 规格（四池模型 + PT/YT + settlement + 杠杆创世）聚合入口，下含 core/genesis/pt-yt-splitter/settlement-and-fees |
+| [polend/core.md](polend/core.md) | POLendUpgradeable 模块边界 / 状态 / 债务推导 / 错误语义 / 互斥关系（§1-9） |
+| [polend/genesis.md](polend/genesis.md) | POLendUpgradeable 创世流程（§1-7） |
+| [polend/pt-yt-splitter.md](polend/pt-yt-splitter.md) | POLendUpgradeable PT/YT 生命周期 / POLSplitterUpgradeable settle / PT-YT 兑付（§1-3） |
+| [polend/settlement-and-fees.md](polend/settlement-and-fees.md) | POLendUpgradeable fee 归集 / 结算编排 / 收益分发 / 权限配置 / Target ABI（§1-11） |
 
 ## 2. OCLPAR canonical-home 表
 
-下表是 Phase 2 跨文档去冗余审计确立的"每条规则/概念权威主页"索引——**索引，不重述语义本体**。同名规则在其他文档出现均为引用，编辑应改 home。`polend/` 类目 canonical home 为 `polend/README.md`（子文件清单见 §1 POLend 区）。
+下表是 Phase 2 跨文档去冗余审计确立的"每条规则/概念权威主页"索引——**索引，不重述语义本体**。同名规则在其他文档出现均为引用，编辑应改 home。`polend/` 类目 canonical home 为 `polend/README.md`（子文件清单见 §1 POLendUpgradeable 区）。
 
 ### 2.1 常量群
 
@@ -102,8 +102,8 @@
 | INV-10 OFT compose replay 防护 | [invariants.md](invariants.md) | compose 回调具备 replay 防护 |
 | INV-11 注册时间权威值 | [invariants.md](invariants.md) | 来自注册中心写入 |
 | INV-12 解锁保护窗口优先 | [invariants.md](invariants.md) | 解锁后先经保护窗口再恢复 swap |
-| INV-13 POLend 全局结算 bounded reserve | [invariants.md](invariants.md) | 全局结算只能用 bounded reserve 覆盖 dust |
-| INV-14 POLend PT raw / uAsset backing 分离 | [invariants.md](invariants.md) | 必须分离 |
+| INV-13 POLendUpgradeable 全局结算 bounded reserve | [invariants.md](invariants.md) | 全局结算只能用 bounded reserve 覆盖 dust |
+| INV-14 POLendUpgradeable PT raw / uAsset backing 分离 | [invariants.md](invariants.md) | 必须分离 |
 | INV-15 预兑付 PT fee 真实 supply 结清 | [invariants.md](invariants.md) | fee 由真实 PT supply 结清 |
 | INV-16 normal fee entitlement / zero-backing dust | [invariants.md](invariants.md) | 保持可领取语义 |
 | INV-17 创世总资金累计上限 | [invariants.md](invariants.md) | 累计且排除 preorder |
@@ -158,14 +158,14 @@
 | Governor custody + ledger | [governance-yield-details.md §7](governance/governance-yield-details.md) | Governor 托管与账本 |
 | token 准入 | [governance-yield-details.md §7](governance/governance-yield-details.md) | 治理 token 准入规则 |
 
-### 2.8 POLend 规则
+### 2.8 POLendUpgradeable 规则
 
 | 规则/概念 | canonical home | 说明 |
 | --- | --- | --- |
-| POLend 四池/PT/YT/settlement/杠杆创世 | [polend/README.md](polend/README.md) | POLend 聚合入口（四池模型 + PT/YT + settlement + 杠杆创世） |
-| POLend 模块边界 / 状态 / 债务推导 / 错误语义 / 互斥 | [polend/core.md](polend/core.md) | §1-9 |
+| POLendUpgradeable 四池/PT/YT/settlement/杠杆创世 | [polend/README.md](polend/README.md) | POLendUpgradeable 聚合入口（四池模型 + PT/YT + settlement + 杠杆创世） |
+| POLendUpgradeable 模块边界 / 状态 / 债务推导 / 错误语义 / 互斥 | [polend/core.md](polend/core.md) | §1-9 |
 | 创世流程（普通 / Preorder / 杠杆 / Genesis→Locked） | [polend/genesis.md](polend/genesis.md) | §1-7 |
-| PT/YT 生命周期 / POLSplitter settle / PT-YT 兑付 | [polend/pt-yt-splitter.md](polend/pt-yt-splitter.md) | §1-3 |
+| PT/YT 生命周期 / POLSplitterUpgradeable settle / PT-YT 兑付 | [polend/pt-yt-splitter.md](polend/pt-yt-splitter.md) | §1-3 |
 | fee 归集 / 结算编排 / 收益分发 / 权限配置 / Target ABI | [polend/settlement-and-fees.md](polend/settlement-and-fees.md) | §1-11 |
 
 ### 2.9 注册/状态机权威

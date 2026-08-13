@@ -40,9 +40,9 @@
 
 新 uAsset 接入需要四个登记面，顺序敏感；统一入口为部署脚本 `MemeverseScript.s.sol::onboardUAsset`（代码轮实现，本 checklist 先定义顺序语义），脚本按 fail-closed 顺序写入并在每步后断言，任一漏配在部署/注册前失败，而不是用户注册时才 revert。
 
-1. launcher 面：`MemeverseLauncher.sol::setFundMetaData`（onlyOwner，入参校验 `ZeroInput` / `FundBasedAmountTooHigh` / `VirtualAssetsTooLow`）。漏配 → 注册路径 `MemeverseLaunchImpl.sol::registerMemeverse` 在 `fundMetaData.minTotalFund/fundBasedAmount` 为 0 时 revert `ZeroInput`，注册事务注册前 fail-fast。`[代码已证]`
-2. POLend 面：`POLend.sol::setMaxSettlementDustReserve`（onlyOwner；`maxReserve == 0` 被 setter 以 `ZeroInput` 拒绝，其"未配置"哨兵语义由 `POLend.sol::registerLendMarket` / `_debtCapacity` / `fundSettlementDustReserve` 复用，不存在"已配置但禁用"状态）。漏配 → `POLend.sol::registerLendMarket` revert `InvalidConfig`，该调用发生在 `MemeverseLaunchImpl.sol::registerMemeverse` 内 token 部署之后、同一条注册事务里，整笔事务（含已部署 token 克隆）原子回滚，可干净重试。`[代码已证]`
-3. 可选 credit 面：`GenesisCreditFactory.sol::deployCredit`（onlyOwner，per-uAsset CREATE3，同 uAsset 重复部署 revert）——仅启用 credit path 时执行。漏配 → `POLend.sol::leveragedGenesisWithCredit` revert `NoCreditForUAsset`，普通 genesis 路径不受影响。`[代码已证]`
+1. launcher 面：`MemeverseLauncherUpgradeable.sol::setFundMetaData`（onlyOwner，入参校验 `ZeroInput` / `FundBasedAmountTooHigh` / `VirtualAssetsTooLow`）。漏配 → 注册路径 `MemeverseLaunchImpl.sol::registerMemeverse` 在 `fundMetaData.minTotalFund/fundBasedAmount` 为 0 时 revert `ZeroInput`，注册事务注册前 fail-fast。`[代码已证]`
+2. POLendUpgradeable 面：`POLendUpgradeable.sol::setMaxSettlementDustReserve`（onlyOwner；`maxReserve == 0` 被 setter 以 `ZeroInput` 拒绝，其"未配置"哨兵语义由 `POLendUpgradeable.sol::registerLendMarket` / `_debtCapacity` / `fundSettlementDustReserve` 复用，不存在"已配置但禁用"状态）。漏配 → `POLendUpgradeable.sol::registerLendMarket` revert `InvalidConfig`，该调用发生在 `MemeverseLaunchImpl.sol::registerMemeverse` 内 token 部署之后、同一条注册事务里，整笔事务（含已部署 token 克隆）原子回滚，可干净重试。`[代码已证]`
+3. 可选 credit 面：`GenesisCreditFactory.sol::deployCredit`（onlyOwner，per-uAsset CREATE3，同 uAsset 重复部署 revert）——仅启用 credit path 时执行。漏配 → `POLendUpgradeable.sol::leveragedGenesisWithCredit` revert `NoCreditForUAsset`，普通 genesis 路径不受影响。`[代码已证]`
 4. center 面（**最后**开启，完成标志）：`MemeverseRegistrationCenter.sol::setSupportedUAsset(uAsset, true)`（onlyOwner）。漏配 → 注册参数校验 `MemeverseRegistrationCenter.sol::_registrationParamValidation` 在 `supportedUAssets[uAsset]` 未配置时 revert `InvalidUAsset`，注册直接被拒；前三步 readiness 断言通过前不得开启。`[代码已证]`
 
 补充说明：
@@ -51,11 +51,11 @@
 - 脚本 readiness 断言复用 canonical 对（UETH/UUSD）已验证的 `_requireFundMetaDataReady` / `_requireReserveReady` 语义，泛化到任意 uAsset；`setMaxSettlementDustReserve` 此前无任何脚本调用，是冷启动漏配的高发面。
 - credit 面（`deployCredit`）与费分发 revert 无因果：费分发要求的是治理 incentivizer 的 treasury token 登记（`GovernanceCycleIncentivizerUpgradeable.sol::recordTreasuryIncome` revert `NonTreasuryToken`），属独立第五个登记面，不在本 checklist 顺序内。
 - 18-dec 约束：credit path 只支持 `uAsset.decimals() == 18`（`deployCredit` revert `InvalidUAssetDecimals`）。
-- `setFundMetaData` 为全局活读配置：注册后可继续由 owner 调整，调整立即影响所有已注册未 `Locked`（Genesis 期）verse 的启动门槛、铸币比、V 缓冲与 POLend 杠杆上限（方向非单调：调高 `minTotalFund` 使 launch gate 变严但扩大杠杆上限）；变更前需评估 pending verse 影响。已 `Locked` verse 不受影响。
+- `setFundMetaData` 为全局活读配置：注册后可继续由 owner 调整，调整立即影响所有已注册未 `Locked`（Genesis 期）verse 的启动门槛、铸币比、V 缓冲与 POLendUpgradeable 杠杆上限（方向非单调：调高 `minTotalFund` 使 launch gate 变严但扩大杠杆上限）；变更前需评估 pending verse 影响。已 `Locked` verse 不受影响。
 
 ### 3.2 阶段推进（keeper 高频）
 
-入口：`MemeverseLauncher.changeStage(verseId)`。  
+入口：`MemeverseLauncherUpgradeable.changeStage(verseId)`。  
 语义：
 
 - `Genesis -> Locked`：满足募资条件（`flashGenesis` 可提前）并执行部署/建池/preorder 结算
@@ -111,15 +111,15 @@
 - `createPoolAndAddLiquidity(...)` 的 `onlyLauncher` 是有意设计；建池要求 `Launcher -> Router` 调用链，并要求 Hook 的 `poolInitializer` 授权 Router。部署或配置变更后必须复核：`launcher.memeverseSwapRouter()==router`、`launcher.memeverseUniswapHook()==hook`、`router.hook()==hook`、`hook.launcher()==launcher`、`hook.poolInitializer()==router`；`Genesis -> Locked` 建池前也会做 launch-time preflight 复核，避免配置漂移到运行建池时才失败。`[代码已证]`
 - Launcher pause 不会直接阻断 `changeStage(...)` 驱动的建池，因为 `changeStage(...)` 不是 `whenNotPaused`；但 Router/Hook/Initializer 配置漂移会阻断后续新池创建（`launcher` binding 由 initialize 固化，运行时不可偏离）。`[代码已证]`
 
-### 3.7 POLend / POLSplitter 运维边界
+### 3.7 POLendUpgradeable / POLSplitterUpgradeable 运维边界
 
-- Launcher proxy 初始化时保存 `POLend` 与 `POLSplitter` 的 proxy 地址，当前规范不支持地址级替换，也不支持降级为零地址模式。`[代码已证]`
-- 这不等于实现不可升级：`POLend` 与 `POLSplitter` 是 UUPS proxy，`_authorizeUpgrade(...)` 为 `onlyOwner`。`[代码已证]`
-- `POLend.setLeveragedDebtFactor` 的技术上限为 `uint128.max * 1e18`；该值是有效上限，不代表运营最优值。普通创世与杠杆创世的累计部署资金必须保持 `totalNormalFunds + totalLeveragedDebt <= type(uint128).max`。`[代码已证]`
+- Launcher proxy 初始化时保存 `POLendUpgradeable` 与 `POLSplitterUpgradeable` 的 proxy 地址，当前规范不支持地址级替换，也不支持降级为零地址模式。`[代码已证]`
+- 这不等于实现不可升级：`POLendUpgradeable` 与 `POLSplitterUpgradeable` 是 UUPS proxy，`_authorizeUpgrade(...)` 为 `onlyOwner`。`[代码已证]`
+- `POLendUpgradeable.setLeveragedDebtFactor` 的技术上限为 `uint128.max * 1e18`；该值是有效上限，不代表运营最优值。普通创世与杠杆创世的累计部署资金必须保持 `totalNormalFunds + totalLeveragedDebt <= type(uint128).max`。`[代码已证]`
 - 地址级替换、迁移或从零地址恢复不在当前规范内；如需支持，必须先给出显式迁移设计。`[代码已证]`
-- `SettlementDustInsufficient` 出现在回退交易上时，不会留下可用事件日志，不能按失败交易已发事件监控。keeper/monitor 应在目标区块状态用 `eth_call` 或 fork simulation 预执行 `MemeverseLauncher.changeStage(verseId)` 的 `Locked -> Unlocked` 路径；如需单独模拟内部结算步骤，可预执行 `POLend.executeGlobalSettlement(verseId)`。若模拟回退 `SettlementDustInsufficient(uint256 deficit,uint256 availableReserve)`，需先用 `POLend.getLendMarket(verseId).uAsset` 确认目标 uAsset，再计算 `topUpAmount = deficit - availableReserve`，对该 uAsset 完成 approve/transfer 后调用 `fundSettlementDustReserve(uAsset, topUpAmount)`，随后重试 settlement / `changeStage`。补资前还要检查 `settlementDustStates(uAsset)` 的容量：若 `topUpAmount` 超过剩余 capacity，非 Launcher 调用 `fundSettlementDustReserve` 会回退 `SettlementDustReserveExceeded(amount, capacity)`；此时应走告警、升级或配置处理，不能盲目重试。当前合约没有暴露完整 side-effect-free preview 来提前得出 `recoveredUAsset`，因为 settlement 会通过移除 LP、POL redemption、PT redemption 路径回收 uAsset。`[代码已证]`
+- `SettlementDustInsufficient` 出现在回退交易上时，不会留下可用事件日志，不能按失败交易已发事件监控。keeper/monitor 应在目标区块状态用 `eth_call` 或 fork simulation 预执行 `MemeverseLauncherUpgradeable.changeStage(verseId)` 的 `Locked -> Unlocked` 路径；如需单独模拟内部结算步骤，可预执行 `POLendUpgradeable.executeGlobalSettlement(verseId)`。若模拟回退 `SettlementDustInsufficient(uint256 deficit,uint256 availableReserve)`，需先用 `POLendUpgradeable.getLendMarket(verseId).uAsset` 确认目标 uAsset，再计算 `topUpAmount = deficit - availableReserve`，对该 uAsset 完成 approve/transfer 后调用 `fundSettlementDustReserve(uAsset, topUpAmount)`，随后重试 settlement / `changeStage`。补资前还要检查 `settlementDustStates(uAsset)` 的容量：若 `topUpAmount` 超过剩余 capacity，非 Launcher 调用 `fundSettlementDustReserve` 会回退 `SettlementDustReserveExceeded(amount, capacity)`；此时应走告警、升级或配置处理，不能盲目重试。当前合约没有暴露完整 side-effect-free preview 来提前得出 `recoveredUAsset`，因为 settlement 会通过移除 LP、POL redemption、PT redemption 路径回收 uAsset。`[代码已证]`
 
-reserve 是单向池：`POLend.sol::fundSettlementDustReserve` 只增、`POLend.sol::executeGlobalSettlement` 的 bounded deficit 消耗只减，无主动取回路径；`POLend.sol::setMaxSettlementDustReserve` 不允许归零、下调不得低于当前 reserve。退役 uAsset 的未消耗 reserve 余额永久留在 `POLend`，不提供 sweep，唯一回收通道是协议升级。
+reserve 是单向池：`POLendUpgradeable.sol::fundSettlementDustReserve` 只增、`POLendUpgradeable.sol::executeGlobalSettlement` 的 bounded deficit 消耗只减，无主动取回路径；`POLendUpgradeable.sol::setMaxSettlementDustReserve` 不允许归零、下调不得低于当前 reserve。退役 uAsset 的未消耗 reserve 余额永久留在 `POLendUpgradeable`，不提供 sweep，唯一回收通道是协议升级。
 
 ### 3.8 unlock 后固定保护窗口语义
 
@@ -136,12 +136,12 @@ reserve 是单向池：`POLend.sol::fundSettlementDustReserve` 只增、`POLend.
 | 合约 | proxy 来源 / proxy salt label | implementation 部署来源 | 当前可证 implementation salt label | 授权门控 | 特殊约束 |
 | --- | --- | --- | --- | --- | --- |
 | **UUPS 可升级** | | | | | |
-| `MemeverseLauncher` | `MemeverseScript._deployMemeverseLauncher`; proxy salt = `MemeverseLauncher + nonce` | `MemeverseScript._deployMemeverseLauncher` 内部署 | `MemeverseLauncherImplementation + nonce` | `onlyOwner` | 存储 `polend`/`polSplitter` proxy 地址，不可运行时替换 |
-| `POLend` | `MemeverseScript._deployPOLend`; proxy salt = `POLend + nonce` | `MemeverseScript._deployPOLend` 内部署 | `POLendImplementation + nonce` | `onlyOwner` | 存储 `launcher`/`splitter` 地址；`leveragedDebtFactor` 技术上限 `uint128.max * 1e18` |
-| `POLSplitter` | `MemeverseScript._deployPOLSplitter`; proxy salt = `POLSplitter + nonce` | `MemeverseScript._deployPOLSplitter` 内部署 | `POLSplitterImplementation + nonce` | `onlyOwner` | 存储 `launcher`/`polend` 地址；初始化时读 `launcher.polend()` |
-| `YieldDispatcher` | `MemeverseScript._deployYieldDispatcher`; proxy salt = `YieldDispatcher + nonce` | `MemeverseScript._deployYieldDispatcher` 内部署 | `YieldDispatcherImplementation + nonce` | `onlyOwner`（经 `YieldDispatcher.sol::_authorizeUpgrade`） | `constructor() { _disableInitializers(); }`；CREATE3 两步部署（impl + ERC1967Proxy + `YieldDispatcher.sol::initialize` calldata），proxy 地址 = f(OutrunDeployer, deployer, salt) 与 creationCode 无关，故改 UUPS 后 proxy 地址不变（仍等于原 dispatcher 地址） |
+| `MemeverseLauncherUpgradeable` | `MemeverseScript._deployMemeverseLauncher`; proxy salt = `MemeverseLauncher + nonce` | `MemeverseScript._deployMemeverseLauncher` 内部署 | `MemeverseLauncherImplementation + nonce` | `onlyOwner` | 存储 `polend`/`polSplitter` proxy 地址，不可运行时替换 |
+| `POLendUpgradeable` | `MemeverseScript._deployPOLend`; proxy salt = `POLend + nonce` | `MemeverseScript._deployPOLend` 内部署 | `POLendImplementation + nonce` | `onlyOwner` | 存储 `launcher`/`splitter` 地址；`leveragedDebtFactor` 技术上限 `uint128.max * 1e18` |
+| `POLSplitterUpgradeable` | `MemeverseScript._deployPOLSplitter`; proxy salt = `POLSplitter + nonce` | `MemeverseScript._deployPOLSplitter` 内部署 | `POLSplitterImplementation + nonce` | `onlyOwner` | 存储 `launcher`/`polend` 地址；初始化时读 `launcher.polend()` |
+| `YieldDispatcherUpgradeable` | `MemeverseScript._deployYieldDispatcher`; proxy salt = `YieldDispatcher + nonce` | `MemeverseScript._deployYieldDispatcher` 内部署 | `YieldDispatcherImplementation + nonce` | `onlyOwner`（经 `YieldDispatcherUpgradeable.sol::_authorizeUpgrade`） | `constructor() { _disableInitializers(); }`；CREATE3 两步部署（impl + ERC1967Proxy + `YieldDispatcherUpgradeable.sol::initialize` calldata），proxy 地址 = f(OutrunDeployer, deployer, salt) 与 creationCode 无关，故改 UUPS 后 proxy 地址不变（仍等于原 dispatcher 地址） |
 | **UUPS 可升级（diamond Router）** | | | | | |
-| `MemeverseUniswapHook` | `DeployMemeverseHookProxy.getPredictedProxy(..., nonce, hookOwner, hookTreasury, poolManager)`；内部 `_selectProxySalt` 使用 `keccak256(abi.encodePacked("MemeverseUniswapHookProxy", nonce, i))` 选择 nonce-scoped hook-flag proxy salt | `DeployMemeverseHookProxy` 通过 `new MemeverseUniswapHook(poolManager)` 部署 | `MemeverseUniswapHookImplementation + nonce` | `onlyOwner`（Hook `owner()`，经 UUPS `_authorizeUpgrade`） | diamond Router：`poolManager` 不在 proxy storage 中，是字节码级绑定；callback/fee/settlement logic 外移到 SwapFacet / DynamicFeeFacet / SettlementFacet（共享 Router storage，经 Router entry `delegatecall`）；3 facet 地址存 Router storage，`setFacet(role, addr)` onlyOwner 独立升级每个 facet；3 facet 部署时必须传与 hook 同一个 `poolManager` |
+| `MemeverseUniswapHookUpgradeable` | `DeployMemeverseHookProxy.getPredictedProxy(..., nonce, hookOwner, hookTreasury, poolManager)`；内部 `_selectProxySalt` 使用 `keccak256(abi.encodePacked("MemeverseUniswapHookProxy", nonce, i))` 选择 nonce-scoped hook-flag proxy salt | `DeployMemeverseHookProxy` 通过 `new MemeverseUniswapHookUpgradeable(poolManager)` 部署 | `MemeverseUniswapHookImplementation + nonce` | `onlyOwner`（Hook `owner()`，经 UUPS `_authorizeUpgrade`） | diamond Router：`poolManager` 不在 proxy storage 中，是字节码级绑定；callback/fee/settlement logic 外移到 SwapFacet / DynamicFeeFacet / SettlementFacet（共享 Router storage，经 Router entry `delegatecall`）；3 facet 地址存 Router storage，`setFacet(role, addr)` onlyOwner 独立升级每个 facet；3 facet 部署时必须传与 hook 同一个 `poolManager` |
 | **治理代理可升级** | | | | | |
 | `MemecoinDaoGovernorUpgradeable` | `MemeverseProxyDeployer.deployGovernorAndIncentivizer`; proxy salt = `keccak256(abi.encode(uniqueId))` | `MemeverseScript._deployMemecoinGovernorImplementation` | `MemecoinDaoGovernorImplementation + nonce` | `onlyGovernance` | 需走 OZ Governor 提案流程；`_authorizeUpgrade` 由 Governor 合约内部 `_governanceCall` 放行 |
 | `GovernanceCycleIncentivizerUpgradeable` | `MemeverseProxyDeployer.deployGovernorAndIncentivizer`; proxy salt = `keccak256(abi.encode(uniqueId))` | `MemeverseScript._deployImplementation` | `GovernanceCycleIncentivizerImplementation + nonce` | `onlyGovernance` | 实际校验 `msg.sender == _governor`（即 Governor proxy 地址） |
@@ -162,23 +162,23 @@ reserve 是单向池：`POLend.sol::fundSettlementDustReserve` 只增、`POLend.
 
 | 合约 | annotation（代码注解） | namespace ID（hash 输入） |
 |---|---|---|
-| `MemeverseLauncher` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher` |
-| `POLend` | `erc7201:outrun.storage.POLend` | `outrun.storage.POLend` |
-| `POLSplitter` | `erc7201:outrun.storage.POLSplitter` | `outrun.storage.POLSplitter` |
-| `MemeverseUniswapHook` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook` |
-| `SwapFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHook` 相同） |
-| `DynamicFeeFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHook` 相同） |
-| `SettlementFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHook` 相同） |
+| `MemeverseLauncherUpgradeable` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher` |
+| `POLendUpgradeable` | `erc7201:outrun.storage.POLend` | `outrun.storage.POLend` |
+| `POLSplitterUpgradeable` | `erc7201:outrun.storage.POLSplitter` | `outrun.storage.POLSplitter` |
+| `MemeverseUniswapHookUpgradeable` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook` |
+| `SwapFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHookUpgradeable` 相同） |
+| `DynamicFeeFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHookUpgradeable` 相同） |
+| `SettlementFacet` | `erc7201:outrun.storage.MemeverseUniswapHook` | `outrun.storage.MemeverseUniswapHook`（与 `MemeverseUniswapHookUpgradeable` 相同） |
 | `MemecoinDaoGovernorUpgradeable` | `erc7201:outrun.storage.MemecoinDaoGovernor` | `outrun.storage.MemecoinDaoGovernor` |
 | `GovernanceCycleIncentivizerUpgradeable` | `erc7201:outrun.storage.GovernanceCycleIncentivizer` | `outrun.storage.GovernanceCycleIncentivizer` |
-| `YieldDispatcher` | `erc7201:outrun.storage.YieldDispatcher` | `outrun.storage.YieldDispatcher` |
-| `MemeverseLaunchImpl` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
-| `MemeverseSettlementImpl` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
-| `MemeverseLiquidityImpl` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncher` 相同） |
+| `YieldDispatcherUpgradeable` | `erc7201:outrun.storage.YieldDispatcher` | `outrun.storage.YieldDispatcher` |
+| `MemeverseLaunchImpl` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncherUpgradeable` 相同） |
+| `MemeverseSettlementImpl` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncherUpgradeable` 相同） |
+| `MemeverseLiquidityImpl` | `erc7201:outrun.storage.MemeverseLauncher` | `outrun.storage.MemeverseLauncher`（与 `MemeverseLauncherUpgradeable` 相同） |
 
-`MemeverseLaunchImpl`、`MemeverseSettlementImpl` 与 `MemeverseLiquidityImpl` **均为** `MemeverseLauncher` facade 的 delegatecall sibling，共享同一 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；升级 facade 或任一 sibling 的 storage layout 时，**所有**共享该 namespace 的合约必须用相同 struct 同步重编，否则 facade 经 delegatecall 调 sibling 时读写错位。三行 namespace 均经 `layout at erc7201("outrun.storage.MemeverseLauncher")` 绑定，`@custom:storage-location` 注解实际挂在 `src/verse/interfaces/IMemeverseLauncherStorage.sol::MemeverseLauncherStorage`。
+`MemeverseLaunchImpl`、`MemeverseSettlementImpl` 与 `MemeverseLiquidityImpl` **均为** `MemeverseLauncherUpgradeable` facade 的 delegatecall sibling，共享同一 namespace `outrun.storage.MemeverseLauncher` 与 `IMemeverseLauncherStorage` struct；升级 facade 或任一 sibling 的 storage layout 时，**所有**共享该 namespace 的合约必须用相同 struct 同步重编，否则 facade 经 delegatecall 调 sibling 时读写错位。三行 namespace 均经 `layout at erc7201("outrun.storage.MemeverseLauncher")` 绑定，`@custom:storage-location` 注解实际挂在 `src/verse/interfaces/IMemeverseLauncherStorage.sol::MemeverseLauncherStorage`。
 
-`SwapFacet`、`DynamicFeeFacet` 与 `SettlementFacet` **均为** `MemeverseUniswapHook` diamond Router 的 delegatecall facet，共享同一 namespace `outrun.storage.MemeverseUniswapHook` 与 `IMemeverseHookStorage` struct；升级 Router 或任一 facet 的 storage layout 时，**所有**共享该 namespace 的合约必须用相同 struct 同步重编，否则 Router 经 delegatecall 调 facet 时读写错位。三行 namespace 均经 `layout at erc7201("outrun.storage.MemeverseUniswapHook")` 绑定，`@custom:storage-location` 注解实际挂在 `src/swap/interfaces/IMemeverseHookStorage.sol::IMemeverseHookStorage`。
+`SwapFacet`、`DynamicFeeFacet` 与 `SettlementFacet` **均为** `MemeverseUniswapHookUpgradeable` diamond Router 的 delegatecall facet，共享同一 namespace `outrun.storage.MemeverseUniswapHook` 与 `IMemeverseHookStorage` struct；升级 Router 或任一 facet 的 storage layout 时，**所有**共享该 namespace 的合约必须用相同 struct 同步重编，否则 Router 经 delegatecall 调 facet 时读写错位。三行 namespace 均经 `layout at erc7201("outrun.storage.MemeverseUniswapHook")` 绑定，`@custom:storage-location` 注解实际挂在 `src/swap/interfaces/IMemeverseHookStorage.sol::IMemeverseHookStorage`。
 
 ERC7201 槽位计算公式：`keccak256(abi.encode(uint256(keccak256(“outrun.storage.XXX”)) - 1)) & ~bytes32(uint256(0xff))`。注意：`erc7201:` 仅是 annotation scheme 前缀，用于标识 struct 使用 ERC7201 存储，**不参与** slot hash 计算。可以用 `cast storage <proxy> <slot>` 直接读链上数据验证。
 
@@ -215,12 +215,12 @@ UUPS 模式下，implementation 是一个独立的合约实例，proxy 通过 `d
 forge build
 ```
 2. 部署到目标链。不要默认所有 UUPS 合约都有 implementation salt label；按 3.9.1 的 `implementation 部署来源` 执行：
-   - `MemeverseLauncher`：使用 `MemeverseLauncherImplementation + nonce` 部署新的 implementation；不要重跑会重新部署同一 proxy salt 的完整 proxy 部署步骤。
+   - `MemeverseLauncherUpgradeable`：使用 `MemeverseLauncherImplementation + nonce` 部署新的 implementation；不要重跑会重新部署同一 proxy salt 的完整 proxy 部署步骤。
    - `MemecoinDaoGovernorUpgradeable`：使用 `MemeverseScript._deployMemecoinGovernorImplementation` 的 deployment source，salt label 为 `MemecoinDaoGovernorImplementation + nonce`。
    - `GovernanceCycleIncentivizerUpgradeable`：使用 `MemeverseScript._deployImplementation` 中的 incentivizer implementation 部署逻辑，salt label 为 `GovernanceCycleIncentivizerImplementation + nonce`。
-   - `MemeverseUniswapHook`：只复用 `DeployMemeverseHookProxy` 的 implementation 部署逻辑，不重跑 proxy 部署分支；必须传入与当前 proxy 一致的 `POOL_MANAGER`。升级 Router implementation 不替换 facet 地址（facet 独立存于 Router storage，经 `setFacet` 升级）；若需单独升级某个 facet，部署新 facet（SwapFacet / DynamicFeeFacet / SettlementFacet 均须传同一 `POOL_MANAGER`）后调 `hook.setFacet(role, newAddr)`；链上 setFacet 经 _requireFacetPoolManager 对三者统一强制校验，不匹配 revert FacetPoolManagerMismatch。
-   - `POLend`：使用 `MemeverseScript._deployPOLend` 中的 implementation 部署逻辑，salt label 为 `POLendImplementation + nonce`。
-   - `POLSplitter`：使用 `MemeverseScript._deployPOLSplitter` 中的 implementation 部署逻辑，salt label 为 `POLSplitterImplementation + nonce`。
+   - `MemeverseUniswapHookUpgradeable`：只复用 `DeployMemeverseHookProxy` 的 implementation 部署逻辑，不重跑 proxy 部署分支；必须传入与当前 proxy 一致的 `POOL_MANAGER`。升级 Router implementation 不替换 facet 地址（facet 独立存于 Router storage，经 `setFacet` 升级）；若需单独升级某个 facet，部署新 facet（SwapFacet / DynamicFeeFacet / SettlementFacet 均须传同一 `POOL_MANAGER`）后调 `hook.setFacet(role, newAddr)`；链上 setFacet 经 _requireFacetPoolManager 对三者统一强制校验，不匹配 revert FacetPoolManagerMismatch。
+   - `POLendUpgradeable`：使用 `MemeverseScript._deployPOLend` 中的 implementation 部署逻辑，salt label 为 `POLendImplementation + nonce`。
+   - `POLSplitterUpgradeable`：使用 `MemeverseScript._deployPOLSplitter` 中的 implementation 部署逻辑，salt label 为 `POLSplitterImplementation + nonce`。
 3. 记录新 implementation 地址。后续 UUPS `upgradeToAndCall` 会把 proxy 指向这个地址。
 
 **新 implementation 记录模板：**
@@ -274,13 +274,13 @@ cast send $PROXY "upgradeToAndCall(address,bytes)" \
 
 **按授权门控分类：**
 
-- `onlyOwner` UUPS 合约（Launcher, POLend, POLSplitter）：owner 地址（通常是多签）直接发起交易。
+- `onlyOwner` UUPS 合约（Launcher, POLendUpgradeable, POLSplitterUpgradeable）：owner 地址（通常是多签）直接发起交易。
 - `onlyGovernance` 合约（Governor, Incentivizer）：当前 Governor 没有 Timelock extension，OZ base `queue` 没有实现；升级必须通过 `propose` -> vote -> `execute`，把 `upgradeToAndCall` 的 calldata 包装成治理提案执行。如果未来增加 Timelock extension，`queue` 才放在成功投票和 `execute` 之间。owner 或多签直接调用不能通过 `onlyGovernance` UUPS 升级授权。
-- `MemeverseUniswapHook`（UUPS）：由 Hook `owner()` 直接对 `$HOOK_PROXY` 调用 `upgradeToAndCall(address newImplementation, bytes data)`，授权经 implementation 的 `_authorizeUpgrade => onlyOwner`。
+- `MemeverseUniswapHookUpgradeable`（UUPS）：由 Hook `owner()` 直接对 `$HOOK_PROXY` 调用 `upgradeToAndCall(address newImplementation, bytes data)`，授权经 implementation 的 `_authorizeUpgrade => onlyOwner`。
 
 ```bash
 # Hook owner 直接对 hook proxy 调 upgradeToAndCall（UUPS，无 ProxyAdmin；data 为空 = 无 migration calldata）
-# 注意：$NEW_IMPL 需在步骤 2 重设为 Hook 的新实现地址（非上方通用 UUPS 块的 Launcher/POLend/POLSplitter 实现）
+# 注意：$NEW_IMPL 需在步骤 2 重设为 Hook 的新实现地址（非上方通用 UUPS 块的 Launcher/POLendUpgradeable/POLSplitterUpgradeable 实现）
 cast send $HOOK_PROXY "upgradeToAndCall(address,bytes)" \
   $NEW_IMPL 0x \
   --private-key $HOOK_OWNER_KEY --rpc-url $RPC
@@ -288,7 +288,7 @@ cast send $HOOK_PROXY "upgradeToAndCall(address,bytes)" \
 
 `[代码已证]`
 
-#### 3.9.5 MemeverseUniswapHook（UUPS）升级检查
+#### 3.9.5 MemeverseUniswapHookUpgradeable（UUPS）升级检查
 
 Hook implementation 提供 UUPS 升级入口（`_authorizeUpgrade` `onlyOwner`）。`_authorizeUpgrade` 先对新 implementation 做无代码守卫：若 `newImplementation.code.length == 0`，revert `UpgradeTargetCodeNotReady(newImplementation)`（快速失败，给命名错误而非 ABI-decode 晦涩 revert）。随后内置 on-chain `poolManager` drift 检查：通过 `ImmutableState(newImplementation).poolManager()` 读取新 implementation 的 immutable PoolManager，与当前 `poolManager` 比较，不匹配 revert `UpgradePoolManagerMismatch`。这是运维护栏而非安全边界（恶意 owner 可伪造 getter 绕过）。off-chain pre-check 仍建议执行作为双保险。
 
@@ -340,20 +340,20 @@ Hook 对 ABI 中不存在的 selector 统一回退 `UnsupportedSelector(selector
 
 Hook ownership transfer 即升级授权转移（UUPS 下只有一个 owner，无 ProxyAdmin 对齐需求）。
 
-#### 3.9.6 POLSplitter 升级顺序约束
+#### 3.9.6 POLSplitterUpgradeable 升级顺序约束
 
-POLSplitter 的 storage 中保存了 `launcher` 和 `polend` 的 proxy 地址（在 `initialize` 时从 `launcher.polend()` 读取写入）。这些地址是 POLSplitter 运行时的核心依赖——`split`、`settle`、`redeemPT` 等函数都通过这些地址回调 Launcher 和 POLend。
+POLSplitterUpgradeable 的 storage 中保存了 `launcher` 和 `polend` 的 proxy 地址（在 `initialize` 时从 `launcher.polend()` 读取写入）。这些地址是 POLSplitterUpgradeable 运行时的核心依赖——`split`、`settle`、`redeemPT` 等函数都通过这些地址回调 Launcher 和 POLendUpgradeable。
 
-**升级 POLSplitter 时的约束：**
+**升级 POLSplitterUpgradeable 时的约束：**
 
 1. 升级本身**不会**改变 storage 中的 `launcher`/`polend` 地址。`upgradeToAndCall` 只替换 implementation 指针，不碰 proxy storage
 2. 确保 `launcher` 和 `polend` proxy 在升级前后都在线且地址未变
-3. 如果新 POLSplitter implementation 的 `initialize` 逻辑有变化，不要误触发 re-initialization——`Initializable` modifier 会阻止，但要确认新 implementation 没有绕过 `initializer` 的路径
+3. 如果新 POLSplitterUpgradeable implementation 的 `initialize` 逻辑有变化，不要误触发 re-initialization——`Initializable` modifier 会阻止，但要确认新 implementation 没有绕过 `initializer` 的路径
 4. 升级完成后，验证 `launcher.polend()` 和 `launcher.polSplitter()` 返回值仍然正确（见 3.9.7）
 
 **storage 地址不变：** 升级本身不会改变 proxy storage 中的 `launcher`/`polend`/`polSplitter` 地址。`upgradeToAndCall` 只替换 implementation 指针，三个合约的地址引用在升级前后保持一致。`[代码已证]`
 
-**升级顺序建议：** 如果同时升级 Launcher + POLend + POLSplitter，建议先升级 POLend 和 POLSplitter，最后升级 Launcher。这样在升级窗口期内，Launcher 始终指向已更新的依赖。这是防御性运维建议，不是代码强制约束——因为 storage 地址不变，任何顺序都不会破坏运行时回调链。
+**升级顺序建议：** 如果同时升级 Launcher + POLendUpgradeable + POLSplitterUpgradeable，建议先升级 POLendUpgradeable 和 POLSplitterUpgradeable，最后升级 Launcher。这样在升级窗口期内，Launcher 始终指向已更新的依赖。这是防御性运维建议，不是代码强制约束——因为 storage 地址不变，任何顺序都不会破坏运行时回调链。
 
 #### 3.9.7 升级后 Readiness Checks
 
@@ -395,7 +395,7 @@ if ! printf '%s\n' "$result" | grep -Fq "$expected_revert_selector"; then
 fi
 ```
 
-**MemeverseLauncher：**
+**MemeverseLauncherUpgradeable：**
 
 ```bash
 cast call $LAUNCHER_PROXY "owner()(address)" --rpc-url $RPC
@@ -403,7 +403,7 @@ cast call $LAUNCHER_PROXY "owner()(address)" --rpc-url $RPC
 
 # polend 是唯一保留的 direct getter（不在 LauncherContracts 内）
 cast call $LAUNCHER_PROXY "polend()(address)" --rpc-url $RPC
-# 应等于 POLend proxy 地址
+# 应等于 POLendUpgradeable proxy 地址
 
 # 其余接线地址经一次 getLauncherContracts() typed decode 读出（12 个 address，按 struct 声明顺序）
 # 字段顺序：localLzEndpoint, lzEndpointRegistry, yieldDispatcher, memeverseRegistrar,
@@ -414,7 +414,7 @@ cast call $LAUNCHER_PROXY \
   --rpc-url $RPC
 # 逐字段校验（返回值按上面顺序的第 N 个）：
 #   [4] memeverseRegistrar   == 预期 Registrar 地址
-#   [7] polSplitter           == POLSplitter proxy 地址
+#   [7] polSplitter           == POLSplitterUpgradeable proxy 地址
 #   [8] launchImpl            == 当前接线的 MemeverseLaunchImpl，非零且有代码
 #   [9] memeverseUniswapHook  == Hook proxy 地址
 #  [10] settlementImpl        == MemeverseSettlementImpl，非零且有代码
@@ -427,7 +427,7 @@ fee sibling 进 readiness check：`settlementImpl`、`liquidityImpl` 与 `feePre
 
 > readiness 不再使用不存在的 launcher direct config getter（`memeverseRegistrar()` / `memeverseProxyDeployer()` / `yieldDispatcher()` / `polSplitter()`）：这些不是 launcher 真实 ABI。脚本通过一次 typed decode `getLauncherContracts()` 读出全部依赖字段；`polend()` 保留 direct getter（真实 ABI，不在 `LauncherContracts`）。
 
-`creditFactory` 进 readiness check：POLend 的 `creditFactory` 指针由脚本 `_readAddress(POLEND, "creditFactory()")` 取值后 `_requireContractCode` 校验有代码，与 bootstrap/fee sibling 同类（用户路径接线指针——`leveragedGenesisWithCredit` 经 `IGenesisCreditFactory(creditFactory).creditOf(uAsset)` 解析 GenesisCredit）；未接线或被占位 owner 兜底（`_buildPOLendCreationCode` 在未设 `CREDIT_FACTORY_PROXY` 时写入的 EOA，无代码）时 readiness 失败、阻断 registration 打开。`cast call $POLEND_PROXY "creditFactory()(address)" --rpc-url $RPC` 应返回非零且有代码的 factory 地址。`[代码已证]`
+`creditFactory` 进 readiness check：POLendUpgradeable 的 `creditFactory` 指针由脚本 `_readAddress(POLEND, "creditFactory()")` 取值后 `_requireContractCode` 校验有代码，与 bootstrap/fee sibling 同类（用户路径接线指针——`leveragedGenesisWithCredit` 经 `IGenesisCreditFactory(creditFactory).creditOf(uAsset)` 解析 GenesisCredit）；未接线或被占位 owner 兜底（`_buildPOLendCreationCode` 在未设 `CREDIT_FACTORY_PROXY` 时写入的 EOA，无代码）时 readiness 失败、阻断 registration 打开。`cast call $POLEND_PROXY "creditFactory()(address)" --rpc-url $RPC` 应返回非零且有代码的 factory 地址。`[代码已证]`
 
 `staker` 进 readiness check：`OMNICHAIN_MEMECOIN_STAKER` 由脚本 `_requireContractCode` 校验有代码（错误串 `STAKER_CODE_NOT_READY`）——dispatcher 已有三重检查（code/双向接线）而 staker 此前零检查，env 配错（EOA/错合约）时 readiness 全绿、`memecoinStaking` 远端路径静默指向坏 composer 的缺口关闭。`cast call $OMNICHAIN_MEMECOIN_STAKER --rpc-url $RPC` 应返回有代码地址。`[代码已证]`
 
@@ -441,7 +441,7 @@ dispatcher endpoint 读回进 readiness check：脚本 `_readAddress(MEMEVERSE_Y
 
 registration center `DAY` 读回进 readiness check：`MemeverseScript.s.sol::_requireRegistrationCenterReady`（由 `::_openSupportedUAssetsAfterReadiness` 与 `::onboardUAsset` 两条 registration 打开路径调用）断言 `IMemeverseRegistrationCenter(registrationCenter).DAY() == expectedRegistrationDay`，前置 `_requireContractCode(registrationCenter, "REGISTRATION_CENTER_CODE_NOT_READY")`（脚本存储变量，`_loadReadinessEnv` 从 `EXPECTED_DAY` env 装载：testnet 部署在 `.env` 设 `EXPECTED_DAY=180` 保留快窗，未设默认生产值 `24 * 3600`；错误串 `REGISTRATION_DAY_NOT_READY`）——`DAY` 为源码级 `constant` 且 center 以构造部署（非 proxy），错误值永久烧入字节码、无 setter 可救；该断言把「测试值漏改生产值」从人工记忆转为部署闸门，fail-closed 朝向生产值（mainnet 漏改 180 会被阻断），任一路径失配即阻断 registration 打开。`[代码已证]`
 
-**MemeverseUniswapHook：**
+**MemeverseUniswapHookUpgradeable：**
 
 ```bash
 cast call $HOOK_PROXY "poolManager()(address)" --rpc-url $RPC
@@ -460,7 +460,7 @@ cast call $HOOK_PROXY "settlementFacet()(address)" --rpc-url $RPC
 # 三者均应非零、有代码；未接线阻断建池/swap/settlement 路径
 ```
 
-**POLend：**
+**POLendUpgradeable：**
 
 ```bash
 cast call $POLEND_PROXY "owner()(address)" --rpc-url $RPC
@@ -468,10 +468,10 @@ cast call $POLEND_PROXY "launcher()(address)" --rpc-url $RPC
 # 应等于 Launcher proxy 地址
 
 cast call $POLEND_PROXY "splitter()(address)" --rpc-url $RPC
-# 应等于 POLSplitter proxy 地址
+# 应等于 POLSplitterUpgradeable proxy 地址
 ```
 
-**POLSplitter：**
+**POLSplitterUpgradeable：**
 
 ```bash
 cast call $SPLITTER_PROXY "owner()(address)" --rpc-url $RPC
@@ -553,7 +553,7 @@ cast call $INCENTIVIZER_PROXY "governor()(address)" --rpc-url $RPC
 2. SwapFacet（`new SwapFacet(poolManager)`，须传与 hook 同一个 `POOL_MANAGER`）
 3. DynamicFeeFacet（`new DynamicFeeFacet(poolManager)`，须传与 hook 同一个 `POOL_MANAGER`）
 4. SettlementFacet（`new SettlementFacet(poolManager)`，须传与 hook 同一个 `POOL_MANAGER`）
-5. Hook 实现（`MemeverseUniswapHook`，diamond Router）
+5. Hook 实现（`MemeverseUniswapHookUpgradeable`，diamond Router）
 6. Hook proxy（`ERC1967Proxy` + UUPS，initialize 绑定 owner/treasury/3 facet 地址/lpTokenImplementation）
 
 固定 salt 的 helper artifacts（`hookImplementation`、`lpTokenImplementation`、3 facet）由 `(deployer, DEPLOYMENT_NONCE)` 唯一确定。`hookProxy` 在同一 nonce 下经 hook-flag mining 选型：干净链上通常等于首个 flag candidate；若更早的 flag 候选被无关代码占用（implementation 不匹配），`_selectProxySalt` 会跳过并选用后续候选。同一 nonce 重跑：完整同配置 hook 部署幂等复用；fresh 路径上固定 salt 中间 artifact 已占用则 revert（`ExistingIntermediateDeploymentNotReusable` / `ArtifactCreate3SaltConsumed`）。
@@ -606,10 +606,10 @@ cast call $INCENTIVIZER_PROXY "governor()(address)" --rpc-url $RPC
 
 普通 swap 携带 referrer 时，protocol fee 切 rebate 到 hook proxy custody；rebate 配置与领取入口均在 hook。
 
-- **领取 rebate（referrer 主动）**：`MemeverseUniswapHook::claimRebate(currency, recipient)`（Router 直接实现）。无 onlyOwner / caller 白名单，任何地址可作为 `recipient`；caller 是 referrer（`pendingRebate` 按 `msg.sender` 索引），`recipient` 非零。`pendingRebate` 在 external transfer 前清零（CEI），并带 `nonReentrant` 双重防重入。currency 与该 referrer 累计 rebate 的 protocol fee currency 一致（in-kind）。`pendingRebate` 是 `[referrer][token]` 二级 mapping 记账（Router storage），hook 无批量 claim 入口；referrer 若在多 token 累积 rebate 须逐 token 调用 `claimRebate`。前端/SDK 应先从 `ReferralRebateAccrued` 事件历史聚合 distinct currency（`currency` 已 indexed，可按 referrer+currency topic 直接 filter），再对每个 currency 逐次调用 `claimRebate`。
-- **查询未领 rebate**：`MemeverseUniswapHook::pendingRebateOf(referrer, currency)`（view）。注意 hook proxy 持有的 token 余额 ≥ Σ 所有 referrer 的 `pendingRebate` 是返佣偿付能力不变量（见 [docs/spec/invariants.md](spec/invariants.md) INV-20）。
-- **改返佣率**：`MemeverseUniswapHook::setReferrerRebateBps(bps)`（Router 直接实现，`onlyOwner`）。约束 `bps <= FeeMath.PROTOCOL_FEE_SHARE_BPS`（`3500`），否则 revert `RebateExceedsProtocolShare`。触发 `ReferrerRebateBpsUpdated(oldBps, newBps)`。
-- **查询当前返佣率**：`MemeverseUniswapHook::referrerRebateBps()`（view）。默认 `1000`（10%）。
+- **领取 rebate（referrer 主动）**：`MemeverseUniswapHookUpgradeable::claimRebate(currency, recipient)`（Router 直接实现）。无 onlyOwner / caller 白名单，任何地址可作为 `recipient`；caller 是 referrer（`pendingRebate` 按 `msg.sender` 索引），`recipient` 非零。`pendingRebate` 在 external transfer 前清零（CEI），并带 `nonReentrant` 双重防重入。currency 与该 referrer 累计 rebate 的 protocol fee currency 一致（in-kind）。`pendingRebate` 是 `[referrer][token]` 二级 mapping 记账（Router storage），hook 无批量 claim 入口；referrer 若在多 token 累积 rebate 须逐 token 调用 `claimRebate`。前端/SDK 应先从 `ReferralRebateAccrued` 事件历史聚合 distinct currency（`currency` 已 indexed，可按 referrer+currency topic 直接 filter），再对每个 currency 逐次调用 `claimRebate`。
+- **查询未领 rebate**：`MemeverseUniswapHookUpgradeable::pendingRebateOf(referrer, currency)`（view）。注意 hook proxy 持有的 token 余额 ≥ Σ 所有 referrer 的 `pendingRebate` 是返佣偿付能力不变量（见 [docs/spec/invariants.md](spec/invariants.md) INV-20）。
+- **改返佣率**：`MemeverseUniswapHookUpgradeable::setReferrerRebateBps(bps)`（Router 直接实现，`onlyOwner`）。约束 `bps <= FeeMath.PROTOCOL_FEE_SHARE_BPS`（`3500`），否则 revert `RebateExceedsProtocolShare`。触发 `ReferrerRebateBpsUpdated(oldBps, newBps)`。
+- **查询当前返佣率**：`MemeverseUniswapHookUpgradeable::referrerRebateBps()`（view）。默认 `1000`（10%）。
 - **rebate 职责归属**：返佣逻辑分布在 Router 与 SwapFacet，与 DynamicFeeFacet 无关——`setReferrerRebateBps` / `claimRebate` / `pendingRebateOf` / `referrerRebateBps` 在 Router 直接实现，`pendingRebate` 的 accrual 在 SwapFacet 的 `_settleProtocolFee`（`_collectProtocolFee` 与 beforeSwap 主路径均调用它）；`referrerRebateBps` 与 `pendingRebate` 均存于 Router 共享 storage（ERC7201 namespace `outrun.storage.MemeverseUniswapHook`）。
 - **Router implementation 升级（UUPS `upgradeToAndCall`）对 rebate 的影响**：`referrerRebateBps` 与 `pendingRebate` 位于 Hook Router 的 ERC7201 storage；常规升级以空 `data` 运行，在新 implementation 保持兼容 storage layout 的前提下保留其值。`initialize` 仅在 proxy 首次初始化时写入默认 `DEFAULT_REFERRAL_REBATE_BPS`（`1000`），不会在常规升级中再次执行或重置该值。`referrerRebateBps == 0` 只停止新的 rebate accrual；既有 `pendingRebate` 仍可通过 `claimRebate` 领取。启用或调整 rebate 必须由 owner 显式调用 `setReferrerRebateBps(...)`。现有代码没有 versioned reinitializer，因此升级 `data` 必须为空。
 - **facet 替换（`setFacet`）对 rebate 的影响**：换 SwapFacet 切换 rebate accrual 逻辑实现，账本与率仍在 Router storage；换 DynamicFeeFacet 只影响动态费率计算（`dynamicFeeState`：EWVWAP / 波动率 / 短期冲击），不触及 rebate。facet 替换保留 Router storage 中的全部状态。三类 facet 替换均经 `setFacet` → `_requireFacetPoolManager` 强制 PoolManager 一致。
@@ -617,12 +617,12 @@ cast call $INCENTIVIZER_PROXY "governor()(address)" --rpc-url $RPC
 
 #### 3.11.1 返佣相关 revert 条件
 
-- `RebateExceedsProtocolShare`：`MemeverseUniswapHook::setReferrerRebateBps(bps)` 当 `bps > FeeMath.PROTOCOL_FEE_SHARE_BPS`（`3500`）时触发，保证单次 swap 的 rebate ≤ protocol fee，不会透支 protocol share。`[代码已证]`
-- `OutrunSafeERC20.SafeERC20FailedOperation(address token)`：`MemeverseUniswapHook::claimRebate(currency, recipient)` 经 `CurrencySettler.transferWithGuard` → `OutrunSafeERC20.safeTransfer` 执行 rebate token 转账，当 transfer 返回 `false`、返回非 bool 数据（非标准 ERC20）、或 low-level call 失败时触发；CEI 下 `pendingRebate` 已先清零，整笔 revert 回滚清零，账本与余额同步。`[文档已对齐实现]`
+- `RebateExceedsProtocolShare`：`MemeverseUniswapHookUpgradeable::setReferrerRebateBps(bps)` 当 `bps > FeeMath.PROTOCOL_FEE_SHARE_BPS`（`3500`）时触发，保证单次 swap 的 rebate ≤ protocol fee，不会透支 protocol share。`[代码已证]`
+- `OutrunSafeERC20.SafeERC20FailedOperation(address token)`：`MemeverseUniswapHookUpgradeable::claimRebate(currency, recipient)` 经 `CurrencySettler.transferWithGuard` → `OutrunSafeERC20.safeTransfer` 执行 rebate token 转账，当 transfer 返回 `false`、返回非 bool 数据（非标准 ERC20）、或 low-level call 失败时触发；CEI 下 `pendingRebate` 已先清零，整笔 revert 回滚清零，账本与余额同步。`[文档已对齐实现]`
 
 #### 3.11.2 treasury 必须非零配置
 
-- `treasury` 必须在 hook 上非零配置；`MemeverseUniswapHook::setTreasury` 已 reject 零地址。若 treasury 未配置或在运行期被清零（当前实现无 zero-address 清零路径，但运维侧若错误 retarget 到零地址），普通 swap 在 `_takeToTreasury`（`SwapFacet`）有显式零地址守卫，treasury 为零时在任何 `poolManager.take` 之前直接 `revert Unauthorized()`，不依赖 token 行为；preorder settlement 在 `_collectPreorderSettlementInputFees`（`SettlementFacet`）直接 `transferFrom` 到 treasury，无显式零地址守卫，零地址时是否 revert 取决于具体 token（非标返 false 触发 `ERC20TransferFailed`，标准实现通常自身 revert）。`[代码已证]`
+- `treasury` 必须在 hook 上非零配置；`MemeverseUniswapHookUpgradeable::setTreasury` 已 reject 零地址。若 treasury 未配置或在运行期被清零（当前实现无 zero-address 清零路径，但运维侧若错误 retarget 到零地址），普通 swap 在 `_takeToTreasury`（`SwapFacet`）有显式零地址守卫，treasury 为零时在任何 `poolManager.take` 之前直接 `revert Unauthorized()`，不依赖 token 行为；preorder settlement 在 `_collectPreorderSettlementInputFees`（`SettlementFacet`）直接 `transferFrom` 到 treasury，无显式零地址守卫，零地址时是否 revert 取决于具体 token（非标返 false 触发 `ERC20TransferFailed`，标准实现通常自身 revert）。`[代码已证]`
 
 #### 3.11.3 返佣记账（pendingRebate accrual）只在 swap unlock session 内执行
 
@@ -638,8 +638,8 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证，固定 18 decimals，与某个 1
 
 #### 部署时序
 
-- `GenesisCreditFactory` 必须先于 `POLend` 部署完成。`_buildPOLendCreationCode` 将本次脚本部署的 factory 地址写入 POLend `initialize` 的 `creditFactory` 参数；未在本次运行部署 factory 时使用 `CREDIT_FACTORY_PROXY` env。`leveragedGenesisWithCredit` 经 `creditOf(uAsset)` 查 GenesisCredit 地址，`setCreditFactory`（owner-only）用于事后修正或迁移。readiness 校验 `POLend.creditFactory()` 有代码，阻断占位（未设 `CREDIT_FACTORY_PROXY` 时 owner 兜底写入的 EOA，无代码）无声通过——避免系统开放后 `leveragedGenesisWithCredit` 首次解析因对无代码地址 staticcall 返空、`abi.decode` revert 而阻断 credit 路径。
-- 无循环依赖：`GenesisCreditFactory` 自内联 CREATE3（不依赖 `OutrunDeployer`），仅依赖 LayerZero `lzEndpoint`，不依赖 POLend / Launcher。
+- `GenesisCreditFactory` 必须先于 `POLendUpgradeable` 部署完成。`_buildPOLendCreationCode` 将本次脚本部署的 factory 地址写入 POLendUpgradeable `initialize` 的 `creditFactory` 参数；未在本次运行部署 factory 时使用 `CREDIT_FACTORY_PROXY` env。`leveragedGenesisWithCredit` 经 `creditOf(uAsset)` 查 GenesisCredit 地址，`setCreditFactory`（owner-only）用于事后修正或迁移。readiness 校验 `POLendUpgradeable.creditFactory()` 有代码，阻断占位（未设 `CREDIT_FACTORY_PROXY` 时 owner 兜底写入的 EOA，无代码）无声通过——避免系统开放后 `leveragedGenesisWithCredit` 首次解析因对无代码地址 staticcall 返空、`abi.decode` revert 而阻断 credit 路径。
+- 无循环依赖：`GenesisCreditFactory` 自内联 CREATE3（不依赖 `OutrunDeployer`），仅依赖 LayerZero `lzEndpoint`，不依赖 POLendUpgradeable / Launcher。
 - per-uAsset GenesisCredit 通过 `deployCredit(uAsset, name, symbol, delegate)` 按需部署，`salt = keccak256(abi.encode(uAsset))` 保证本链确定性地址（同链不同 uAsset 不冲突、`predictCredit` 可预测；factory 地址作 CREATE3 namespace）。跨链同址需 `factory + uAsset` 均跨链同址（部署前提），非合约强制；`uAsset` 是外部 Outrun 资产，其跨链同址性非本代码校验。`setPeer` 必须按各链实际 `creditOf(localUAsset)` 配置，不得复用本链地址。
 
 #### `deployCredit(uAsset, name, symbol, delegate)` 流程
@@ -691,7 +691,7 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
 - 部署后人工对照（runbook）：home 链日志须 `homeChainEid == localEid`；remote 链日志须 `homeChainEid != localEid`。任一链不符合则立即停手，已部署 factory 作废重部。
 - 第二道防线（运维纪律）：`setMerkleRoot` 仅在 home 实例调用；远程实例 `merkleRoot` 恒为 `bytes32(0)`，即便门控因 `homeChainEid` 误配在远程成立，`claim` 路径对零 root 仍 revert `InvalidProof`。此纪律是 homechain-only claim 设计的隐式防线，不得破坏。（`setMerkleRoot` 在 home 实例可重复调用；此纪律约束的是调用位置，不是调用次数。）
 - 部署路径唯一性：`GenesisCreditFactory` 必须仅经 `_deployGenesisCreditFactory` 部署，运维不得带外手动 `new GenesisCreditFactory(...)`——手动部署绕过上述全部护栏（单一来源 / re-check / 日志），会引入双铸风险。若因故必须带外部署，必须人工完成等价校验：构造参数 `homeChainEid_` 取规范 home eid、部署后 `cast call <factory> homeChainEid()` 核对、`cast call <endpoint> eid()` 对照 home/remote 关系。
-- 合约侧 fail-fast：factory 构造时 `homeChainEid_ == 0` 直接 revert `ZeroHomeChainEid`（immutable 零值会让该 factory 所有 credit 的 claim 恒 revert `NotHomeChain`，无链上修复手段，只能换新 factory + `POLend.setCreditFactory` 迁移）。脚本 `require(envEid != 0)`（`ZERO_HOME_CHAIN_EID`）之上再叠加合约防线。该合约防线仅覆盖零 eid 误配；非零但错误的 eid 仍须人工等价校验（见上条部署路径唯一性）。
+- 合约侧 fail-fast：factory 构造时 `homeChainEid_ == 0` 直接 revert `ZeroHomeChainEid`（immutable 零值会让该 factory 所有 credit 的 claim 恒 revert `NotHomeChain`，无链上修复手段，只能换新 factory + `POLendUpgradeable.setCreditFactory` 迁移）。脚本 `require(envEid != 0)`（`ZERO_HOME_CHAIN_EID`）之上再叠加合约防线。该合约防线仅覆盖零 eid 误配；非零但错误的 eid 仍须人工等价校验（见上条部署路径唯一性）。
 
 #### `setMerkleRoot` 配置
 
@@ -712,9 +712,9 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
   - root 清空为 `bytes32(0)` 等于全局禁用剩余 claim（任何 proof 对零 root 恒 `InvalidProof`）；`MerkleRootSet` 事件无旧值参数（`IGenesisCredit` 事件签名仅 `bytes32 merkleRoot`），树版本追踪只能外部记录。
   - 轮换属于正常运维操作（修正快照、扩展空投），勿按「写入一次」假设不可变。
 
-### 3.13 跨链 compose 失败的人工重试（YieldDispatcher）
+### 3.13 跨链 compose 失败的人工重试（YieldDispatcherUpgradeable）
 
-入口：`MemecoinYieldVault.reAccumulateYields(dispatcher, guid, message)`（MEMECOIN 路径）或 `YieldDispatcher.settlePendingCompose(token, guid, message)`（MEMECOIN/UASSET 通用）。本节（dispatcher 侧）两个入口都 permissionless——任何地址可执行，不需要 admin 权限；协议有意不提供 onlyOwner 恢复入口。跨链 staking compose 的恢复入口在 `OmnichainMemecoinStaker`，权限与结算语义不同（仅接收人可调、恒释放裸币不建仓），见 §3.13.1。
+入口：`MemecoinYieldVault.reAccumulateYields(dispatcher, guid, message)`（MEMECOIN 路径）或 `YieldDispatcherUpgradeable.settlePendingCompose(token, guid, message)`（MEMECOIN/UASSET 通用）。本节（dispatcher 侧）两个入口都 permissionless——任何地址可执行，不需要 admin 权限；协议有意不提供 onlyOwner 恢复入口。跨链 staking compose 的恢复入口在 `OmnichainMemecoinStaker`，权限与结算语义不同（仅接收人可调、恒释放裸币不建仓），见 §3.13.1。
 
 适用时机（失败都来自外部瞬时原因，不是 vault/governor 损坏——vault/governor 部署即验证，不假设永久故障）：
 
@@ -727,7 +727,7 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
 - `settlePendingCompose` 调用过但交易 revert（如调用者给的 gas 不足），资金仍在 dispatcher
 - UASSET 路径：`receiveTreasuryIncome` 内部 `recordTreasuryIncome` 要求 token 已注册为 treasury token，分两种情况：
   - 金额非零但 token 未注册 → revert `NonTreasuryToken`——配置时序问题，先完成 token 注册（治理路径）再重试，可恢复。**注意治理周期延迟**：`registerTreasuryToken` 为 `onlyGovernance`（`GovernanceCycleIncentivizerUpgradeable.sol`），唯一路径是治理提案；生产 governor 无 timelock extension、`votingDelay=1 days` + `votingPeriod=1 weeks`（`MemeverseProxyDeployer.sol::deployGovernorAndIncentivizer`），故从提交提案到执行完成需约 8 天。提案执行前 token 仍未注册（`_treasuryTokens[token]` 仍 false），此窗口内任何 settle 重试恒 revert `NonTreasuryToken`，属预期而非恢复失败——资金仍滞留 dispatcher、重试幂等可无限次执行（见下方「为什么失败后直接重试即可恢复」），须待提案执行完成后再重试
-  - 零金额（amountLD=0）→ revert `ZeroInput`——settle 路径上该 revert 由 `YieldDispatcher.sol::settlePendingCompose` 自身的 `ZeroInput` 检查在到达 governor 前先抛出（`recordTreasuryIncome` 内同为 `ZeroInput` 先于 `NonTreasuryToken`，selector 一致），注册 token 无法修复；经 settle 不可收敛，但 lzCompose 路径经 `_settle` 零金额短路在到达 recordTreasuryIncome 前即收敛（收敛矩阵见下方边界条目）
+  - 零金额（amountLD=0）→ revert `ZeroInput`——settle 路径上该 revert 由 `YieldDispatcherUpgradeable.sol::settlePendingCompose` 自身的 `ZeroInput` 检查在到达 governor 前先抛出（`recordTreasuryIncome` 内同为 `ZeroInput` 先于 `NonTreasuryToken`，selector 一致），注册 token 无法修复；经 settle 不可收敛，但 lzCompose 路径经 `_settle` 零金额短路在到达 recordTreasuryIncome 前即收敛（收敛矩阵见下方边界条目）
 - MEMECOIN 路径：`accumulateYields` 因 gas/时序等外部原因失败
 
 为什么失败后直接重试即可恢复：
@@ -737,9 +737,9 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
 - `message` 由 endpoint `composeQueue` 哈希绑定、接收方从 message 解码，调用者不可篡改
 - 边界——零金额/格式非法 payload 均不可经 settle 重试恢复（超长帧内容可解析类除外，见下）：
   - 格式非法/不可解码 payload（内层 composeMsg <64 字节、receiver 槽高位脏，或 TokenType raw 越界）：`lzCompose` 解析失败即置 `Settled`（不结算、不动资金）并发出 `ComposeRejected(guid, token, amount)`，endpoint 状态机收敛（队列槽→`RECEIVED_MESSAGE_HASH`、`ComposeDelivered`）、executor 停止重试；消息内容对 guid 由 endpoint 队列哈希永久绑定，畸形消息永远无法结算，故消费槽不封堵任何合法结算；资金仍滞留 dispatcher（自伤边界，只能从发送端杜绝）。`settlePendingCompose` 对未消费的畸形 composeMsg 在 `abi.decode` 前显式 revert `MalformedComposeMsg`，而非不可读的 decode 回退——`verifySettle` 在 codec 切片（`amountLD` 切 `[12:44]`、`composeMsg` 切 `[76:]`）前先校验帧长 ≥ 76 字节（OFT compose header 全长 = nonce 8 + srcEid 4 + amountLD 32 + composeFrom 32），header 不完整帧（<76 字节，header 即不完整、内层 composeMsg 切片必然越界；区别于 events.md `ComposeRejected` 「短帧为 0」所指 amountLD 不可读的 <44 字节帧）在此前置守卫即被具名拒绝，随后再校验内层 composeMsg 长度 >= 64 字节；裸 `abi.decode` 回退边界仅存在于 dispatcher 的 `settlePendingCompose`——它是唯一裸 decode 入口：守卫只有长度校验（>= 64，仅校验 schema 形状），静态元组 `(address, TokenType)` 的 `abi.decode` 忽略 64 字节后的尾部，故 >64 帧经 settle 与正向按前两 word 结算完全一致；receiver 高位脏 / TokenType raw 越界等长度合法但内容非法的 payload 仍会在此入口的 `abi.decode` 处 revert（空数据回退）；staker 侧无此边界：`lzCompose` 消费/释放内容非法帧（见 §3.13.1），`settlePendingCompose` 以 ≥32 长度守卫 + 具名 `MalformedComposeMsg` 拒绝。但 settle 路径与 `lzCompose` 的**结算**语义不同：settle revert 回滚、`composeStates` 保持 `None`，而 `lzCompose` 置 `Settled` + emit `ComposeRejected` 收敛。该 revert 发生在任何结算之前。这类畸形 payload 的消息内容由 endpoint 队列哈希永久绑定、无第三方可触发，唯一恢复入口 `settlePendingCompose` 即因 decode 失败而不可达，资金永久滞留——这是显式记录的自伤边界（持币人用自己发起的畸形 composeMsg 困住自己的资金，只能从发送端杜绝），协议不为此提供 owner 回收入口。对已消费槽 revert `AlreadyResolved`。
-    - 上述 `MalformedComposeMsg` 断言中**内层长度守卫**的部分均指非零金额帧：`settlePendingCompose` 的 `ZeroInput` 检查先于内层长度守卫（`YieldDispatcher.sol::settlePendingCompose`），零金额 × 内层 <64 字节帧（帧 ≥ 76 通过 `verifySettle`）实际 revert `ZeroInput` 而非 `MalformedComposeMsg`；verifySettle 的帧长 ≥ 76 守卫与金额无关、恒先于 `ZeroInput`（仅受 hash 匹配限定，见下）；「<76 字节帧在此前置守卫即被具名拒绝」同样仅对 hash 与队列槽匹配的真实投递帧成立——`verifySettle` 守卫序为 `NotDelivered` → `AlreadyExecuted` → `InvalidProof` → 帧长 ≥ 76，损坏/猜测 message 探测一律先 revert `InvalidProof`（按错误名 grep 的监控须对得上号）。`[代码已证]`
+    - 上述 `MalformedComposeMsg` 断言中**内层长度守卫**的部分均指非零金额帧：`settlePendingCompose` 的 `ZeroInput` 检查先于内层长度守卫（`YieldDispatcherUpgradeable.sol::settlePendingCompose`），零金额 × 内层 <64 字节帧（帧 ≥ 76 通过 `verifySettle`）实际 revert `ZeroInput` 而非 `MalformedComposeMsg`；verifySettle 的帧长 ≥ 76 守卫与金额无关、恒先于 `ZeroInput`（仅受 hash 匹配限定，见下）；「<76 字节帧在此前置守卫即被具名拒绝」同样仅对 hash 与队列槽匹配的真实投递帧成立——`verifySettle` 守卫序为 `NotDelivered` → `AlreadyExecuted` → `InvalidProof` → 帧长 ≥ 76，损坏/猜测 message 探测一律先 revert `InvalidProof`（按错误名 grep 的监控须对得上号）。`[代码已证]`
   - 超长帧类（内层 composeMsg > 64 字节，帧长 > 140 字节）：内容可解析（前两 word 干净、enum 在 0/1 范围、receiver 非自引用）的 >64 帧：`lzCompose` 固定偏移解析、按前两 word 结算、尾部忽略；`settlePendingCompose` 以 >= 64 守卫接受并重跑一致结算——兜底承诺对该子类成立；前两 word 脏/越界的 >64 帧仍归格式非法类（上一条）——`lzCompose` 触发 `ComposeRejected`、settle 在 `abi.decode` 空数据回退。仅自伤帧可达（协议发送端恒编码 64 字节内层，`MemeverseLauncherLib.sol::buildSendParamAndMessagingFee` 的 `abi.encode(receiver, tokenType)`），无资金错配
-  - 零金额类（amountLD=0）：`settlePendingCompose` 两条路径仍以 `ZeroInput` 拒绝零金额（YieldDispatcher.sol::settlePendingCompose、OmnichainMemecoinStaker.sol::settlePendingCompose）、不可经 settle 收敛；但 `lzCompose` 路径对除自引用分支外的全部分支收敛（零金额自引用帧被 `lzCompose` 的自引用守卫先于 `_settle` 拦截——守卫无金额检查——emit `ComposeRejected(guid, token, 0)` 而非 `OFTProcessed`，见下条自引用类）——`_settle` 在 amount==0 时短路（不 burn、不记账），槽位→`Settled` + emit `OFTProcessed(amount=0, burnedAtDispatcher=false)`、endpoint 状态机收敛到 `ComposeDelivered`（与 vault 分支的零金额收敛行为一致）；收敛行为见 interoperation-details.md §3.4
+  - 零金额类（amountLD=0）：`settlePendingCompose` 两条路径仍以 `ZeroInput` 拒绝零金额（YieldDispatcherUpgradeable.sol::settlePendingCompose、OmnichainMemecoinStaker.sol::settlePendingCompose）、不可经 settle 收敛；但 `lzCompose` 路径对除自引用分支外的全部分支收敛（零金额自引用帧被 `lzCompose` 的自引用守卫先于 `_settle` 拦截——守卫无金额检查——emit `ComposeRejected(guid, token, 0)` 而非 `OFTProcessed`，见下条自引用类）——`_settle` 在 amount==0 时短路（不 burn、不记账），槽位→`Settled` + emit `OFTProcessed(amount=0, burnedAtDispatcher=false)`、endpoint 状态机收敛到 `ComposeDelivered`（与 vault 分支的零金额收敛行为一致）；收敛行为见 interoperation-details.md §3.4
   - 协议发送端已保证非零投递，两条协议 send 路径均在发送前预校验 `quoteOFT` 截断结果，按各自语义拒绝会截断到零的金额（被拒金额永不移动调用方代币/费用）：
     - staking 路径（`MemeverseOmnichainInteroperation.memecoinStaking` / `quoteMemecoinStaking`，远程分支）：在 `_transferIn` 之前校验 `quoteOFT(sendParam).oftReceipt.amountReceivedLD != 0`，拒绝会被 `_removeDust` 截断到零的亚尘金额（`amount < decimalConversionRate`，如 18 位小数 + 6 位共享小数时 `< 1e12`）——此类金额原本会全额拉进合约却零投递、零头寸、全额 LZ 费、dust 永久滞留（合约无 sweep/withdraw）。非零余数（`amount >= decimalConversionRate` 但 `amount % decimalConversionRate != 0`）不 revert：OFT `send` 烧掉截断后的 `amountSentLD` 后，`memecoinStaking` 在同一笔交易内把未烧的余数（`amount - amountSentLD`）经 `_transferOut` 退回 `msg.sender`（源链），无任何滞留；整数倍金额（`amount % rate == 0`，如整数 ether）余数为 0、不退款。
     - 费用分发路径（`MemeverseSettlementImpl._sendRedeemedFeesCrossChain`，govFee/memecoinFee）：在每个 `send` 之前校验 `quoteOFT(sendParam).oftReceipt.amountReceivedLD != 0`，仅拒绝截断到零的亚尘费用（费用 < `decimalConversionRate`）——费用为协议内部计算（swap 手续费累积），要求整数倍会 revert 正常结算，故非零余数（费用 % rate != 0）作为该路径已记录的 dust 滞留取舍保留（滞留在 launcher/dispatcher 而非 router）；预览路径 `MemeverseFeePreviewReader.quoteDistributionLzFee`（view）不加守卫、保持报价语义。
@@ -754,14 +754,14 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
 
 > 误用警告（dispatcher 地址来源）：恢复用的 `dispatcher` **必须**取自步骤 1 的 `ComposeSent` 事件 `to` 字段。**不要**读 `MemecoinYieldVault.yieldDispatcher()`（vault 的 public storage 槽）——它是该 vault `initialize` 时绑定的快照，`reAccumulateYields` 改为参数化 dispatcher 后从不读取它，仅保留以维持 clone + initializer 存储布局。launcher 的 `setYieldDispatcher` 可在此 vault 创建后旋转 canonical dispatcher，故 compose 实际滞留的 dispatcher 可能与该槽相悖；按旧槽地址调 `reAccumulateYields` 会进错 dispatcher 的空 `composeQueue` 槽 → revert `NotDelivered`（见步骤 3 失败矩阵）。`[代码已证]`
 
-1. 定位滞留 `message`：拉取目标链 endpoint 的 `ComposeSent` 事件（`to` = YieldDispatcher、`from` = asset OFT、`index` = 0），链下解码 data 区后按 `guid` 匹配，原样拷贝 `message` 字段（布局见 [docs/spec/interoperation/layerzero-oapp-oft.md §4](spec/interoperation/layerzero-oapp-oft.md)）。注意：`ComposeSent` 的 `guid`/`to`/`from`/`index` 字段均非 indexed，raw RPC `eth_getLogs` 无法按这些字段做 topic 过滤，只能按事件签名（topic0）拉取后在链下匹配 guid（或改用解码型索引器如 The Graph）。
-2. 以足够 gas 调用 `reAccumulateYields(dispatcher, guid, message)`（MEMECOIN，`dispatcher` 为步骤 1 中 ComposeSent 事件的 `to`）或 `YieldDispatcher.settlePendingCompose(asset, guid, message)`（通用）。两个入口均 permissionless（任何地址可调，结算目标由 message 编码决定，与调用者身份无关），且均**非 payable**——附带 `msg.value` 会 EVM 层 revert（无资金滞留，与步骤 4 的 payable `lzCompose` 风险 profile 不同）
+1. 定位滞留 `message`：拉取目标链 endpoint 的 `ComposeSent` 事件（`to` = YieldDispatcherUpgradeable、`from` = asset OFT、`index` = 0），链下解码 data 区后按 `guid` 匹配，原样拷贝 `message` 字段（布局见 [docs/spec/interoperation/layerzero-oapp-oft.md §4](spec/interoperation/layerzero-oapp-oft.md)）。注意：`ComposeSent` 的 `guid`/`to`/`from`/`index` 字段均非 indexed，raw RPC `eth_getLogs` 无法按这些字段做 topic 过滤，只能按事件签名（topic0）拉取后在链下匹配 guid（或改用解码型索引器如 The Graph）。
+2. 以足够 gas 调用 `reAccumulateYields(dispatcher, guid, message)`（MEMECOIN，`dispatcher` 为步骤 1 中 ComposeSent 事件的 `to`）或 `YieldDispatcherUpgradeable.settlePendingCompose(asset, guid, message)`（通用）。两个入口均 permissionless（任何地址可调，结算目标由 message 编码决定，与调用者身份无关），且均**非 payable**——附带 `msg.value` 会 EVM 层 revert（无资金滞留，与步骤 4 的 payable `lzCompose` 风险 profile 不同）
 3. 成功信号：`ComposeSettled(guid, token, receiver, tokenType, amount, burnedAtDispatcher)`（`tokenType` 为消息解码的结算类型：MEMECOIN→vault / UASSET→governor）且 `composeStates[token][guid] == Released`；`burnedAtDispatcher=true` 表示 EOA receiver 分支执行了 burn 调用——实际销毁仅对实现 caller-callable 单参 `burn(uint256)` 的 token（memecoin）成立；UASSET no-code 改走 `_transferOut` 到 `protocolTreasury`——成功、emit `ComposeSettled(...,burnedAtDispatcher=false)`、槽位收敛（非 revert、非不发）；「恒 revert（事件不发）」仅对 MEMECOIN no-code + 无单参 `burn(uint256)` 的 token 成立（见上方「结算失败类」边界）；对 fallback 吸收型 token 可能静默成功而无销毁（burnedAtDispatcher=true 假报）。`false` 仅表示已发起 approve+pull 给合约 receiver（vault/governor），不保证实际拉取（fallback 吸收型 receiver 零移动）——对账时以此区分 burn 与转账，但 burnedAtDispatcher=false 仅表示 dispatcher 发起了转账动作：空 vault 的 MEMECOIN 结算在 vault 内部直接销毁（无 vault 事件），对账须结合底层 token Transfer(to=0) 核对销毁；失败则交易回滚、状态不变，查明原因（gas 不足 / token 未注册）后重试；`reAccumulateYields` 入口另有入口级失败（按代码守卫执行序排列）：message <108 字节 → `ComposeMessageTooShort`；message 内层 receiver ≠ 本 vault → `NotComposeBeneficiary`；dispatcher 无代码（EOA/空合约）→ 空数据 revert（无具名错误，核对地址是否取自 ComposeSent 事件 `to`）；dispatcher 返回零金额（壳/空实现 dispatcher）→ `ComposeSettlementFailed`；误传 staker 地址：真实 staking message → `NotComposeBeneficiary`（内层 receiver=staking 用户 ≠ vault，入口门先触发）、yield message → `NotDelivered`（staker 队列槽空）；`NotBeneficiary` 仅直连 `OmnichainMemecoinStaker.settlePendingCompose` 时出现（§3.13.1）（特例：内层 receiver 恰为 vault 的 staking 帧会经 staker settle 裸转至 vault——staker 的 msg.sender==receiver 被 vault 自洽满足，金额限发送者自身 amountLD、资金惰性滞留 vault，属自伤类）
-4. 终态核验（可选但建议）：确认目标链 endpoint 的 `composeQueue` 槽位已收敛到 `RECEIVED_MESSAGE_HASH`（`ComposeDelivered` 事件已触发）——executor 若仍在重试窗口会自行收敛；若已放弃，任何人可用步骤 1 拷贝的 `message`（`index` = 0）调用 endpoint 的 `MessagingComposer.lzCompose`（permissionless、校验 `composeQueue[from][to][guid][index]` 与 `message` 哈希一致）驱动同一终态化，队列槽归位终态、executor 停止重试。调用时 `from` 传步骤 1 ComposeSent 事件的 `from`（资产 OFT 地址）、`to` 传 composer 地址（即步骤 1 的 `to` = YieldDispatcher）、`guid` 传步骤 1 匹配值、`index` = 0、`extraData` 传空——`from` 是校验键的一部分，误传非 OFT 地址会恒 revert `LZ_ComposeNotFound`。**调用时 `msg.value` 必须为 0**：`MessagingComposer.lzCompose` 为 payable 且把 `msg.value` 全额转发给 composer 的 payable `lzCompose`（`ILayerZeroComposer(_to).lzCompose{value: msg.value}`），而 `YieldDispatcher`/`OmnichainMemecoinStaker` 的 `lzCompose` 从不消费/退还 value、两合约均无 native 取回入口（无 receive/fallback/withdraw/sweep，协议不提供 onlyOwner 兜底）——误带或按 executor 惯例附带 value 将永久滞留 composer 余额。**此步骤仅当步骤 3 已成功（`composeStates==Released`）后执行**：若步骤 3 失败（`composeStates==None`）且失败原因已消除（如 UASSET token 完成治理注册），重驱动 endpoint `lzCompose` 会走**正常结算路径**（置 `Settled` + emit `OFTProcessed`、资金按 message 编码 receiver 释放、方向不变）而非仅收敛——`Settled` 为终态，此后步骤 2/3 的 settle 入口恒 revert `AlreadyResolved`，步骤 3 的 `Released`+`ComposeSettled` 成功判据永久不可达；该时序下应改回步骤 2/3 重试，勿直接执行本步骤。若重驱动 revert `LZ_ComposeNotFound`（`composeQueue` 槽已为 `RECEIVED_MESSAGE_HASH`，`keccak256(message) != RECEIVED`），表示槽已收敛到终态（已由 executor 或先前驱动执行），原子无害、无需再驱动。此步骤只补齐 endpoint 状态机终态，不改变资金结果（前提是不带 `msg.value` 且步骤 3 已成功；资金已在步骤 3 兜底结算释放）。
+4. 终态核验（可选但建议）：确认目标链 endpoint 的 `composeQueue` 槽位已收敛到 `RECEIVED_MESSAGE_HASH`（`ComposeDelivered` 事件已触发）——executor 若仍在重试窗口会自行收敛；若已放弃，任何人可用步骤 1 拷贝的 `message`（`index` = 0）调用 endpoint 的 `MessagingComposer.lzCompose`（permissionless、校验 `composeQueue[from][to][guid][index]` 与 `message` 哈希一致）驱动同一终态化，队列槽归位终态、executor 停止重试。调用时 `from` 传步骤 1 ComposeSent 事件的 `from`（资产 OFT 地址）、`to` 传 composer 地址（即步骤 1 的 `to` = YieldDispatcherUpgradeable）、`guid` 传步骤 1 匹配值、`index` = 0、`extraData` 传空——`from` 是校验键的一部分，误传非 OFT 地址会恒 revert `LZ_ComposeNotFound`。**调用时 `msg.value` 必须为 0**：`MessagingComposer.lzCompose` 为 payable 且把 `msg.value` 全额转发给 composer 的 payable `lzCompose`（`ILayerZeroComposer(_to).lzCompose{value: msg.value}`），而 `YieldDispatcherUpgradeable`/`OmnichainMemecoinStaker` 的 `lzCompose` 从不消费/退还 value、两合约均无 native 取回入口（无 receive/fallback/withdraw/sweep，协议不提供 onlyOwner 兜底）——误带或按 executor 惯例附带 value 将永久滞留 composer 余额。**此步骤仅当步骤 3 已成功（`composeStates==Released`）后执行**：若步骤 3 失败（`composeStates==None`）且失败原因已消除（如 UASSET token 完成治理注册），重驱动 endpoint `lzCompose` 会走**正常结算路径**（置 `Settled` + emit `OFTProcessed`、资金按 message 编码 receiver 释放、方向不变）而非仅收敛——`Settled` 为终态，此后步骤 2/3 的 settle 入口恒 revert `AlreadyResolved`，步骤 3 的 `Released`+`ComposeSettled` 成功判据永久不可达；该时序下应改回步骤 2/3 重试，勿直接执行本步骤。若重驱动 revert `LZ_ComposeNotFound`（`composeQueue` 槽已为 `RECEIVED_MESSAGE_HASH`，`keccak256(message) != RECEIVED`），表示槽已收敛到终态（已由 executor 或先前驱动执行），原子无害、无需再驱动。此步骤只补齐 endpoint 状态机终态，不改变资金结果（前提是不带 `msg.value` 且步骤 3 已成功；资金已在步骤 3 兜底结算释放）。
 
 边界：
 
-- `YieldDispatcher.settlePendingCompose` 的兜底结算语义是重跑与正向路径完全一致的结算（approve+pull 到 message 编码的 receiver：vault/governor；非合约 receiver 按 tokenType 分流：MEMECOIN → burn、UASSET → `protocolTreasury`），不是退回调用者——此“完全一致”仅对 dispatcher 成立；`OmnichainMemecoinStaker.settlePendingCompose` 语义不同（恒释放裸币、不建仓），见 §3.13.1
+- `YieldDispatcherUpgradeable.settlePendingCompose` 的兜底结算语义是重跑与正向路径完全一致的结算（approve+pull 到 message 编码的 receiver：vault/governor；非合约 receiver 按 tokenType 分流：MEMECOIN → burn、UASSET → `protocolTreasury`），不是退回调用者——此“完全一致”仅对 dispatcher 成立；`OmnichainMemecoinStaker.settlePendingCompose` 语义不同（恒释放裸币、不建仓），见 §3.13.1
 - 若 `lzCompose` 已成功（`composeStates[token][guid] == Settled`），重试入口 revert `AlreadyResolved`——槽位已定终态不可再次解析；已结算资金不可撤销，畸形消费（见上方边界条目）则不涉及资金移动
 - `settlePendingCompose` 成功（`composeStates[token][guid] == Released`）后，若迟到的 endpoint `lzCompose` 重试到达，composer 幂等放行（no-op）：不迁移 `ComposeState`、不二次结算，让 endpoint 状态机走到 `ComposeDelivered` 终态——队列槽从 pending 收敛到 `RECEIVED_MESSAGE_HASH`，executor 停止重试；这是预期终态，资金已在 `settlePendingCompose` 兜底结算释放。若 executor 已放弃重试，任何人也可用 `ComposeSent` 事件里的 `message` 调用 endpoint 的 `lzCompose` 触发同一终态化（endpoint `MessagingComposer.lzCompose` permissionless，仅校验消息哈希；**调用时 `msg.value` 必须为 0**——composer 无 native 取回入口，附带 value 将全额转发并永久滞留，见步骤 4）。
 - 若外部原因持续，资金滞留 dispatcher 直至重试成功；这是接受的韧性取舍，协议不提供单方 admin 转走资金的能力 `[代码已证]`
@@ -805,7 +805,7 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
 
 跨链 compose 的执行 gas 预算由发送端 compose options 注入（staking 路径 `addExecutorLzComposeOption(0, omnichainStakingGasLimit, 0)`，`MemeverseOmnichainInteroperation`；yield 路径 `addExecutorLzComposeOption(0, yieldDispatcherGasLimit, 0)`，`MemeverseSettlementImpl`）。该预算必须覆盖目标链 `lzCompose` 主体（endpoint 哈希校验 + RECEIVED sentinel 写入之后、成功事件之前的全部开销）外加 endpoint wrapper 固定开销 + EVM 21k intrinsic + tx calldata + 首触地址/槽的冷访问附加费；若配低于实际峰值，目标链 `lzCompose` 恒 OOG、executor 重试恒失败、endpoint 队列 pin，受益人被迫走 §3.13/§3.13.1 settle 兜底（staker 恒裸币不建仓、yield 路径 permissionless）成为常态而非异常——无资金损失，但 UX 降级。
 
-与 compose 面不同，**receive 面没有 settle 兜底**：staking 发送路径的 receive 预算由 `addExecutorLzReceiveOption(oftReceiveGasLimit, 0)`（`MemeverseOmnichainInteroperation`，`_buildStakingSendParam`）注入，覆盖治理链 memecoin OFT `lzReceive`（mint）主体；若配低于实际峰值，executor 投递恒 OOG、重试恒失败、endpoint 队列 pin——源链 OFT `_debit` 已 burn、目标链未 mint，且 `settlePendingCompose` / `reAccumulateYields` 只覆盖 compose 面（消息未送达时 compose 不会入队），协议内无自动恢复、无 settle 兜底；**但资金不丢失**——投递本身免许可：`EndpointV2.lzReceive` 无调用者限制（option gas 仅封顶 executor 尝试，`Executor` 调用处注入、链上不强制），任何人可持消息字节（源链 `PacketSent` 事件）以自己的 tx gas 调 `EndpointV2.sol::lzReceive(origin, receiver, guid, message, extraData)` 完成 OFT `lzReceive`（mint + sendCompose；调用时 `msg.value` 必须为 0——`EndpointV2.lzReceive` 会把 value 全额转发给 OFT 的 payable `lzReceive`，OFT 不消费/退还、无 native 取回入口，误带永久滞留，同 §3.13 步骤 4 value 警示），与 §3.13 免许可 `lzCompose` 重驱动同类（同一 (receiver, srcEid, sender) 路径上已通过 DVN 验证的消息可按任意次序投递——`_clearPayload` 仅要求把 `lazyInboundNonce` 前推到目标 nonce 时区间内消息的 payload hash 槽均非空（未验证即槽为空），先投后序会把 lazy 前推、前序之后仍可投递；`LZ_InvalidNonce` 只在区间内存在 payload hash 槽为空的 nonce（即该消息从未验证）时触发，与投递次序无关；被消费（含 OApp `clear`）的消息已随 lazy 前推至区间外，重投只 revert `LZ_PayloadHashNotFound`）。故误配后果 = 滞留至人工介入（可用性/运维负担），非永久丢失。`setGasLimits` 对两参仅校验 `> 0`、不设最小执行预算，故调低 `oftReceiveGasLimit` 属 owner 误配类风险：任何下调必须按与本节相同的实测方法论留足余量（正向路径 receive 主体 + endpoint wrapper 固定开销 + EVM 21k intrinsic + calldata + 冷访问尾；本表仅列 compose 面实测，receive 面主体须按同法另行测量后再定值），不得以低于该和的量配置。yield 路径 receive 预算（`MemeverseLauncher.setGasLimits` 第一参，`MemeverseSettlementImpl` 的 `addExecutorLzReceiveOption`）同构、同样无兜底；其 compose 面（第二参）OOG 则可经 §3.13 settle 恢复（yield 路径 permissionless），无资金损失。
+与 compose 面不同，**receive 面没有 settle 兜底**：staking 发送路径的 receive 预算由 `addExecutorLzReceiveOption(oftReceiveGasLimit, 0)`（`MemeverseOmnichainInteroperation`，`_buildStakingSendParam`）注入，覆盖治理链 memecoin OFT `lzReceive`（mint）主体；若配低于实际峰值，executor 投递恒 OOG、重试恒失败、endpoint 队列 pin——源链 OFT `_debit` 已 burn、目标链未 mint，且 `settlePendingCompose` / `reAccumulateYields` 只覆盖 compose 面（消息未送达时 compose 不会入队），协议内无自动恢复、无 settle 兜底；**但资金不丢失**——投递本身免许可：`EndpointV2.lzReceive` 无调用者限制（option gas 仅封顶 executor 尝试，`Executor` 调用处注入、链上不强制），任何人可持消息字节（源链 `PacketSent` 事件）以自己的 tx gas 调 `EndpointV2.sol::lzReceive(origin, receiver, guid, message, extraData)` 完成 OFT `lzReceive`（mint + sendCompose；调用时 `msg.value` 必须为 0——`EndpointV2.lzReceive` 会把 value 全额转发给 OFT 的 payable `lzReceive`，OFT 不消费/退还、无 native 取回入口，误带永久滞留，同 §3.13 步骤 4 value 警示），与 §3.13 免许可 `lzCompose` 重驱动同类（同一 (receiver, srcEid, sender) 路径上已通过 DVN 验证的消息可按任意次序投递——`_clearPayload` 仅要求把 `lazyInboundNonce` 前推到目标 nonce 时区间内消息的 payload hash 槽均非空（未验证即槽为空），先投后序会把 lazy 前推、前序之后仍可投递；`LZ_InvalidNonce` 只在区间内存在 payload hash 槽为空的 nonce（即该消息从未验证）时触发，与投递次序无关；被消费（含 OApp `clear`）的消息已随 lazy 前推至区间外，重投只 revert `LZ_PayloadHashNotFound`）。故误配后果 = 滞留至人工介入（可用性/运维负担），非永久丢失。`setGasLimits` 对两参仅校验 `> 0`、不设最小执行预算，故调低 `oftReceiveGasLimit` 属 owner 误配类风险：任何下调必须按与本节相同的实测方法论留足余量（正向路径 receive 主体 + endpoint wrapper 固定开销 + EVM 21k intrinsic + calldata + 冷访问尾；本表仅列 compose 面实测，receive 面主体须按同法另行测量后再定值），不得以低于该和的量配置。yield 路径 receive 预算（`MemeverseLauncherUpgradeable.setGasLimits` 第一参，`MemeverseSettlementImpl` 的 `addExecutorLzReceiveOption`）同构、同样无兜底；其 compose 面（第二参）OOG 则可经 §3.13 settle 恢复（yield 路径 permissionless），无资金损失。
 
 最小推荐值以下表实测为基准。测量由 `test/interoperation/LzComposeGasBenchmark.t.sol`（`gasleft()` 前后差，仅计 `lzCompose` 主体、不计 endpoint wrapper）给出，采用**暖状态模型**：基准测试在测量前对 vault/governor 做一次预结算以把生产中长期暖的存储槽（`totalAssets`、checkpoint、share 余额、allowance、dispatcher 托管余额）预热至 EIP-2929 暖价，被测 guid 的 compose-state 槽保持新建（与生产每个 guid 仅 resolve 一次一致）。直接对全新 clone vault 测量会因冷槽附加费高估约 3.4×（staker deposit 分支冷测 ~268k vs 暖测 ~79k，268/79≈3.4），故必须按暖状态读数。
 
@@ -813,13 +813,13 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
 |---|---|---|---|
 | staker deposit（vault 有 code：`asset()` + `_safeApprove`×2 + `deposit`）| ~79000 | `omnichainStakingGasLimit`=135000（`MemeverseOmnichainInteroperation` 构造器第 6 参，`script/MemeverseScript.s.sol`）| 足够（余量 ~56k 覆盖 endpoint wrapper + 冷访问尾） |
 | staker fallback（vault 无 code：`_transferOut` 直转）| ~64000 | 135000 | 足够 |
-| dispatcher MEMECOIN（`asset()` 绑定 + `accumulateYields` pull）| ~61000 | `yieldDispatcherGasLimit`=135000（`MemeverseLauncher.initialize` 第 11 参）| 足够（见下保真度注；mock 下界，真实 vault 主体约 +25-35k checkpoint 写，仍 < 135000） |
+| dispatcher MEMECOIN（`asset()` 绑定 + `accumulateYields` pull）| ~61000 | `yieldDispatcherGasLimit`=135000（`MemeverseLauncherUpgradeable.initialize` 第 11 参）| 足够（见下保真度注；mock 下界，真实 vault 主体约 +25-35k checkpoint 写，仍 < 135000） |
 | dispatcher UASSET（`receiveTreasuryIncome` pull）| ~60000 | 135000 | 足够（见下保真度注；mock 下界，真实 governor 主体约 +15-25k incentivizer 转发，仍 < 135000） |
 | dispatcher EOA-burn（MEMECOIN `burn` 直销）| ~38000 | 135000 | 足够 |
 
 保真度注（dispatcher 行 vs staker 行）：staker deposit 行用**真实** `MemecoinYieldVault` minimal-proxy clone 测量，主体 gas 准确反映生产（`deposit` 内部 `_writeTotalAssetCheckpoint` + `_mint` 全计入）。dispatcher 三行用 **mirror mock receiver**（`GasVault.accumulateYields`/`GasGovernor.receiveTreasuryIncome` 仅做 `transferFrom` + 轻量记账，见 `test/interoperation/LzComposeGasBenchmark.t.sol`），**不含**真实 vault 的 `_accumulateYield` → `_writeTotalAssetCheckpoint`（OZ checkpoint push：length SLOAD + 数据 SSTORE + clock SLOAD + SafeCast，约 +25-35k）与真实 governor 的 `recordTreasuryIncome` 外部转发到 incentivizer（2×require + SLOAD + SSTORE + emit，约 +15-25k）。故 dispatcher 行是 mock 下界，真实 dispatcher 主体比表中高约该量；即便按保守上沿（MEMECOIN ~96k / UASSET ~85k）仍 < 135000 默认预算，结论不变。若需 dispatcher 行直接反映生产，可后续把 mirror mock 换成真实 vault + 真实 governor（需 incentivizer fixture）重测。
 
-部署 readiness：脚本默认值（`omnichainStakingGasLimit`=135000、`yieldDispatcherGasLimit`=135000）在暖状态下均覆盖实测主体（含 dispatcher 行 mock 下界的保守上沿修正）且有舒适余量，**当前默认无需上调**。运行时调参两入口均 onlyOwner：staking 路径 `MemeverseOmnichainInteroperation.setGasLimits`（第一参 `oftReceiveGasLimit` 为 receive 面预算——调低无协议内兜底、消息滞留需免许可手工重放投递恢复，见本节上方警告；第二参 `omnichainStakingGasLimit` 为 compose 面预算）、yield 路径 `MemeverseLauncher.setGasLimits`（第一参 receive 面同构无兜底；第二参 `yieldDispatcherGasLimit` 为 compose 面预算）——若未来代码改动使某分支主体接近预算上限（基准测试 `assertLt` 失败即信号），经对应入口上调部署 gas 值，不得在未重测下放宽上限。本表数字随代码变更重测后更新。
+部署 readiness：脚本默认值（`omnichainStakingGasLimit`=135000、`yieldDispatcherGasLimit`=135000）在暖状态下均覆盖实测主体（含 dispatcher 行 mock 下界的保守上沿修正）且有舒适余量，**当前默认无需上调**。运行时调参两入口均 onlyOwner：staking 路径 `MemeverseOmnichainInteroperation.setGasLimits`（第一参 `oftReceiveGasLimit` 为 receive 面预算——调低无协议内兜底、消息滞留需免许可手工重放投递恢复，见本节上方警告；第二参 `omnichainStakingGasLimit` 为 compose 面预算）、yield 路径 `MemeverseLauncherUpgradeable.setGasLimits`（第一参 receive 面同构无兜底；第二参 `yieldDispatcherGasLimit` 为 compose 面预算）——若未来代码改动使某分支主体接近预算上限（基准测试 `assertLt` 失败即信号），经对应入口上调部署 gas 值，不得在未重测下放宽上限。本表数字随代码变更重测后更新。
 
 边界（自伤 forge 路径的不可信 `asset()` 消耗面）：staker deposit 分支的 `asset()` STATICCALL 位于协议发送端恒编码真实 `verse.yieldVault` 的正向路径，故正常跨链 staking 不可达不可信 vault；但持币人经 permissionless OFT `send` 自伤伪造（命名任意有 code 合约为 vault word）可达——此时被命名合约的 `asset()` 在 EIP-150 下经 STATICCALL 最多转发 63/64 剩余 gas、可耗尽后以 OOG 失败。该面**不可由任何静态 gas 快照给出上界**（消耗由被命名合约控制），已作为自伤类边界记录于 §3.13.1「命名 vault 有 code 但 `asset()` 不可读」条目；恢复面不受损（`settlePendingCompose` 从不读 vault word、恒 `_transferOut` push）。脚本默认预算的余量覆盖正向路径（vault 协议控制，`asset()` 恒为真实 vault 的轻量 view）；该自伤对抗面不构成跨用户风险（自伤发送者只能困住自己的钱），故最小推荐值不为该面额外上调，部署方亦不应据此下调。
 
@@ -835,8 +835,8 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
 - 阶段机：`ChangeStage` + `RegisterMemeverse`
 - 资金分发：`RedeemAndDistributeFees`、`OFTProcessed`
 - 跨链 staking：`OmnichainMemecoinStaking`、`OmnichainMemecoinStakingProcessed`
-- 兜底结算（compose 失败人工重试，§3.13）：`ComposeSettled`（YieldDispatcher）/ `StakingComposeSettled`（OmnichainMemecoinStaker）
-- 畸形 compose 消费：`ComposeRejected(guid, token, amount)`——不可结算的 compose payload 被消费（置 `Settled`、不结算）的信号，用于监控发送端畸形/自伤消息与对账。两个 composer 同签名发出：`YieldDispatcher`（畸形内层 composeMsg 解析失败，或干净可解析帧 receiver == dispatcher 自身地址的自引用帧——见 §3.13 自引用类）与 `OmnichainMemecoinStaker`（64 字节帧 receiver word 高位脏）。receiver 非自引用的内容可解析 >64 帧不触发 ComposeRejected：dispatcher 正常结算（发正向/兜底事件），staker `lzCompose` 长度守卫 revert `MalformedComposeMsg`（无事件、槽 None）。
+- 兜底结算（compose 失败人工重试，§3.13）：`ComposeSettled`（YieldDispatcherUpgradeable）/ `StakingComposeSettled`（OmnichainMemecoinStaker）
+- 畸形 compose 消费：`ComposeRejected(guid, token, amount)`——不可结算的 compose payload 被消费（置 `Settled`、不结算）的信号，用于监控发送端畸形/自伤消息与对账。两个 composer 同签名发出：`YieldDispatcherUpgradeable`（畸形内层 composeMsg 解析失败，或干净可解析帧 receiver == dispatcher 自身地址的自引用帧——见 §3.13 自引用类）与 `OmnichainMemecoinStaker`（64 字节帧 receiver word 高位脏）。receiver 非自引用的内容可解析 >64 帧不触发 ComposeRejected：dispatcher 正常结算（发正向/兜底事件），staker `lzCompose` 长度守卫 revert `MalformedComposeMsg`（无事件、槽 None）。
 - 配置变更：Launcher/Hook/RegistrationCenter 的 `Set*` 事件
 
 ## 6. EVM 兼容性要求
@@ -846,10 +846,10 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
 - 受影响合约及使用点：
   - `ReentrancyGuard.nonReentrant`（`src/common/access/ReentrancyGuard.sol`：`bool private transient locked`）
   - `TokenHelper._transferOut`（`src/common/token/TokenHelper.sol::_transferOut`）
-  - `MemeverseLauncher` 继承 `TokenHelper`（`src/verse/MemeverseLauncher.sol`）
-  - `POLend` 直接继承 `ReentrancyGuard`（`src/polend/POLend.sol`）
-  - `POLSplitter` 直接继承 `ReentrancyGuard`（`src/polend/POLSplitter.sol`）
-  - `MemeverseUniswapHook` 直接继承 `ReentrancyGuard`（`src/swap/MemeverseUniswapHook.sol`）
+  - `MemeverseLauncherUpgradeable` 继承 `TokenHelper`（`src/verse/MemeverseLauncherUpgradeable.sol`）
+  - `POLendUpgradeable` 直接继承 `ReentrancyGuard`（`src/polend/POLendUpgradeable.sol`）
+  - `POLSplitterUpgradeable` 直接继承 `ReentrancyGuard`（`src/polend/POLSplitterUpgradeable.sol`）
+  - `MemeverseUniswapHookUpgradeable` 直接继承 `ReentrancyGuard`（`src/swap/MemeverseUniswapHookUpgradeable.sol`）
 - 行业对齐：OpenZeppelin v5.5+ 的 `ReentrancyGuardTransient` 同样声明 "This variant only works on networks where EIP-1153 is available"，v6.0 将把 transient 实现作为唯一 `ReentrancyGuard` 实现。本项目的自研 `ReentrancyGuard` 与 OZ 方向一致。`[代码已证]`
 - `[未知]` 不在此文档范围内的目标链 Cancun 支持状态，需由部署方在部署前确认。
 

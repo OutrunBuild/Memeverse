@@ -72,9 +72,9 @@ interface IPOLend {
     );
     event SettlementDustReserveConfigured(address indexed uAsset, uint128 oldMaxReserve, uint128 newMaxReserve);
     /// @notice Emitted when leveraged-genesis finalization burns the GenesisCredit escrowed by
-    ///         POLend for credit-funded participants of `verseId`.
+    ///         POLendUpgradeable for credit-funded participants of `verseId`.
     /// @dev `totalCreditInterest` mirrors `market.totalCreditInterest` at finalization and matches
-    ///      the amount burned from POLend's credit balance.
+    ///      the amount burned from POLendUpgradeable's credit balance.
     event CreditBurned(uint256 indexed verseId, address indexed uAsset, uint256 totalCreditInterest);
     event SettlementDustReserveFunded(
         address indexed uAsset, address indexed funder, uint256 amount, uint256 credited, uint256 excess
@@ -151,7 +151,7 @@ interface IPOLend {
     function leveragedGenesis(uint256 verseId, uint256 interestAmount) external returns (uint256 borrowedAmount);
 
     /// @notice Open or add to a leveraged-genesis position by paying interest in GenesisCredit
-    ///         instead of the verse's uAsset. The credit token is escrowed (not burned) by POLend.
+    ///         instead of the verse's uAsset. The credit token is escrowed (not burned) by POLendUpgradeable.
     /// @param verseId Memeverse identifier.
     /// @param creditAmount Amount of GenesisCredit to escrow as interest.
     /// @return borrowedAmount uAsset-denominated debt minted against this interest.

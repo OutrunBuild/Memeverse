@@ -32,7 +32,7 @@ import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol
 
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
-import {MemeverseUniswapHook} from "../../src/swap/MemeverseUniswapHook.sol";
+import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRouter.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {MockPermit2ForRouterTest, MockPoolManagerForPermit2RouterTest} from "../mocks/swap/Permit2Mocks.sol";
@@ -42,7 +42,7 @@ contract Permit2AccountingHandler is Test {
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MemeverseSwapRouter internal router;
-    MemeverseUniswapHook internal immutable hook;
+    MemeverseUniswapHookUpgradeable internal immutable hook;
     MockPermit2ForRouterTest internal immutable permit2;
     MockERC20 internal immutable token0;
     address internal immutable treasury;
@@ -53,7 +53,7 @@ contract Permit2AccountingHandler is Test {
     uint256 public lastExpectedPermitAmount;
 
     constructor(
-        MemeverseUniswapHook _hook,
+        MemeverseUniswapHookUpgradeable _hook,
         MockPermit2ForRouterTest _permit2,
         MockERC20 _token0,
         address _treasury,
@@ -180,7 +180,7 @@ contract Permit2SpoofHandler is Test {
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MemeverseSwapRouter internal immutable router;
-    MemeverseUniswapHook internal immutable hook;
+    MemeverseUniswapHookUpgradeable internal immutable hook;
     MockPermit2ForRouterTest internal immutable permit2;
     MockERC20 internal immutable token0;
     address internal immutable treasury;
@@ -190,7 +190,7 @@ contract Permit2SpoofHandler is Test {
 
     constructor(
         MemeverseSwapRouter _router,
-        MemeverseUniswapHook _hook,
+        MemeverseUniswapHookUpgradeable _hook,
         MockPermit2ForRouterTest _permit2,
         MockERC20 _token0,
         address _treasury,
@@ -270,7 +270,7 @@ contract MemeverseSwapRouterPermit2InvariantTest is StdInvariant, Test, HookStor
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     MockPoolManagerForPermit2RouterTest internal manager;
-    MemeverseUniswapHook internal hook;
+    MemeverseUniswapHookUpgradeable internal hook;
     MockPermit2ForRouterTest internal permit2;
     MemeverseSwapRouter internal router;
     MockERC20 internal token0;
@@ -283,12 +283,12 @@ contract MemeverseSwapRouterPermit2InvariantTest is StdInvariant, Test, HookStor
 
     function _deployHookProxy(IPoolManager manager_, address owner_, address treasury_)
         internal
-        returns (MemeverseUniswapHook deployed)
+        returns (MemeverseUniswapHookUpgradeable deployed)
     {
-        // Deploy the real MemeverseUniswapHook behind a CREATE2-mined flag-address proxy so production
+        // Deploy the real MemeverseUniswapHookUpgradeable behind a CREATE2-mined flag-address proxy so production
         // `_validateProxyHookAddress` and facet bindings are exercised.
         address hookProxy = deployHookAtFlagAddress(manager_, owner_, treasury_);
-        deployed = MemeverseUniswapHook(hookProxy);
+        deployed = MemeverseUniswapHookUpgradeable(hookProxy);
     }
 
     /// @notice Test helper for setUp.

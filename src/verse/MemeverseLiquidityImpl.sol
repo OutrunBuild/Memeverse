@@ -232,7 +232,9 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
     ) internal returns (uint256 polUAssetUsed, uint256 polUsedForPolUAsset, address pt, address yt) {
         // Protocol self-mint of the bootstrap POL supply (the POL raw amount backing the main pool): POL is
         // minted to this contract rather than a user to seed the POL/uAsset and PT auxiliary pools below,
-        // before any user-facing POL minting (mintPOLToken).
+        // before any user-facing POL minting (mintPOLToken). mainPoolPOLRawAmount is the main-pool LP raw
+        // amount, so this mints POL 1:1 with that LP — redeem later burns POL for the same LP amount
+        // (see redeemMemecoinLiquidity); do not scale the mint (it must equal the LP added).
         IPol(pol).mint(address(this), mainPoolPOLRawAmount);
         // Bind the Uniswap pool deployed during bootstrap as this POL token's canonical pool.
         IPol(pol).setPoolId(poolId);
@@ -358,7 +360,6 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             uint256 capacity = maxReserve > reserveBefore ? uint256(maxReserve - reserveBefore) : 0;
             credited = unusedBootstrapUAsset < capacity ? unusedBootstrapUAsset : capacity;
             treasuryExcess = unusedBootstrapUAsset - credited;
-            _safeApprove(uAsset, _polend, 0);
             _safeApprove(uAsset, _polend, unusedBootstrapUAsset);
             IPOLend(_polend).fundSettlementDustReserve(uAsset, unusedBootstrapUAsset);
         }
@@ -523,9 +524,13 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             amountInUAssetMin,
             amountInMemecoinMin,
             amountOutDesired,
-            deadline
+            deadline,
+            swapRouter
         );
 
+        // Mint POL 1:1 with the main-pool LP just added: amountOut is the LP the router minted, and redeem
+        // later burns POL for the same LP amount (see redeemMemecoinLiquidity). Do not scale this mint
+        // (no fee/rounding) — POL supply must stay equal to the launcher's main-pool LP.
         IPol(pol).mint(msg.sender, amountOut);
         _refundMintPOLTokenInputs(
             uAsset, memecoin, amountInUAssetDesired, amountInMemecoinDesired, amountInUAsset, amountInMemecoin
@@ -540,7 +545,8 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 amountInUAssetMin,
         uint256 amountInMemecoinMin,
         uint256 amountOutDesired,
-        uint256 deadline
+        uint256 deadline,
+        address swapRouter
     ) internal returns (uint256 amountInUAsset, uint256 amountInMemecoin, uint256 amountOut) {
         if (amountOutDesired == 0) {
             return _mintPOLTokenWithAutoLiquidity(
@@ -550,12 +556,13 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
                 amountInMemecoinDesired,
                 amountInUAssetMin,
                 amountInMemecoinMin,
-                deadline
+                deadline,
+                swapRouter
             );
         }
 
         return _mintPOLTokenWithExactLiquidity(
-            uAsset, memecoin, amountInUAssetDesired, amountInMemecoinDesired, amountOutDesired, deadline
+            uAsset, memecoin, amountInUAssetDesired, amountInMemecoinDesired, amountOutDesired, deadline, swapRouter
         );
     }
 
@@ -566,11 +573,10 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 amountInMemecoinDesired,
         uint256 amountInUAssetMin,
         uint256 amountInMemecoinMin,
-        uint256 deadline
+        uint256 deadline,
+        address swapRouter
     ) internal returns (uint256 amountInUAsset, uint256 amountInMemecoin, uint256 amountOut) {
-        (amountOut, amountInUAsset, amountInMemecoin) = IMemeverseSwapRouter(
-                memeverseLauncherStorage.memeverseSwapRouter
-            )
+        (amountOut, amountInUAsset, amountInMemecoin) = IMemeverseSwapRouter(swapRouter)
             .addLiquidityDetailed(
                 Currency.wrap(uAsset),
                 Currency.wrap(memecoin),
@@ -593,13 +599,13 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 amountInUAssetDesired,
         uint256 amountInMemecoinDesired,
         uint256 amountOutDesired,
-        uint256 deadline
+        uint256 deadline,
+        address swapRouter
     ) internal returns (uint256 amountInUAsset, uint256 amountInMemecoin, uint256 amountOut) {
         require(amountOutDesired <= type(uint128).max, IMemeverseLauncher.InvalidLength());
         // Quote the smallest router-side budgets that should mint the requested LP amount at the current pool price.
-        (uint256 quotedUAsset, uint256 quotedMemecoin) = IMemeverseSwapRouter(
-                memeverseLauncherStorage.memeverseSwapRouter
-            ).quoteExactAmountsForLiquidity(uAsset, memecoin, uint128(amountOutDesired));
+        (uint256 quotedUAsset, uint256 quotedMemecoin) =
+            IMemeverseSwapRouter(swapRouter).quoteExactAmountsForLiquidity(uAsset, memecoin, uint128(amountOutDesired));
         if (quotedUAsset > amountInUAssetDesired) {
             revert IMemeverseSwapRouter.InputAmountExceedsMaximum(quotedUAsset, amountInUAssetDesired);
         }
@@ -608,9 +614,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         }
         // Reuse the exact quote as the desired budget so any price move that under-mints reverts instead of silently
         // minting less POL than requested.
-        (amountOut, amountInUAsset, amountInMemecoin) = IMemeverseSwapRouter(
-                memeverseLauncherStorage.memeverseSwapRouter
-            )
+        (amountOut, amountInUAsset, amountInMemecoin) = IMemeverseSwapRouter(swapRouter)
             .addLiquidityDetailed(
                 Currency.wrap(uAsset),
                 Currency.wrap(memecoin),

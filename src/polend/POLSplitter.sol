@@ -6,7 +6,6 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
 import {ReentrancyGuard} from "../common/access/ReentrancyGuard.sol";
@@ -284,6 +283,11 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         if (numerator == 0 || denominator == 0) revert ZeroInput();
 
         SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
+        // The backing ratio is set once, before any PT is minted, and is immutable thereafter —
+        // `redeemPT` applies this single ratio to all PT, so every holder must share one fixed backing
+        // (spec §1; INV-14/19). `ptBackingNumerator != 0` is the true one-shot guard; the
+        // `totalPOLCollateral != 0` check is defense-in-depth, since `split`/`merge` gate on
+        // `_requirePTBackingRatio`, meaning collateral != 0 already implies the ratio is set.
         if (info.pt == address(0)) revert InvalidClaim();
         if (info.settled) revert AlreadySettled();
         if (info.totalPOLCollateral != 0) revert InvalidClaim();
@@ -352,17 +356,19 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         if (!info.settled) revert NotSettled();
         if (to == address(0)) revert ZeroInput();
 
-        uint256 outstandingYT = IERC20(info.yt).totalSupply();
+        address yt = info.yt;
+        uint256 outstandingYT = IERC20(yt).totalSupply();
         if (outstandingYT == 0) revert InvalidClaim();
+        uint256 settlementMemecoin = info.settlementMemecoin;
         uint256 ytRedeemableUAssetPool = _ytRedeemableUAssetPool(info);
 
         uAssetAmount = Math.mulDiv(ytRedeemableUAssetPool, ytAmount, outstandingYT);
-        memecoinAmount = Math.mulDiv(info.settlementMemecoin, ytAmount, outstandingYT);
+        memecoinAmount = Math.mulDiv(settlementMemecoin, ytAmount, outstandingYT);
         if (uAssetAmount == 0 && memecoinAmount == 0) revert InvalidClaim();
 
-        YieldToken(info.yt).burn(msg.sender, ytAmount);
+        YieldToken(yt).burn(msg.sender, ytAmount);
         info.settlementUAsset -= uAssetAmount;
-        info.settlementMemecoin -= memecoinAmount;
+        info.settlementMemecoin = settlementMemecoin - memecoinAmount;
 
         IERC20(info.uAsset).safeTransfer(to, uAssetAmount);
         IERC20(info.memecoin).safeTransfer(to, memecoinAmount);
@@ -371,6 +377,11 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
 
     function previewRedeemYTUAsset(uint256 verseId, uint256 ytAmount) external view returns (uint256 uAssetAmount) {
         SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
+        // Pre-settlement `settlementUAsset` is always 0 (`settle` is its only writer and also sets
+        // `settled`), so the YT pool is definitionally 0 — mirror the `outstandingYT == 0` zero-return
+        // and skip the underflowing `_ytRedeemableUAssetPool`; also makes garbage verseIds return 0
+        // without reading `totalSupply` on address(0).
+        if (!info.settled) return 0;
         uint256 outstandingYT = IERC20(info.yt).totalSupply();
         if (outstandingYT == 0) return 0;
 
@@ -394,13 +405,15 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
     {
         uint256 polAmount = info.totalPOLCollateral;
         address memecoin = info.memecoin;
-        uint256 beforeUAsset = IERC20(info.uAsset).balanceOf(address(this));
+        address uAsset = info.uAsset;
+        address launcher = polSplitterStorage.launcher;
+        uint256 beforeUAsset = IERC20(uAsset).balanceOf(address(this));
         uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
 
-        IERC20(info.pol).approve(polSplitterStorage.launcher, polAmount);
-        IMemeverseLauncher(polSplitterStorage.launcher).redeemMemecoinLiquidity(verseId, polAmount, true);
+        IERC20(info.pol).approve(launcher, polAmount);
+        IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId, polAmount, true);
 
-        settlementUAsset = IERC20(info.uAsset).balanceOf(address(this)) - beforeUAsset;
+        settlementUAsset = IERC20(uAsset).balanceOf(address(this)) - beforeUAsset;
         settlementMemecoin = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;
     }
 
@@ -408,7 +421,7 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
         uint256 numerator = info.ptBackingNumerator;
         uint256 denominator = info.ptBackingDenominator;
         if (numerator == 0 || denominator == 0) revert InvalidClaim();
-        return FullMath.mulDiv(ptAmount, numerator, denominator);
+        return Math.mulDiv(ptAmount, numerator, denominator);
     }
 
     /// @notice uAsset reserved for all outstanding PT at the recorded backing ratio
@@ -419,9 +432,12 @@ contract POLSplitter layout at erc7201("outrun.storage.POLSplitter")
 
     /// @notice YT-redeemable uAsset pool = settlement uAsset minus the PT reserve (spec §3.2).
     ///         `settle` guarantees the settlement uAsset covers the PT reserve, so the
-    ///         subtraction cannot underflow on the redemption path (settled verses);
-    ///         InvalidClaim / panic are defensive — e.g. `previewRedeemYTUAsset` before
-    ///         settlement hits the panic.
+    ///         subtraction cannot underflow on the redemption path (settled verses).
+    ///         Pre-settlement previews short-circuit at the view and return 0, so the
+    ///         subtraction is only reachable on settled verses, where `settle`'s coverage
+    ///         check (`settlementUAsset < _ptReservedUAsset(info)` -> `InvalidClaim`)
+    ///         guarantees no underflow; the remaining InvalidClaim / panic is defensive only
+    ///         for hypothetical settled-insolvent states.
     function _ytRedeemableUAssetPool(SplitInfo storage info) internal view returns (uint256) {
         return info.settlementUAsset - _ptReservedUAsset(info);
     }

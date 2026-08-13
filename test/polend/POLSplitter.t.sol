@@ -384,6 +384,15 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
         assertEq(redeemedUAsset, 250 ether, "uAsset pool excludes converted PT backing");
     }
 
+    function testPreviewRedeemYTUAsset_ReturnsZeroBeforeSettlement() external {
+        vm.prank(address(launcher));
+        splitter.recordPTBackingRatio(VERSE_ID, 1 ether, 1 ether);
+        mintPTForTest(address(splitter), VERSE_ID, address(this), 300 ether);
+        mintYTForTest(address(splitter), VERSE_ID, address(this), 300 ether);
+
+        assertEq(splitter.previewRedeemYTUAsset(VERSE_ID, 150 ether), 0, "pre-settle YT pool is zero");
+    }
+
     function testRedeemYT_UsesFullPrecisionWhenPoolTimesAmountWouldOverflow() external {
         vm.prank(address(launcher));
         splitter.recordPTBackingRatio(VERSE_ID, 1 ether, 1 ether);

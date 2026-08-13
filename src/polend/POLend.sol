@@ -58,6 +58,7 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         mapping(uint256 => mapping(address => uint256)) creditInterestPaid;
         address creditFactory;
         mapping(uint256 => LendMarket) lendMarkets;
+        // Real-uAsset interest only (per user); credit is in creditInterestPaid, and the same-named getter sums both.
         mapping(uint256 => mapping(address => uint256)) leveragedInterestPaid;
         mapping(uint256 => ResidualState) residualStates;
         mapping(address => uint256) globalDebtByUAsset;
@@ -797,28 +798,13 @@ contract POLend layout at erc7201("outrun.storage.POLend")
         uint256 aggregateDebtCap = MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds;
         if (debtCap > aggregateDebtCap) debtCap = aggregateDebtCap;
         // Derive the max total interest whose implied debt (totalInterest * 1e18 / interestRate,
-        // floored) still fits under `debtCap`. Equivalent to ceil((debtCap+1)*rate/1e18) - 1, which
-        // is the smallest `maxTotalInterest` whose floored debt exceeds debtCap. Spec:
+        // floored) still fits under `debtCap`. The largest M with floor(M * 1e18 / rate) <= debtCap
+        // is ((debtCap + 1) * rate - 1) / 1e18, because ceil(X/1e18) - 1 == (X - 1)/1e18 for X >= 1.
+        // X = (debtCap + 1) * rate cannot overflow: the aggregate clamp above bounds debtCap <=
+        // uint128.max and rate <= 1e18, so X <= 2^128 * 1e18 < 2^256. Spec:
         // docs/spec/polend/core.md § "maxTotalLeveragedInterest = ((debtCap + 1) * rate - 1) / 1e18".
-        uint256 maxTotalInterest;
-        if (debtCap == type(uint256).max) {
-            // Overflow-safe ceil for the saturated cap: split uint256.max into q*1e18 + r and ceil
-            // each part independently, since (debtCap+1) would overflow. NOTE: this branch is
-            // currently unreachable — the aggregate clamp above bounds debtCap <= aggregateDebtCap
-            // <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = uint128.max < uint256.max. Kept as a defensive
-            // ceiling for the saturating `_debtCap` path should the clamp ever widen.
-            // Math caveat: the split identity `ceil((MAX+1)*rate/1e18) - 1` holds exactly for
-            // rate < 1e18. At rate == 1e18 the intermediate sum `q*rate + ceil((r+1)*rate/1e18)`
-            // evaluates to MAX+1 and would overflow-revert under checked arithmetic; moot because
-            // the branch is unreachable, but documented so a future clamp widening does not
-            // silently inherit this edge.
-            uint256 q = type(uint256).max / 1e18;
-            uint256 r = type(uint256).max % 1e18;
-            maxTotalInterest =
-                q * market.interestRate + Math.mulDiv(r + 1, market.interestRate, 1e18, Math.Rounding.Ceil) - 1;
-        } else {
-            maxTotalInterest = Math.mulDiv(debtCap + 1, market.interestRate, 1e18, Math.Rounding.Ceil) - 1;
-        }
+        // A future widening of MAX_SUPPORTED_TOTAL_GENESIS_FUNDS must re-derive this formula.
+        uint256 maxTotalInterest = ((debtCap + 1) * market.interestRate - 1) / 1e18;
         uint256 totalInterest = market.totalLeveragedInterest;
         if (maxTotalInterest > totalInterest) remainingAdditionalInterest = maxTotalInterest - totalInterest;
     }
@@ -873,13 +859,15 @@ contract POLend layout at erc7201("outrun.storage.POLend")
 
         LendMarket storage market = polendStorage.lendMarkets[verseId];
         (address pol, address memecoin) = IPOLSplitter(polendStorage.splitter).getPOLAndMemecoin(verseId);
-        uint256 beforeUAsset = IERC20(market.uAsset).balanceOf(address(this));
+        address marketUAsset = market.uAsset;
+        address launcher = polendStorage.launcher;
+        uint256 beforeUAsset = IERC20(marketUAsset).balanceOf(address(this));
         uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
 
-        IERC20(pol).approve(polendStorage.launcher, polAmount);
-        IMemeverseLauncher(polendStorage.launcher).redeemMemecoinLiquidity(verseId, polAmount, true);
+        IERC20(pol).approve(launcher, polAmount);
+        IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId, polAmount, true);
 
-        uAssetAmount = IERC20(market.uAsset).balanceOf(address(this)) - beforeUAsset;
+        uAssetAmount = IERC20(marketUAsset).balanceOf(address(this)) - beforeUAsset;
         memecoinAmount = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;
     }
 

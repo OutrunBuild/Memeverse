@@ -177,7 +177,7 @@ interface IMemecoinYieldVault is IERC20 {
     /// @notice Claims exactly `assets` from matured redemption requests.
     /// @dev Assets-first FIFO claim. For each matured entry it takes `min(remainingAssets,
     ///      entry.lockedAssets)` assets and solves the matching share count `takeShares =
-    ///      floor(takeAssets * entry.shares / entry.lockedAssets)` so the floor payout
+    ///      ceil((takeAssets + 1) * entry.shares / entry.lockedAssets) - 1` so the floor payout
     ///      `floor(takeShares * entry.lockedAssets / entry.shares)` never exceeds `takeAssets`. Because each
     ///      payout floors down, an exact `assets` target is frequently unreachable from a partial queue;
     ///      the call then reverts `InsufficientClaimableRedeem` (EIP-4626's "MUST revert if all assets

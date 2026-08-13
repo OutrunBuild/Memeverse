@@ -18,6 +18,12 @@ abstract contract OutrunOAppOptionsType3Init is IOAppOptionsType3, OutrunOwnable
         mapping(uint32 => mapping(uint16 => bytes)) enforcedOptions;
     }
 
+    // LayerZero options are a packed bytes blob: the first 2 bytes are a type tag
+    // (1/2/3), the rest are typed option entries. Only type-3 entries can be
+    // summed by the remote executor on delivery (enforced + caller gasLimit and
+    // msg.value add up); type 1/2 are opaque, non-combinable blobs, so enforced
+    // options are restricted to type 3. _assertOptionsType3 reads the [0:2] tag,
+    // and combineOptions strips it with [2:] before concatenating the entries.
     uint16 internal constant OPTION_TYPE_3 = 3;
 
     // keccak256(abi.encode(uint256(keccak256("outrun.layerzerov2.storage.OAppOptionsType3")) - 1)) & ~bytes32(uint256(0xff))

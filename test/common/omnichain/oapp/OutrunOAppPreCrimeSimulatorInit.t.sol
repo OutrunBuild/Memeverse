@@ -7,7 +7,7 @@ import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppRec
 import {InboundPacket} from "@layerzerolabs/oapp-evm/contracts/precrime/interfaces/IOAppPreCrimeSimulator.sol";
 import {IOAppPreCrimeSimulator} from "@layerzerolabs/oapp-evm/contracts/precrime/interfaces/IOAppPreCrimeSimulator.sol";
 
-import {OutrunOwnableInit} from "../../../../src/common/access/OutrunOwnableInit.sol";
+import {OutrunOwnable} from "../../../../src/common/access/OutrunOwnable.sol";
 import {OAppPreCrimeSimulatorHarness} from "../../../mocks/infrastructure/OAppPreCrimeSimulatorHarness.sol";
 import {MockPreCrimeCaller} from "../../../mocks/common/PreCrimeMocks.sol";
 
@@ -66,7 +66,7 @@ contract OutrunOAppPreCrimeSimulatorInitTest is Test {
     ///         initialized owner, not a stale/zero owner.
     function testSetPreCrimeRevertsForNonOwner() external {
         vm.prank(NON_OWNER);
-        vm.expectRevert(abi.encodeWithSelector(OutrunOwnableInit.OwnableUnauthorizedAccount.selector, NON_OWNER));
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, NON_OWNER));
         harness.setPreCrime(address(preCrimeCaller));
     }
 

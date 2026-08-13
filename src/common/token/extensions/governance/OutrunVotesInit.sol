@@ -241,7 +241,9 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
         if (to == address(0)) {
             _push($._totalCheckpoints, _subtract, SafeCast.toUint208(amount));
         }
-        _moveDelegateVotes(delegates(from), delegates(to), amount);
+        _moveDelegateVotes(
+            from == address(0) ? address(0) : delegates(from), to == address(0) ? address(0) : delegates(to), amount
+        );
     }
 
     /**

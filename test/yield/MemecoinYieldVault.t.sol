@@ -73,10 +73,10 @@ contract MemecoinYieldVaultTest is Test {
 
         // Attacker redeems after the delay.
         vm.prank(ATTACKER);
-        vault.requestRedeem(attackerShares, ATTACKER);
+        vault.requestRedeem(attackerShares, ATTACKER, ATTACKER);
         vm.warp(block.timestamp + 1 days);
         vm.prank(ATTACKER);
-        uint256 attackerRedeemed = vault.executeRedeem();
+        uint256 attackerRedeemed = vault.redeem(attackerShares, ATTACKER, ATTACKER);
 
         // The attacker captured some yield (sanity), but only a V-damped fraction: ~11 ether with
         // V=100, versus ~500 ether if V regressed to +1. The 50 ether bound catches such a regression.
@@ -131,10 +131,10 @@ contract MemecoinYieldVaultTest is Test {
         vault.deposit(1_000 ether, victimTwo);
 
         vm.prank(ATTACKER);
-        vault.requestRedeem(attackerShares, ATTACKER);
+        vault.requestRedeem(attackerShares, ATTACKER, ATTACKER);
         vm.warp(block.timestamp + 1 days);
         vm.prank(ATTACKER);
-        uint256 attackerRedeemed = vault.executeRedeem();
+        uint256 attackerRedeemed = vault.redeem(attackerShares, ATTACKER, ATTACKER);
 
         assertGt(attackerRedeemed, 1 ether, "attacker should capture some public yield");
         assertLt(attackerRedeemed, 50 ether, "attacker capture must be damped by V across multiple victims");
@@ -148,7 +148,7 @@ contract MemecoinYieldVaultTest is Test {
 
         vm.prank(ATTACKER);
         vm.expectRevert(IMemecoinYieldVault.NotSelfRedemption.selector);
-        vault.requestRedeem(shares / 2, RECEIVER);
+        vault.requestRedeem(shares / 2, ATTACKER, RECEIVER);
 
         vm.expectRevert();
         vault.redeemRequestQueues(RECEIVER, 0);
@@ -164,7 +164,7 @@ contract MemecoinYieldVaultTest is Test {
         for (uint256 i = 0; i < vault.MAX_REDEEM_REQUESTS(); i++) {
             vm.prank(ATTACKER);
             vm.expectRevert(IMemecoinYieldVault.NotSelfRedemption.selector);
-            vault.requestRedeem(1, VICTIM);
+            vault.requestRedeem(1, ATTACKER, VICTIM);
         }
 
         vm.expectRevert();
@@ -174,10 +174,13 @@ contract MemecoinYieldVaultTest is Test {
         vm.prank(VICTIM);
         uint256 victimShares = vault.deposit(10 ether, VICTIM);
         vm.prank(VICTIM);
-        vault.requestRedeem(victimShares / 2, VICTIM);
+        vault.requestRedeem(victimShares / 2, VICTIM, VICTIM);
 
-        (uint192 queuedAmount,) = vault.redeemRequestQueues(VICTIM, 0);
+        (uint192 queuedAmount, uint64 requestTime, uint256 queuedShares) = vault.redeemRequestQueues(VICTIM, 0);
         assertGt(uint256(queuedAmount), 0, "victim's own request stays queued");
+        // Silence unused-warning on the extra packed fields while keeping the destructure self-documenting.
+        assertGt(requestTime, 0, "requestTime set");
+        assertEq(queuedShares, victimShares / 2, "queued shares recorded");
     }
 
     /// @notice Verifies previewed shares match actual shares after yield accumulation.
@@ -209,9 +212,14 @@ contract MemecoinYieldVaultTest is Test {
         vm.prank(ATTACKER);
         vault.accumulateYields(5 ether);
 
-        vm.prank(ATTACKER);
-        uint256 lockedAssets = vault.requestRedeem(sharesA, ATTACKER);
+        // requestRedeem returns the locked assets directly; snapshot the pre-request value via
+        // convertToAssets (totalAssets is unchanged until the burn) and assert the return matches.
+        uint256 lockedAssets = vault.convertToAssets(sharesA);
         assertGt(lockedAssets, 10 ether, "locked reflects yield");
+
+        vm.prank(ATTACKER);
+        uint256 returnedLocked = vault.requestRedeem(sharesA, ATTACKER, ATTACKER);
+        assertEq(returnedLocked, lockedAssets, "requestRedeem returns locked assets");
 
         vm.prank(VICTIM);
         vault.deposit(30 ether, VICTIM);
@@ -220,7 +228,7 @@ contract MemecoinYieldVaultTest is Test {
 
         uint256 attackerBalanceBefore = asset.balanceOf(ATTACKER);
         vm.prank(ATTACKER);
-        uint256 redeemed = vault.executeRedeem();
+        uint256 redeemed = vault.redeem(sharesA, ATTACKER, ATTACKER);
 
         assertEq(redeemed, lockedAssets, "redeemed amount matches locked");
         assertEq(asset.balanceOf(ATTACKER), attackerBalanceBefore + lockedAssets, "attacker received locked amount");
@@ -666,75 +674,96 @@ contract MemecoinYieldVaultTest is Test {
 
         vm.prank(ATTACKER);
         vm.expectRevert(IMemecoinYieldVault.NotSelfRedemption.selector);
-        vault.requestRedeem(1 ether, address(0));
+        vault.requestRedeem(1 ether, ATTACKER, address(0));
 
         vm.prank(ATTACKER);
         vm.expectRevert(IMemecoinYieldVault.ZeroRedeemRequest.selector);
-        vault.requestRedeem(0, ATTACKER);
+        vault.requestRedeem(0, ATTACKER, ATTACKER);
     }
 
-    /// @notice Verifies redeem execution before the delay elapses returns zero and leaves the queue intact.
-    /// @dev Covers the branch where no queued request is yet claimable.
-    function testExecuteRedeemReturnsZeroBeforeDelay() external {
+    /// @notice Before `REDEEM_DELAY` elapses, a claim reverts (nothing is mature) and the queue is intact.
+    /// @dev The matured queue is empty, so `redeem` reverts `InsufficientClaimableRedeem` atomically — it never
+    ///      silently returns 0. `pendingRedeemRequest` reports the full immature amount, `claimableRedeemRequest` 0.
+    function testRedeemRevertsBeforeDelayAndQueueRetained() external {
         vm.prank(ATTACKER);
         uint256 shares = vault.deposit(10 ether, ATTACKER);
 
         vm.prank(ATTACKER);
-        vault.requestRedeem(shares / 2, ATTACKER);
+        vault.requestRedeem(shares / 2, ATTACKER, ATTACKER);
 
+        // Maturity split: all shares are pending, none claimable.
+        assertEq(vault.pendingRedeemRequest(ATTACKER), shares / 2, "pending shares before delay");
+        assertEq(vault.claimableRedeemRequest(ATTACKER), 0, "no claimable shares before delay");
+
+        // Nothing mature, so a claim reverts rather than silently paying 0.
         vm.prank(ATTACKER);
-        uint256 redeemedAmount = vault.executeRedeem();
+        vm.expectRevert(abi.encodeWithSelector(IMemecoinYieldVault.InsufficientClaimableRedeem.selector, uint256(0)));
+        vault.redeem(shares / 2, ATTACKER, ATTACKER);
 
-        assertEq(redeemedAmount, 0, "redeemed amount");
-        (uint192 queuedAmount,) = vault.redeemRequestQueues(ATTACKER, 0);
-        assertGt(uint256(queuedAmount), 0, "queue retained");
+        // Queue entry is untouched by the reverted claim.
+        (uint192 lockedAssets, uint64 requestTime, uint256 queuedShares) = vault.redeemRequestQueues(ATTACKER, 0);
+        assertGt(uint256(lockedAssets), 0, "locked assets retained");
+        assertGt(requestTime, 0, "requestTime retained");
+        assertEq(queuedShares, shares / 2, "queued shares retained");
     }
 
-    /// @notice Verifies redeem execution removes matured entries even when they are not at the queue tail.
-    /// @dev Covers the swap-pop branch in `executeRedeem`.
-    function testExecuteRedeemRemovesMiddleEntryViaSwapPop() external {
+    /// @notice `redeem` claims only matured queue entries and leaves immature ones queued.
+    /// @dev Covers the FIFO claim + swap-pop compaction in `redeem`: the matured head entry is fully
+    ///      consumed (shares==0 → removed), while a later immature entry stays untouched at the new head.
+    function testRedeemClaimsMaturedEntryAndLeavesImmatureQueued() external {
         vm.prank(ATTACKER);
         uint256 shares = vault.deposit(20 ether, ATTACKER);
 
+        // Capture each locked amount via convertToAssets at the totalAssets snapshot that requestRedeem prices at:
+        // request1 prices at the pre-request totalAssets; request2 prices at the post-request1 totalAssets.
+        uint256 firstAssets = vault.convertToAssets(shares / 2);
         vm.prank(ATTACKER);
-        uint256 firstAssets = vault.requestRedeem(shares / 2, ATTACKER);
+        vault.requestRedeem(shares / 2, ATTACKER, ATTACKER);
         vm.warp(block.timestamp + 1 days);
 
+        uint256 secondAssets = vault.convertToAssets(shares / 4);
         uint64 secondRequestTime = uint64(block.timestamp);
         vm.prank(ATTACKER);
-        uint256 secondAssets = vault.requestRedeem(shares / 4, ATTACKER);
+        vault.requestRedeem(shares / 4, ATTACKER, ATTACKER);
 
         uint256 balanceBefore = asset.balanceOf(ATTACKER);
         vm.prank(ATTACKER);
-        uint256 redeemedAmount = vault.executeRedeem();
+        // Claim exactly the matured first entry's shares; the immature second entry is skipped.
+        uint256 redeemedAmount = vault.redeem(shares / 2, ATTACKER, ATTACKER);
 
         assertEq(redeemedAmount, firstAssets, "only the mature request is redeemed");
         assertEq(asset.balanceOf(ATTACKER) - balanceBefore, firstAssets, "redeemed asset amount");
-        (uint192 remainingAmount, uint64 remainingRequestTime) = vault.redeemRequestQueues(ATTACKER, 0);
-        assertEq(uint256(remainingAmount), secondAssets, "immature request remains queued");
+        (uint192 remainingLocked, uint64 remainingRequestTime, uint256 remainingShares) =
+            vault.redeemRequestQueues(ATTACKER, 0);
+        assertEq(uint256(remainingLocked), secondAssets, "immature request remains queued");
         assertEq(uint256(remainingRequestTime), uint256(secondRequestTime), "remaining request time");
+        assertEq(remainingShares, shares / 4, "remaining queued shares");
         vm.expectRevert();
         vault.redeemRequestQueues(ATTACKER, 1);
     }
 
-    /// @notice Verifies executeRedeem sums every request that is mature at the same time.
-    function testExecuteRedeemAggregatesAllMaturedRequests() external {
+    /// @notice `redeem` aggregates every matured queue entry into a single payout.
+    function testRedeemAggregatesAllMaturedRequests() external {
         vm.prank(ATTACKER);
         uint256 shares = vault.deposit(40 ether, ATTACKER);
 
+        // Each request locks at its own totalAssets snapshot; capture before the matching requestRedeem.
+        uint256 firstAssets = vault.convertToAssets(shares / 4);
         vm.prank(ATTACKER);
-        uint256 firstAssets = vault.requestRedeem(shares / 4, ATTACKER);
+        vault.requestRedeem(shares / 4, ATTACKER, ATTACKER);
 
         vm.warp(block.timestamp + vault.REDEEM_DELAY());
 
+        uint256 secondAssets = vault.convertToAssets(shares / 4);
         vm.prank(ATTACKER);
-        uint256 secondAssets = vault.requestRedeem(shares / 4, ATTACKER);
+        vault.requestRedeem(shares / 4, ATTACKER, ATTACKER);
 
         vm.warp(block.timestamp + vault.REDEEM_DELAY());
 
         uint256 balanceBefore = asset.balanceOf(ATTACKER);
         vm.prank(ATTACKER);
-        uint256 redeemedAmount = vault.executeRedeem();
+        // Claim both matured entries' shares (10 + 10) in one call.
+        uint256 redeemedAmount = vault.redeem(shares / 2, ATTACKER, ATTACKER);
 
         uint256 expectedRedeemed = firstAssets + secondAssets;
         assertEq(redeemedAmount, expectedRedeemed, "all mature requests are aggregated");
@@ -752,12 +781,12 @@ contract MemecoinYieldVaultTest is Test {
 
         for (uint256 i = 0; i < vault.MAX_REDEEM_REQUESTS(); i++) {
             vm.prank(ATTACKER);
-            vault.requestRedeem(shares / 10, ATTACKER);
+            vault.requestRedeem(shares / 10, ATTACKER, ATTACKER);
         }
 
         vm.prank(ATTACKER);
         vm.expectRevert(IMemecoinYieldVault.MaxRedeemRequestsReached.selector);
-        vault.requestRedeem(1, ATTACKER);
+        vault.requestRedeem(1, ATTACKER, ATTACKER);
     }
 
     /// @notice Verifies redeem requests reject asset amounts that cannot fit in the packed uint192 queue entry.
@@ -799,12 +828,12 @@ contract MemecoinYieldVaultTest is Test {
             bytes32(uint256(type(uint128).max))
         );
 
-        uint256 previewAssets = overflowVault.previewRedeem(type(uint128).max);
+        uint256 previewAssets = overflowVault.convertToAssets(type(uint128).max);
         assertGt(previewAssets, uint256(type(uint192).max), "preview must exceed uint192");
 
         vm.prank(ATTACKER);
         vm.expectRevert(abi.encodeWithSelector(IMemecoinYieldVault.RedeemAmountOverflowed.selector, previewAssets));
-        overflowVault.requestRedeem(type(uint128).max, ATTACKER);
+        overflowVault.requestRedeem(type(uint128).max, ATTACKER, ATTACKER);
     }
 
     /// @notice Yield pushing totalAssets past type(uint208).max reverts the named TotalAssetsOverflowed error
@@ -1027,7 +1056,7 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(vault.getVotes(ATTACKER), 10 ether, "votes before redeem");
 
         vm.prank(ATTACKER);
-        vault.requestRedeem(shares / 2, ATTACKER);
+        vault.requestRedeem(shares / 2, ATTACKER, ATTACKER);
 
         assertEq(vault.getVotes(ATTACKER), 5 ether, "votes halved after redeem request");
 
@@ -1273,12 +1302,12 @@ contract MemecoinYieldVaultTest is Test {
 
         // Burn every share: supply and managed assets both return to zero.
         vm.prank(ATTACKER);
-        vault.requestRedeem(shares, ATTACKER);
+        vault.requestRedeem(shares, ATTACKER, ATTACKER);
         assertEq(vault.getVotes(ATTACKER), 0, "votes zero after full redeem");
 
         vm.warp(block.timestamp + 1 days);
         vm.prank(ATTACKER);
-        vault.executeRedeem();
+        vault.redeem(shares, ATTACKER, ATTACKER);
 
         // Fresh deposit in a new block: rate resets to 1:1, votes equal assets.
         vm.warp(300);
@@ -1364,10 +1393,10 @@ contract MemecoinYieldVaultTest is Test {
         vm.prank(ATTACKER);
         vault.accumulateYields(5 ether);
 
-        // Burn every share; requestRedeem requires receiver == msg.sender (NotSelfRedemption).
+        // Burn every share; requestRedeem requires owner == msg.sender (NotSelfRedemption).
         uint256 attackerShares = vault.balanceOf(ATTACKER);
         vm.prank(ATTACKER);
-        vault.requestRedeem(attackerShares, ATTACKER);
+        vault.requestRedeem(attackerShares, ATTACKER, ATTACKER);
         assertEq(vault.totalSupply(), 0, "fixture: no shares outstanding");
         assertGt(vault.totalAssets(), 0, "fixture: residual assets remain");
 
@@ -1418,13 +1447,15 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(shares, 1, "1000 wei maps to 1 share at the residual-state rate");
         assertEq(vault.totalAssets(), 1500, "fixture: post-deposit assets");
 
-        vm.prank(ATTACKER);
-        uint256 queued = vault.requestRedeem(1, ATTACKER);
+        // Lock the asset value at the post-deposit totalAssets snapshot before the burn.
+        uint256 queued = vault.convertToAssets(1);
         assertEq(queued, 750, "1 share redeems 750 wei at the post-deposit rate");
+        vm.prank(ATTACKER);
+        vault.requestRedeem(1, ATTACKER, ATTACKER);
 
         vm.warp(block.timestamp + 1 days);
         vm.prank(ATTACKER);
-        assertEq(vault.executeRedeem(), 750, "executeRedeem pays the queued 750 wei");
+        assertEq(vault.redeem(1, ATTACKER, ATTACKER), 750, "redeem pays the queued 750 wei");
 
         // 250 wei remains ownerless: zero supply means no share can ever redeem it.
         assertEq(vault.totalSupply(), 0, "fixture: all shares burned");
@@ -1453,13 +1484,14 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(shares, 1, "1000 wei maps to 1 share at the high-rate state");
         assertEq(vault.totalAssets(), 2000, "fixture: post-deposit assets");
 
-        vm.prank(ATTACKER);
-        uint256 queued = vault.requestRedeem(1, ATTACKER);
+        uint256 queued = vault.convertToAssets(1);
         assertEq(queued, 667, "1 share redeems 667 wei at the post-deposit rate");
+        vm.prank(ATTACKER);
+        vault.requestRedeem(1, ATTACKER, ATTACKER);
 
         vm.warp(block.timestamp + 1 days);
         vm.prank(ATTACKER);
-        assertEq(vault.executeRedeem(), 667, "executeRedeem pays the queued 667 wei");
+        assertEq(vault.redeem(1, ATTACKER, ATTACKER), 667, "redeem pays the queued 667 wei");
 
         // 333 wei of the deposit is unredeemable: it remains in totalAssets beyond the remaining
         // share's value (floor(1 * 1334 / 2) = 667 wei of backing).
@@ -1613,8 +1645,8 @@ contract MemecoinYieldVaultTest is Test {
         vm.prank(ATTACKER);
         vault.accumulateYields(1000 ether);
 
-        // Price per share = totalAssets / shares, buffered.
-        uint256 bufferedPrice = vault.previewRedeem(1 ether);
+        // Price per share = totalAssets / shares, buffered. previewRedeem reverts in claim mode, so use convertToAssets.
+        uint256 bufferedPrice = vault.convertToAssets(1 ether);
         uint256 expectedBuffered = Math.mulDiv(1 ether, 1001 ether + VIRTUAL_ASSETS, 1 ether + VIRTUAL_ASSETS);
         assertEq(bufferedPrice, expectedBuffered, "buffered price follows +V formula");
         // The buffer caps inflation well below the un-buffered 1001x ceiling.
@@ -1638,8 +1670,10 @@ contract MemecoinYieldVaultTest is Test {
         assertLt(victimShares, attackerShares, "later depositor gets fewer shares post-yield");
 
         // ATTACKER redeems and recovers more than the 10 ether deposited — yield is absorbed, not trapped.
+        // Snapshot the locked value via convertToAssets (requestRedeem returns this same lockedAssets).
+        uint256 lockedAssets = vault.convertToAssets(attackerShares);
         vm.prank(ATTACKER);
-        uint256 lockedAssets = vault.requestRedeem(attackerShares, ATTACKER);
+        vault.requestRedeem(attackerShares, ATTACKER, ATTACKER);
         assertGt(lockedAssets, 10 ether, "attacker redeems principal + yield share");
     }
 
@@ -1801,7 +1835,7 @@ contract MemecoinYieldVaultTest is Test {
     /// @notice Anchors MR-69's window invariant: while a full-redeem queue is in-flight (shares burned but
     ///         REDEEM_DELAY not yet elapsed), incoming yield hits the `totalSupply() == 0` burn branch and is
     ///         burned, yet the queued redemption obligation is neither consumed nor diluted — the matured
-    ///         `executeRedeem` still pays the full locked amount. Distinct from the existing empty-vault test,
+    ///         `redeem` still pays the full locked amount. Distinct from the existing empty-vault test,
     ///         which starts from a vault that was never deposited into; here the vault WAS deposited into, the
     ///         shares were then fully burned by `requestRedeem`, and assets physically remain in the vault as a
     ///         pending obligation during the delay window.
@@ -1829,16 +1863,21 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(shares, 10 ether, "initial deposit mints 1:1 shares");
 
         // Full redemption request: burns all shares and deducts totalAssets, but assets stay in the vault
-        // as a pending obligation until REDEEM_DELAY elapses.
-        vm.prank(ATTACKER);
-        uint256 lockedAssets = composeVault.requestRedeem(shares, ATTACKER);
+        // as a pending obligation until REDEEM_DELAY elapses. Lock the asset value at the no-yield rate first.
+        uint256 lockedAssets = composeVault.convertToAssets(shares);
         assertEq(lockedAssets, 10 ether, "locked amount equals principal at no-yield state");
+        vm.prank(ATTACKER);
+        composeVault.requestRedeem(shares, ATTACKER, ATTACKER);
 
         // Window-state assertions: empty on the books but the queued obligation physically sits in the vault.
         assertEq(composeVault.totalSupply(), 0, "shares fully burned by requestRedeem");
         assertEq(composeVault.totalAssets(), 0, "totalAssets deducted by requestRedeem");
-        (uint192 queuedAmount,) = composeVault.redeemRequestQueues(ATTACKER, 0);
+        (uint192 queuedAmount, uint64 queuedRequestTime, uint256 queuedShares) =
+            composeVault.redeemRequestQueues(ATTACKER, 0);
         assertEq(uint256(queuedAmount), lockedAssets, "queued obligation equals locked amount");
+        // Silence unused packed-field warnings; requestTime is non-zero and shares match the full burn.
+        assertGt(queuedRequestTime, 0, "requestTime set");
+        assertEq(queuedShares, shares, "queued shares equal burned amount");
         assertGe(
             composeAsset.balanceOf(address(composeVault)),
             lockedAssets,
@@ -1869,9 +1908,9 @@ contract MemecoinYieldVaultTest is Test {
         vm.warp(block.timestamp + 1 days);
         uint256 attackerBalanceBefore = composeAsset.balanceOf(ATTACKER);
         vm.prank(ATTACKER);
-        uint256 redeemed = composeVault.executeRedeem();
+        uint256 redeemed = composeVault.redeem(shares, ATTACKER, ATTACKER);
 
-        assertEq(redeemed, lockedAssets, "matured executeRedeem pays the full locked obligation");
+        assertEq(redeemed, lockedAssets, "matured redeem pays the full locked obligation");
         assertEq(
             composeAsset.balanceOf(ATTACKER),
             attackerBalanceBefore + lockedAssets,
@@ -1883,16 +1922,23 @@ contract MemecoinYieldVaultTest is Test {
     // ERC-4626 conversion / preview / mint interface
     // ──────────────────────────────────────────────────────────────────────────────
 
-    /// @notice convertToShares/convertToAssets share the floor + V-buffer baseline of preview paths.
+    /// @notice convertToShares/convertToAssets share the floor + V-buffer baseline of the preview paths.
     /// @dev Verified both at the initial rate and after yield moves the rate, so the baseline equality
-    ///      cannot regress when totalAssets/totalSupply drift apart.
+    ///      cannot regress when totalAssets/totalSupply drift apart. previewRedeem reverts in claim mode,
+    ///      so convertToAssets is checked against the manual +V floor formula (previewDeposit keeps the
+    ///      convertToShares baseline alive on the deposit side).
     function test_ConvertToSharesAndAssetsMatchPreviewBaseline() external {
         vm.prank(ATTACKER);
         vault.deposit(10 ether, ATTACKER);
 
-        // Initial rate (1:1 with the V buffer): the two view pairs must agree exactly.
+        // Initial rate (1:1 with the V buffer): convertToShares agrees with previewDeposit, and
+        // convertToAssets agrees with the manual floor formula at the same rate.
         assertEq(vault.convertToShares(20 ether), vault.previewDeposit(20 ether), "shares baseline at 1:1");
-        assertEq(vault.convertToAssets(20 ether), vault.previewRedeem(20 ether), "assets baseline at 1:1");
+        assertEq(
+            vault.convertToAssets(20 ether),
+            Math.mulDiv(20 ether, vault.totalAssets() + VIRTUAL_ASSETS, vault.totalSupply() + VIRTUAL_ASSETS),
+            "assets baseline at 1:1"
+        );
 
         // Move the rate with third-party yield and re-check at the drifted rate.
         asset.mint(YIELD_SOURCE, 5 ether);
@@ -1902,7 +1948,11 @@ contract MemecoinYieldVaultTest is Test {
         vm.stopPrank();
 
         assertEq(vault.convertToShares(7 ether), vault.previewDeposit(7 ether), "shares baseline after yield");
-        assertEq(vault.convertToAssets(7 ether), vault.previewRedeem(7 ether), "assets baseline after yield");
+        assertEq(
+            vault.convertToAssets(7 ether),
+            Math.mulDiv(7 ether, vault.totalAssets() + VIRTUAL_ASSETS, vault.totalSupply() + VIRTUAL_ASSETS),
+            "assets baseline after yield"
+        );
     }
 
     /// @notice maxDeposit/maxMint report the unbounded sentinel for any receiver.
@@ -1914,64 +1964,88 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(vault.maxMint(address(0)), type(uint256).max, "maxMint unbounded for zero address");
     }
 
-    /// @notice maxRedeem(owner) tracks balanceOf(owner) across deposits and transfers.
-    function test_MaxRedeemEqualsBalanceOfOwner() external {
+    /// @notice maxRedeem(owner) returns the sum of matured (claimable) queued shares, not balanceOf.
+    /// @dev Claim-mode semantics: shares are burned at requestRedeem time, so un-requested shares and
+    ///      immature requests do not count. Equals `claimableRedeemRequest(owner)`.
+    function test_MaxRedeemEqualsClaimableShares() external {
         vm.prank(ATTACKER);
-        vault.deposit(10 ether, ATTACKER);
-        assertEq(vault.maxRedeem(ATTACKER), vault.balanceOf(ATTACKER), "maxRedeem == balance after deposit");
+        uint256 shares = vault.deposit(10 ether, ATTACKER);
+        // No requests queued yet: nothing claimable even though ATTACKER holds shares.
+        assertEq(vault.maxRedeem(ATTACKER), 0, "no claimable shares without a request");
 
-        // Transfer moves shares, and maxRedeem must follow the new balances one-to-one.
+        // Queue a partial redeem; still immature, so still not claimable.
         vm.prank(ATTACKER);
-        vault.transfer(VICTIM, 4 ether);
-        assertEq(vault.maxRedeem(ATTACKER), 6 ether, "maxRedeem == sender balance after transfer");
-        assertEq(vault.maxRedeem(VICTIM), 4 ether, "maxRedeem == receiver balance after transfer");
+        vault.requestRedeem(shares / 2, ATTACKER, ATTACKER);
+        assertEq(vault.maxRedeem(ATTACKER), 0, "immature request not claimable");
+
+        // Mature: the queued shares become claimable and match claimableRedeemRequest.
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+        assertEq(vault.maxRedeem(ATTACKER), shares / 2, "maxRedeem == matured queued shares");
+        assertEq(
+            vault.maxRedeem(ATTACKER), vault.claimableRedeemRequest(ATTACKER), "maxRedeem == claimableRedeemRequest"
+        );
     }
 
-    /// @notice maxWithdraw(owner) equals convertToAssets(balanceOf(owner)) and previewRedeem(balanceOf).
-    function test_MaxWithdrawMatchesConvertToAssetsOfBalance() external {
+    /// @notice maxWithdraw(owner) returns the sum of matured locked assets, not convertToAssets(balanceOf).
+    /// @dev previewRedeem reverts in claim mode, so the asset total comes from the matured locked sums.
+    function test_MaxWithdrawEqualsClaimableLockedAssets() external {
         vm.prank(ATTACKER);
-        vault.deposit(10 ether, ATTACKER);
-        // Yield pushes the rate above 1:1 so the asset value differs from the raw share count.
+        uint256 shares = vault.deposit(10 ether, ATTACKER);
+        // Yield moves the rate above 1:1 so locked assets differ from the raw deposit, but maxWithdraw
+        // is 0 until a request matures.
         asset.mint(YIELD_SOURCE, 5 ether);
         vm.startPrank(YIELD_SOURCE);
         asset.approve(address(vault), 5 ether);
         vault.accumulateYields(5 ether);
         vm.stopPrank();
+        assertEq(vault.maxWithdraw(ATTACKER), 0, "no claimable assets without a matured request");
 
-        uint256 bal = vault.balanceOf(ATTACKER);
-        assertEq(vault.maxWithdraw(ATTACKER), vault.convertToAssets(bal), "maxWithdraw == convertToAssets(balance)");
-        assertEq(vault.maxWithdraw(ATTACKER), vault.previewRedeem(bal), "maxWithdraw == previewRedeem(balance)");
+        // Lock the asset value at the post-yield rate, then queue and mature.
+        uint256 locked = vault.convertToAssets(shares);
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares, ATTACKER, ATTACKER);
+        assertEq(vault.maxWithdraw(ATTACKER), 0, "immature request not claimable");
+
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+        assertEq(vault.maxWithdraw(ATTACKER), locked, "maxWithdraw == matured locked assets");
     }
 
-    /// @notice A full redemption queue leaves maxRedeem/maxWithdraw over-reporting: both still quote
-    ///         the balance-derived value even though requestRedeem now reverts.
-    /// @dev Locks the deliberate EIP-4626 departure (spec §6.2.2/§6.2.4): max* report the full share
-    ///      balance / its asset value, not the queue-limited amount actually queueable right now, so an
-    ///      integrator sizing "redeem maxRedeem" always reverts until a request matures.
-    function test_MaxRedeemAndMaxWithdrawOverreportWhenQueueFull() external {
+    /// @notice A full queue still lets max* report the claimable amount accurately (no over-reporting).
+    /// @dev Claim mode removed the old balance-derived over-reporting departure (spec §6.2.2/§6.2.4):
+    ///      max* now report only matured queue contents. A full queue blocks new requestRedeem, but the
+    ///      matured entries remain claimable up to their locked value.
+    function test_MaxRedeemAndMaxWithdrawReflectClaimableWhenQueueFull() external {
         vm.prank(ATTACKER);
-        vault.deposit(10 ether, ATTACKER);
+        uint256 shares = vault.deposit(10 ether, ATTACKER);
 
-        // Fill the 5-entry queue with 1-ether requests; each request burns its shares immediately.
+        // Fill the 5-entry queue; each 1-ether request burns its shares immediately and locks at the
+        // current (1:1) rate. Capture each locked value before its request mutates totalAssets.
+        uint256 lockedSum;
         for (uint256 i = 0; i < vault.MAX_REDEEM_REQUESTS(); i++) {
+            lockedSum += vault.convertToAssets(1 ether);
             vm.prank(ATTACKER);
-            vault.requestRedeem(1 ether, ATTACKER);
+            vault.requestRedeem(1 ether, ATTACKER, ATTACKER);
         }
         assertEq(vault.balanceOf(ATTACKER), 5 ether, "five 1-ether requests burned half the balance");
 
-        // Queue full: max* still quote the full remaining balance and its asset value...
-        assertEq(vault.maxRedeem(ATTACKER), 5 ether, "maxRedeem == balance despite full queue");
-        assertEq(vault.maxWithdraw(ATTACKER), vault.convertToAssets(5 ether), "maxWithdraw == asset value of balance");
-        // ...but the only redemption entry reverts until a request matures.
+        // Immature: nothing claimable yet, but a new request still reverts (queue full).
+        assertEq(vault.maxRedeem(ATTACKER), 0, "no matured shares before delay");
+        assertEq(vault.maxWithdraw(ATTACKER), 0, "no matured assets before delay");
         vm.prank(ATTACKER);
         vm.expectRevert(IMemecoinYieldVault.MaxRedeemRequestsReached.selector);
-        vault.requestRedeem(5 ether, ATTACKER);
+        vault.requestRedeem(1 ether, ATTACKER, ATTACKER);
+
+        // Mature: max* report exactly the claimable sums.
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+        assertEq(vault.maxRedeem(ATTACKER), 5 ether, "maxRedeem == 5 matured shares");
+        assertEq(vault.maxWithdraw(ATTACKER), lockedSum, "maxWithdraw == sum of matured locked assets");
     }
 
-    /// @notice previewMint/previewWithdraw round up (ceil), per EIP-4626's no-fewer-than rule.
-    /// @dev Constructs a non-divisible rate (deposit 10, yield 5, V=100) and checks both the floor
-    ///      is strictly below the ceil and the result equals a hand-computed ceilDiv.
-    function test_PreviewMintAndPreviewWithdrawRoundUp() external {
+    /// @notice previewMint rounds up (ceil), per EIP-4626's no-fewer-than rule.
+    /// @dev Constructs a non-divisible rate (deposit 10, yield 5, V=100) and checks the floor is strictly
+    ///      below the ceil and the result equals a hand-computed ceilDiv. (previewWithdraw now reverts in
+    ///      claim mode and is covered by test_PreviewRedeemAndPreviewWithdrawRevert.)
+    function test_PreviewMintRoundsUp() external {
         vm.prank(ATTACKER);
         vault.deposit(10 ether, ATTACKER);
         asset.mint(YIELD_SOURCE, 5 ether);
@@ -1991,23 +2065,12 @@ contract MemecoinYieldVaultTest is Test {
         assertGt(numMint % sup, 0, "previewMint fixture must be non-divisible");
         assertEq(vault.previewMint(shares), ceilMint, "previewMint ceilDiv");
         assertGt(ceilMint, floorMint, "previewMint strictly above floor");
-
-        // previewWithdraw: shares needed to release 7 assets. Non-divisible at this rate.
-        uint256 assets = 7 ether;
-        uint256 numWd = assets * sup;
-        uint256 floorWd = numWd / ast;
-        uint256 ceilWd = (numWd + ast - 1) / ast;
-        assertGt(numWd % ast, 0, "previewWithdraw fixture must be non-divisible");
-        assertEq(vault.previewWithdraw(assets), ceilWd, "previewWithdraw ceilDiv");
-        assertGt(ceilWd, floorWd, "previewWithdraw strictly above floor");
     }
 
-    /// @notice EIP-4626 round-trip bounds hold: mint→deposit within [s, s+1]; withdraw→mint ≥ a (ceil-ceil).
-    /// @dev The withdraw→mint pair is the legal within-pair property: both conversions round up (ceil),
-    ///      so converting assets→shares→assets never underestimates the original assets. The previous
-    ///      withdraw→redeem (ceil then floor) assertion was invalid: at this fixture's rate (23/22) a
-    ///      22-wei target yields backToAssets = 23 > 22.
-    function test_PreviewRoundTripBounds() external {
+    /// @notice EIP-4626 mint→deposit round-trip bound holds within [s, s+1] (ceil then floor).
+    /// @dev The withdraw→mint half used previewWithdraw, which now reverts; only the deposit-side round
+    ///      trip survives in claim mode.
+    function test_PreviewMintDepositRoundTripBounds() external {
         vm.prank(ATTACKER);
         vault.deposit(10 ether, ATTACKER);
         asset.mint(YIELD_SOURCE, 5 ether);
@@ -2022,12 +2085,6 @@ contract MemecoinYieldVaultTest is Test {
         // mint→deposit recovers at least the requested shares and at most one extra (ceil then floor).
         assertGe(backToShares, shares, "round-trip mint->deposit >= shares");
         assertLe(backToShares, shares + 1, "round-trip mint->deposit <= shares + 1");
-
-        uint256 assets = 7 ether;
-        uint256 sharesForAssets = vault.previewWithdraw(assets);
-        uint256 backToAssets = vault.previewMint(sharesForAssets);
-        // withdraw→mint is ceil-ceil: the round-trip never underestimates the original assets.
-        assertGe(backToAssets, assets, "round-trip withdraw->mint >= assets (ceil-ceil)");
     }
 
     /// @notice mint(0) is a no-op; mint(s) mints exactly s shares, pulls previewMint(s) assets, emits
@@ -2104,17 +2161,11 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(vault.balanceOf(VICTIM), shares, "receiver owns exactly the minted shares");
     }
 
-    /// @notice Fuzzes previewMint/previewWithdraw rounding direction against manual ceilDiv.
-    function testFuzz_PreviewMintAndPreviewWithdrawRoundUp(
-        uint96 initialAssets,
-        uint96 yieldAssets,
-        uint96 shares,
-        uint96 assets
-    ) external {
+    /// @notice Fuzzes previewMint rounding direction against manual ceilDiv.
+    function testFuzz_PreviewMintRoundsUp(uint96 initialAssets, uint96 yieldAssets, uint96 shares) external {
         initialAssets = uint96(bound(initialAssets, 1 ether, 1_000 ether));
         yieldAssets = uint96(bound(yieldAssets, 1 ether, 1_000 ether));
         shares = uint96(bound(shares, 1, 1_000 ether));
-        assets = uint96(bound(assets, 1, 1_000 ether));
 
         vm.prank(ATTACKER);
         vault.deposit(initialAssets, ATTACKER);
@@ -2131,10 +2182,6 @@ contract MemecoinYieldVaultTest is Test {
         uint256 numMint = uint256(shares) * ast;
         uint256 ceilMint = (numMint + sup - 1) / sup;
         assertEq(vault.previewMint(shares), ceilMint, "fuzz previewMint ceilDiv");
-
-        uint256 numWd = uint256(assets) * sup;
-        uint256 ceilWd = (numWd + ast - 1) / ast;
-        assertEq(vault.previewWithdraw(assets), ceilWd, "fuzz previewWithdraw ceilDiv");
     }
 
     /// @notice Regression guard for the red-team TA >= TS premise the round-trip upper bound relies on.
@@ -2177,7 +2224,7 @@ contract MemecoinYieldVaultTest is Test {
 
         vm.warp(200);
         vm.prank(ATTACKER);
-        vault.requestRedeem(5 ether, ATTACKER);
+        vault.requestRedeem(5 ether, ATTACKER, ATTACKER);
 
         vm.warp(300);
         // mint's checkpoint at T=100: 10 shares at the 1:1 fixture rate, so asset-denominated supply = 10 ether.
@@ -2207,5 +2254,415 @@ contract MemecoinYieldVaultTest is Test {
             abi.encodeWithSelector(IMemecoinYieldVault.TotalAssetsOverflowed.selector, uint256(type(uint208).max) + 1)
         );
         vault.mint(1, ATTACKER);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // ERC-7540-style claim mode (requestRedeem → redeem/withdraw)
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    /// @notice `redeem` reverts when the matured queue cannot cover the requested shares.
+    /// @dev `available` reports the shares that were matchable before the atomic revert; the queue is
+    ///      left intact because the whole call rolls back.
+    function test_RedeemRevertsWhenClaimableSharesInsufficient() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(10 ether, ATTACKER);
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares / 2, ATTACKER, ATTACKER); // 5 shares queued
+        vm.warp(block.timestamp + vault.REDEEM_DELAY()); // mature: 5 claimable
+
+        // Requesting more than the 5 mature shares reverts; `available` reports the 5 matchable shares.
+        vm.prank(ATTACKER);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemecoinYieldVault.InsufficientClaimableRedeem.selector, uint256(5 ether))
+        );
+        vault.redeem(8 ether, ATTACKER, ATTACKER);
+
+        // Queue is untouched by the atomic revert.
+        (,, uint256 queuedShares) = vault.redeemRequestQueues(ATTACKER, 0);
+        assertEq(queuedShares, shares / 2, "queue intact after revert");
+    }
+
+    /// @notice A third party cannot claim another owner's matured queue (shares were burned at request time).
+    /// @dev Theft defense: `owner` must equal `msg.sender` for both `redeem` and `withdraw` — there is no
+    ///      allowance path because the shares no longer exist.
+    function test_RedeemAndWithdrawRevertForThirdPartyOwner() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(10 ether, ATTACKER);
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares, ATTACKER, ATTACKER);
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        // VICTIM cannot claim ATTACKER's matured queue by passing owner=ATTACKER.
+        vm.prank(VICTIM);
+        vm.expectRevert(IMemecoinYieldVault.NotSelfRedemption.selector);
+        vault.redeem(shares, VICTIM, ATTACKER);
+
+        vm.prank(VICTIM);
+        vm.expectRevert(IMemecoinYieldVault.NotSelfRedemption.selector);
+        vault.withdraw(1, VICTIM, ATTACKER);
+    }
+
+    /// @notice previewRedeem/previewWithdraw always revert in claim mode (per-entry locked rates).
+    function test_PreviewRedeemAndPreviewWithdrawRevert() external {
+        vm.expectRevert(IMemecoinYieldVault.PreviewRedeemNotSupported.selector);
+        vault.previewRedeem(1 ether);
+        vm.expectRevert(IMemecoinYieldVault.PreviewWithdrawNotSupported.selector);
+        vault.previewWithdraw(1 ether);
+    }
+
+    /// @notice pendingRedeemRequest and claimableRedeemRequest split a mixed-maturity queue correctly.
+    function test_PendingAndClaimableSplitAcrossMixedQueue() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(20 ether, ATTACKER);
+
+        // request1 (10 shares), then mature it, then request2 (5 shares, immature): mixed maturity.
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares / 2, ATTACKER, ATTACKER);
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares / 4, ATTACKER, ATTACKER);
+
+        assertEq(vault.pendingRedeemRequest(ATTACKER), shares / 4, "only the second request is pending");
+        assertEq(vault.claimableRedeemRequest(ATTACKER), shares / 2, "only the first request is claimable");
+        assertEq(vault.maxRedeem(ATTACKER), shares / 2, "maxRedeem tracks claimable shares");
+    }
+
+    /// @notice FIFO partial claim across entries locked at different rates decrements shares and
+    ///         lockedAssets in lockstep, so the summed payout equals the total locked (no drift).
+    function test_RedeemFifoPartialClaimAcrossDifferentRatesNoDrift() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(10 ether, ATTACKER); // TA=TS=10, rate 1
+
+        // request1 locks at rate 1.
+        uint256 locked1 = vault.convertToAssets(5 ether); // 5 ether
+        vm.prank(ATTACKER);
+        vault.requestRedeem(5 ether, ATTACKER, ATTACKER); // TA 10->5, TS 10->5
+
+        // Third-party yield raises the rate; request2 locks at the higher rate.
+        asset.mint(YIELD_SOURCE, 5 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 5 ether);
+        vault.accumulateYields(5 ether); // TA 5->10, TS=5
+        vm.stopPrank();
+        uint256 locked2 = vault.convertToAssets(5 ether);
+        assertGt(locked2, locked1, "request2 locks at a higher rate");
+        vm.prank(ATTACKER);
+        vault.requestRedeem(5 ether, ATTACKER, ATTACKER);
+
+        vm.warp(block.timestamp + vault.REDEEM_DELAY()); // both mature
+
+        // Partial claim of 3 shares from the FIFO head (entry1, rate 1:1).
+        uint256 attackerBefore = asset.balanceOf(ATTACKER);
+        vm.prank(ATTACKER);
+        uint256 payout1 = vault.redeem(3 ether, ATTACKER, ATTACKER);
+        assertEq(payout1, 3 ether, "partial claim at entry1's 1:1 rate pays 1:1");
+        // entry1 left with 2 shares / 2 locked assets after the lockstep decrement.
+        (uint192 e1Locked,, uint256 e1Shares) = vault.redeemRequestQueues(ATTACKER, 0);
+        assertEq(e1Shares, 2 ether, "entry1 shares decremented in lockstep");
+        assertEq(uint256(e1Locked), 2 ether, "entry1 locked decremented in lockstep");
+
+        // Claim the remainder across both entries; total received must equal locked1 + locked2 exactly.
+        vm.prank(ATTACKER);
+        uint256 payout2 = vault.redeem(7 ether, ATTACKER, ATTACKER);
+        assertEq(asset.balanceOf(ATTACKER) - attackerBefore, payout1 + payout2, "total assets received");
+        assertEq(payout1 + payout2, locked1 + locked2, "no drift: total payout == sum of locked");
+        vm.expectRevert();
+        vault.redeemRequestQueues(ATTACKER, 0);
+    }
+
+    /// @notice `withdraw` pays an exact asset amount when reachable and reverts when it is not.
+    /// @dev At a 1:1 rate partial and full withdrawals are exactly reachable. Asking for more than the
+    ///      matured locked total reverts `InsufficientClaimableRedeem` with the available amount.
+    function test_WithdrawClaimsExactAssetsAndRevertsWhenUnreachable() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(10 ether, ATTACKER); // rate 1:1
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares, ATTACKER, ATTACKER);
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        // Partial exact withdrawal at 1:1: withdraw(5) burns 5 shares and pays 5 assets exactly.
+        uint256 attackerBefore = asset.balanceOf(ATTACKER);
+        vm.prank(ATTACKER);
+        uint256 burned = vault.withdraw(5 ether, ATTACKER, ATTACKER);
+        assertEq(burned, 5 ether, "partial withdraw burns proportional shares at 1:1");
+        assertEq(asset.balanceOf(ATTACKER) - attackerBefore, 5 ether, "exact partial assets paid");
+
+        // Remaining entry: 5 shares / 5 locked. Withdrawing more than remains reverts; `available` = 5.
+        vm.prank(ATTACKER);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemecoinYieldVault.InsufficientClaimableRedeem.selector, uint256(5 ether))
+        );
+        vault.withdraw(6 ether, ATTACKER, ATTACKER);
+
+        // The reverted call left the queue intact; drain the rest exactly.
+        vm.prank(ATTACKER);
+        uint256 burned2 = vault.withdraw(5 ether, ATTACKER, ATTACKER);
+        assertEq(burned2, 5 ether, "final withdraw drains remaining shares");
+        vm.expectRevert();
+        vault.redeemRequestQueues(ATTACKER, 0);
+    }
+
+    /// @notice At a non-1:1 locked rate, `withdraw` reverts on an indivisible asset target (floor loss)
+    ///         but succeeds when the full locked amount is requested.
+    /// @dev Covers the floor-loss revert branch the 1:1 test above cannot reach: in `withdraw`'s FIFO loop
+    ///      `takeShares = floor(takeAssets * entry.shares / entry.lockedAssets)` rounds down, so an asset
+    ///      target that is not a whole multiple of the entry's lock rate leaves a sub-unit remainder no
+    ///      entry can satisfy, triggering `InsufficientClaimableRedeem` (EIP-4626 "MUST revert if all
+    ///      assets cannot be withdrawn"). The rate is built with real mechanics: deposit 10 at rate 1, then
+    ///      yield 55 damps through V=100 to price exactly 15 assets per 10 shares at requestRedeem time.
+    ///      withdraw(14) is indivisible at rate 1.5 (1-wei remainder -> revert, atomic); withdraw(15) is the
+    ///      full locked amount and is exactly reachable (success).
+    function test_WithdrawRevertsOnIndivisibleAssetsAtNonUnitRate() external {
+        // Build a 1.5 entry lock rate: deposit 10 at rate 1, then third-party yield 55 damps through V=100
+        // to price 10 shares at exactly 15 assets (floor(10 * (65+100)/(10+100)) = floor(15) = 15).
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(10 ether, ATTACKER); // TA=10, TS=10
+        asset.mint(YIELD_SOURCE, 55 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 55 ether);
+        vault.accumulateYields(55 ether); // TA 10->65, TS=10
+        vm.stopPrank();
+
+        uint256 locked = vault.convertToAssets(shares);
+        assertEq(locked, 15 ether, "fixture: 10 shares lock at exactly 15 assets (rate 1.5)");
+
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares, ATTACKER, ATTACKER); // entry: shares=10e18, locked=15e18
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        // withdraw(14) is indivisible at rate 1.5: takeShares floors to ~9.33e18 (140/15), its payout floors
+        // to 13.999...e18, leaving a 1-wei remainder the entry cannot cover on the next pass -> revert.
+        // `available` is the 1-wei-short payout = 14 ether - 1.
+        vm.prank(ATTACKER);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemecoinYieldVault.InsufficientClaimableRedeem.selector, uint256(14 ether - 1))
+        );
+        vault.withdraw(14 ether, ATTACKER, ATTACKER);
+
+        // Atomic revert: the entry is untouched (still 10 shares / 15 locked).
+        (uint192 entryLocked,, uint256 entryShares) = vault.redeemRequestQueues(ATTACKER, 0);
+        assertEq(entryShares, shares, "shares intact after floor-loss revert");
+        assertEq(uint256(entryLocked), locked, "locked intact after floor-loss revert");
+
+        // withdraw(15): the full locked amount IS exactly reachable (15 * 10/15 = 10 shares, payout 15).
+        uint256 attackerBefore = asset.balanceOf(ATTACKER);
+        vm.prank(ATTACKER);
+        uint256 burned = vault.withdraw(15 ether, ATTACKER, ATTACKER);
+        assertEq(burned, shares, "full withdraw burns all entry shares");
+        assertEq(asset.balanceOf(ATTACKER) - attackerBefore, 15 ether, "exact full locked payout");
+        vm.expectRevert();
+        vault.redeemRequestQueues(ATTACKER, 0);
+    }
+
+    /// @notice `withdraw` succeeds for an exactly-reachable asset target at a non-unit rate.
+    /// @dev Companion to `test_WithdrawRevertsOnIndivisibleAssetsAtNonUnitRate`: that test covers an UNREACHABLE
+    ///      target (14 ether at rate 1.5 — no integer share count pays exactly 14) whose revert is correct
+    ///      EIP-4626 behavior. This test covers a REACHABLE target (14 ether − 1) the inverse formula must not
+    ///      under-count: at rate 1.5 (S=10e18, L=15e18) the share count s = 9333333333333333333 pays exactly
+    ///      floor(s * 15e18 / 10e18) = 14 ether − 1. The naive floor(T·S/L) would pick one share fewer, pay
+    ///      14 ether − 2, leave a 1-wei remainder, and spuriously revert; the ceil-then-decrement formula picks
+    ///      the correct largest s and succeeds.
+    function test_WithdrawSucceedsOnReachableTargetAtNonUnitRate() external {
+        // Same 1.5 lock-rate fixture as the indivisible-revert test: deposit 10 at rate 1, then third-party
+        // yield 55 damps through V=100 to price 10 shares at exactly 15 assets.
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(10 ether, ATTACKER); // TA=10, TS=10
+        asset.mint(YIELD_SOURCE, 55 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 55 ether);
+        vault.accumulateYields(55 ether); // TA 10->65, TS=10
+        vm.stopPrank();
+
+        assertEq(vault.convertToAssets(shares), 15 ether, "fixture: 10 shares lock at exactly 15 assets (rate 1.5)");
+
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares, ATTACKER, ATTACKER); // entry: shares=10e18, locked=15e18
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        // 14 ether − 1 is exactly reachable at rate 1.5: s = 9333333333333333333 pays floor(s * 15/10) = 14 ether − 1.
+        uint256 target = 14 ether - 1;
+        uint256 attackerBefore = asset.balanceOf(ATTACKER);
+        vm.prank(ATTACKER);
+        uint256 burned = vault.withdraw(target, ATTACKER, ATTACKER);
+        assertEq(burned, 9333333333333333333, "reachable partial withdraw burns the exact largest share count");
+        assertEq(asset.balanceOf(ATTACKER) - attackerBefore, target, "exact reachable payout");
+
+        // The unconsumed tail of the entry remains queued for a later claim.
+        (uint192 entryLocked,, uint256 entryShares) = vault.redeemRequestQueues(ATTACKER, 0);
+        assertEq(entryShares, shares - 9333333333333333333, "remaining entry shares");
+        assertEq(uint256(entryLocked), 15 ether - target, "remaining entry locked assets");
+    }
+
+    /// @notice `withdraw` succeeds for a 1-wei reachable target — the sharpest skip-branch-flip witness.
+    /// @dev At rate 1.5 (S=10e18, L=15e18) the naive floor(T·S/L) gives takeShares = floor(1·10/15) = 0, so
+    ///      withdraw(1) hit the takeShares==0 skip and reverted even though 1 wei IS reachable (1 share pays
+    ///      floor(1·15/10) = 1). The ceil-then-decrement formula gives takeShares = ceil(2·10/15) − 1 = 1, pays
+    ///      exactly 1, and succeeds. This directly exercises the 0→1 skip-branch flip that the larger
+    ///      `14 ether − 1` witness above does NOT (its first-pass takeShares is large, not 0).
+    function test_WithdrawSucceedsOnSingleWeiAtNonUnitRate() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER); // TA=10, TS=10
+        asset.mint(YIELD_SOURCE, 55 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 55 ether);
+        vault.accumulateYields(55 ether); // TA 10->65, TS=10, rate 1.5
+        vm.stopPrank();
+
+        vm.prank(ATTACKER);
+        vault.requestRedeem(10 ether, ATTACKER, ATTACKER); // entry: shares=10e18, locked=15e18
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        // 1 wei is the minimal reachable target: 1 share pays exactly floor(1 * 15/10) = 1.
+        uint256 attackerBefore = asset.balanceOf(ATTACKER);
+        vm.prank(ATTACKER);
+        uint256 burned = vault.withdraw(1, ATTACKER, ATTACKER);
+        assertEq(burned, 1, "1-wei reachable withdraw burns exactly 1 share (skip-branch flip)");
+        assertEq(asset.balanceOf(ATTACKER) - attackerBefore, 1, "1-wei exact payout");
+    }
+
+    /// @notice claim → requestRedeem → claim survives the swap-pop queue reordering a full-entry claim causes.
+    /// @dev End-to-end lifecycle: a claim that fully consumes the head entry swaps the tail into slot 0; a
+    ///      subsequent requestRedeem appends after it, and a later claim must still pay each entry's own
+    ///      per-entry locked rate with no cross-contamination from the reorder. Entries lock at distinct
+    ///      rates (A at rate 1, B/C after a yield raises the rate) so a reorder-confusion bug would pay the
+    ///      wrong amount; payouts are asserted against each entry's captured locked value.
+    function test_ClaimThenRequestThenClaimLifecycle() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(30 ether, ATTACKER); // TA=TS=30, rate 1
+        assertEq(shares, 30 ether, "fixture: 30 shares at rate 1");
+
+        // Entry A: 10 shares locked at rate 1, then matured.
+        uint256 lockedA = vault.convertToAssets(10 ether);
+        assertEq(lockedA, 10 ether, "entry A locks at rate 1");
+        vm.prank(ATTACKER);
+        vault.requestRedeem(10 ether, ATTACKER, ATTACKER); // TA 30->20, TS 30->20
+        vm.warp(block.timestamp + vault.REDEEM_DELAY()); // A matures
+
+        // Yield raises the rate so entry B locks above rate 1 (distinct from A, so a reorder bug is visible).
+        asset.mint(YIELD_SOURCE, 40 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), 40 ether);
+        vault.accumulateYields(40 ether); // TA 20->60, TS=20
+        vm.stopPrank();
+
+        // Entry B: appended after A (slot 1), immature. Capture its locked value before the burn.
+        uint256 lockedB = vault.convertToAssets(8 ether);
+        assertGt(lockedB, 8 ether, "fixture: entry B locks above rate 1");
+        vm.prank(ATTACKER);
+        vault.requestRedeem(8 ether, ATTACKER, ATTACKER);
+
+        // Claim A fully: consumes slot 0, swap-pop moves B from slot 1 into slot 0. Pays A's locked rate.
+        uint256 attackerBefore = asset.balanceOf(ATTACKER);
+        vm.prank(ATTACKER);
+        uint256 payoutA = vault.redeem(10 ether, ATTACKER, ATTACKER);
+        assertEq(payoutA, lockedA, "claim A pays A's locked rate");
+        assertEq(asset.balanceOf(ATTACKER) - attackerBefore, lockedA, "A payout transferred");
+
+        // B is now at slot 0 (reordered) and still immature; its locked value traveled with it intact.
+        (uint192 bLocked,, uint256 bShares) = vault.redeemRequestQueues(ATTACKER, 0);
+        assertEq(bShares, 8 ether, "B moved to slot 0 by swap-pop");
+        assertEq(uint256(bLocked), lockedB, "B locked value intact after reorder");
+        vm.expectRevert();
+        vault.redeemRequestQueues(ATTACKER, 1); // only B is queued right now
+
+        // Entry C: appended at slot 1 (after the reordered B), immature.
+        uint256 lockedC = vault.convertToAssets(7 ether);
+        vm.prank(ATTACKER);
+        vault.requestRedeem(7 ether, ATTACKER, ATTACKER);
+
+        // Mature B and C together.
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        // Claim the remaining 15 shares (B's 8 + C's 7): must pay lockedB + lockedC exactly despite the
+        // earlier reorder that placed B ahead of its original FIFO position.
+        vm.prank(ATTACKER);
+        uint256 payoutBC = vault.redeem(15 ether, ATTACKER, ATTACKER);
+        assertEq(payoutBC, lockedB + lockedC, "post-reorder claim pays B+C locked rates exactly");
+        assertEq(
+            asset.balanceOf(ATTACKER) - attackerBefore, lockedA + lockedB + lockedC, "total payout across lifecycle"
+        );
+
+        // Queue fully drained after the lifecycle.
+        vm.expectRevert();
+        vault.redeemRequestQueues(ATTACKER, 0);
+    }
+
+    /// @notice requestRedeem emits the ERC-7540-style RedeemRequest event at enqueue time.
+    function test_RequestRedeemEmitsRedeemRequestEvent() external {
+        vm.prank(ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
+
+        // Snapshot the locked value at the pre-request rate so the expected event data is exact.
+        uint256 locked = vault.convertToAssets(5 ether);
+        // RedeemRequest(controller, owner, sender, shares, lockedAssets); controller and owner are indexed.
+        vm.expectEmit(true, true, false, true);
+        emit IMemecoinYieldVault.RedeemRequest(ATTACKER, ATTACKER, ATTACKER, 5 ether, locked);
+        vm.prank(ATTACKER);
+        vault.requestRedeem(5 ether, ATTACKER, ATTACKER);
+    }
+
+    /// @notice redeem emits the ERC-4626 Withdraw event at payout time with the burned share count.
+    function test_RedeemEmitsWithdrawEvent() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(10 ether, ATTACKER); // rate 1:1
+        // Lock the asset value at the pre-request snapshot so the expected event assets are exact.
+        uint256 locked = vault.convertToAssets(shares);
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares, ATTACKER, ATTACKER);
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+
+        // Withdraw(sender=msg.sender, receiver, owner, assets=locked, shares).
+        vm.expectEmit(true, true, true, true);
+        emit IMemecoinYieldVault.Withdraw(ATTACKER, RECEIVER, ATTACKER, locked, shares);
+        vm.prank(ATTACKER);
+        vault.redeem(shares, RECEIVER, ATTACKER);
+    }
+
+    /// @notice mint → requestRedeem → redeem end-to-end: checkpoints pair and the claim pays the locked value.
+    function test_MintRequestRedeemRedeemCheckpointPairing() external {
+        vm.warp(100);
+        vm.prank(ATTACKER);
+        vault.mint(10 ether, ATTACKER); // TA=TS=10 at T1
+
+        vm.warp(200);
+        uint256 locked = vault.convertToAssets(5 ether); // 5 ether at the 1:1 rate
+        vm.prank(ATTACKER);
+        vault.requestRedeem(5 ether, ATTACKER, ATTACKER); // TA 10->5, TS 10->5 at T2
+
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+        vm.prank(ATTACKER);
+        uint256 payout = vault.redeem(5 ether, ATTACKER, ATTACKER);
+        assertEq(payout, locked, "redeem pays the request-time locked value");
+
+        vm.warp(400);
+        // Asset-denominated total supply pairs with each entry's own timepoint.
+        assertEq(vault.getPastTotalSupply(100), 10 ether, "mint checkpoint asset supply");
+        assertEq(vault.getPastTotalSupply(200), 5 ether, "requestRedeem checkpoint halves asset supply");
+    }
+
+    /// @notice The locked payout is immune to yield that arrives after requestRedeem (amount-locking guard).
+    /// @dev Only part of the balance is requested so the remaining shares keep the vault non-empty and the
+    ///      later yield is absorbed (moving the rate) rather than burned — yet the queued payout stays fixed
+    ///      because lockedAssets was deducted from totalAssets at request time.
+    function test_RequestRedeemLocksAssetsAgainstPostRequestYield() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(10 ether, ATTACKER); // TA=10, rate 1
+        uint256 locked = vault.convertToAssets(5 ether); // 5 ether
+        vm.prank(ATTACKER);
+        vault.requestRedeem(5 ether, ATTACKER, ATTACKER); // TA 10->5, TS 10->5
+
+        // Yield is absorbed (TS=5 > 0) and jumps the rate, but cannot touch the already-locked payout.
+        asset.mint(YIELD_SOURCE, 1_000 ether);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), type(uint256).max);
+        vault.accumulateYields(1_000 ether); // TA 5->1005
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + vault.REDEEM_DELAY());
+        vm.prank(ATTACKER);
+        uint256 redeemed = vault.redeem(5 ether, ATTACKER, ATTACKER);
+        assertEq(redeemed, locked, "locked amount unchanged by post-request yield");
+        assertEq(locked, 5 ether, "locked equals request-time value");
     }
 }

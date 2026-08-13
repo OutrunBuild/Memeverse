@@ -44,7 +44,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     ///      initialization; sized by the launcher at 0.7% of the minimum main-pool memecoin provision.
     uint256 public virtualAssets;
 
-    mapping(address account => RedeemRequest[]) public redeemRequestQueues;
+    mapping(address account => RedeemRequestEntry[]) public redeemRequestQueues;
 
     /// @notice Initializes the yield vault proxy.
     /// @dev Sets ERC20 share metadata, binds the vault to one verse and one underlying memecoin, and locks
@@ -98,17 +98,17 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return _convertToShares(assets, totalAssets);
     }
 
-    /// @notice Preview how many underlying assets redeeming `shares` would release at today's rate.
-    /// @dev Uses the current exchange rate without mutating any redemption queue state.
-    /// @param shares Amount of vault shares to redeem.
-    /// @return Underlying asset amount represented by `shares`.
-    function previewRedeem(uint256 shares) external view override returns (uint256) {
-        return _convertToAssets(shares, totalAssets);
+    /// @notice Preview how many underlying assets redeeming `shares` would release.
+    /// @dev NOT supported. Claim payouts use each request's per-entry locked rate (fixed at requestRedeem
+    ///      time), which a single current-rate preview cannot represent, so this always reverts.
+    function previewRedeem(uint256) external pure override returns (uint256) {
+        revert PreviewRedeemNotSupported();
     }
 
     /// @notice Converts an asset amount to vault shares at the current rate.
     /// @dev Reuses the internal floor conversion with the `virtualAssets` buffer, sharing the same
-    ///      baseline as `previewDeposit`/`previewRedeem`.
+    ///      baseline as `previewDeposit` (the only current-rate preview; `previewRedeem` always reverts
+    ///      because claims use per-entry locked rates it cannot represent).
     /// @param assets Amount of underlying asset to convert.
     /// @return shares Shares equivalent at the current rate.
     function convertToShares(uint256 assets) external view override returns (uint256) {
@@ -137,22 +137,32 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return type(uint256).max;
     }
 
-    /// @notice Maximum assets `owner` could withdraw given current share holdings.
-    /// @dev Asset value of `owner`'s full share balance at the current rate.
-    /// @param owner Account whose redeemable assets are queried.
-    /// @return maxAssets Asset value of `owner`'s full share balance.
+    /// @notice Maximum assets `owner` could withdraw right now.
+    /// @dev Claim-mode semantics: sums `lockedAssets` across `owner`'s matured (claimable) queue entries.
+    ///      Shares are burned at requestRedeem time, so this does NOT reflect `balanceOf`.
+    /// @param owner Account whose claimable assets are queried.
+    /// @return maxAssets Total claimable locked assets for `owner`.
     function maxWithdraw(address owner) external view override returns (uint256) {
-        return _convertToAssets(balanceOf(owner), totalAssets);
+        RedeemRequestEntry[] storage queue = redeemRequestQueues[owner];
+        uint256 total;
+        // Read-only scan: queue is not mutated here, so caching length once saves the per-iteration storage read.
+        uint256 queueLength = queue.length;
+        for (uint256 i = 0; i < queueLength; ++i) {
+            // Only entries past REDEEM_DELAY are claimable; immature ones remain pending.
+            if (block.timestamp >= uint256(queue[i].requestTime) + REDEEM_DELAY) {
+                total += queue[i].lockedAssets;
+            }
+        }
+        return total;
     }
 
-    /// @notice Maximum shares `owner` could redeem given current share holdings.
-    /// @dev Returns `balanceOf(owner)`. Shares are burned at `requestRedeem` enqueue time, so an owner
-    ///      can request their full balance; the assets arrive after `REDEEM_DELAY`. This is an intentional
-    ///      departure from EIP-4626's maxRedeem timelock clause (see spec §6.2).
-    /// @param owner Account whose redeemable shares are queried.
-    /// @return maxShares `owner`'s full share balance.
+    /// @notice Maximum shares `owner` could redeem right now.
+    /// @dev Claim-mode semantics: sums shares across `owner`'s matured (claimable) queue entries. Shares
+    ///      are burned at requestRedeem time, so this does NOT reflect `balanceOf`.
+    /// @param owner Account whose claimable shares are queried.
+    /// @return maxShares Total claimable shares for `owner`.
     function maxRedeem(address owner) external view override returns (uint256) {
-        return balanceOf(owner);
+        return _claimableShares(owner);
     }
 
     /// @notice Previews the asset cost of minting exactly `shares`.
@@ -164,11 +174,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @notice Previews the shares that must be burned to release exactly `assets`.
-    /// @dev Rounds up (ceil) — EIP-4626 requires redeeming no fewer shares than this amount.
-    /// @param assets Underlying asset amount to release.
-    /// @return shares Vault shares that would be burned.
-    function previewWithdraw(uint256 assets) external view override returns (uint256) {
-        return Math.mulDiv(assets, totalSupply() + virtualAssets, totalAssets + virtualAssets, Math.Rounding.Ceil);
+    /// @dev NOT supported for the same per-entry locked-rate reason as `previewRedeem`; always reverts.
+    function previewWithdraw(uint256) external pure override returns (uint256) {
+        revert PreviewWithdrawNotSupported();
     }
 
     /// @notice Pulls new yield into the vault and updates share pricing.
@@ -285,67 +293,239 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return assets;
     }
 
-    /// @notice Burns shares and queues a delayed redemption for `receiver`.
-    /// @dev Self-redemption only: `receiver` must equal `msg.sender` so no one can fill another
-    ///      account's queue. The queued asset amount is fixed at request time and later unlocked by `executeRedeem`.
-    /// @param shares Amount of shares to burn into the redemption queue.
-    /// @param receiver Account that will later receive the underlying asset.
-    /// @return assets Underlying asset amount locked into the redemption request.
-    function requestRedeem(uint256 shares, address receiver) external override returns (uint256) {
-        require(receiver == msg.sender, NotSelfRedemption());
+    /// @notice Queues a redemption request, burning `shares` and locking their asset value immediately.
+    /// @dev ERC-7540-style request phase. Self-redemption only: `controller` and `owner` must both equal
+    ///      `msg.sender`, so no one can enqueue into another account's queue (griefing defense). The locked
+    ///      asset amount is computed once via the floor conversion and stops participating in future yield;
+    ///      it is paid out later by `redeem`/`withdraw` once `REDEEM_DELAY` elapses. Each controller owns a
+    ///      single FIFO self-claim queue, so the vault uses one shared time-delay model instead of
+    ///      per-request ids.
+    /// @param shares Amount of vault shares to burn into the redemption queue.
+    /// @param controller Account that will later claim (must be `msg.sender`).
+    /// @param owner Account whose queue is debited (must be `msg.sender`).
+    /// @return lockedAssets Asset amount locked for the request (no longer earns yield).
+    function requestRedeem(uint256 shares, address controller, address owner)
+        external
+        override
+        returns (uint256 lockedAssets)
+    {
+        // controller == owner == msg.sender: no operator path, no filling another account's queue.
+        require(controller == msg.sender && owner == msg.sender, NotSelfRedemption());
+        // shares > 0 implies lockedAssets > 0 via the rate>=1 invariant (totalAssets >= totalSupply, maintained
+        // by deposit/mint/yield), so the historical zero-asset guard stays unreachable here. Re-audit if that
+        // invariant is ever relaxed.
+        require(shares > 0, ZeroRedeemRequest());
 
-        uint256 assets = _convertToAssets(shares, totalAssets);
-        require(assets > 0, ZeroRedeemRequest());
+        // Lock the asset value at request time; this amount is frozen and no longer earns yield.
+        lockedAssets = _convertToAssets(shares, totalAssets);
+        require(lockedAssets <= type(uint192).max, RedeemAmountOverflowed(lockedAssets));
 
-        _requestWithdraw(msg.sender, receiver, assets, shares);
+        _requestWithdraw(owner, lockedAssets, shares);
 
-        return assets;
+        emit RedeemRequest(controller, owner, msg.sender, shares, lockedAssets);
+
+        return lockedAssets;
     }
 
-    /// @notice Redeems every matured request owned by the caller.
-    /// @dev Requests that have not yet passed `REDEEM_DELAY` remain queued for future calls.
-    /// @return redeemedAmount Total underlying asset amount transferred to the caller.
-    function executeRedeem() external override returns (uint256 redeemedAmount) {
-        RedeemRequest[] storage requestQueue = redeemRequestQueues[msg.sender];
+    /// @notice Claims `shares` worth of matured redemption requests, paying out their locked assets.
+    /// @dev FIFO claim over `owner`'s queue. `owner` must equal `msg.sender`: shares were already burned at
+    ///      requestRedeem time, so there is no allowance path and a third-party `owner` would steal assets.
+    ///      The whole bounded queue is scanned (no early break on an immature entry) because swap-pop
+    ///      compaction can reorder entries; MAX_REDEEM_REQUESTS keeps the loop gas-bounded.
+    /// @param shares Amount of previously burned shares to claim payouts for.
+    /// @param receiver Recipient of the unlocked assets.
+    /// @param owner Account whose matured requests are claimed (must be `msg.sender`).
+    /// @return assets Total locked assets paid out.
+    function redeem(uint256 shares, address receiver, address owner) external override returns (uint256) {
+        require(owner == msg.sender, NotSelfRedemption());
+        require(shares > 0, ZeroRedeemRequest());
 
-        // asset is written once in initialize and never mutated; caching avoids repeated SLOADs across loop iterations.
-        address asset_ = asset;
+        RedeemRequestEntry[] storage requestQueue = redeemRequestQueues[msg.sender];
+        uint256 remaining = shares;
+        uint256 totalPayout;
 
-        for (uint256 i = requestQueue.length; i > 0;) {
-            unchecked {
-                --i;
+        uint256 i = 0;
+        // Length is re-read each pass on purpose: the swap-pop compaction below pops requestQueue and
+        // shrinks it, so caching length once would let i overrun the array after a pop.
+        // solhint-disable-next-line gas-length-in-loops
+        while (i < requestQueue.length && remaining > 0) {
+            RedeemRequestEntry storage entry = requestQueue[i];
+            // Skip entries still inside the REDEEM_DELAY maturity window.
+            if (block.timestamp < uint256(entry.requestTime) + REDEEM_DELAY) {
+                unchecked {
+                    ++i;
+                }
+                continue;
             }
-            if (block.timestamp >= requestQueue[i].requestTime + REDEEM_DELAY) {
-                uint256 amount = requestQueue[i].amount;
-                redeemedAmount += amount;
+            uint256 take = remaining < entry.shares ? remaining : entry.shares;
+            // Floor payout at this entry's own locked rate so a partial claim never over-pays.
+            uint256 payout = Math.mulDiv(take, entry.lockedAssets, entry.shares);
+            if (payout == 0) {
+                // take > 0 but the floor payout rounds to 0. Under the maintained totalAssets >=
+                // totalSupply invariant (per-entry lockedAssets >= shares, see requestRedeem) this path
+                // is currently unreachable: payout = floor(take * lockedAssets / shares) >= take >= 1.
+                // Retained as a forward guard — re-audit if the rate>=1 invariant is ever relaxed. It
+                // does NOT mirror withdraw's takeShares==0 guard: withdraw is assets-first, so a tiny
+                // asset target against a high per-share locked rate can legitimately round to 0 shares,
+                // whereas this shares-first path cannot while lockedAssets >= shares. Skip without
+                // consuming this entry's shares so a later claim can still recover the locked assets.
+                unchecked {
+                    ++i;
+                }
+                continue;
+            }
+            // Decrement shares and lockedAssets in lockstep so later claims stay rate-correct.
+            entry.shares -= take;
+            entry.lockedAssets -= uint192(payout);
+            remaining -= take;
+            totalPayout += payout;
 
-                // Iterate backwards so pop-based removals can swap in the tail element without skipping unchecked requests.
+            if (entry.shares == 0) {
+                // Fully consumed: swap-pop compaction. Do not advance i — re-examine the swapped-in tail.
                 if (i != requestQueue.length - 1) {
                     requestQueue[i] = requestQueue[requestQueue.length - 1];
                 }
                 requestQueue.pop();
+            } else {
+                unchecked {
+                    ++i;
+                }
+            }
+        }
 
-                IERC20(asset_).safeTransfer(msg.sender, amount);
+        require(remaining == 0, InsufficientClaimableRedeem(shares - remaining));
 
-                emit RedeemExecuted(msg.sender, amount);
+        IERC20(asset).safeTransfer(receiver, totalPayout);
+
+        emit Withdraw(msg.sender, receiver, owner, totalPayout, shares);
+
+        return totalPayout;
+    }
+
+    /// @notice Claims exactly `assets` from matured redemption requests.
+    /// @dev Assets-first FIFO claim. For each matured entry it solves the share count whose floor payout
+    ///      does not exceed the asset target, then decrements shares/lockedAssets in lockstep. Floor loss
+    ///      means an exact target is often unreachable; the call then reverts InsufficientClaimableRedeem
+    ///      (EIP-4626 "MUST revert if all assets cannot be withdrawn"). Same self-claim guard and scan as
+    ///      `redeem`.
+    /// @param assets Exact amount of locked assets to pay out.
+    /// @param receiver Recipient of the unlocked assets.
+    /// @param owner Account whose matured requests are claimed (must be `msg.sender`).
+    /// @return shares Total burned shares consumed by the claim.
+    function withdraw(uint256 assets, address receiver, address owner) external override returns (uint256) {
+        require(owner == msg.sender, NotSelfRedemption());
+        require(assets > 0, ZeroRedeemRequest());
+
+        RedeemRequestEntry[] storage requestQueue = redeemRequestQueues[msg.sender];
+        uint256 remainingAssets = assets;
+        uint256 totalShares;
+
+        uint256 i = 0;
+        // Length is re-read each pass on purpose: the swap-pop compaction below pops requestQueue and
+        // shrinks it, so caching length once would let i overrun the array after a pop.
+        // solhint-disable-next-line gas-length-in-loops
+        while (i < requestQueue.length && remainingAssets > 0) {
+            RedeemRequestEntry storage entry = requestQueue[i];
+            if (block.timestamp < uint256(entry.requestTime) + REDEEM_DELAY) {
+                unchecked {
+                    ++i;
+                }
+                continue;
+            }
+            uint256 takeAssets = remainingAssets < entry.lockedAssets ? remainingAssets : entry.lockedAssets;
+            // Largest share count whose floor payout stays <= takeAssets (assets-first inverse of the lock rate).
+            // Computed as ceil((T+1)·S/L) − 1 = floor(((T+1)·S − 1)/L): the exact largest s with floor(s·L/S) <= T.
+            // The naive floor(T·S/L) under-counts by one at rounding edges and spuriously reverts reachable targets.
+            // The −1 is load-bearing: without it, ceil over-counts when (T+1)·S is an exact multiple of L, which
+            // would make `remainingAssets -= payout` underflow (Panic 0x11).
+            uint256 takeShares = Math.mulDiv(takeAssets + 1, entry.shares, entry.lockedAssets, Math.Rounding.Ceil) - 1;
+            if (takeShares == 0) {
+                // Rounding leaves too few shares to cover 1 unit of payout here; try the next matured entry.
+                unchecked {
+                    ++i;
+                }
+                continue;
+            }
+            uint256 payout = Math.mulDiv(takeShares, entry.lockedAssets, entry.shares);
+            entry.shares -= takeShares;
+            entry.lockedAssets -= uint192(payout);
+            remainingAssets -= payout;
+            totalShares += takeShares;
+
+            if (entry.shares == 0) {
+                if (i != requestQueue.length - 1) {
+                    requestQueue[i] = requestQueue[requestQueue.length - 1];
+                }
+                requestQueue.pop();
+            } else {
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+
+        // Floor loss can leave a sub-unit remainder that no entry can satisfy exactly; revert, do not under-pay.
+        require(remainingAssets == 0, InsufficientClaimableRedeem(assets - remainingAssets));
+
+        IERC20(asset).safeTransfer(receiver, assets);
+
+        emit Withdraw(msg.sender, receiver, owner, assets, totalShares);
+
+        return totalShares;
+    }
+
+    /// @notice Total shares in `controller`'s queue still pending the `REDEEM_DELAY` maturity.
+    /// @param controller Account whose pending shares are queried.
+    /// @return shares Sum of immature (pending) shares.
+    function pendingRedeemRequest(address controller) external view override returns (uint256 shares) {
+        RedeemRequestEntry[] storage queue = redeemRequestQueues[controller];
+        // Read-only scan: queue is not mutated here, so caching length once saves the per-iteration storage read.
+        uint256 queueLength = queue.length;
+        for (uint256 i = 0; i < queueLength; ++i) {
+            if (block.timestamp < uint256(queue[i].requestTime) + REDEEM_DELAY) {
+                shares += queue[i].shares;
             }
         }
     }
 
-    function _requestWithdraw(address sender, address receiver, uint256 assets, uint256 shares) internal {
-        uint256 requestCount = redeemRequestQueues[receiver].length;
+    /// @notice Total shares in `controller`'s queue that have matured and are claimable now.
+    /// @param controller Account whose claimable shares are queried.
+    /// @return shares Sum of matured (claimable) shares.
+    function claimableRedeemRequest(address controller) external view override returns (uint256 shares) {
+        return _claimableShares(controller);
+    }
+
+    /// @dev Shared matured-share sum used by `claimableRedeemRequest` and `maxRedeem`. Sums shares of
+    ///      entries whose `requestTime + REDEEM_DELAY` has elapsed.
+    function _claimableShares(address controller) internal view returns (uint256 total) {
+        RedeemRequestEntry[] storage queue = redeemRequestQueues[controller];
+        // Read-only scan: queue is not mutated here, so caching length once saves the per-iteration storage read.
+        uint256 queueLength = queue.length;
+        for (uint256 i = 0; i < queueLength; ++i) {
+            if (block.timestamp >= uint256(queue[i].requestTime) + REDEEM_DELAY) {
+                total += queue[i].shares;
+            }
+        }
+    }
+
+    /// @dev Burns `shares`, deducts `lockedAssets` from totalAssets (so the queued amount stops earning
+    ///      yield immediately), writes the asset checkpoint, and enqueues the packed entry. Caller-side
+    ///      checks (self-redemption, non-zero shares, uint192 cap) live in `requestRedeem`; the cap is
+    ///      re-checked here as defense-in-depth.
+    function _requestWithdraw(address owner, uint256 lockedAssets, uint256 shares) internal {
+        uint256 requestCount = redeemRequestQueues[owner].length;
         require(requestCount < MAX_REDEEM_REQUESTS, MaxRedeemRequestsReached());
-        require(assets <= type(uint192).max, RedeemAmountOverflowed(assets));
+        require(lockedAssets <= type(uint192).max, RedeemAmountOverflowed(lockedAssets));
 
-        _burn(sender, shares);
+        _burn(owner, shares);
         // The queued asset amount stops participating in future yield immediately, so share price only reflects still-staked assets.
-        totalAssets -= assets;
+        totalAssets -= lockedAssets;
         _writeTotalAssetCheckpoint(totalAssets);
-        redeemRequestQueues[receiver].push(
-            RedeemRequest({amount: uint192(assets), requestTime: uint64(block.timestamp)})
+        redeemRequestQueues[owner].push(
+            RedeemRequestEntry({
+                lockedAssets: uint192(lockedAssets), requestTime: uint64(block.timestamp), shares: shares
+            })
         );
-
-        emit RedeemRequested(sender, receiver, assets, shares, block.timestamp);
     }
 
     function _convertToShares(uint256 assets, uint256 latestTotalAssets) internal view returns (uint256) {

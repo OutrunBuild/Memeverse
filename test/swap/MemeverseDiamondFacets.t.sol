@@ -22,7 +22,7 @@ import {ISettlementFacet} from "../../src/swap/interfaces/ISettlementFacet.sol";
 import {ISwapFacet} from "../../src/swap/interfaces/ISwapFacet.sol";
 import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
-import {OutrunOwnableUpgradeable} from "../../src/common/access/OutrunOwnableUpgradeable.sol";
+import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
 
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
@@ -64,7 +64,7 @@ contract MemeverseDiamondFacetsTest is Test, HookStorageHelper {
         bytes32 role = hook.SETTLEMENT_FACET_ROLE();
 
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(OutrunOwnableUpgradeable.OwnableUnauthorizedAccount.selector, stranger));
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, stranger));
         hook.setFacet(role, address(0xBEEF));
     }
 

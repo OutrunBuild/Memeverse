@@ -519,6 +519,83 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         realPermit2Router.swapWithPermit2(permitParams, key, params, alice, deadline, 40 ether, amountIn, "");
     }
 
+    /// @notice Verifies the single Permit2 path rejects a permit whose token does not match the swap input.
+    /// @dev Locks the named InvalidPermit2Token payload so the token-mismatch site has regression coverage.
+    function testSwapWithPermit2_TokenMismatchReverts() external {
+        IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(0xBEEF), 100 ether);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMemeverseSwapRouter.InvalidPermit2Token.selector, 0, address(token0), address(0xBEEF)
+            )
+        );
+        vm.prank(alice);
+        router.swapWithPermit2(
+            singlePermit,
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -100 ether,
+                sqrtPriceLimitX96: uint160((uint256(SQRT_PRICE_1_1) * 99) / 100)
+            }),
+            alice,
+            block.timestamp,
+            40 ether,
+            100 ether,
+            ""
+        );
+    }
+
+    /// @notice Verifies the single Permit2 path rejects a transfer targeting a recipient other than the router.
+    /// @dev Locks the named InvalidPermit2Target payload so the transfer-target site has regression coverage.
+    function testSwapWithPermit2_TransferTargetMismatchReverts() external {
+        IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(token0), 100 ether);
+        singlePermit.transferDetails.to = address(0xBEEF);
+
+        vm.expectRevert(abi.encodeWithSelector(IMemeverseSwapRouter.InvalidPermit2Target.selector, 0));
+        vm.prank(alice);
+        router.swapWithPermit2(
+            singlePermit,
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -100 ether,
+                sqrtPriceLimitX96: uint160((uint256(SQRT_PRICE_1_1) * 99) / 100)
+            }),
+            alice,
+            block.timestamp,
+            40 ether,
+            100 ether,
+            ""
+        );
+    }
+
+    /// @notice Verifies the single Permit2 path rejects a requested amount below the swap input budget.
+    /// @dev Locks the named InvalidPermit2Amount payload (expected budget first, actual requested amount second).
+    function testSwapWithPermit2_RequestedAmountMismatchReverts() external {
+        IMemeverseSwapRouter.Permit2SingleParams memory singlePermit = _singlePermit(address(token0), 100 ether);
+        singlePermit.transferDetails.requestedAmount = 99 ether;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemeverseSwapRouter.InvalidPermit2Amount.selector, 0, 100 ether, 99 ether)
+        );
+        vm.prank(alice);
+        router.swapWithPermit2(
+            singlePermit,
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -100 ether,
+                sqrtPriceLimitX96: uint160((uint256(SQRT_PRICE_1_1) * 99) / 100)
+            }),
+            alice,
+            block.timestamp,
+            40 ether,
+            100 ether,
+            ""
+        );
+    }
+
     /// @notice Verifies the batch Permit2 path surfaces Permit2's own amount check.
     function testAddLiquidityWithPermit2_RevertsWhenPermittedAmountBelowRequestedAmount() external {
         uint256 amount0Desired = 100 ether;
@@ -766,6 +843,36 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
             abi.encodeWithSelector(
                 IMemeverseSwapRouter.InvalidPermit2Token.selector, 1, address(token1), address(0xBEEF)
             )
+        );
+        vm.prank(alice);
+        router.addLiquidityWithPermit2(
+            batchPermit, key.currency0, key.currency1, 100 ether, 100 ether, 90 ether, 90 ether, alice, block.timestamp
+        );
+    }
+
+    /// @notice Verifies the batch Permit2 path rejects a transfer targeting a recipient other than the router.
+    /// @dev Locks the named InvalidPermit2Target payload for a batch entry (index 0) with regression coverage.
+    function testAddLiquidityWithPermit2_TransferTargetMismatchReverts() external {
+        IMemeverseSwapRouter.Permit2BatchParams memory batchPermit =
+            _batchPermit(address(token0), 100 ether, address(token1), 100 ether);
+        batchPermit.transferDetails[0].to = address(0xBEEF);
+
+        vm.expectRevert(abi.encodeWithSelector(IMemeverseSwapRouter.InvalidPermit2Target.selector, 0));
+        vm.prank(alice);
+        router.addLiquidityWithPermit2(
+            batchPermit, key.currency0, key.currency1, 100 ether, 100 ether, 90 ether, 90 ether, alice, block.timestamp
+        );
+    }
+
+    /// @notice Verifies the batch Permit2 path rejects a requested amount below the desired budget.
+    /// @dev Locks the named InvalidPermit2Amount payload for a batch entry (index 1), expected budget first.
+    function testAddLiquidityWithPermit2_RequestedAmountMismatchReverts() external {
+        IMemeverseSwapRouter.Permit2BatchParams memory batchPermit =
+            _batchPermit(address(token0), 100 ether, address(token1), 100 ether);
+        batchPermit.transferDetails[1].requestedAmount = 99 ether;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemeverseSwapRouter.InvalidPermit2Amount.selector, 1, 100 ether, 99 ether)
         );
         vm.prank(alice);
         router.addLiquidityWithPermit2(

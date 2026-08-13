@@ -644,10 +644,12 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         string memory witnessTypeString
     ) internal {
         if (permitParams.permit.permitted.token != token) {
-            revert IMemeverseUniswapHook.ERC20TransferFailed();
+            revert InvalidPermit2Token(0, token, permitParams.permit.permitted.token);
         }
-        if (permitParams.transferDetails.to != address(this)) revert IMemeverseUniswapHook.ERC20TransferFailed();
-        if (permitParams.transferDetails.requestedAmount != amount) revert IMemeverseUniswapHook.ERC20TransferFailed();
+        if (permitParams.transferDetails.to != address(this)) revert InvalidPermit2Target(0);
+        if (permitParams.transferDetails.requestedAmount != amount) {
+            revert InvalidPermit2Amount(0, amount, permitParams.transferDetails.requestedAmount);
+        }
         permit2.permitWitnessTransferFrom(
             permitParams.permit, permitParams.transferDetails, owner, witness, witnessTypeString, permitParams.signature
         );
@@ -684,10 +686,10 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         address actualToken = permitParams.permit.permitted[index].token;
         if (actualToken != expectedToken) revert InvalidPermit2Token(index, expectedToken, actualToken);
         if (permitParams.transferDetails[index].to != address(this)) {
-            revert IMemeverseUniswapHook.ERC20TransferFailed();
+            revert InvalidPermit2Target(index);
         }
         if (permitParams.transferDetails[index].requestedAmount != expectedAmount) {
-            revert IMemeverseUniswapHook.ERC20TransferFailed();
+            revert InvalidPermit2Amount(index, expectedAmount, permitParams.transferDetails[index].requestedAmount);
         }
     }
 
@@ -879,7 +881,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         address token = Currency.unwrap(currency);
         if (IERC20Minimal(token).allowance(address(this), address(hook)) < amount) {
             if (!IERC20Minimal(token).approve(address(hook), type(uint256).max)) {
-                revert IMemeverseUniswapHook.ERC20TransferFailed();
+                revert ERC20ApproveFailed();
             }
         }
     }

@@ -32,6 +32,7 @@ import {UniswapLP} from "../../src/swap/tokens/UniswapLP.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 import {StateWritingDynamicFeeFacetMock} from "../mocks/swap/StateWritingDynamicFeeFacetMock.sol";
+import {YTMockERC20} from "../mocks/swap/YTFlashSwapMocks.sol";
 
 contract DirectProtectedSwapCaller {
     MockPoolManagerForRouterTest internal immutable manager;
@@ -1916,6 +1917,31 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         router.addLiquidity(
             key.currency0, key.currency1, 100 ether, 100 ether, 90 ether, 90 ether, address(this), block.timestamp - 1
         );
+    }
+
+    /// @notice Verifies the router aborts with the dedicated `ERC20ApproveFailed` error when an input token's
+    ///         approve toward the hook returns false.
+    /// @dev The approval guard lives on the liquidity budget path (`_pullCurrency` then `_ensureHookApproval`),
+    ///      so the test walks that entrypoint: the caller-budget pull succeeds (transferFrom), then the router's
+    ///      router->hook approve is refused and the call reverts. A failed pull would surface
+    ///      `ERC20TransferFailed` instead, so the exact error proves the approve branch is the failing step.
+    function testAddLiquidityReverts_WhenHookApprovalFails() external {
+        YTMockERC20 approveFailToken = new YTMockERC20("ApproveFail", "AF");
+        bool failIsCurrency0 = address(approveFailToken) < address(token1);
+        Currency currency0 = Currency.wrap(failIsCurrency0 ? address(approveFailToken) : address(token1));
+        Currency currency1 = Currency.wrap(failIsCurrency0 ? address(token1) : address(approveFailToken));
+
+        approveFailToken.mint(address(this), 1_000_000 ether);
+        // The test contract's own approval must land before the mock starts refusing approve calls.
+        approveFailToken.approve(address(router), type(uint256).max);
+        approveFailToken.setApproveOk(false);
+
+        PoolKey memory approveFailKey = _dynamicPoolKey(currency0, currency1);
+        _initializePoolDirect(approveFailKey, SQRT_PRICE_1_1);
+        seedActiveLiquiditySharesForTest(address(hook), approveFailKey.toId(), address(this), 1e18);
+
+        vm.expectRevert(IMemeverseSwapRouter.ERC20ApproveFailed.selector);
+        router.addLiquidity(currency0, currency1, 100 ether, 100 ether, 0, 0, address(this), block.timestamp);
     }
 
     /// @notice Verifies the detailed add-liquidity entrypoint reports actual spend in pool-currency order.

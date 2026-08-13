@@ -53,8 +53,21 @@ interface IMemeverseSwapRouter {
     /// @notice Reverts when Permit2 batch arrays do not match the expected ERC20 funding leg count.
     error InvalidPermit2Length();
 
-    /// @notice Reverts when a Permit2 batch entry does not match the expected token ordering.
+    /// @notice Reverts when a Permit2 entry does not match the expected token (a batch entry, or the single-token path with index 0).
     error InvalidPermit2Token(uint256 index, address expectedToken, address actualToken);
+
+    /// @notice Reverts when a Permit2 transfer targets a recipient other than the router.
+    /// @param index The batch index of the mismatched entry (0 for single-token paths).
+    error InvalidPermit2Target(uint256 index);
+
+    /// @notice Reverts when a Permit2 transfer amount does not match the expected budget.
+    /// @param index The batch index of the mismatched entry (0 for single-token paths).
+    /// @param expectedAmount The budget the router requires.
+    /// @param actualAmount The requested amount in the Permit2 payload.
+    error InvalidPermit2Amount(uint256 index, uint256 expectedAmount, uint256 actualAmount);
+
+    /// @notice Reverts when an ERC20 approve returns false.
+    error ERC20ApproveFailed();
 
     /// @notice Reverts when a launcher-only bootstrap function is called by any other account.
     error UnauthorizedLauncher();

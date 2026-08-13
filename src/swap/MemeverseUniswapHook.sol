@@ -30,6 +30,7 @@ import {ISwapFacet} from "./interfaces/ISwapFacet.sol";
 import {ISettlementFacet} from "./interfaces/ISettlementFacet.sol";
 import {IMemeverseHookStorage} from "./interfaces/IMemeverseHookStorage.sol";
 import {IMemeverseUniswapHook} from "./interfaces/IMemeverseUniswapHook.sol";
+import {OutrunOwnable} from "../common/access/OutrunOwnable.sol";
 import {OutrunOwnableUpgradeable} from "../common/access/OutrunOwnableUpgradeable.sol";
 
 /**
@@ -194,7 +195,7 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
     }
 
     /// @inheritdoc IMemeverseUniswapHook
-    function owner() public view override(OutrunOwnableUpgradeable, IMemeverseUniswapHook) returns (address) {
+    function owner() public view override(OutrunOwnable, IMemeverseUniswapHook) returns (address) {
         return super.owner();
     }
 
@@ -536,6 +537,15 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
         PoolKey memory key = _poolKey(params.currency0, params.currency1);
         PoolId poolId = key.toId();
 
+        // Hold the per-pool swap-lifecycle lock across the snapshot -> settle -> mint window: a callback
+        // token (ERC-777/1363) reentering poolManager.swap on this pool during the settle transferFrom would
+        // advance feePerShare between the recipient's fee snapshot and the LP mint, letting the freshly minted
+        // shares claim fees that accrued before they existed. The same lock already guards the swap and
+        // settlement paths; holding it here makes beforeSwapLogic reject such a reentrant swap.
+        if (MemeverseTransientState.acquireSwapLifecycleLock(poolId)) {
+            revert SwapLifecycleReentrant();
+        }
+
         PoolInfo storage pool = _memeverseUniswapHookStorage.poolInfo[poolId];
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         // Read once: the delegatecall at _updateUserSnapshotViaFacet blocks the optimizer from
@@ -561,6 +571,11 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
 
         UniswapLP(liquidityToken).mint(params.to, liquidity);
         _memeverseUniswapHookStorage.cachedLpTotalSupply[poolId] += liquidity;
+
+        // Window closed: the snapshot, the settle window, and the mint now agree on feePerShare. A revert
+        // earlier in this function leaves the transient lock to auto-clear at tx end, mirroring the
+        // settlement path's release-only-on-normal-return semantics.
+        MemeverseTransientState.releaseSwapLifecycleLock(poolId);
 
         emit LiquidityAdded(
             poolId,
@@ -963,10 +978,13 @@ contract MemeverseUniswapHook layout at erc7201("outrun.storage.MemeverseUniswap
         emit TreasuryUpdated(old, treasury_);
     }
 
-    /// @notice Sets the referral rebate rate applied to protocol fees on referral swaps.
+    /// @notice Sets the referral rebate rate (share of the total swap fee, in bps) on referral swaps.
     /// @dev Writes the hook-owned `referrerRebateBps` storage field read by `SwapFacet._collectProtocolFee`.
-    ///      The rebate is the referrer's share of the *total* protocol fee in bps (default DEFAULT_REFERRAL_REBATE_BPS,
-    ///      max 3500 = `FeeMath.PROTOCOL_FEE_SHARE_BPS`). ABI keeps the argument as `uint256` for caller
+    ///      `bps` is the referrer's share of the *total* swap fee in bps (`rebate = totalFee * bps / 10_000`,
+    ///      equivalently `protocolFee * bps / FeeMath.PROTOCOL_FEE_SHARE_BPS` since the protocol share is 35%;
+    ///      default DEFAULT_REFERRAL_REBATE_BPS = 1000 → 10% of the total fee). Capped at
+    ///      `FeeMath.PROTOCOL_FEE_SHARE_BPS` so rebate ≤ protocol fee and the treasury subtraction
+    ///      (`protocolFee - rebate`) never underflows. ABI keeps the argument as `uint256` for caller
     ///      compatibility; the storage field stays `uint24` so the cast is applied at the write boundary.
     ///      The `uint24(bps)` cast is lossless because `bps <= PROTOCOL_FEE_SHARE_BPS`,
     ///      far below `type(uint24).max`.

@@ -140,15 +140,19 @@ library MemeverseTransientState {
     }
 
     /// @dev Acquires the per-pool swap-lifecycle reentrancy lock. Returns whether the lock was already held;
-    ///      the caller decides the revert error (the library stays a pure logic shim). Acquired in two places:
-    ///      `SwapFacet.beforeSwapLogic` (after `_revertIfPublicSwapBlocked`) and
-    ///      `SettlementFacet.executeSettlementLogic` (before the Phase 1 transferFrom), and released in their
-    ///      matching exit points (`SwapFacet.afterSwapLogic`, `SettlementFacet.executeSettlementLogic` tail).
+    ///      the caller decides the revert error (the library stays a pure logic shim). Acquired in three places:
+    ///      `SwapFacet.beforeSwapLogic` (after `_revertIfPublicSwapBlocked`),
+    ///      `SettlementFacet.executeSettlementLogic` (before the Phase 1 transferFrom), and
+    ///      `MemeverseUniswapHook._addLiquidityCore` (before the recipient fee snapshot), and released in their
+    ///      matching exit points (`SwapFacet.afterSwapLogic`, `SettlementFacet.executeSettlementLogic` tail,
+    ///      `MemeverseUniswapHook._addLiquidityCore` after the LP mint and `cachedLpTotalSupply` update).
     ///      Blocks a callback token (ERC-777/1363) from reentering `poolManager.swap` on the SAME poolId
     ///      during the outer swap's lifecycle window, which would advance `dynamicFeeState` while the outer
-    ///      swap still settles with the stale fee quoted at its start. Returns a bool instead of reverting so
-    ///      the meaningful error (`SwapLifecycleReentrant`) can live on the hook interface where errors are
-    ///      centralized.
+    ///      swap still settles with the stale fee quoted at its start. On the liquidity-add window the same
+    ///      block keeps per-share LP fee growth (`fee0PerShare`/`fee1PerShare`) frozen between the recipient
+    ///      snapshot and the LP mint, so minted shares cannot crystallize fees accrued before they existed.
+    ///      Returns a bool instead of reverting so the meaningful error (`SwapLifecycleReentrant`) can live on
+    ///      the hook interface where errors are centralized.
     function acquireSwapLifecycleLock(PoolId poolId) internal returns (bool alreadyLocked) {
         bytes32 slot = _swapLifecycleLockSlot(poolId);
         assembly ("memory-safe") {
@@ -157,9 +161,9 @@ library MemeverseTransientState {
         }
     }
 
-    /// @dev Releases the per-pool lock acquired in beforeSwapLogic / executeSettlementLogic. Paired 1:1 with
-    ///      acquire. Transient storage auto-clears at tx end, so a revert between acquire and release leaves no
-    ///      stale lock.
+    /// @dev Releases the per-pool lock acquired in beforeSwapLogic / executeSettlementLogic /
+    ///      `MemeverseUniswapHook._addLiquidityCore`. Paired 1:1 with acquire. Transient storage auto-clears at
+    ///      tx end, so a revert between acquire and release leaves no stale lock.
     function releaseSwapLifecycleLock(PoolId poolId) internal {
         bytes32 slot = _swapLifecycleLockSlot(poolId);
         assembly ("memory-safe") {

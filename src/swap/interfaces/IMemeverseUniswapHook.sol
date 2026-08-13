@@ -142,8 +142,10 @@ interface IMemeverseUniswapHook is IImmutableState {
     /// @return amount Claimed rebate amount sent to `recipient`.
     function claimRebate(Currency currency, address recipient) external returns (uint256 amount);
 
-    /// @notice Updates the referral rebate rate applied to protocol fees on referral swaps.
+    /// @notice Updates the referral rebate rate (share of the total swap fee, in bps) on referral swaps.
     /// @dev Implementations are expected to restrict this to an admin or owner role.
+    ///      `bps` is the referrer's share of the *total* swap fee in bps (`rebate = totalFee * bps / 10_000`,
+    ///      equivalently `protocolFee * bps / FeeMath.PROTOCOL_FEE_SHARE_BPS` since the protocol share is 35%).
     ///      Rebate is capped at `FeeMath.PROTOCOL_FEE_SHARE_BPS` (3500); larger values revert.
     /// @param bps New rebate rate in basis points.
     function setReferrerRebateBps(uint256 bps) external;

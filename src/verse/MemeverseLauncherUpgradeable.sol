@@ -238,23 +238,13 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         _versIdValidate(verseId);
     }
 
-    /**
-     * @notice Get the verse id by memecoin.
-     * @dev Returns 0 when the memecoin has not been registered.
-     * @param memecoin -The address of the memecoin.
-     * @return verseId The verse id.
-     */
+    /// @inheritdoc IMemeverseLauncher
     function getVerseIdByMemecoin(address memecoin) external view override returns (uint256 verseId) {
         require(memecoin != address(0), ZeroInput());
         verseId = memeverseLauncherStorage.memecoinToIds[memecoin];
     }
 
-    /**
-     * @notice Get the memeverse by verse id.
-     * @dev Reverts when `verseId` is not registered.
-     * @param verseId - The verse id.
-     * @return verse - The memeverse.
-     */
+    /// @inheritdoc IMemeverseLauncher
     function getMemeverseByVerseId(uint256 verseId) external view override returns (Memeverse memory verse) {
         _versIdValidate(verseId);
         verse = memeverseLauncherStorage.memeverses[verseId];
@@ -281,54 +271,29 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         return MemeverseLauncherLib.MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - totalFunds;
     }
 
-    /**
-     * @notice Get the memeverse by memecoin.
-     * @dev Reverts when the memecoin is zero or not registered.
-     * @param memecoin - The address of the memecoin.
-     * @return verse - The memeverse.
-     */
+    /// @inheritdoc IMemeverseLauncher
     function getMemeverseByMemecoin(address memecoin) external view override returns (Memeverse memory verse) {
         verse = memeverseLauncherStorage.memeverses[_verseIdOfRegisteredMemecoin(memecoin)];
     }
 
-    /**
-     * @notice Get the Stage by verse id.
-     * @dev Reverts when `verseId` is not registered.
-     * @param verseId - The verse id.
-     * @return stage - The memeverse current stage.
-     */
+    /// @inheritdoc IMemeverseLauncher
     function getStageByVerseId(uint256 verseId) external view override returns (Stage stage) {
         _versIdValidate(verseId);
         stage = memeverseLauncherStorage.memeverses[verseId].currentStage;
     }
 
-    /**
-     * @notice Get the Stage by memecoin.
-     * @dev Returns the current stage for the memecoin's registered verse.
-     * @param memecoin - The address of the memecoin.
-     * @return stage - The memeverse current stage.
-     */
+    /// @inheritdoc IMemeverseLauncher
     function getStageByMemecoin(address memecoin) external view override returns (Stage stage) {
         stage = memeverseLauncherStorage.memeverses[_verseIdOfRegisteredMemecoin(memecoin)].currentStage;
     }
 
-    /**
-     * @notice Get the yield vault by verse id.
-     * @dev Reverts when `verseId` is zero.
-     * @param verseId - The verse id.
-     * @return yieldVault - The yield vault.
-     */
+    /// @inheritdoc IMemeverseLauncher
     function getYieldVaultByVerseId(uint256 verseId) external view override returns (address yieldVault) {
         _versIdValidate(verseId);
         yieldVault = memeverseLauncherStorage.memeverses[verseId].yieldVault;
     }
 
-    /**
-     * @notice Get the governor by verse id.
-     * @dev Reverts when `verseId` is zero.
-     * @param verseId - The verse id.
-     * @return governor - The governor.
-     */
+    /// @inheritdoc IMemeverseLauncher
     function getGovernorByVerseId(uint256 verseId) external view override returns (address governor) {
         _versIdValidate(verseId);
         governor = memeverseLauncherStorage.memeverses[verseId].governor;
@@ -363,13 +328,8 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         return maxCapacity - usedCapacity;
     }
 
-    /**
-     * @dev Genesis memeverse by depositing uAsset
-     * @param verseId - Memeverse id
-     * @param amountInUAsset - Amount of uAsset
-     * @param user - Address of user participating in the genesis
-     * @notice Approve fund token first
-     */
+    /// @inheritdoc IMemeverseLauncher
+    /// @dev Approve fund token first.
     function genesis(uint256 verseId, uint256 amountInUAsset, address user)
         external
         override
@@ -745,18 +705,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         emit MintPOLToken(verseId, memecoin, pol, msg.sender, amountOut);
     }
 
-    /**
-     * @notice Register a new memeverse.
-     * @dev Deploys memecoin and POL proxies, initializes them, and stores verse metadata.
-     * @param name - Name of memecoin
-     * @param symbol - Symbol of memecoin
-     * @param uniqueId - Unique verseId
-     * @param endTime - Genesis stage end time
-     * @param unlockTime - Unlock time of liquidity
-     * @param omnichainIds - ChainIds of the token's omnichain(EVM)
-     * @param uAsset - verse funding asset
-     * @param flashGenesis - Enable FlashGenesis mode
-     */
+    /// @inheritdoc IMemeverseLauncher
     function registerMemeverse(
         string calldata name,
         string calldata symbol,

@@ -80,13 +80,12 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         if (address(manager_) == address(0) || address(hook_) == address(0) || address(splitter_) == address(0)) {
             revert ZeroAddress();
         }
-        // Code-readiness for all three immutable executable dependencies (checked after the zero-address guard, before
-        // the diagonal `manager_ == hook_.poolManager()` compare). `manager_` is already bound as the
-        // SafeCallback/ImmutableState immutable `poolManager` before this body runs; the checks cannot undo that binding,
-        // but they make a misconfigured deployment revert with a named error instead of succeeding and only failing later
-        // at runtime unlock / split calls. Mirrors the codebase's facet/upgrade/lens code-length-first ordering: a no-code
-        // dependency fails here with a named error rather than as an opaque ABI-decode revert from the next STATICCALL
-        // (e.g. `hook_.poolManager()` for `hook_`, or `getPTAndYTAndPOL` / `split` / `merge` for `splitter_` at runtime).
+        // Code-readiness for all three immutable executable dependencies (after the zero-address guard, before the
+        // diagonal `manager_ == hook_.poolManager()` compare). `manager_` is already bound as the SafeCallback/
+        // ImmutableState immutable `poolManager` before this body runs — the checks cannot undo that binding, but they
+        // make a misconfigured deployment revert with a named error instead of an opaque ABI-decode revert from the next
+        // STATICCALL (e.g. `hook_.poolManager()` for `hook_`, or `getPTAndYTAndPOL`/`split`/`merge` for `splitter_`).
+        // Mirrors the codebase's facet/upgrade/lens code-length-first ordering.
         if (address(manager_).code.length == 0) revert PoolManagerCodeNotReady(address(manager_));
         if (address(hook_).code.length == 0) revert HookCodeNotReady(address(hook_));
         if (address(splitter_).code.length == 0) revert SplitterCodeNotReady(address(splitter_));

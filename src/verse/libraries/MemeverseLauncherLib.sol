@@ -215,11 +215,10 @@ library MemeverseLauncherLib {
     /// @notice Compute the currently claimable (vested, unclaimed) preorder memecoin for an account.
     /// @dev Shared by the facade view `claimablePreorderMemecoin(verseId)` and the settlement sibling's
     ///      `claimUnlockedPreorderMemecoin(verseId)` so the two callers cannot drift on the vesting math.
-    ///      Reads verse-id validity, stage (`>= Stage.Locked`), preorder state, and user preorder data
-    ///      directly from the passed storage pointer `s` so it works identically in the facade (which reads
-    ///      its own `memeverseLauncherStorage`) and the sibling (which reads the proxy's
-    ///      `memeverseLauncherStorage` via delegatecall). The verse-id check is inlined (no facade-only
-    ///      `_versIdValidate` dependency) and the math mirrors the original facade helper byte-for-byte.
+    ///      Reads verse-id validity, stage (`>= Stage.Locked`), preorder state, and user preorder data from
+    ///      the passed storage pointer `s`, so it works identically in the facade (own storage) and the sibling
+    ///      (proxy storage via delegatecall). The verse-id check is inlined (no `_versIdValidate` dependency)
+    ///      and the math mirrors the original facade helper byte-for-byte.
     /// @param s The MemeverseLauncherStorage pointer (facade's or proxy's under delegatecall).
     /// @param verseId Memeverse id.
     /// @param account The preorder participant whose vested memecoin is being measured.

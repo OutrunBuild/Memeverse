@@ -168,36 +168,30 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         return super.proposalThreshold();
     }
 
-    /// @notice Exposes the incentivizer contract paired with this governor.
+    /// @inheritdoc IMemecoinDaoGovernor
     /// @dev The incentivizer tracks cycle votes and reward distribution for this DAO.
-    /// @return Incentivizer contract address.
     function governanceCycleIncentivizer() external view override returns (address) {
         return address(memecoinDaoGovernorStorage._governanceCycleIncentivizer);
     }
 
-    /// @notice Returns the absolute minimum quorum floor.
-    /// @return Minimum quorum in vote units.
+    /// @inheritdoc IMemecoinDaoGovernor
     function minQuorum() external view override returns (uint256) {
         return memecoinDaoGovernorStorage._minQuorum;
     }
 
-    /// @notice Returns the timestamp when governance proposals become active.
-    /// @return Start timestamp for governance.
+    /// @inheritdoc IMemecoinDaoGovernor
     function governanceStartTime() external view override returns (uint256) {
         return memecoinDaoGovernorStorage._governanceStartTime;
     }
 
-    /// @notice Returns the maximum treasury spend ratio allowed for one execution.
-    /// @dev The ratio is expressed in basis points, using 10000 as the denominator for 100%.
+    /// @inheritdoc IMemecoinDaoGovernor
     function maxTreasurySpendRatio() external view override returns (uint256) {
         return memecoinDaoGovernorStorage._maxTreasurySpendRatio;
     }
 
-    /// @notice Returns the vote ratio required for proposals that target the Governor (self-call) or the paired
-    ///         incentivizer.
-    /// @dev The ratio is expressed in basis points with denominator 10000. It applies when any proposal target is this
-    ///      Governor (a self-call) or the paired governance cycle incentivizer, and compares
-    ///      `forVotes / (forVotes + againstVotes + abstainVotes)`.
+    /// @inheritdoc IMemecoinDaoGovernor
+    /// @dev The ratio applies when any proposal target is this Governor (a self-call) or the paired governance cycle
+    ///      incentivizer, and compares `forVotes / (forVotes + againstVotes + abstainVotes)`.
     function upgradeSupermajorityRatio() external view returns (uint256) {
         return memecoinDaoGovernorStorage._upgradeSupermajorityRatio;
     }

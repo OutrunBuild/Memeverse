@@ -105,11 +105,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         _;
     }
 
-    /// @notice Derive the hook-managed pool key that corresponds to a given token pair.
-    /// @dev Sorts the tokens canonically and applies the router's hook configuration before delegating to the hook.
-    /// @param tokenA One side of the pair.
-    /// @param tokenB The other side of the pair.
-    /// @return key Canonical hook pool key for the pair.
+    /// @inheritdoc IMemeverseSwapRouter
     function getHookPoolKey(address tokenA, address tokenB)
         public
         view
@@ -121,13 +117,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         key = _hookPoolKey(currency0, currency1);
     }
 
-    /// @notice Preview how much LP fee an owner can claim for a token pair.
-    /// @dev Resolves the hook pool key from token addresses before delegating to `hookLens.claimableFees`.
-    /// @param tokenA One side of the pair.
-    /// @param tokenB The other side of the pair.
-    /// @param owner The owner address whose LP fees are previewed.
-    /// @return fee0 The preview claimable amount in currency0.
-    /// @return fee1 The preview claimable amount in currency1.
+    /// @inheritdoc IMemeverseSwapRouter
     function previewClaimableFees(address tokenA, address tokenB, address owner)
         external
         view
@@ -138,24 +128,16 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         return hookLens.claimableFees(hook, key, owner);
     }
 
-    /// @notice Return the LP token contract for the hook-managed pair formed by the given tokens.
+    /// @inheritdoc IMemeverseSwapRouter
     /// @dev Resolves the hook pool key from token addresses and reads the hook pool information.
-    /// @param tokenA One side of the pair.
-    /// @param tokenB The other side of the pair.
-    /// @return liquidityToken The LP token contract for the pair.
     function lpToken(address tokenA, address tokenB) external view override returns (address liquidityToken) {
         PoolKey memory key = getHookPoolKey(tokenA, tokenB);
         liquidityToken = hook.liquidityTokenOf(key.toId());
     }
 
-    /// @notice Quote how much of each pool token the router would spend to mint a desired liquidity amount.
+    /// @inheritdoc IMemeverseSwapRouter
     /// @dev Resolves the hook pool key, reads the current pool price, and applies the same full-range liquidity math
-    /// used by the Router and Hook Core add-liquidity paths.
-    /// @param tokenA One side of the pair.
-    /// @param tokenB The other side of the pair.
-    /// @param liquidityDesired Target LP liquidity to quote.
-    /// @return amountARequired Required amount of `tokenA`.
-    /// @return amountBRequired Required amount of `tokenB`.
+    ///      used by the Router and Hook Core add-liquidity paths.
     function quoteAmountsForLiquidity(address tokenA, address tokenB, uint128 liquidityDesired)
         external
         view
@@ -207,14 +189,10 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         return tokenAIsCurrency0 ? (amount0Required, amount1Required) : (amount1Required, amount0Required);
     }
 
-    /// @notice Request the hook's current swap quote so integrations can preview fees, side, and expected flows.
+    /// @inheritdoc IMemeverseSwapRouter
     /// @dev This router-first facade keeps quote logic centralized while reusing the hook's internal math.
     ///      The Lens enforces read-only execution with `STATICCALL`; the EIP-214 static context propagates
     ///      through the hook's storage-sharing `delegatecall` and rejects any attempted facet state write.
-    /// @param key Pool key being quoted.
-    /// @param params Swap parameters that define direction, amount, and slippage posture.
-    /// @param trader Address whose per-address batch state determines the adverse fee component.
-    /// @return quote A projected swap quote describing fees, estimated user input/output, and protocol split.
     function quoteSwap(PoolKey calldata key, SwapParams calldata params, address trader)
         external
         view
@@ -224,16 +202,9 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         return hookLens.quoteSwap(hook, key, params, trader);
     }
 
-    /// @notice Execute a swap through the Memeverse hook with router-managed slippage and caller-directed refunds.
-    /// @dev Swaps always settle or revert; the caller must cover slippage via `amountOutMinimum` or `amountInMaximum`, and any leftover budget is refunded to the caller.
-    /// @param key Pool key to swap against.
-    /// @param params Swap parameters that define direction, amount, and price impact.
-    /// @param recipient Address that should receive the swap output.
-    /// @param deadline Timestamp by which the call must execute.
-    /// @param amountOutMinimum Minimum net output the caller is willing to accept.
-    /// @param amountInMaximum Maximum input the caller allows for exact-output swaps.
-    /// @param hookData Opaque hook data forwarded to `poolManager.swap`.
-    /// @return delta Balance delta describing the net token movement settled by the swap.
+    /// @inheritdoc IMemeverseSwapRouter
+    /// @dev Swaps always settle or revert; the caller must cover slippage via `amountOutMinimum` or `amountInMaximum`,
+    ///      and any leftover budget is refunded to the caller.
     function swap(
         PoolKey calldata key,
         SwapParams calldata params,
@@ -262,18 +233,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         );
     }
 
-    /// @notice Execute a swap after funding the router via Permit2 signature transfer.
-    /// @dev Behaves identically to `swap(...)` once the Permit2 pull completes.
-    /// @custom:security Callers must sign Permit2 data that matches the intended input budget and token.
-    /// @param permitParams Permit2 single-transfer parameters and signature for the routed input.
-    /// @param key The pool key to swap against.
-    /// @param params The swap parameters.
-    /// @param recipient The address receiving any swap output.
-    /// @param deadline The latest timestamp at which the call is valid.
-    /// @param amountOutMinimum The minimum net output the caller is willing to receive.
-    /// @param amountInMaximum The maximum input the caller is willing to pay.
-    /// @param hookData Opaque hook data forwarded to `poolManager.swap`.
-    /// @return delta The final swap delta.
+    /// @inheritdoc IMemeverseSwapRouter
     function swapWithPermit2(
         IMemeverseSwapRouter.Permit2SingleParams calldata permitParams,
         PoolKey calldata key,
@@ -314,17 +274,9 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         );
     }
 
-    /// @notice Add liquidity via the hook core while the router finalizes exact spend, enforces minimums, and refunds leftovers.
-    /// @dev Pulls the caller's desired budgets, validates min amounts, and refunds any unused input budget back to the caller.
-    /// @param currency0 Pool currency0.
-    /// @param currency1 Pool currency1.
-    /// @param amount0Desired Desired currency0 budget.
-    /// @param amount1Desired Desired currency1 budget.
-    /// @param amount0Min Minimum currency0 spend accepted after routing.
-    /// @param amount1Min Minimum currency1 spend accepted after routing.
-    /// @param to Recipient of minted LP shares.
-    /// @param deadline The latest timestamp at which the call is valid.
-    /// @return liquidity The LP liquidity minted to `to`.
+    /// @inheritdoc IMemeverseSwapRouter
+    /// @dev Pulls the caller's desired budgets, validates min amounts, and refunds any unused input budget
+    ///      back to the caller.
     function addLiquidity(
         Currency currency0,
         Currency currency1,
@@ -340,20 +292,9 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         );
     }
 
-    /// @notice Add liquidity via the hook core and return the actual token spend alongside minted liquidity.
+    /// @inheritdoc IMemeverseSwapRouter
     /// @dev Pulls the caller's desired budgets, normalizes pool ordering internally, refunds any unused input budget,
-    /// and exposes the settled spend in caller order.
-    /// @param currency0 First currency supplied by the caller.
-    /// @param currency1 Second currency supplied by the caller.
-    /// @param amount0Desired Desired budget for `currency0`.
-    /// @param amount1Desired Desired budget for `currency1`.
-    /// @param amount0Min Minimum spend accepted for `currency0`.
-    /// @param amount1Min Minimum spend accepted for `currency1`.
-    /// @param to Recipient of minted LP shares.
-    /// @param deadline The latest timestamp at which the call is valid.
-    /// @return liquidity The LP liquidity minted to `to`.
-    /// @return amount0Used Actual spend for `currency0`.
-    /// @return amount1Used Actual spend for `currency1`.
+    ///      and exposes the settled spend in caller order.
     function addLiquidityDetailed(
         Currency currency0,
         Currency currency1,
@@ -369,19 +310,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         );
     }
 
-    /// @notice Add liquidity after covering the ERC20 sides through a Permit2 signature transfer.
-    /// @dev After Permit2 funding succeeds, execution follows the same path as `addLiquidity(...)`.
-    /// @custom:security The batch Permit2 payload must align with the ERC20 side(s) of this call.
-    /// @param permitParams Permit2 batch-transfer parameters and signature that fund the ERC20 legs.
-    /// @param currency0 Pool currency0.
-    /// @param currency1 Pool currency1.
-    /// @param amount0Desired Desired currency0 budget.
-    /// @param amount1Desired Desired currency1 budget.
-    /// @param amount0Min Minimum currency0 spend accepted.
-    /// @param amount1Min Minimum currency1 spend accepted.
-    /// @param to Recipient of minted LP shares.
-    /// @param deadline The latest timestamp at which the call is valid.
-    /// @return liquidity The LP liquidity minted to `to`.
+    /// @inheritdoc IMemeverseSwapRouter
     function addLiquidityWithPermit2(
         IMemeverseSwapRouter.Permit2BatchParams calldata permitParams,
         Currency currency0,
@@ -416,16 +345,8 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
             _addLiquidityViaHook(key, amount0Budget, amount1Budget, amount0Floor, amount1Floor, to, msg.sender);
     }
 
-    /// @notice Remove liquidity through the hook while the router enforces min outputs and forwards the settled assets.
+    /// @inheritdoc IMemeverseSwapRouter
     /// @dev Pulls LP shares into the router, calls the hook core, validates minimum outputs, and forwards the assets.
-    /// @param currency0 Pool currency0.
-    /// @param currency1 Pool currency1.
-    /// @param liquidity LP liquidity to burn.
-    /// @param amount0Min Minimum currency0 output accepted.
-    /// @param amount1Min Minimum currency1 output accepted.
-    /// @param to Recipient of withdrawn assets.
-    /// @param deadline The latest timestamp at which the call is valid.
-    /// @return delta The balance delta returned by the hook core.
     function removeLiquidity(
         Currency currency0,
         Currency currency1,
@@ -442,18 +363,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
             );
     }
 
-    /// @notice Remove liquidity after funding the LP side via Permit2 signature transfer.
-    /// @dev After Permit2 funding succeeds, execution follows the same path as `removeLiquidity(...)`.
-    /// @custom:security The Permit2 payload must authorize the hook LP token transfer required by this call.
-    /// @param permitParams Permit2 single-transfer parameters and signature covering the LP token.
-    /// @param currency0 Pool currency0.
-    /// @param currency1 Pool currency1.
-    /// @param liquidity LP liquidity to burn.
-    /// @param amount0Min Minimum currency0 output accepted.
-    /// @param amount1Min Minimum currency1 output accepted.
-    /// @param to Recipient of withdrawn assets.
-    /// @param deadline The latest timestamp at which the call is valid.
-    /// @return delta The balance delta returned by the hook core.
+    /// @inheritdoc IMemeverseSwapRouter
     function removeLiquidityWithPermit2(
         IMemeverseSwapRouter.Permit2SingleParams calldata permitParams,
         Currency currency0,
@@ -481,19 +391,8 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
             );
     }
 
-    /// @notice Initialize a hook-backed pool and seed its first full-range liquidity position through the hook core.
+    /// @inheritdoc IMemeverseSwapRouter
     /// @dev Pulls the caller's desired budgets, initializes the pool, and adds liquidity through the hook core.
-    /// @param tokenA One side of the pool pair.
-    /// @param tokenB The other side of the pool pair.
-    /// @param amountADesired Desired budget for `tokenA`.
-    /// @param amountBDesired Desired budget for `tokenB`.
-    /// @param startPrice The initial `sqrtPriceX96` passed to the pool manager.
-    /// @param recipient Recipient of minted LP shares.
-    /// @param deadline The latest timestamp at which the call is valid.
-    /// @return liquidity The minted LP liquidity.
-    /// @return poolKey The initialized pool key.
-    /// @return amountAUsed Actual spend for `tokenA`.
-    /// @return amountBUsed Actual spend for `tokenB`.
     function createPoolAndAddLiquidity(
         address tokenA,
         address tokenB,

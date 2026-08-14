@@ -38,10 +38,9 @@ abstract contract MemeverseSwapFeeBase is FacetGuard {
         uint256 lpFeeAmount,
         uint256 effectiveSupply
     ) internal {
-        // Single source of truth: per-share accrual requires effectiveSupply > 0. Callers that skip LP fee
-        // on drained pools (_collectLpFee, the SwapFacet beforeSwap merge path, SettlementFacet) gate
-        // effectiveSupply == 0 themselves for the take decision; this guard prevents Panic 0x12 (FullMath
-        // mulDiv divide-by-zero) if a future direct caller forgets the gate.
+        // Callers skipping LP fee on drained pools (_collectLpFee, SwapFacet beforeSwap merge, SettlementFacet)
+        // gate effectiveSupply == 0 themselves for the take decision; the zero guard here is a backstop only —
+        // see the @dev above.
         if (effectiveSupply == 0) revert IMemeverseUniswapHook.NoActiveLiquidityShares();
         PoolInfo storage pool = _memeverseUniswapHookStorage.poolInfo[poolId];
         uint256 feePerShareDelta = FullMath.mulDiv(lpFeeAmount, FeeMath.FEE_GROWTH_Q128, effectiveSupply);
@@ -78,9 +77,6 @@ abstract contract MemeverseSwapFeeBase is FacetGuard {
     ///      swap takes effect immediately without redeployment. The target is an owner-controlled facet
     ///      (`setFacet` under `onlyOwner` + `_requireFacetPoolManager`), so the controlled-delegatecall
     ///      detector here is an EIP-2535 diamond inherent rather than an exploitable low-level call.
-    ///
-    ///      The facet address is read from shared hook storage at each call boundary. An owner `setFacet`
-    ///      update therefore takes effect for the next transaction without redeploying the calling facets.
     // slither-disable-next-line controlled-delegatecall
     function _delegatecallDynamicFeeFacet(bytes memory payload) internal returns (bytes memory ret) {
         return Address.functionDelegateCall(_memeverseUniswapHookStorage.dynamicFeeFacet, payload);

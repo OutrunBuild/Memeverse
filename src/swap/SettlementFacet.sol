@@ -233,21 +233,16 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
         // that call boundary again inside the facet.
         if (msg.sender != address(poolManager)) revert IMemeverseUniswapHook.Unauthorized();
 
-        // Read the pre-swap price immediately before the settlement swap so PIF measures this swap's price
-        // movement from a swap-adjacent anchor. The per-pool lock has been held since before the input
-        // transfers, so no same-pool callback can move the price before this swap. The entry price seeds
-        // the volatility anchor; this swap-adjacent read seeds the realized-state PIF.
-        // Invariant: under the lifecycle lock held since before the input transfers, no path between the
-        // entry read above (executeSettlementLogic) and this swap can move the pool price, so this read
-        // returns the same value as the entry read. The re-read is kept on purpose as a forward-compatible
-        // guard: if a future change inserts a price-moving step before the swap, this swap-adjacent read
-        // still captures the correct PIF anchor instead of silently reusing a stale entry price. Do NOT
-        // collapse the two reads into one passed across the unlock boundary — that would couple the callback
-        // ABI to an unenforced invariant and silently break PIF measurement if the invariant ever slips.
-        // Cache `toId()` once: `PoolKey.toId()` is pure (keccak256 over the in-memory struct), so the two
-        // reads share one hash instead of recomputing it across the swap external call. `poolManager.swap`
-        // recomputes it internally (PoolManager.sol), which the caller cannot avoid. Mirrors the existing
-        // pattern in `executeSettlementLogic` above.
+        // Read the pre-swap price right before the settlement swap so PIF measures this swap's price movement
+        // from a swap-adjacent anchor (the entry price seeds the volatility anchor; this read seeds realized PIF).
+        // Invariant: the lifecycle lock has been held since before the input transfers, so no path between the
+        // entry read (`executeSettlementLogic`) and this swap can move the pool price — this read returns the
+        // same value as the entry read. The re-read is a forward-compatible guard: if a future change inserts a
+        // price-moving step before the swap, this still captures the correct PIF anchor instead of reusing a stale
+        // entry price. Do NOT collapse the two reads into one passed across the unlock boundary — that couples the
+        // callback ABI to an unenforced invariant and silently breaks PIF if it ever slips.
+        // Cache `toId()` once: `PoolKey.toId()` is pure (keccak256 over the in-memory struct), so the two reads
+        // share one hash; `poolManager.swap` recomputes it internally (unavoidable). Mirrors `executeSettlementLogic`.
         PoolId poolId = data.key.toId();
         (uint160 preSwapSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         BalanceDelta swapDelta = poolManager.swap(data.key, data.swapParams, bytes(""));

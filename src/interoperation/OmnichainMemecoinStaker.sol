@@ -16,10 +16,9 @@ import {IOmnichainMemecoinStaker} from "./interfaces/IOmnichainMemecoinStaker.so
 contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
     address public immutable localEndpoint;
 
-    /// @dev Single-resolution state per (memecoin, guid), shared between `lzCompose` (Settled) and
-    ///      `settlePendingCompose` (Released). Keying on the genuine bridged memecoin (not just the guid) prevents a
-    ///      forged settle with an arbitrary token from burning a real guid's mutex: a forged settle only advances
-    ///      the attacker's own slot.
+    /// @dev Single-resolution state per (memecoin, guid), shared by `lzCompose` (Settled) and
+    ///      `settlePendingCompose` (Released). Keying on the bridged memecoin (not just the guid) means a forged
+    ///      settle with an arbitrary token only advances the attacker's own slot, never a real guid's mutex.
     mapping(address memecoin => mapping(bytes32 guid => ComposeState)) public composeStates;
 
     constructor(address _localEndpoint) {
@@ -47,42 +46,34 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
         override
     {
         require(msg.sender == localEndpoint, PermissionDenied());
-        // Single-resolution guard shared with `settlePendingCompose`: a guid may be settled at most once via this path.
-        // Released pairs are absorbed as a no-op — see the @dev above for the rationale.
+        // Single-resolution guard shared with `settlePendingCompose`: a guid settles at most once via this path.
         ComposeState state = composeStates[memecoin][guid];
         if (state == ComposeState.Released) return;
         require(state == ComposeState.None, AlreadyResolved());
         // CEI: mark settled first; a revert below rolls the write back, leaving the guid releasable and retryable.
         composeStates[memecoin][guid] = ComposeState.Settled;
 
-        // Reject a short frame (<76 bytes, header incomplete) with a named error before the codec slices
-        // (`amountLD` reads [12:44], `composeMsg` reads [76:]) would revert opaquely. Mirrors `verifySettle`'s
-        // header-integrity guard (see OFTComposeSettleVerify). The CEI `Settled` write rolls back on revert, so a
-        // short frame leaves the guid `None` — same rollback behavior as the inner `composeMsg.length == 64` guard.
+        // Reject a short frame (header incomplete) with a named error before the codec slices (`amountLD` [12:44],
+        // `composeMsg` [76:]) revert opaquely. Mirrors `verifySettle`'s header guard. CEI rolls the `Settled` write
+        // back, so a short frame leaves the guid `None`.
         require(message.length >= OFTComposeSettleVerify.COMPOSE_HEADER_LENGTH, MalformedComposeMsg());
 
         uint256 amount = OFTComposeMsgCodec.amountLD(message);
-        // The 64-byte check bounds the schema shape only: a non-64-byte frame reverts this named error (CEI `Settled`
-        // write rolls back). A non-64 frame with inner composeMsg >= 32 bytes (total >= 108) stays releasable via
-        // `settlePendingCompose`; an inner < 32-byte frame (total < 108) is a dead class rejected by both entrypoints
-        // with no recovery exit (operations.md §3.13.1). Word content is resolved explicitly below.
-        // The length guard is equivalent to the former `composeMsg.length == 64` (composeMsg = message[76:], so its
-        // length == message.length - 76); `message.length >= 76` is already required at the header guard above, so
-        // this subtraction cannot underflow. Read the two tuple words straight from calldata at fixed offsets, instead
-        // of `OFTComposeMsgCodec.composeMsg(message)` (a `bytes memory` slice) + `abi.decode`, to avoid the 64-byte
-        // calldata→memory copy and keep this parse pure-calldata — mirroring `YieldDispatcherUpgradeable._parseCompose`.
+        // composeMsg = message[76:], so this length check is the former `composeMsg.length == 64` (cannot underflow:
+        // header guard above proved message.length >= 76). A non-64 frame reverts here (CEI Settled rolls back); inner
+        // >= 32 bytes stays releasable via `settlePendingCompose`, inner < 32 is a dead class with no recovery
+        // (operations.md §3.13.1). Read raw words from calldata at fixed offsets instead of `composeMsg()`+`abi.decode`
+        // to skip a 64-byte memory copy — mirrors `YieldDispatcherUpgradeable._parseCompose`.
         require(message.length - OFTComposeSettleVerify.COMPOSE_HEADER_LENGTH == 64, MalformedComposeMsg());
-        // Decode as uint256, not (address, address): solc's strict ABI decoder validates address words (160-bit clean)
-        // and would revert with an EMPTY unreadable revert on dirty-high-bit words, pinning the endpoint queue forever
-        // (no named error, CEI `Settled` rolled back, no consumption). Reading raw uint256 words skips that validator
-        // so every content class can be resolved explicitly. Offsets: composeMsg = message[76:], tuple word0 at
-        // [76:108] (receiver), word1 at [108:140] (vault).
+        // Decode as uint256, not (address, address): solc's strict decoder rejects dirty-high-bit address words with
+        // an empty unreadable revert, pinning the endpoint queue (no named error, CEI rolled back, no consumption).
+        // Raw uint256 words skip that validator so every content class resolves explicitly. Offsets (composeMsg =
+        // message[76:]): word0 at [76:108] (receiver), word1 at [108:140] (vault).
         uint256 receiverRaw = uint256(bytes32(message[76:108]));
         uint256 vaultRaw = uint256(bytes32(message[108:140]));
-        // A dirty receiver word can never be released (`settlePendingCompose` rejects it with `MalformedComposeMsg`)
-        // and is hash-bound to this guid, so the slot (already Settled, CEI) is consumed with a rejection signal —
-        // the endpoint queue converges instead of pinning for executor retries; funds stay in staker custody
-        // (documented self-harm boundary).
+        // A dirty receiver word can never be released (`settlePendingCompose` rejects it) and is hash-bound to this
+        // guid, so the Settled slot is consumed with a rejection signal — the queue converges instead of pinning for
+        // retries; funds stay in staker custody (self-harm boundary).
         if (receiverRaw >> 160 != 0) {
             emit ComposeRejected(guid, memecoin, amount);
             return;
@@ -132,14 +123,12 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
         bytes memory composeMsg;
         (amount, composeMsg) = OFTComposeSettleVerify.verifySettle(localEndpoint, memecoin, guid, message);
         require(amount != 0, ZeroInput());
-        // Release-path schema guard. Unlike `lzCompose` (the entry path), which must read both `receiver` AND
-        // `yieldVault` and therefore enforces an exact 64-byte `(address, address)` composeMsg, the release path
-        // (`settlePendingCompose`) only ever needs the beneficiary address: it always pushes via `_transferOut` and
-        // never touches `yieldVault`. So the shape is asymmetric on purpose — the release path accepts any composeMsg
-        // of at least one 32-byte word and reads only the first word as `receiver`, discarding any trailing bytes
-        // (the unused `yieldVault` field or anything else). This makes a self-stranded malformed payload (non-64 but
-        // >=32 bytes) recoverable by the beneficiary rather than permanently trapped.
-        // Order matters: the length check precedes the first-word read so it can never read out of bounds.
+        // Release-path schema guard. Unlike `lzCompose`, which reads both `receiver` and `yieldVault` and enforces an
+        // exact 64-byte composeMsg, the release path only needs the beneficiary (always pushes via `_transferOut`,
+        // never touches `yieldVault`). So the shape is asymmetric on purpose: it accepts any composeMsg of at least
+        // one 32-byte word, reads only the first as `receiver`, discarding trailing bytes. This makes a self-stranded
+        // malformed payload (non-64 but >=32 bytes) recoverable rather than permanently trapped. Length checked
+        // before the read (no OOB).
         require(composeMsg.length >= 32, MalformedComposeMsg());
         uint256 receiverWord = abi.decode(composeMsg, (uint256));
         // Reject a dirty high-96-bits receiver word: `uint160` would silently truncate it into a forged address

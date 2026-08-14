@@ -57,10 +57,9 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         omnichainStakingGasLimit = _omnichainStakingGasLimit;
     }
 
-    /// @notice Quotes the native fee for staking a memecoin on the governance chain.
-    /// @dev Uses `verse.omnichainIds[0]` as the governance chain. Same-chain routes return a zero fee; the actual
-    ///      same-chain staking call still requires a deployed yield vault. Remote routes quote the exact LayerZero
-    ///      fee for the staking parameters built below.
+    /// @inheritdoc IMemeverseOmnichainInteroperation
+    /// @dev Governance chain is `verse.omnichainIds[0]`. Same-chain routes return a zero fee but still need a
+    ///      deployed yield vault for the actual staking call; remote routes quote the exact LayerZero fee.
     /// @param memecoin memecoin address.
     /// @param receiver receiver address.
     /// @param amount token amount.
@@ -84,20 +83,17 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         lzFee = IOFT(memecoin).quoteSend(sendParam, false).nativeFee;
     }
 
-    /// @notice Stakes memecoin either locally or through the omnichain staker.
-    /// @dev Uses `verse.omnichainIds[0]` as the governance chain. On the same chain, it requires zero native fee and
-    ///      reverts with `EmptyYieldVault` when the vault is missing before depositing locally. On a remote chain, it
-    ///      quotes and sends with the same parameters, requiring the exact native fee. A successful source send still
-    ///      leaves destination `lzReceive`/`lzCompose` failures for LayerZero to retry.
-    /// @dev Remote sends additionally reject amounts that `_removeDust` would truncate ALL THE WAY to zero
-    ///      (`amount < decimalConversionRate`, e.g. < 1e12 for an 18-decimal memecoin with 6 shared decimals): such a
-    ///      send burns nothing, delivers a zero-amount compose (zero position), charges the full LayerZero fee, and
-    ///      strands the full amount here with no sweep. The pre-check runs BEFORE `_transferIn` so a rejected amount
-    ///      never moves the caller's tokens.
-    /// @dev For non-zero-remainder truncation (`amount >= decimalConversionRate` but `amount % decimalConversionRate
-    ///      != 0`), the caller's intent is to stake, so instead of reverting the send refunds the un-burnt remainder
-    ///      (`amount - amountSentLD`) back to `msg.sender` on the source chain, in the same transaction, right after
-    ///      the OFT send — nothing strands here.
+    /// @inheritdoc IMemeverseOmnichainInteroperation
+    /// @dev Governance chain is `verse.omnichainIds[0]`. Same-chain: native fee must be 0, reverts `EmptyYieldVault`
+    ///      if the vault is missing. Remote: quotes and sends with the exact native fee; a successful source send may
+    ///      still leave destination `lzReceive`/`lzCompose` failures for LayerZero to retry.
+    /// @dev Remote sends reject amounts that `_removeDust` truncates to zero (`amount < decimalConversionRate`,
+    ///      e.g. < 1e12 for an 18-decimal memecoin with 6 shared decimals): such a send burns nothing, delivers a
+    ///      zero-amount compose, charges the full LayerZero fee, and strands the full amount (no sweep). Pre-checked
+    ///      before `_transferIn`, so a rejected amount never moves the caller's tokens.
+    /// @dev Non-zero-remainder truncation (`amount >= decimalConversionRate` but not a clean multiple) is NOT
+    ///      rejected: the caller meant to stake, so the un-burnt remainder (`amount - amountSentLD`) is refunded to
+    ///      `msg.sender` on the source chain in the same tx right after the OFT send — nothing strands.
     /// @param memecoin memecoin address.
     /// @param receiver receiver address.
     /// @param amount token amount.
@@ -111,8 +107,7 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
 
         SendParam memory sendParam;
         bool isRemote = govChainId != block.chainid;
-        // Reject sub-rate amounts BEFORE pulling funds: a remote send whose truncated amount is zero would strand the
-        // dust here (no sweep/withdraw) while charging the full LayerZero fee for a zero-position result.
+        // Pre-check before `_transferIn`: a zero-truncated remote send strands the dust (no sweep) for a full fee.
         if (isRemote) {
             sendParam = _buildStakingSendParam(govChainId, receiver, yieldVault, amount);
             _requireNonZeroRemoteDelivery(memecoin, sendParam);
@@ -136,15 +131,11 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
             OFTReceipt memory oftReceipt
         ) = IOFT(memecoin).send{value: messagingFee.nativeFee}(sendParam, messagingFee, msg.sender);
 
-        // OFT `_debit` burns the truncated `amountSentLD`; the remainder (`amount - amountSentLD`, the part
-        // `_removeDust` dropped) was pulled in by `_transferIn` but never burnt, so refund it to the caller on the
-        // source chain here — nothing strands. Zero for exact multiples (no truncation); up to rate-1 wei otherwise.
-        // The refund quantity is derived from router-balance conservation (`_transferIn` pulled `amount`, `_debit` burnt
-        // `amountSentLD`), so it uses `amountSentLD` (what was actually burnt), not `amountReceivedLD`. For the default
-        // memecoin OFT `amountSentLD == amountReceivedLD` (`OutrunOFTCoreInit._debitView`); a future fee-taking OFT
-        // override that makes them differ would need this refund re-examined. The `OmnichainMemecoinStaking` event
-        // below carries `amountSentLD` (actually burned/staked) and `remainder` (refunded), so indexers can verify
-        // `amountSentLD + remainder == amount` from a single event.
+        // `_debit` burnt the truncated `amountSentLD`; the remainder (`amount - amountSentLD`, the part `_removeDust`
+        // dropped) was pulled in by `_transferIn` but never burnt, so refund it here — nothing strands. The refund uses
+        // `amountSentLD` (burnt), not `amountReceivedLD`, by router-balance conservation. For the default memecoin OFT
+        // the two are equal (`OutrunOFTCoreInit._debitView`); a future fee-taking override would need this re-examined.
+        // The event below carries `amountSentLD` and `remainder`, so indexers can verify `amountSentLD + remainder == amount`.
         uint256 remainder = amount - oftReceipt.amountSentLD;
         if (remainder != 0) _transferOut(memecoin, msg.sender, remainder);
 
@@ -153,22 +144,20 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         );
     }
 
-    /// @dev Pre-send guard for the remote staking path. OFT `_debitView`/`_removeDust` truncates the local-decimal
-    ///      amount to `(amount / decimalConversionRate) * decimalConversionRate` before burning and encoding the shared-
-    ///      decimal amount on the wire. An `amount` smaller than `decimalConversionRate` (e.g. < 1e12 for an 18-decimal
-    ///      memecoin with 6 shared decimals) therefore truncates to ZERO: `_burn` is a no-op, the message carries
-    ///      amountSD = 0, the destination mints 0 and fires a zero-amount compose, yet `_transferIn` already pulled the
-    ///      full amount into this contract (which has no sweep/withdraw/receive/fallback). The caller would pay the full
-    ///      LayerZero fee for a zero-position result with no revert/refund signal. `quoteOFT` re-runs the same
-    ///      `_debitView` truncation, so `amountReceivedLD != 0` is the precise "did truncation collapse to zero" test.
-    ///      Non-zero-remainder truncation is NOT rejected here — it is handled by refunding the remainder after the
-    ///      send in `memecoinStaking`.
+    /// @dev Pre-send guard for the remote path. OFT `_debitView`/`_removeDust` truncates `amount` to
+    ///      `(amount / decimalConversionRate) * decimalConversionRate` before burning/encoding. An amount below
+    ///      `decimalConversionRate` (e.g. < 1e12 for an 18-decimal memecoin with 6 shared decimals) truncates to zero:
+    ///      no-op `_burn`, amountSD = 0 on the wire, destination mints 0 and fires a zero-amount compose, yet
+    ///      `_transferIn` already pulled the full amount into this contract (no sweep/withdraw/receive/fallback) — the
+    ///      caller pays the full LayerZero fee for a zero-position result with no revert/refund signal. `quoteOFT`
+    ///      re-runs the same truncation, so `amountReceivedLD != 0` is the precise zero-collapse test. Non-zero-
+    ///      remainder truncation is NOT rejected here — refunded after the send in `memecoinStaking`.
     function _requireNonZeroRemoteDelivery(address memecoin, SendParam memory sendParam) internal view {
         (,, OFTReceipt memory receipt) = IOFT(memecoin).quoteOFT(sendParam);
         require(receipt.amountReceivedLD != 0, DustAmount());
     }
 
-    /// @notice Updates the gas limits used by remote staking sends.
+    /// @inheritdoc IMemeverseOmnichainInteroperation
     /// @dev Only callable by the owner. Both values are validated only for `> 0`; no minimum execution budget is
     ///      enforced, so a value below the destination's actual execution cost permanently breaks that path:
     ///      - `_oftReceiveGasLimit` too low: the LayerZero executor's delivery (gas-capped by this option) always

@@ -87,24 +87,12 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         __GovernanceCycleIncentivizer_init(governor, initFundTokens);
     }
 
-    /**
-     * @notice Returns the current cycle identifier.
-     * @dev Reads the active cycle from incentivizer storage.
-     * @return The active cycle id.
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
     function currentCycleId() external view override returns (uint256) {
         return governanceCycleIncentivizerStorage._currentCycleId;
     }
 
-    /**
-     * @notice Returns the incentivizer metadata snapshot.
-     * @dev Exposes the current cycle, reward ratio, governor, treasury token list, and reward token list.
-     * @return _currentCycleId The active cycle id.
-     * @return _rewardRatio The configured reward ratio in basis points.
-     * @return _governor The governor contract address.
-     * @return _treasuryTokenList The registered treasury token list.
-     * @return _rewardTokenList The registered reward token list.
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
     function metaData()
         external
         view
@@ -124,21 +112,10 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         _rewardTokenList = governanceCycleIncentivizerStorage._rewardTokenList;
     }
 
-    /**
-     * @notice Returns metadata for a specific cycle.
-     * @dev Exposes timing, total votes, treasury token list, and reward token list for the requested cycle.
-     * Token lists are snapshots written only at finalize time: querying the active (unfinalized) cycle
-     * returns empty lists. Use metaData() for the active cycle's live registries. The finalized
-     * rewardTokenList is a filtered subset of the registered reward tokens: only those that had a positive
-     * treasury balance in a cycle with positive total votes (the per-token amount may still round to zero),
-     * not the live list.
-     * @param cycleId The cycle identifier to inspect.
-     * @return startTime The cycle start timestamp.
-     * @return endTime The cycle end timestamp.
-     * @return totalVotes The total accumulated votes for the cycle.
-     * @return treasuryTokenList The treasury token list for the cycle.
-     * @return rewardTokenList The reward token list for the cycle.
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
+    /// @dev The finalized rewardTokenList is a filtered subset of the registered reward tokens: only those that had
+    /// a positive treasury balance in a cycle with positive total votes (the per-token amount may still round to
+    /// zero), not the live list.
     function cycleInfo(uint128 cycleId)
         external
         view
@@ -159,24 +136,13 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         rewardTokenList = cycle.rewardTokenList;
     }
 
-    /**
-     * @notice Returns the vote count recorded for a user in a cycle.
-     * @dev Reads the per-user vote accumulator for the requested cycle.
-     * @param user The account to inspect.
-     * @param cycleId The cycle identifier to inspect.
-     * @return The votes recorded for the user in that cycle.
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
     function getUserVotesCount(address user, uint128 cycleId) external view override returns (uint256) {
         return governanceCycleIncentivizerStorage._cycles[cycleId].userVotes[user];
     }
 
-    /**
-     * @notice Returns whether a token is registered as a treasury token for a cycle.
-     * @dev Uses the active-set shortcut for the current cycle and historical lists for past cycles.
-     * @param cycleId The cycle identifier to inspect.
-     * @param token The token address to check.
-     * @return Whether the token is a treasury token for the cycle.
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
+    /// @dev Uses the active-set shortcut for the current cycle and historical lists for past cycles.
     function isTreasuryToken(uint128 cycleId, address token) external view override returns (bool) {
         if (cycleId == governanceCycleIncentivizerStorage._currentCycleId) {
             return governanceCycleIncentivizerStorage._treasuryTokens[token];
@@ -194,13 +160,8 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         return false;
     }
 
-    /**
-     * @notice Returns whether a token is registered as a reward token for a cycle.
-     * @dev Uses the active-set shortcut for the current cycle and historical lists for past cycles.
-     * @param cycleId The cycle identifier to inspect.
-     * @param token The token address to check.
-     * @return Whether the token is a reward token for the cycle.
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
+    /// @dev Uses the active-set shortcut for the current cycle and historical lists for past cycles.
     function isRewardToken(uint128 cycleId, address token) external view override returns (bool) {
         if (cycleId == governanceCycleIncentivizerStorage._currentCycleId) {
             return governanceCycleIncentivizerStorage._rewardTokens[token];
@@ -218,13 +179,8 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         return false;
     }
 
-    /**
-     * @notice Returns the claimable amount of one reward token for the previous cycle.
-     * @dev Computes the user's pro-rata share from the previous cycle reward balances.
-     * @param user - The user address
-     * @param token - The token address
-     * @return The specific token rewards claimable by the user for the previous cycle
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
+    /// @dev Computes the user's pro-rata share from the previous cycle reward balances.
     function getClaimableReward(address user, address token) external view override returns (uint256) {
         Cycle storage prevCycle =
             governanceCycleIncentivizerStorage._cycles[governanceCycleIncentivizerStorage._currentCycleId - 1];
@@ -238,13 +194,8 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         return Math.mulDiv(rewardBalance, userVotes, totalVotes);
     }
 
-    /**
-     * @notice Returns all registered reward tokens claimable by the user for the previous cycle.
-     * @dev Computes the user's pro-rata share for each registered reward token.
-     * @param user - The user address
-     * @return tokens - Tokens Array of token addresses
-     * @return rewards - All registered token rewards
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
+    /// @dev Computes the user's pro-rata share for each registered reward token.
     function getClaimableReward(address user)
         external
         view
@@ -271,12 +222,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         }
     }
 
-    /**
-     * @notice Returns the remaining claimable balance of one reward token for the previous cycle.
-     * @dev Exposes the unclaimed reward balance after prior claims have been deducted.
-     * @param token - The token address
-     * @return remainingReward - The specific token remaining rewards claimable
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
     function getRemainingClaimableRewards(address token) external view override returns (uint256 remainingReward) {
         Cycle storage prevCycle =
             governanceCycleIncentivizerStorage._cycles[governanceCycleIncentivizerStorage._currentCycleId - 1];
@@ -285,12 +231,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         if (totalVotes != 0) remainingReward = prevCycle.rewardBalances[token];
     }
 
-    /**
-     * @notice Returns the remaining claimable balances of all reward tokens for the previous cycle.
-     * @dev Exposes all unclaimed reward balances after prior claims have been deducted.
-     * @return tokens - Tokens Array of token addresses
-     * @return rewards - All registered token rewards
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
     function getRemainingClaimableRewards()
         external
         view
@@ -315,24 +256,13 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         }
     }
 
-    /**
-     * @notice Returns the treasury balance of one token for a specific cycle.
-     * @dev Reads the cycle treasury balance mapping directly.
-     * @param cycleId - The cycle ID
-     * @param token - The token address
-     * @return The treasury balance for the specific cycle
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
     function getTreasuryBalance(uint128 cycleId, address token) external view override returns (uint256) {
         return governanceCycleIncentivizerStorage._cycles[cycleId].treasuryBalances[token];
     }
 
-    /**
-     * @notice Returns all registered treasury token balances for a specific cycle.
-     * @dev Uses the live treasury token list for the active cycle and the frozen list for historical cycles.
-     * @param cycleId - The cycle ID
-     * @return tokens - Tokens Array of token addresses
-     * @return balances - Balances Array of corresponding treasury balances
-     */
+    /// @inheritdoc IGovernanceCycleIncentivizer
+    /// @dev Uses the live treasury token list for the active cycle and the frozen list for historical cycles.
     function getTreasuryBalances(uint128 cycleId)
         external
         view

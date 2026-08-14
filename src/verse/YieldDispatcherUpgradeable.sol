@@ -66,7 +66,7 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
         _disableInitializers();
     }
 
-    /// @notice Initializes the dispatcher proxy.
+    /// @inheritdoc IYieldDispatcher
     /// @dev Deterministic dependencies may be predicted addresses during CREATE3 deployment, so initialization
     ///      checks non-zero addresses without requiring code to exist yet. The initial owner zero-check is enforced
     ///      by `__OutrunOwnable_init` (`OwnableInvalidOwner`).
@@ -92,7 +92,7 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
 
     function _authorizeUpgrade(address) internal view override onlyOwner {}
 
-    /// @notice Sets the protocol treasury that receives UASSET settlement when a no-code receiver is named.
+    /// @inheritdoc IYieldDispatcher
     /// @dev Only callable by the owner. The treasury is intended to be the same address across all chains
     ///      (a protocol-level single sink); cross-chain consistency is a deployment convention, not an invariant.
     /// @param _protocolTreasury The new protocol treasury address.

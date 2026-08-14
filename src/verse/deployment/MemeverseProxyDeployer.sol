@@ -99,7 +99,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         upgradeSupermajorityRatio = _upgradeSupermajorityRatio;
     }
 
-    /// @notice Predicts where the verse yield vault will be deployed.
+    /// @inheritdoc IMemeverseProxyDeployer
     /// @dev Uses the same clone salt and implementation as `deployYieldVault`.
     /// @param uniqueId Verse identifier used as the clone salt.
     /// @return Predicted yield-vault clone address.
@@ -107,7 +107,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         return vaultImplementation.predictDeterministicAddress(keccak256(abi.encode(uniqueId)));
     }
 
-    /// @notice Predicts where the verse governor and incentivizer proxies will be deployed.
+    /// @inheritdoc IMemeverseProxyDeployer
     /// @dev Uses the same Create2 salts and proxy bytecode as `deployGovernorAndIncentivizer`.
     /// @param uniqueId Verse identifier used as the Create2 salt.
     /// @return governor Predicted governor proxy address.
@@ -131,7 +131,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         );
     }
 
-    /// @notice Deploys the memecoin clone for a verse.
+    /// @inheritdoc IMemeverseProxyDeployer
     /// @dev Restricted to the launcher so each verse is provisioned only through the protocol flow.
     /// @param uniqueId Verse identifier used as the clone salt.
     /// @return memecoin Newly deployed memecoin clone address.
@@ -141,7 +141,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         emit DeployMemecoin(uniqueId, memecoin);
     }
 
-    /// @notice Deploys the POL clone for a verse.
+    /// @inheritdoc IMemeverseProxyDeployer
     /// @dev Restricted to the launcher.
     /// @param uniqueId Verse identifier used as the clone salt.
     /// @return pol Newly deployed POL clone address.
@@ -151,7 +151,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         emit DeployPOL(uniqueId, pol);
     }
 
-    /// @notice Deploys the yield-vault clone for a verse.
+    /// @inheritdoc IMemeverseProxyDeployer
     /// @dev Restricted to the launcher.
     /// @param uniqueId Verse identifier used as the clone salt.
     /// @return yieldVault Newly deployed yield-vault clone address.

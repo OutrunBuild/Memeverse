@@ -292,20 +292,17 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     // View getters
     // -----------------------------------------------------------------
 
-    /// @notice Returns the LP token implementation cloned for each initialized pool.
-    /// @return Implementation contract used by `Clones.clone` during pool initialization.
+    /// @inheritdoc IMemeverseUniswapHook
     function lpTokenImplementation() external view override returns (address) {
         return _memeverseUniswapHookStorage.lpTokenImplementation;
     }
 
-    /// @notice Returns the treasury receiving protocol fees.
-    /// @return Current treasury address.
+    /// @inheritdoc IMemeverseUniswapHook
     function treasury() external view override returns (address) {
         return _memeverseUniswapHookStorage.treasury;
     }
 
-    /// @notice Returns the launcher consulted for post-unlock public-swap protection.
-    /// @return Current launcher binding.
+    /// @inheritdoc IMemeverseUniswapHook
     function launcher() external view override returns (address) {
         return _memeverseUniswapHookStorage.launcher;
     }
@@ -813,19 +810,13 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     /// @notice Updates the user fee accounting snapshot for a pool.
     /// @dev LP token transfers call this selector to keep per-share offsets current. Forwards the outer
     ///      calldata to `swapFacet.updateUserSnapshotLogic` via `_forwardCalldata` (selector swap only, no
-    ///      abi re-encoding). Valid because the inner `updateUserSnapshotLogic` signature mirrors this entry
-    ///      1:1, so the accounting runs in this Router's storage.
-    ///
-    ///      This void entry deliberately uses `_forwardCalldata` (drops facet returndata) rather than
-    ///      `_forwardCalldataAndReturn`. The facet is void, so there is nothing to return, and the
-    ///      non-1:1-returning `_forwardCalldata` correctly expresses "forward but discard the result". The
-    ///      4 v4-callback thin entries use `_forwardCalldataAndReturn` instead because they return non-empty
-    ///      tuples (e.g. `bytes4`, `BeforeSwapDelta`) that must be passed verbatim to the PoolManager — a
-    ///      need that does not apply here. Staying in pure Solidity also keeps this entry free of the
-    ///      assembly-return constraints that `_forwardCalldataAndReturn` imposes (no future `nonReentrant`
-    ///      or post-body modifier), so the choice is not a gas optimization.
-    ///      Parameter docs live on `IMemeverseUniswapHook.updateUserSnapshot`; this implementation entry
-    ///      forwards raw calldata, so its parameters are unnamed (matching the v4-callback thin entries).
+    ///      abi re-encoding) — valid because the inner signature mirrors this entry 1:1, so the accounting
+    ///      runs in this Router's storage. This void entry uses `_forwardCalldata` (drops facet returndata)
+    ///      rather than `_forwardCalldataAndReturn`: the facet is void so there is nothing to return, unlike
+    ///      the 4 v4-callback thin entries which must pass non-empty tuples (`bytes4`/`BeforeSwapDelta`)
+    ///      verbatim to the PoolManager. The choice is structural, not a gas optimization (pure Solidity also
+    ///      avoids the assembly-return constraints of `_forwardCalldataAndReturn`).
+    ///      Parameter docs live on `IMemeverseUniswapHook.updateUserSnapshot`; params are unnamed (raw calldata).
     function updateUserSnapshot(PoolId, address) external override {
         _forwardCalldata(_memeverseUniswapHookStorage.swapFacet, ISwapFacet.updateUserSnapshotLogic.selector);
     }
@@ -947,16 +938,12 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         emit ReferralRebateClaimed(msg.sender, recipient, currency, amount);
     }
 
-    /// @notice Returns the accrued (unclaimed) rebate for a referrer in a currency.
-    /// @param referrer Referrer address.
-    /// @param currency Rebate currency.
-    /// @return Accrued rebate amount held by the hook on behalf of `referrer`.
+    /// @inheritdoc IMemeverseUniswapHook
     function pendingRebateOf(address referrer, Currency currency) external view override returns (uint256) {
         return _memeverseUniswapHookStorage.pendingRebate[referrer][currency];
     }
 
-    /// @notice Returns the current referral rebate rate in basis points.
-    /// @dev Reads the rebate rate from shared hook Router storage.
+    /// @inheritdoc IMemeverseUniswapHook
     function referrerRebateBps() external view override returns (uint256) {
         return _memeverseUniswapHookStorage.referrerRebateBps;
     }
@@ -1023,9 +1010,8 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         emit PoolInitializerUpdated(oldInitializer, initializer);
     }
 
-    /// @notice Updates the clone template used to deploy LP tokens for new pools.
+    /// @inheritdoc IMemeverseUniswapHook
     /// @dev Only callable by the owner. Existing LP clones are unaffected — they are independent contracts.
-    /// @param implementation_ The new LP token clone implementation.
     function setLpTokenImplementation(address implementation_) external override onlyOwner {
         if (implementation_ == address(0)) revert ZeroAddress();
         if (implementation_.code.length == 0) revert LPTokenImplementationCodeNotReady(implementation_);

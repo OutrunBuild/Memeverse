@@ -66,9 +66,8 @@ interface IOmnichainMemecoinStaker is IComposeState, ILayerZeroComposer {
     ///      `composeQueue` mapping (three-state queue semantics: see `OFTComposeSettleVerify`'s @dev note), which is the
     ///      canonical record of whether a compose was delivered and still pending.
     ///      The receiver here is the original staker (an EOA or a contract able to self-initiate this settle call — a
-    ///      contract receiver without any callable path cannot satisfy the `msg.sender == receiver` check, see
-    ///      operations.md §3.13.1), released via direct push since there is no separate accounting step (unlike a
-    ///      pull-based yield-vault release path).
+    ///      contract receiver without any callable path cannot satisfy the `msg.sender == receiver` check), released
+    ///      via direct push since there is no separate accounting step (unlike a pull-based yield-vault release path).
     ///      Shape asymmetry with `lzCompose`: see `MalformedComposeMsg` above for the full asymmetry; the release
     ///      path reads only the first 32-byte word of the inner composeMsg as `receiver` and ignores trailing
     ///      bytes, so a non-64 but >=32-byte malformed payload is recoverable by the beneficiary.

@@ -117,7 +117,7 @@ contract StakerTokenVaultBindingTest is Test {
         memecoin = Memecoin(Clones.clone(address(memecoinImpl)));
         memecoin.initialize("Memecoin", "MEME", address(this), address(this));
 
-        // Real yield vault, minimal-proxy clone like production. V = 1e18 virtual buffer (spec §4 requires V > 0).
+        // Real yield vault, minimal-proxy clone like production. V = 1e18 virtual buffer (V > 0 required).
         MemecoinYieldVault vaultImpl = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(vaultImpl)));
         vault.initialize("Verse 1 Vault", "vMEME", address(0xA11CE), address(memecoin), 1, 1e18);
@@ -159,7 +159,7 @@ contract StakerTokenVaultBindingTest is Test {
     ///         reverts the same error for vault variants that do not), the endpoint's RECEIVED-sentinel write
     ///         rolls back with the whole call, the guid stays None, and the beneficiary recovers the dust via
     ///         settlePendingCompose; a late endpoint lzCompose then converges the queue slot to the RECEIVED
-    ///         sentinel (operations.md §3.13.1 step 4).
+    ///         sentinel.
     /// @dev The warm-up pushes the exchange rate above 1 (deposit 10 ether, donate 5 ether yield) so
     ///      `deposit(1)` rounds down to 0 shares at the real vault's `_convertToShares`; with the 1e18 virtual
     ///      buffer the rate stays comfortably above 1. The dust compose is delivered through the real memecoin
@@ -219,7 +219,7 @@ contract StakerTokenVaultBindingTest is Test {
         assertEq(memecoin.balanceOf(RECEIVER), dust, "dust recovered by the beneficiary");
         assertEq(memecoin.balanceOf(address(staker)), 0, "staker custody drained by the recovery");
 
-        // §3.13.1 step 4: a late endpoint lzCompose absorbs the Released pair as a no-op and converges the
+        // A late endpoint lzCompose absorbs the Released pair as a no-op and converges the
         // queue slot to the RECEIVED sentinel (bytes32(uint256(1))).
         endpoint.lzCompose(address(memecoin), address(staker), bytes32("zero-shares-guid"), 0, message, "");
         assertEq(

@@ -375,10 +375,8 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     ///      The EVM dispatcher reverts with empty returndata and Solidity's high-level ABI-decode reverts opaquely (no
     ///      named selector applies). This is the symmetric counterpart to the named-error
     ///      `test_RevertWhen_LauncherIsZeroOrNoCode`, covering the launcher-resolution residual sub-path that the named
-    ///      guard does not reach. It fires before any fund action, so the behavior is fail-closed. Spec §11
-    ///      (`docs/spec/swap/yt-flash-swap.md`, the `LauncherCodeNotReady` row) describes only the zero/no-code trigger
-    ///      and is silent on this wrong-selector sub-case; this fail-closed behavior does not violate §11. The revert form
-    ///      is opaque, so a bare `vm.expectRevert()` locks the fail-closed behavior without over-coupling to the opaque
+    ///      guard does not reach. It fires before any fund action, so the behavior is fail-closed. The revert form is
+    ///      opaque, so a bare `vm.expectRevert()` locks the fail-closed behavior without over-coupling to the opaque
     ///      revert form.
     function test_RevertWhen_LauncherHasCodeButMissingSelector() public {
         hook.setActivePrincipal(account);
@@ -543,7 +541,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     }
 
     /// @dev r == 0 (zero AMM-leg output) must fail closed at `InvalidBuyCost`, not as a structural delta mismatch;
-    ///      r >= y (zero/negative cost) must fail at the same error. Covers both spec §11 branches. The cost guard
+    ///      r >= y (zero/negative cost) must fail at the same error. Covers both branches. The cost guard
     ///      precedes take/pull/split; two ordering pins are used because they catch different reorders:
     ///      - `armSplitRanBeforeGuard()` pins check-before-split with a differential revert that survives the rollback
     ///        (unlike a rolled-back `splitCount` counter).
@@ -885,8 +883,8 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     }
 
     /// @dev A past `deadline` reverts `ExpiredPastDeadline` at `_validateAndResolve`, which is the first precondition
-    ///      (before session/recipient/fund checks), so no session setup is needed. Covers spec §13 item 7 (expired
-    ///      deadline must be covered) on the buy entry. Follows the sibling `MemeverseSwapRouter` pattern: pass
+    ///      (before session/recipient/fund checks), so no session setup is needed. Covers the expired-deadline
+    ///      requirement on the buy entry. Follows the sibling `MemeverseSwapRouter` pattern: pass
     ///      `block.timestamp - 1` so the deadline is strictly in the past without any `vm.warp`.
     function test_RevertWhen_BuyDeadlineExpired() public {
         // Pre-fund and approve so the post-revert balance/allowance assertion proves nothing was moved before the revert.
@@ -910,8 +908,8 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         assertEq(yt.balanceOf(recipient), BUY_Y);
     }
 
-    /// @dev `y == type(int128).max` is the inclusive upper bound defined by spec `yt-flash-swap.md:233` (§7 item 2,
-    ///      `0 < amount <= type(int128).max`). The entry guard (`revert AmountOutOfRange` in `_validateAndResolve`)
+    /// @dev `y == type(int128).max` is the inclusive upper bound (`0 < amount <= type(int128).max`). The entry
+    ///      guard (`revert AmountOutOfRange` in `_validateAndResolve`)
     ///      uses strict `>`, so MAX is legal. This test pins the `>` semantics: if the guard were wrongly changed to
     ///      `>=`, this test would revert with `AmountOutOfRange` and fail. It mirrors `test_BuyAtDeadlineBoundarySucceeds`
     ///      for the deadline closed-interval edge. Setting R = y - 1 gives an actual cost of `cost = y - R = 1`,
@@ -1106,7 +1104,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     }
 
     /// @dev q == 0 (zero AMM-leg input) passes the structural (`> 0`) guard and hits `InvalidSellDebt(0, y)`; q == y
-    ///      (zero output) and q > y (negative output) hit the same error. Covers all three spec §11 sell-debt branches.
+    ///      (zero output) and q > y (negative output) hit the same error. Covers all three sell-debt branches.
     ///      The debt guard precedes take/pull/merge; two ordering pins are used because they catch different reorders:
     ///      - `armMergeRanBeforeGuard()` pins check-before-merge via a differential revert that survives the rollback
     ///        (a rolled-back `mergeCount` counter would be vacuous here).
@@ -1166,7 +1164,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     }
 
     /// @dev `polOut < minPOLOut` must revert before any take, payer pull, or merge, and `minPOLOut` must keep full
-    ///      uint256 comparison semantics with no int128 cap (spec yt-flash-swap §7 item 2/§11, IMemeverseYTFlashSwapRouter).
+    ///      uint256 comparison semantics with no int128 cap (IMemeverseYTFlashSwapRouter).
     ///      Three ordering pins are used because they catch different reorders:
     ///      - Zero YT allowance pins check-before-pull: an out-of-order pull would fail `transferFrom` with a Panic /
     ///        SafeERC20 error rather than `MinPOLOutNotMet`, so `expectRevert(MinPOLOutNotMet)` fails and catches it.
@@ -1417,7 +1415,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     }
 
     /// @dev A past `deadline` reverts `ExpiredPastDeadline` at `_validateAndResolve`, the first precondition (before any
-    ///      YT pull). Covers spec §13 item 7 (expired deadline must be covered) on the sell entry. Follows the sibling
+    ///      YT pull). Covers the expired-deadline requirement on the sell entry. Follows the sibling
     ///      `MemeverseSwapRouter` pattern: pass `block.timestamp - 1` so the deadline is strictly in the past without
     ///      any `vm.warp`.
     function test_RevertWhen_SellDeadlineExpired() public {
@@ -1481,7 +1479,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     /// @dev A malicious Splitter that calls back into a router public entry during `split`/`merge` is blocked by
     ///      `nonReentrant`. The reentrant call reverts `ReentrancyGuardReentrantCall`; the mock Splitter bubbles that
     ///      revert via assembly, so the outer flash reverts atomically with no asset movement. Covers the Splitter
-    ///      reentrancy vector of spec §7 item 8 / §13 item 12 (the sibling token-vector test sits above). Buy arms the
+    ///      reentrancy vector (the sibling token-vector test sits above). Buy arms the
     ///      `split` callback, sell arms the `merge` callback.
     function test_RevertWhen_ReentrantSplitterCallsPublicEntry() public {
         // Buy path: Splitter.split re-enters the buy entry. Arm the hook, then snapshot baselines so the post-revert
@@ -1701,10 +1699,9 @@ contract MemeverseYTFlashSwapRouterTest is Test {
 
     /// @dev A successful buy performs exactly one underlying swap and one split (no merge); a successful sell performs
     ///      exactly one underlying swap and one merge (no further split). Swap/split/merge counters are delta-checked
-    ///      around each call (spec §13 item 13, conjuncts 1-2). A gasleft() ceiling is also asserted around each call:
-    ///      a path with a Router-internal quoting loop would far exceed it (spec §13 item 13, conjunct 3, no quoting loop
-    ///      on the success path). The ceiling leaves headroom over the single swap+split/merge cost without admitting
-    ///      any multi-round quoting loop.
+    ///      around each call. A gasleft() ceiling is also asserted around each call: a path with a Router-internal
+    ///      quoting loop would far exceed it (no quoting loop on the success path). The ceiling leaves headroom over
+    ///      the single swap+split/merge cost without admitting any multi-round quoting loop.
     function test_OneSwapAndOneSplitOrMerge() public {
         if (vm.isContext(VmSafe.ForgeContext.Coverage)) return;
         // Conservative success-path ceiling: one poolManager.swap plus one split/merge. Sibling plain swaps land near

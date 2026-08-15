@@ -167,7 +167,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     /// @dev ATOMICITY: all six CREATE3 deployments execute in a single call. If any step fails, the entire
     ///      call reverts — no intermediate salts are consumed.
     ///      This is a programmatic/test entrypoint, not a production EOA atomic path (production uses run());
-    ///      see run() NatSpec and docs/operations.md §3.10.
+    ///      see run() NatSpec.
     ///      WARNING: do NOT extract individual steps into separate transactions.
     /// @param outrunDeployer CREATE3 deployer used for the proxy address.
     /// @param deployerNamespace Address that will be the effective msg.sender when

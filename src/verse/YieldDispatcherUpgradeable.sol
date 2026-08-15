@@ -200,12 +200,11 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
         // reads only this static tuple's first two words and ignores anything past 64 bytes, so an overlong inner
         // (> 64 bytes, frame > 140) settles exactly as the forward `lzCompose` path settles it — `_parseCompose`
         // reads the same two words at the same offsets and ignores the tail — making this fallback a re-run of the
-        // identical forward settlement (operations.md §3.13). Overlong frames are reachable only via a permissionless
+        // identical forward settlement. Overlong frames are reachable only via a permissionless
         // OFT direct send (the protocol send-side always encodes a 64-byte inner), i.e. the self-harm boundary. An
         // inner < 64 bytes is still named-rejected (`MalformedComposeMsg`), matching the forward path's unparseable
         // set; a length-legal frame with a dirty-high-bit receiver word or an out-of-range TokenType word still
-        // reverts at the bare `abi.decode` below (unchanged empty-data revert boundary, also recorded in
-        // operations.md §3.13).
+        // reverts at the bare `abi.decode` below (unchanged empty-data revert boundary).
         require(composeMsg.length >= TUPLE_LENGTH, MalformedComposeMsg());
         (address receiver, TokenType tokenType) = abi.decode(composeMsg, (address, TokenType));
 

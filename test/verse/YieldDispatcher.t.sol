@@ -1204,7 +1204,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice settlePendingCompose settles the same overlong frame lzCompose settles: verifySettle passes (frame
     ///         >= 76), the >= 64 schema guard passes, abi.decode takes the first two words, and the settlement is
-    ///         identical to the forward path (same amount, receiver, burn result) — the §3.13 fallback = re-run of
+    ///         identical to the forward path (same amount, receiver, burn result) — the fallback = re-run of
     ///         the forward-consistent settlement.
     /// @dev The 172-byte frame's inner composeMsg is 96 bytes; the static (address, TokenType) `abi.decode` reads the
     ///      first 64 bytes and ignores the 32-byte tail. The tail word is an out-of-range TokenType raw (2) that
@@ -1627,7 +1627,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         // A late endpoint lzCompose is absorbed as a no-op: it must not revert, and the endpoint state machine
         // completes (queue slot -> RECEIVED sentinel) so the compose reaches ComposeDelivered.
         // Record logs around this absorbed call so we can prove the spec contract below: the Released branch of
-        // lzCompose must NOT emit ANY event (events.md §4: the absorb branch is a no-op and emits nothing). The
+        // lzCompose must NOT emit ANY event (the absorb branch is a no-op and emits nothing). The
         // only log in this window is the endpoint's own `ComposeDelivered` (emitted post-forward, mirroring the
         // real MessagingComposer), so the exact-set assertion below catches any composer-side emit — positive,
         // settle, reject, or a future event type — without a hand-written topic0 hash that could drift. Without
@@ -1722,7 +1722,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     /// @notice E2E: the `ComposeSent` log emitted by `sendCompose` during a real OFT `_lzReceive` carries the exact
     ///         payload `settlePendingCompose` must be given — decoding the log and copying its `message` field VERBATIM
     ///         (no re-encoding, no OFTComposeMsgCodec.encode) settles the compose, anchoring the ops runbook's
-    ///         "copy the message field verbatim" step (operations.md §3.13).
+    ///         "copy the message field verbatim" step.
     /// @dev Chains the runbook recovery: `lzReceive` → `sendCompose` writes the queue and emits `ComposeSent`
     ///      (from = the OFT, to = the dispatcher, message = the OFTComposeMsgCodec payload), and `settlePendingCompose`
     ///      proves delivery against keccak256(that payload). Re-encoding the payload from parts instead of copying the
@@ -2154,7 +2154,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
 /// @title YieldDispatcherRealGovernorIntegrationTest
 /// @notice Real dispatcher + real governor (behind ERC1967 proxy) + real incentivizer UASSET settle integration:
-///         pins the operations.md §3.13 recovery promise ("non-zero amount but token unregistered →
+///         pins the recovery promise ("non-zero amount but token unregistered →
 ///         NonTreasuryToken → register via governance → retry, recoverable") on the real pull-then-validate stack.
 ///         The unit-level MockDispatcherGovernor has no `_treasuryTokens` registry, so the NonTreasuryToken failure
 ///         mode and the register-then-retry round trip were previously inexpressible on the dispatcher path.
@@ -2183,8 +2183,8 @@ contract YieldDispatcherRealGovernorIntegrationTest is ComposerEndpointFixture {
         // votingDelay=0 / votingPeriod=5 here are test accelerators only. Production deploys with
         // votingDelay=1 days + votingPeriod=1 weeks (src/verse/deployment/MemeverseProxyDeployer.sol:188-189,
         // no timelock extension), so a real register-then-retry sits in an ~8-day governance window where
-        // settle retries keep reverting NonTreasuryToken until the registration proposal executes. See
-        // operations.md §3.13 UASSET recovery entry.
+        // settle retries keep reverting NonTreasuryToken until the registration proposal executes — see the
+        // UASSET recovery entry.
         governor = MemecoinDaoGovernorUpgradeable(
             payable(address(
                     new ERC1967Proxy(
@@ -2249,7 +2249,7 @@ contract YieldDispatcherRealGovernorIntegrationTest is ComposerEndpointFixture {
         );
         _proposePassAndExecute(targets, values, calldatas, "register-token");
 
-        // Retry succeeds: the §3.13 "register then retry, recoverable" promise holds on the real stack.
+        // Retry succeeds: the "register then retry, recoverable" promise holds on the real stack.
         vm.expectEmit(true, true, true, true);
         emit IYieldDispatcher.ComposeSettled(
             guid, address(token), address(governor), IMemeverseOFTEnum.TokenType.UASSET, amount, false
@@ -2275,7 +2275,7 @@ contract YieldDispatcherRealGovernorIntegrationTest is ComposerEndpointFixture {
     ) internal {
         // Compresses the propose→vote→execute cycle into a few blocks via vm.roll. The governor has no
         // timelock, so there is no queue step to wait through; this helper does not model the production
-        // votingDelay(1 days)+votingPeriod(1 weeks) latency — see setUp comment and operations.md §3.13.
+        // votingDelay(1 days)+votingPeriod(1 weeks) latency — see setUp comment.
         vm.prank(ALICE);
         uint256 proposalId = governor.propose(targets, values, calldatas, description);
         vm.roll(block.number + 1);
@@ -2320,8 +2320,8 @@ contract UnsafeUninitializedProxy is ERC1967Proxy {
 ///         the revert-pin class (a uAsset whose `burn` reverts → the whole settle call
 ///         reverts, queue pinned, no convergence signal) and the silent false-report class (a uAsset whose `burn`
 ///         is an empty no-op → settle "succeeds" with burnedAtDispatcher=true while nothing moves). Both classes are
-///         documented in operations.md §3.13 (settle-failure class (b) / fallback-absorb class) but previously had zero test
-///         anchoring: every existing EOA-burn test drives MEMECOIN frames, so the UASSET branch of
+///         known settle-failure / fallback-absorb classes that previously had zero test anchoring: every existing
+///         EOA-burn test drives MEMECOIN frames, so the UASSET branch of
 ///         `_settle`'s `receiver.code.length == 0` path was untested for both terminal classes.
 contract YieldDispatcherUAssetEoaBranchTest is ComposerEndpointFixture {
     address internal constant OWNER = address(0xABCD);

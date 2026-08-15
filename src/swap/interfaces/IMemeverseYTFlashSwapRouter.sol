@@ -6,8 +6,7 @@ pragma solidity ^0.8.35;
 ///         against exact YT amounts without creating a second AMM. The router is a normal PoolManager swap caller;
 ///         `unlockCallback` is a PoolManager-only technical callback, not a user entrypoint.
 /// @dev This interface deliberately does not inherit `IUnlockCallback`: the callback is exposed by the router
-///      contract via `SafeCallback`, not part of the user-facing surface defined here. The product spec is
-///      `docs/spec/swap/yt-flash-swap.md`.
+///      contract via `SafeCallback`, not part of the user-facing surface defined here.
 interface IMemeverseYTFlashSwapRouter {
     // =====================================================================================
     // User-input validation

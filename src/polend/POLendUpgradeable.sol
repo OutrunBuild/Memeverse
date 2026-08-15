@@ -39,8 +39,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
     uint8 internal constant CLAIM_RESIDUAL = 1 << 2; // Claim residual uAsset/memecoin share pro-rata (Settled state).
     // Lower bound on the product `leveragedDebtFactor * interestRate` (both 1e18-scaled),
     // i.e. (1e18)^2. Enforced in `_validateLeverageConfig` via `debtFactor >= ceil(1e36 / interestRate)`,
-    // so a market always carries a non-trivial minimum leveraged-debt notional. Spec:
-    // docs/spec/polend/genesis.md § "fullPrecisionMulDiv(leveragedDebtFactor, interestRate, 1) >= 1e36".
+    // so a market always carries a non-trivial minimum leveraged-debt notional.
     uint256 internal constant MIN_LEVERAGED_DEBT_PRODUCT = 1e36;
     // Aggregate cap on normal + leveraged genesis funds (uAsset notional), bounding `_debtCapacity`'s
     // aggregate clamp below uint256.max and keeping settlement debt accounting within uint128 headroom.
@@ -537,7 +536,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
     ///         never transfer an asset we don't actually hold for this caller. `_consumeClaimFlag`
     ///         runs before any external transfer (CEI) and prevents double-claim across both
     ///         branches in a single call. Accumulator state is left intact; the per-verse
-    ///         state-machine (Refund is terminal for these ledgers, see spec §6.2) provides the
+    ///         state-machine (Refund is terminal for these ledgers) provides the
     ///         non-replay invariant — only the per-user `claimFlags` bit needs to flip.
     /// @param verseId Verse identifier (must be in Refund state).
     /// @param to Recipient of the refunded uAsset and credit (must not be zero).
@@ -801,8 +800,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         // floored) still fits under `debtCap`. The largest M with floor(M * 1e18 / rate) <= debtCap
         // is ((debtCap + 1) * rate - 1) / 1e18, because ceil(X/1e18) - 1 == (X - 1)/1e18 for X >= 1.
         // X = (debtCap + 1) * rate cannot overflow: the aggregate clamp above bounds debtCap <=
-        // uint128.max and rate <= 1e18, so X <= 2^128 * 1e18 < 2^256. Spec:
-        // docs/spec/polend/core.md § "maxTotalLeveragedInterest = ((debtCap + 1) * rate - 1) / 1e18".
+        // uint128.max and rate <= 1e18, so X <= 2^128 * 1e18 < 2^256.
         // A future widening of MAX_SUPPORTED_TOTAL_GENESIS_FUNDS must re-derive this formula.
         uint256 maxTotalInterest = ((debtCap + 1) * market.interestRate - 1) / 1e18;
         uint256 totalInterest = market.totalLeveragedInterest;

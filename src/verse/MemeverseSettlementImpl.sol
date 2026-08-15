@@ -227,7 +227,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
      *      `rewardReceiver` / verse-id / stage validation and emits `RedeemAndDistributeFees` after
      *      decoding the return values; this entry only runs the collect -> burn -> split -> distribute
      *      block so both `_transferOut` exits (executor reward + distribution) share one delegatecall
-     *      and the `TokenHelper` reentrancy lock's acquire/release lifecycle stays whole (design §7).
+     *      and the `TokenHelper` reentrancy lock's acquire/release lifecycle stays whole.
      *      `msg.value` is the caller-supplied LayerZero native fee and is preserved across the
      *      delegatecall, hence `payable`.
      *      Delegatecall-only is enforced by the inherited `onlyDelegatecall` guard (see `DelegatecallOnly`),

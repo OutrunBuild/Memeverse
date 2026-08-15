@@ -15,7 +15,7 @@ import {OFTComposeSettleVerify} from "../../../src/common/omnichain/OFTComposeSe
 ///      plants a delivered-but-unrun hash (keccak256(message)); `markReceived` manually writes the RECEIVED sentinel for
 ///      tests that do not drive `lzCompose`. Together these give a complete simulation of the `composeQueue` read/write
 ///      surface used by the compose-release readers. The event surface (`ComposeSent`/`ComposeDelivered`/`LzComposeAlert`)
-///      mirrors MessagingComposer.sol so log-based tests can anchor the ops runbook (operations.md §3.13).
+///      mirrors MessagingComposer.sol so log-based tests can anchor the ops runbook.
 contract MockMessagingComposerEndpoint {
     /// @dev Mirrors IMessagingComposer.sol:6-15 — hand-declared (the mock does not inherit the interface). All params
     ///      NON-indexed for ComposeSent/ComposeDelivered, exactly like the real composer's events.

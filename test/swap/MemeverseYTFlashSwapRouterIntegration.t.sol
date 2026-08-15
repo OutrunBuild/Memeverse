@@ -663,7 +663,7 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
     }
 
     // -------------------------------------------------------------------------------------
-    // Step 2b: post-quote state drift (spec §13.5). The four tests below insert a REAL
+    // Step 2b: post-quote state drift. The four tests below insert a REAL
     // intervening PT/POL swap between the Lens quote and the Router execution so the pool
     // price has genuinely moved at execution time. The intervening swap direction is chosen
     // by re-quoting after it (never hard-coded): if the candidate direction does not move
@@ -1231,7 +1231,7 @@ contract MemeverseYTFlashSwapRouterIntegrationTest is Test, HookStorageHelper {
     }
 
     // -------------------------------------------------------------------------------------
-    // Helpers for the post-quote state-drift scenarios (spec §13.5). The intervening swap
+    // Helpers for the post-quote state-drift scenarios. The intervening swap
     // direction is chosen by re-quoting rather than hard-coded, so a wrong PT/POL sort order
     // assumption can never silently invert a scenario. All intervening swaps go through
     // `accountB`'s session so they commit as independent trades distinct from `account`.

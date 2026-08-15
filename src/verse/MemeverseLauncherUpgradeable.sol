@@ -771,8 +771,8 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     ///      delegatecall this sibling, so a zero address would delegatecall into address(0) and burn the call;
     ///      reject it explicitly here. When rotating (not initial wiring), the new implementation must
     ///      inherit `DelegatecallOnly`, match the `IMemeverseLaunchImpl` ABI, and keep the shared
-    ///      `outrun.storage.MemeverseLauncher` storage layout; these are owner responsibilities
-    ///      (see docs/spec/upgradeability.md §2.3) — none of that is checkable on-chain.
+    ///      `outrun.storage.MemeverseLauncher` storage layout; these are owner responsibilities — none of that is
+    ///      checkable on-chain.
     /// @param impl The MemeverseLaunchImpl sibling address.
     function setLaunchImpl(address impl) external override onlyOwner {
         require(impl != address(0), ZeroInput());
@@ -785,8 +785,8 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     ///      `changeStage` delegatecall this sibling, so a zero address would delegatecall into address(0)
     ///      and burn the call; reject it explicitly here. When rotating (not initial wiring), the new
     ///      implementation must inherit `DelegatecallOnly`, match the `IMemeverseSettlementImpl` ABI, and
-    ///      keep the shared `outrun.storage.MemeverseLauncher` storage layout; these are owner
-    ///      responsibilities (see docs/spec/upgradeability.md §2.3) — none of that is checkable on-chain.
+    ///      keep the shared `outrun.storage.MemeverseLauncher` storage layout; these are owner responsibilities —
+    ///      none of that is checkable on-chain.
     /// @param impl The MemeverseSettlementImpl sibling address.
     function setSettlementImpl(address impl) external override onlyOwner {
         require(impl != address(0), ZeroInput());
@@ -809,8 +809,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     ///      would delegatecall into address(0) and burn the call; reject it explicitly here. When rotating
     ///      (not initial wiring), the new implementation must inherit `DelegatecallOnly`, match the
     ///      `IMemeverseLiquidityImpl` ABI, and keep the shared `outrun.storage.MemeverseLauncher` storage
-    ///      layout; these are owner responsibilities (see docs/spec/upgradeability.md §2.3) — none of that
-    ///      is checkable on-chain.
+    ///      layout; these are owner responsibilities — none of that is checkable on-chain.
     /// @param impl The MemeverseLiquidityImpl sibling address.
     function setLiquidityImpl(address impl) external override onlyOwner {
         require(impl != address(0), ZeroInput());

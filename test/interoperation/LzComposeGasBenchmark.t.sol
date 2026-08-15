@@ -87,7 +87,7 @@ contract GasBurnableToken is MockERC20, IBurnable {
 ///      1. The self-harm forged-vault `asset()` path: a sender forging its own message may name a contract whose
 ///         `asset()` burns gas under EIP-150 (up to 63/64 of the forwarded budget) — this branch is only reachable
 ///         via a permissionless self-forged OFT send (the protocol send path always encodes the real
-///         `verse.yieldVault`), so it is self-harm-only and documented as such in operations.md §3.13.1. No static
+///         `verse.yieldVault`), so it is self-harm-only and documented as such. No static
 ///         snapshot can bound it; the ceiling margin is the documented accommodation, not a hard upper bound.
 ///      2. EVM 21k intrinsic + tx calldata — a real standalone delivery pays these on top; forge tests are calls,
 ///         not txs. The warm-up removes the cold-access distortion so the number reflects steady-state production.
@@ -126,7 +126,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
 
         MemecoinYieldVault vaultImpl = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(vaultImpl)));
-        // V = 1e18 virtual buffer (spec §4 requires V > 0); shares mint 1:1 at the genesis rate.
+        // V = 1e18 virtual buffer (V > 0 required); shares mint 1:1 at the genesis rate.
         vault.initialize("Verse 1 Vault", "vMEME", RECEIVER, address(memecoin), 1, 1e18);
 
         // ---- Dispatcher ----

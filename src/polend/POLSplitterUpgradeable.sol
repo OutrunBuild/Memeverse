@@ -285,7 +285,7 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
         // The backing ratio is set once, before any PT is minted, and is immutable thereafter —
         // `redeemPT` applies this single ratio to all PT, so every holder must share one fixed backing
-        // (spec §1; INV-14/19). `ptBackingNumerator != 0` is the true one-shot guard; the
+        // (INV-14/19). `ptBackingNumerator != 0` is the true one-shot guard; the
         // `totalPOLCollateral != 0` check is defense-in-depth, since `split`/`merge` gate on
         // `_requirePTBackingRatio`, meaning collateral != 0 already implies the ratio is set.
         if (info.pt == address(0)) revert InvalidClaim();
@@ -421,7 +421,7 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         settlementMemecoin = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;
     }
 
-    /// @notice Converts PT to uAsset at the recorded backing ratio (spec §3.2). Reverts
+    /// @notice Converts PT to uAsset at the recorded backing ratio. Reverts
     ///         InvalidClaim if the ratio is unset. Shared by redeemPT, preRedeemPTFee, and
     ///         the settle-time PT reserve, so a change here applies to all three paths.
     /// @dev Floor rounding (mulDiv default) is deliberate, not a default to "refine":
@@ -439,13 +439,13 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         return Math.mulDiv(ptAmount, numerator, denominator);
     }
 
-    /// @notice uAsset reserved for all outstanding PT at the recorded backing ratio
-    ///         (`reservedUAssetForPT` in spec §3.2). Reverts InvalidClaim if the ratio is unset.
+    /// @notice uAsset reserved for all outstanding PT at the recorded backing ratio. Reverts InvalidClaim if the
+    ///         ratio is unset.
     function _ptReservedUAsset(SplitInfo storage info) internal view returns (uint256) {
         return _ptToUAsset(info, IERC20(info.pt).totalSupply());
     }
 
-    /// @notice YT-redeemable uAsset pool = settlement uAsset minus the PT reserve (spec §3.2).
+    /// @notice YT-redeemable uAsset pool = settlement uAsset minus the PT reserve.
     ///         `settle` guarantees the settlement uAsset covers the PT reserve, so the
     ///         subtraction cannot underflow on the redemption path (settled verses).
     ///         Pre-settlement previews short-circuit at the view and return 0, so the

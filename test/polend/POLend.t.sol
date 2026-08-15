@@ -1684,10 +1684,9 @@ contract POLendTest is Test, POLendStorageHelper {
         polend.finalizeLeveragedGenesis(VERSE_ID);
     }
 
-    /// @notice F-38 lock-in (spec settlement-and-fees.md L769): residual payout floors to
-    ///         `mulDiv(residual, paid, totalLeveragedInterest)`. Non-divisible shares leave the
-    ///         rounding dust on POLendUpgradeable's balance forever (L558: no sweep), and both participants'
-    ///         claim flags are consumed even though Σ payout < residual.
+    /// @notice F-38 lock-in: residual payout floors to `mulDiv(residual, paid, totalLeveragedInterest)`.
+    ///         Non-divisible shares leave the rounding dust on POLendUpgradeable's balance forever (no sweep), and
+    ///         both participants' claim flags are consumed even though Σ payout < residual.
     function testClaimResidual_NonDivisibleShares_LeavesDustInPOLend() external {
         // ALICE 1 / BOB 2 of totalLeveragedInterest 3; rate 1e17 => debt = 30 wei.
         // Recovered 130 wei => residualUAsset = 100 wei (not divisible by 3).
@@ -1712,7 +1711,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         uint256 totalClaimed = aliceUAsset + bobUAsset;
         assertLt(totalClaimed, residualUAsset, "sum of floor shares < residual");
-        // L558 design: the 1 wei rounding dust is never swept and stays on POLendUpgradeable's balance.
+        // The 1 wei rounding dust is never swept and stays on POLendUpgradeable's balance.
         assertEq(uAsset.balanceOf(address(polend)), residualUAsset - totalClaimed, "dust stays in POLendUpgradeable");
         assertEq(uAsset.balanceOf(CAROL), totalClaimed, "recipient received exactly the floor shares");
 
@@ -1727,8 +1726,8 @@ contract POLendTest is Test, POLendStorageHelper {
         );
     }
 
-    /// @notice F-38 lock-in (spec settlement-and-fees.md L769/L787): a floor-0 residual payout must
-    ///         still succeed and mark `residualClaimed` — it is not a revert path.
+    /// @notice F-38 lock-in: a floor-0 residual payout must still succeed and mark `residualClaimed` —
+    ///         it is not a revert path.
     function testClaimResidual_ZeroPayout_StillMarksClaimed() external {
         // ALICE 1 / BOB 100 of totalLeveragedInterest 101; debt = 1010 wei, recovered 1011 =>
         // residualUAsset = 1 wei, so ALICE's share mulDiv(1, 1, 101) floors to 0.
@@ -1756,9 +1755,8 @@ contract POLendTest is Test, POLendStorageHelper {
         );
     }
 
-    /// @notice F-38 lock-in (spec settlement-and-fees.md L768/L787): the leveraged-YT payout
-    ///         `mulDiv(totalLeveragedYT, paid, totalLeveragedInterest)` floors to 0; the claim
-    ///         still succeeds, transfers nothing, and consumes `leveragedYTClaimed`.
+    /// @notice F-38 lock-in: the leveraged-YT payout `mulDiv(totalLeveragedYT, paid, totalLeveragedInterest)`
+    ///         floors to 0; the claim still succeeds, transfers nothing, and consumes `leveragedYTClaimed`.
     function testClaimLeveragedYT_ZeroPayout_StillMarksClaimed() external {
         // ALICE 1 / BOB 2 of totalLeveragedInterest 3; totalLeveragedYT = 2 =>
         // ALICE's share mulDiv(2, 1, 3) = 0.
@@ -1781,9 +1779,8 @@ contract POLendTest is Test, POLendStorageHelper {
         );
     }
 
-    /// @notice F-38 lock-in (spec settlement-and-fees.md L769): break-even settlement
-    ///         (residual == (0, 0)) still consumes the flag — the participant's claim succeeds
-    ///         and returns (0, 0) instead of reverting.
+    /// @notice F-38 lock-in: break-even settlement (residual == (0, 0)) still consumes the flag — the
+    ///         participant's claim succeeds and returns (0, 0) instead of reverting.
     function testClaimResidual_BreakEvenZeroResidual_StillMarksClaimed() external {
         // ALICE 1 / BOB 2 of totalLeveragedInterest 3; debt = 30 wei, recovered exactly 30 =>
         // residual (0, 0).

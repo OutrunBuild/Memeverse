@@ -166,7 +166,7 @@ contract NonCompliantSessionHelper {
 
 /// @title BatchExecutor
 /// @notice Plain external executor that calls the Hook+Router on a user's behalf.
-/// @dev Models the UNSUPPORTED external-executor path from design §3 / §9: an unrelated contract `executor`
+/// @dev Models the UNSUPPORTED external-executor path: an unrelated contract `executor`
 ///      receives `A`'s intent and itself calls `hook.beginAccountSession()` / `hook.endAccountSession()`.
 ///      The Hook captures `msg.sender == address(executor)`, never `A`, so the resulting session is owned by
 ///      the executor — proving `A` cannot obtain `[A][poolId]` attribution through an external executor.

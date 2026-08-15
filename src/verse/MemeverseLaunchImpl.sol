@@ -127,8 +127,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         IMemecoin(memecoin).initialize(name, symbol, address(this), address(this));
         IPol(pol)
             .initialize(
-                // POL token name/symbol uses the fixed "POL-" + verse name/symbol prefix
-                // naming convention (see docs/spec/protocol.md).
+                // POL token name/symbol uses the fixed "POL-" + verse name/symbol prefix naming convention.
                 string(abi.encodePacked("POL-", name)),
                 string(abi.encodePacked("POL-", symbol)),
                 memecoin,
@@ -322,7 +321,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
 
     /// @notice Resolves a verse out of the Genesis stage: into `Locked` (successful launch) or `Refund` (missed min).
     /// @dev Launch readiness is judged against actual uAsset paid (interest), while post-launch fund sizing uses the
-    /// derived debt principal — see genesis.md §launch gate for the full rationale.
+    /// derived debt principal.
     function _handleGenesisStage(uint256 verseId, uint256 currentTime, IMemeverseLauncher.Memeverse storage verse)
         internal
         returns (IMemeverseLauncher.Stage currentStage)
@@ -397,7 +396,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
             // On the governance chain we deploy concrete contracts immediately because fee distribution will target them locally.
             yieldVault = IMemeverseProxyDeployer(_proxyDeployer).deployYieldVault(verseId);
             // Size the permanent virtual buffer from the per-uAsset fund metadata: 0.7% of the minimum
-            // main-pool memecoin provision (spec §4). registerMemeverse already enforces both fields are non-zero.
+            // main-pool memecoin provision. registerMemeverse already enforces both fields are non-zero.
             IMemeverseLauncher.FundMetaData storage _meta = memeverseLauncherStorage.fundMetaDatas[uAsset];
             uint256 _virtualAssets = MemeverseLauncherLib.virtualAssetsBuffer(_meta.minTotalFund, _meta.fundBasedAmount);
             IMemecoinYieldVault(yieldVault)

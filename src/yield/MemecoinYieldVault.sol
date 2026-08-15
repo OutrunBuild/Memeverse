@@ -56,7 +56,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     /// @param _asset Underlying memecoin address. Reverts `ZeroAddress` if set to the zero address.
     /// @param _verseId Verse id associated with this vault.
     /// @param _virtualAssets Permanent virtual buffer. Must be non-zero so the `+virtualAssets` conversion guards can
-    ///        never divide by zero and actually dampen the rate; sized by the launcher (spec §4).
+    ///        never divide by zero and actually dampen the rate; sized by the launcher.
     function initialize(
         string calldata _name,
         string calldata _symbol,
@@ -204,7 +204,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     ///      a non-zero amount (revert `ComposeSettlementFailed`). A no-code `dispatcher` (EOA/empty contract) is not
     ///      pre-checked: the high-level call succeeds with empty returndata, so the strict `abi.decode` of the
     ///      uint256 return reverts with EMPTY revert data — no named error, and error-name monitoring must not
-    ///      expect `ComposeSettlementFailed` for this class (operations.md §3.13; verify the address was sourced
+    ///      expect `ComposeSettlementFailed` for this class (verify the address was sourced
     ///      from the endpoint's `ComposeSent` event `to` field).
     /// @param dispatcher YieldDispatcherUpgradeable that the stuck compose was delivered to (ComposeSent `to`).
     /// @param guid LayerZero guid.
@@ -533,7 +533,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     function _convertToShares(uint256 assets, uint256 latestTotalAssets) internal view returns (uint256) {
         // A permanent virtual buffer (`virtualAssets` = `virtualSupply`) is added symmetrically to the
         // share and asset sides. It dampens exchange-rate inflation from donations/yield because an
-        // attacker must outlay ~V in unbacked assets to move the rate by 1 unit of share. See spec §4.
+        // attacker must outlay ~V in unbacked assets to move the rate by 1 unit of share.
         return Math.mulDiv(assets, totalSupply() + virtualAssets, latestTotalAssets + virtualAssets);
     }
 
@@ -572,7 +572,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @dev Converts raw past votes to asset-denominated using historical totalAssets checkpoint and the
-    ///      permanent virtual buffer (spec §4).
+    ///      permanent virtual buffer.
     function _convertPastVotes(uint256 rawPastVotes, uint256 rawPastTotalSupply, uint256 pastTotalAssets)
         internal
         view
@@ -584,7 +584,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @dev Converts raw past total supply to asset-denominated using historical totalAssets checkpoint and
-    ///      the permanent virtual buffer (spec §4).
+    ///      the permanent virtual buffer.
     function _convertPastTotalSupply(uint256 rawPastTotalSupply, uint256 pastTotalAssets)
         internal
         view

@@ -82,7 +82,7 @@ contract UniswapLP is Owned, OutrunERC20PermitInit {
     /// @notice Applies a balance change, crystallizing fee snapshots before any mutation.
     /// @dev Snapshot callbacks fire only on real transfers (both `from` and `to` non-zero): the base mint
     ///      routes `from == address(0)` and burn routes `to == address(0)`, so gating on both non-zero
-    ///      preserves the pinned mint/burn-excluded snapshot semantics (docs/spec/swap/uniswap-v4.md §5).
+    ///      preserves the pinned mint/burn-excluded snapshot semantics.
     ///      The hook calls precede `super._update` so `updateUserSnapshot` reads the pre-mutation balance
     ///      baseline. Self-transfer (from == to) crystallizes once: `updateUserSnapshot` is idempotent per
     ///      address within one transaction (SwapFacet zero-growth fast path).

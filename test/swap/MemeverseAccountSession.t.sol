@@ -369,10 +369,10 @@ contract SessionSwapIntegrator is IUnlockCallback {
 
 /// @title MemeverseAccountSessionRealV4Test
 /// @notice Task 3 positive behavior matrix for the smart-EOA transient session on the real v4 PoolManager.
-/// @dev Covers the acceptance scenarios from design §10 that require real swap math / addressBatchState
-///      advancement: EIP-7702 delegation, same-Bundler A/V isolation, same-tx end-then-V, missing-end DoS,
-///      multi-hop (sequential exact-in / exact-out), no-trader router, external executor (negative),
-///      multi-user batch (unsupported), and caught-begin-failure (unsupported isolation boundary).
+/// @dev Covers the acceptance scenarios that require real swap math / addressBatchState advancement:
+///      EIP-7702 delegation, same-Bundler A/V isolation, same-tx end-then-V, missing-end DoS, multi-hop
+///      (sequential exact-in / exact-out), no-trader router, external executor (negative), multi-user
+///      batch (unsupported), and caught-begin-failure (unsupported isolation boundary).
 contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
     using PoolIdLibrary for PoolKey;
 
@@ -508,7 +508,7 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
     }
 
     // -----------------------------------------------------------------
-    // Bundler cross-user isolation (design §7)
+    // Bundler cross-user isolation
     // -----------------------------------------------------------------
 
     /// @notice A single Bundler transaction that runs A then V attributes A's swap to [A] and V's swap to
@@ -595,7 +595,7 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
     }
 
     // -----------------------------------------------------------------
-    // Multi-hop identity consistency (design §6, §10.6)
+    // Multi-hop identity consistency
     // -----------------------------------------------------------------
 
     /// @notice Proves the identity key is stable across SEQUENTIAL exact-input swaps under SEPARATE A
@@ -662,7 +662,7 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
     }
 
     // -----------------------------------------------------------------
-    // No-trader / no-allowlist Router compatibility (design §6, §10.7)
+    // No-trader / no-allowlist Router compatibility
     // -----------------------------------------------------------------
 
     /// @notice A router/integrator with NO trader parameter, NO IMsgSender, and NOT on any allowlist
@@ -687,7 +687,7 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
     }
 
     // -----------------------------------------------------------------
-    // External BatchExecutor is NOT A (design §3, §9, §10.9 — negative)
+    // External BatchExecutor is NOT A (negative)
     // -----------------------------------------------------------------
 
     /// @notice A plain external BatchExecutor that calls Hook+Router on A's behalf becomes the principal
@@ -721,14 +721,14 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
     }
 
     // -----------------------------------------------------------------
-    // Multi-user batch Router is UNSUPPORTED (design §6, §10.10)
+    // Multi-user batch Router is UNSUPPORTED
     // -----------------------------------------------------------------
 
     /// @notice If A's session Router mixes V's order, all callbacks attribute to A — the hook cannot split
     ///         A and V. This is labeled UNSUPPORTED (not an isolation success).
     /// @dev The proof: V's "order" is run INSIDE A's still-active session (A does not end before V's swap),
     ///         so the callback sees activePrincipal == A. V receives no [V][poolId] batch state; everything
-    ///         lands under [A][poolId]. This is why multi-user batch routers are out of scope (design §6).
+    ///         lands under [A][poolId]. This is why multi-user batch routers are out of scope.
     function test_multiUserBatchRouterAttributesCallbacksToAAndIsUnsupported() external {
         // A opens its session and stays active. The "V order" below is dispatched within A's session on
         // purpose, modeling a batch router that mixes users in one active session.
@@ -760,25 +760,25 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
     }
 
     // -----------------------------------------------------------------
-    // Caught begin failure then target is UNSUPPORTED (design §5.2, §10.11)
+    // Caught begin failure then target is UNSUPPORTED
     // -----------------------------------------------------------------
 
     /// @notice If a caller catches a begin failure and then calls the target anyway, the target still runs
     ///         UNDER the already-active (residual) session — NOT without one. This is the unsupported
-    ///         boundary in design §10.11: the hook-only model cannot stop a callback from reading residual A.
+    ///         boundary: the hook-only model cannot stop a callback from reading residual A.
     /// @dev Mechanism: the test pre-opens a session from `nonCompliant`, so the helper's inner
     ///         `beginAccountSession` reverts with `AccountSessionAlreadyActive` (the nested-begin guard),
     ///         which the helper catches before calling the target. The target runs while
     ///         `activePrincipal == nonCompliant` is still set. The true no-session begin failure
     ///         (`AccountSessionCallerMustHaveCode`, fired by a plain EOA) is structurally unreachable here:
     ///         catching the revert and calling the target both require code, but that error needs none. So
-    ///         this test covers only the nested-begin variant of the unsupported path (design §10.11).
+    ///         this test covers only the nested-begin variant of the unsupported path.
     function test_caughtBeginFailureThenTargetIsUnsupportedNotAnIsolationGuarantee() external {
         // Pre-open a session from `nonCompliant` (a deployed contract) so the helper's inner begin hits the
         // nested-begin guard. Without this pre-open the helper's begin would simply succeed (nothing to
         // catch); a contract caller can never trigger the no-code begin failure. The second begin (inside the
         // helper) reverts with `AccountSessionAlreadyActive`, the helper catches it, then calls the target
-        // while the residual session is still active — the unsupported boundary in design §10.11.
+        // while the residual session is still active — the unsupported boundary.
         vm.prank(address(nonCompliant));
         hook.beginAccountSession();
 

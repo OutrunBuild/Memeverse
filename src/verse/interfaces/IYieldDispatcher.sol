@@ -120,7 +120,7 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     /// @param receiver Yield vault, governor, or EOA burn target.
     /// @param tokenType Whether the token is a memecoin or a uAsset.
     /// @param amount Amount to settle, derived by the launcher from on-chain claimed fees. For the governor
-    ///      uAsset path this is a two-bucket sum (see settlement-and-fees.md §8): launcher-held uAsset
+    ///      uAsset path this is a two-bucket sum: launcher-held uAsset
     ///      transferred in via `_transferOut` (visible `Transfer`) plus PT-redeemed uAsset minted/redeemed
     ///      directly to the dispatcher via `preRedeemPTFee`/`redeemPT` with `mintTo = dispatcher` (no
     ///      launcher→dispatcher `Transfer`). Reconciliation must not use the launcher→dispatcher `Transfer`

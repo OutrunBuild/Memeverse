@@ -384,12 +384,12 @@ contract MockYTSplitter {
     ///      revert reason itself, so the discrimination survives the rollback. The flag is set outside the reverting
     ///      frame (test body), so it persists across reverts; disarm before any happy-path block in the same test.
     bool public splitRanBeforeGuardArmed;
-    /// @dev Same differential-revert pin for `merge` on the sell path (spec §9 item 3: min-output check before merge).
+    /// @dev Same differential-revert pin for `merge` on the sell path (min-output check before merge).
     bool public mergeRanBeforeGuardArmed;
 
     /// @dev Reentrancy hook mirroring `YTMockERC20`: when armed, the next `split`/`merge` re-enters `reenterTarget`
     ///      with `reenterData` and bubbles any revert. Proves the router's `nonReentrant` guard blocks a
-    ///      malicious-Splitter callback during `split`/`merge` (spec §7 item 8 / §13 item 12 Splitter vector).
+    ///      malicious-Splitter callback during `split`/`merge` (Splitter vector).
     address public reenterTarget;
     bytes public reenterData;
     bool public reenterOn;

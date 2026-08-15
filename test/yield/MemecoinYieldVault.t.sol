@@ -26,8 +26,8 @@ contract MemecoinYieldVaultTest is Test {
     address internal constant RECEIVER = address(0xCAFE);
     address internal constant YIELD_SOURCE = address(0xFEED);
     /// @dev Virtual buffer V passed to every test vault. Chosen large enough to visibly dampen rate
-    ///      inflation while keeping assertions readable; production sizing is spec §4 (0.7% of the
-    ///      minimum main-pool memecoin provision) and is covered by dedicated tests below.
+    ///      inflation while keeping assertions readable; production sizing (0.7% of the minimum
+    ///      main-pool memecoin provision) is covered by dedicated tests below.
     uint256 internal constant VIRTUAL_ASSETS = 100 ether;
 
     MockERC20 internal asset;
@@ -599,7 +599,7 @@ contract MemecoinYieldVaultTest is Test {
     }
 
     /// @notice A length-legal frame with a dirty-high-bit receiver word reverts OPAQUELY at the dispatcher.
-    /// @dev Pins the documented class claim (operations.md §3.13 / reAccumulateYields comment): the vault's
+    /// @dev Pins the documented class claim (see the reAccumulateYields comment): the vault's
     ///      uint160 downcast truncates the forged receiver word so its low 160 bits equal this vault and the
     ///      gate passes, but the dispatcher's strict `abi.decode` rejects the dirty word with EMPTY revert data
     ///      — not NotComposeBeneficiary, not any named error. vm.expectRevert(bytes("")) is exact for empty
@@ -632,7 +632,7 @@ contract MemecoinYieldVaultTest is Test {
 
     /// @notice A no-code (EOA/empty contract) `dispatcher` reverts OPAQUELY at the vault's abi.decode — not
     ///         `ComposeSettlementFailed`.
-    /// @dev Pins the documented class claim (operations.md §3.13 / reAccumulateYields comment): a recovery caller
+    /// @dev Pins the documented class claim (see the reAccumulateYields comment): a recovery caller
     ///      who mistakes the dispatcher for an EOA/empty contract gets EMPTY revert data, not any named error —
     ///      the sibling of the dirty-high-bits class above. `ComposeSettlementFailed` is only reachable when the
     ///      dispatcher HAS code and returns a zero amount. vm.expectRevert(bytes("")) is exact for empty revert
@@ -1629,7 +1629,7 @@ contract MemecoinYieldVaultTest is Test {
     }
 
     // ──────────────────────────────────────────────────────────────────────────────
-    // Virtual buffer V tests (spec §4)
+    // Virtual buffer V tests
     // ──────────────────────────────────────────────────────────────────────────────
 
     /// @notice initialize stores the supplied virtual buffer verbatim and exposes it via the getter.
@@ -1691,7 +1691,7 @@ contract MemecoinYieldVaultTest is Test {
 
     /// @notice Empty-vault yield is still burned; while the vault is entirely empty (totalSupply == totalAssets == 0)
     ///         the +V buffer cancels out of the share/asset conversion, so burn-on-empty is rate-neutral.
-    /// @dev Guards the orthogonality between burn-on-empty (§5) and the V buffer (§4). Uses a compose-style
+    /// @dev Guards the orthogonality between burn-on-empty and the V buffer. Uses a compose-style
     ///      asset mock because the burn path calls `IMemecoin.burn(uint256)` (single-arg, from msg.sender =
     ///      the vault), which solmate's `MockERC20.burn(address,uint256)` does not satisfy.
     function testEmptyVaultYieldIsBurnedRegardlessOfVirtualBuffer() external {
@@ -2031,7 +2031,7 @@ contract MemecoinYieldVaultTest is Test {
     }
 
     /// @notice A full queue still lets max* report the claimable amount accurately (no over-reporting).
-    /// @dev Claim mode removed the old balance-derived over-reporting departure (spec §6.2.2/§6.2.4):
+    /// @dev Claim mode removed the old balance-derived over-reporting departure:
     ///      max* now report only matured queue contents. A full queue blocks new requestRedeem, but the
     ///      matured entries remain claimable up to their locked value.
     function test_MaxRedeemAndMaxWithdrawReflectClaimableWhenQueueFull() external {

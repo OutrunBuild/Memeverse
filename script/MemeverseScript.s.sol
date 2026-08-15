@@ -1161,7 +1161,7 @@ contract MemeverseScript is BaseScript {
         // Predict the proxy address under the same CREATE3 namespace as the deploy below, then assert it lands there.
         // The caller passed to getDeployed must be the deploy caller (_memeverseLauncherDeployCaller()), NOT owner:
         // OutrunDeployer hashes msg.sender into the salt, and the deploy below runs as msg.sender = the broadcaster.
-        // owner is only initialize's initialOwner — a different role (see docs/spec/verse/deployment.md).
+        // owner is only initialize's initialOwner — a different role.
         address predictedDispatcher =
             IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(_memeverseLauncherDeployCaller(), salt);
         bytes memory creationCode =

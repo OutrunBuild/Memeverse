@@ -165,13 +165,12 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     ///        burned and there is no protocol-internal settle for the receive side (`settlePendingCompose` only
     ///        covers the compose side); recovery is a permissionless manual re-delivery of the verified payload via
     ///        the destination-chain `EndpointV2.lzReceive` with caller-provided gas (same class as the permissionless
-    ///        `lzCompose` re-drive in docs/operations.md §3.13) — funds are not lost, but stay undelivered until then.
+    ///        `lzCompose` re-drive) — funds are not lost, but stay undelivered until then.
     ///      - `_omnichainStakingGasLimit` too low: the destination `lzCompose` runs out of gas; the beneficiary can
     ///        still recover the bare amount via `settlePendingCompose` (no position is created) — UX degradation,
     ///        not a loss.
-    ///      When adjusting, keep `_omnichainStakingGasLimit` at or above the benchmarked compose budget in
-    ///      docs/operations.md §3.13.2; that table only lists compose-side rows, so keep `_oftReceiveGasLimit` at or
-    ///      above a receive-side budget measured by the same methodology (see the §3.13.2 receive-side warning).
+    ///      When adjusting, keep `_omnichainStakingGasLimit` at or above the benchmarked compose-side gas budget, and
+    ///      keep `_oftReceiveGasLimit` at or above a receive-side budget benchmarked by the same methodology.
     /// @param _oftReceiveGasLimit OFT receive gas limit.
     /// @param _omnichainStakingGasLimit omnichain staking gas limit.
     function setGasLimits(uint128 _oftReceiveGasLimit, uint128 _omnichainStakingGasLimit) external override onlyOwner {

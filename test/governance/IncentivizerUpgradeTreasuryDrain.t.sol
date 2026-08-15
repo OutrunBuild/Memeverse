@@ -36,7 +36,7 @@ contract MaliciousIncentivizer is UUPSUpgradeable {
 
 /// @title IncentivizerUpgradeTreasuryDrainTest
 /// @notice F-123 fix coverage. Pre-fix, a simple-majority coalition upgraded the incentivizer (target != governor),
-///         bypassing both the §7.3 upgrade supermajority (only gated self-calls) and the §7.2 per-execution treasury
+///         bypassing both the upgrade supermajority (only gated self-calls) and the per-execution treasury
 ///         cap (only ran inside `_executeOperations` over registered tokens); the swapped impl then called
 ///         `governor.disburseReward` out-of-band, draining ANY token in full. Root A extends the supermajority gate to
 ///         incentivizer targets, closing F-123. A residual risk remains: a coalition meeting the supermajority can
@@ -50,7 +50,7 @@ contract IncentivizerUpgradeTreasuryDrainTest is Test {
     MemecoinDaoGovernorUpgradeable internal governor;
     GovernanceCycleIncentivizerUpgradeable internal incentivizer;
     MockGovernorVotesToken internal votesToken;
-    MockERC20 internal treasuryToken; // registered treasury token (the kind the §7.2 cap is meant to protect)
+    MockERC20 internal treasuryToken; // registered treasury token (the kind the cap is meant to protect)
     MockERC20 internal donationToken; // unregistered token custodied by the governor (donation / airdrop)
 
     function setUp() external {
@@ -136,7 +136,7 @@ contract IncentivizerUpgradeTreasuryDrainTest is Test {
     // matched governor self-calls).
     // ---------------------------------------------------------------------------------------------
 
-    /// @dev Root A fix: a 51% coalition upgrading the INCENTIVIZER (target != governor) used to bypass the §7.3
+    /// @dev Root A fix: a 51% coalition upgrading the INCENTIVIZER (target != governor) used to bypass the
     ///      supermajority because the gate only matched governor self-calls. After the fix, an incentivizer target
     ///      also triggers the supermajority, so this same 51% vote reverts on execution:
     ///      forVotes(510)*10000 = 5,100,000 < totalVotes(1000)*6000 = 6,000,000.
@@ -184,7 +184,7 @@ contract IncentivizerUpgradeTreasuryDrainTest is Test {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // CONTROL — the SAME 51% coalition targeting the GOVERNOR (self-call) is correctly blocked by the §7.3
+    // CONTROL — the SAME 51% coalition targeting the GOVERNOR (self-call) is correctly blocked by the
     // supermajority. Proves the original gate still works; Root A extends its reach to the incentivizer target.
     // ---------------------------------------------------------------------------------------------
 

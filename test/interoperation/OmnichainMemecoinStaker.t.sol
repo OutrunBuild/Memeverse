@@ -243,7 +243,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
     ///         instead of letting `abi.decode` revert opaquely. The 4-byte inner composeMsg here is shorter than one
     ///         32-byte word, so it is unrecoverable on BOTH entrypoints: lzCompose's `== 64` guard and settle's
     ///         `>= 32` guard both reject it. The CEI `Settled` write rolls back, so the guid stays `None` and the funds
-    ///         stay stranded in staker custody (self-harm boundary, operations.md §3.13.1). The symmetric settle test
+    ///         stay stranded in staker custody (self-harm boundary). The symmetric settle test
     ///         below (`testSettlePendingComposeRevertsOnMalformedComposeMessageBeforeAuth`) uses the same 4-byte frame
     ///         and asserts settle also reverts — pinning the unrecoverable boundary. (Frames with inner composeMsg in
     ///         the [32,64)-byte band ARE settle-recoverable; see
@@ -427,7 +427,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
 
     /// @notice A 64-byte compose payload with a clean zero receiver word and a dirty vault word maps to a vault-absent
     ///         fallback targeting address(0): the memecoin's zero-address guard reverts, rolling back the CEI Settled
-    ///         write, so the slot stays pinned at None (receiver==0 self-harm boundary, operations.md §3.13.1).
+    ///         write, so the slot stays pinned at None (receiver==0 self-harm boundary).
     /// @dev The zero receiver word passes `receiverRaw >> 160 == 0` and the dirty vault word reads as vault-absent, so
     ///      `_transferOut(memecoin, address(0), amount)` hits the token's zero-address guard. The mock mirrors the
     ///      real memecoin's `ERC20InvalidReceiver(address(0))` guard (OutrunERC20Init._transfer); solmate's bare
@@ -463,7 +463,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
 
     /// @notice A non-zero-amount lzCompose whose receiver is address(0) and whose predicted vault IS deployed reverts
     ///         in the deposit branch: the vault's `_mint` zero-account guard (`ERC20InvalidReceiver`) rolls back the
-    ///         CEI `Settled` write, pinning the guid to `None` (operations.md §3.13.1 receiver==0 boundary, amount>0
+    ///         CEI `Settled` write, pinning the guid to `None` (receiver==0 boundary, amount>0
     ///         sub-class). Complements `testLzComposeZeroReceiverDirtyVaultKeepsPinnedBoundary` (fallback branch).
     /// @dev Requires the mock vault's receiver guard (mirrors the real `_mint` guard): without it the mock silently
     ///      succeeds with the opposite terminal state.
@@ -527,7 +527,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
     /// @notice settlePendingCompose can never release a guid whose encoded receiver is address(0): the
     ///         `msg.sender == receiver` auth (NotBeneficiary) is unsatisfiable because an EVM caller can never be
     ///         address(0). This pins the documented self-harm boundary — a sender who forges receiver=0 strands their
-    ///         own funds with no exit (operations.md §3.13.1), distinct from the dispatcher's receiver=0 burn path.
+    ///         own funds with no exit, distinct from the dispatcher's receiver=0 burn path.
     /// @dev The protocol sender (`MemeverseOmnichainInteroperation.memecoinStaking`) guards `receiver != address(0)`,
     ///      so this is only reachable via a permissionless direct OFT `send` with a hand-crafted composeMsg (self-harm).
     ///      Every non-zero caller fails the auth identically; no caller can ever be address(0) to satisfy it.
@@ -866,7 +866,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
 
         // A late endpoint lzCompose is absorbed as a no-op: no revert, endpoint slot converges to RECEIVED.
         // Record logs around this absorbed call so we can prove the spec contract below: the Released branch of
-        // lzCompose must NOT emit ANY event (events.md §4: the absorb branch is a no-op and emits nothing). The
+        // lzCompose must NOT emit ANY event (the absorb branch is a no-op and emits nothing). The
         // only log in this window is the endpoint's own `ComposeDelivered` (emitted post-forward, mirroring the
         // real MessagingComposer), so the exact-set assertion below catches any composer-side emit — positive,
         // settle, reject, or a future event type — without a hand-written topic0 hash that could drift. Without
@@ -990,7 +990,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
     /// @notice A zero-amount lzCompose with receiver=address(0) and an undeployed predicted vault CONVERGES: the
     ///         fallback `_transferOut(memecoin, address(0), 0)` early-returns before the token's zero-address guard
     ///         (TokenHelper._transferOut), the CEI Settled write sticks, and no funds move.
-    /// @dev Pins the zero-amount x receiver==0 sub-class of the §3.13.1 receiver==0 boundary: the doc's unconditional
+    /// @dev Pins the zero-amount x receiver==0 sub-class of the receiver==0 boundary: the unconditional
     ///      "receiver==0 always reverts, never converges" assertion holds only for non-zero amounts.
     function testLzComposeZeroAmountZeroReceiverUndeployedVaultConvergesToSettled() external {
         bytes32 guid = bytes32("zero-amount-zero-recv-undeployed");
@@ -1046,7 +1046,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
     ///         contract assumes ABI compliance of an arbitrary forged address. The whole lzCompose reverts (CEI
     ///         `Settled` write rolled back, guid back to `None`, endpoint queue pinned), but the beneficiary can
     ///         still recover via `settlePendingCompose` — settle never reads the vault word and always
-    ///         `_transferOut` pushes. Pins operations.md §3.13.1's "vault has code but asset() is missing" boundary row.
+    ///         `_transferOut` pushes. Pins the "vault has code but asset() is missing" boundary.
     /// @dev The mock is `MockInteroperationYieldVault` (test/mocks): a vault-shaped contract with code and a
     ///      `deposit` entry but no `asset()` selector and no fallback, so the high-level STATICCALL falls to
     ///      solc's empty-data revert path. `vm.expectRevert(bytes(""))` pins the empty revert data — a named
@@ -1082,8 +1082,8 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
     }
 
     /// @notice A message-named vault whose `asset()` actively reverts propagates the callee's own error instead of
-    ///         `TokenVaultMismatch`: same opaque-failure class as the asset-less vault (operations.md §3.13.1
-    ///         "asset() unreadable" boundary row, revert sub-class) — lzCompose reverts, CEI rollback leaves the guid
+    ///         `TokenVaultMismatch`: same opaque-failure class as the asset-less vault ("asset() unreadable"
+    ///         boundary, revert sub-class) — lzCompose reverts, CEI rollback leaves the guid
     ///         `None`, and the beneficiary recovers via `settlePendingCompose` (which never reads the vault word).
     function testLzComposeRevertingAssetVaultRevertsAndRemainsSettlable() external {
         RevertingAssetVault revertingVault = new RevertingAssetVault();
@@ -1116,8 +1116,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
     ///         `TokenVaultMismatch` BEFORE the zero-amount early-return can converge: the binding guard is
     ///         amount-independent and precedes `_safeApprove`/`deposit`, so the CEI `Settled` write rolls back, the
     ///         guid stays `None`, and the endpoint queue does NOT converge. Pins the zero-amount x mismatch
-    ///         intersection of operations.md §3.13.1 (the zero-amount convergence bullet holds only for
-    ///         `asset() == memecoin` vaults).
+    ///         intersection (the zero-amount convergence rule holds only for `asset() == memecoin` vaults).
     /// @dev Uses a second `MockStakerYieldVault` deployed with a foreign asset address: its `asset()` returns the
     ///      foreign token, so the guard fires the named mismatch error even though the amount is zero.
     function testLzComposeZeroAmountMismatchedVaultRevertsTokenVaultMismatch() external {

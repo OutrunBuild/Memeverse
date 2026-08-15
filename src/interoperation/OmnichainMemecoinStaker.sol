@@ -35,8 +35,7 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
     ///      convergence / hash-binding / self-harm rationale: see `IComposeState`'s @dev note (authoritative). Local
     ///      branch selection: a dirty-high-bit receiver word is consumed with `ComposeRejected`; a dirty-high-bit
     ///      vault word is released via the vault-absent fallback; a zero receiver word keeps the documented
-    ///      receiver==0 self-harm boundary (the fallback's zero-address guard reverts and the slot stays pinned,
-    ///      see operations.md §3.13.1).
+    ///      receiver==0 self-harm boundary (the fallback's zero-address guard reverts and the slot stays pinned).
     /// @param memecoin Bridged memecoin address.
     /// @param guid Compose guid used for replay protection.
     /// @param message Encoded compose payload containing the receiver and yield-vault target.
@@ -61,8 +60,8 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
         uint256 amount = OFTComposeMsgCodec.amountLD(message);
         // composeMsg = message[76:], so this length check is the former `composeMsg.length == 64` (cannot underflow:
         // header guard above proved message.length >= 76). A non-64 frame reverts here (CEI Settled rolls back); inner
-        // >= 32 bytes stays releasable via `settlePendingCompose`, inner < 32 is a dead class with no recovery
-        // (operations.md §3.13.1). Read raw words from calldata at fixed offsets instead of `composeMsg()`+`abi.decode`
+        // >= 32 bytes stays releasable via `settlePendingCompose`, inner < 32 is a dead class with no recovery.
+        // Read raw words from calldata at fixed offsets instead of `composeMsg()`+`abi.decode`
         // to skip a 64-byte memory copy — mirrors `YieldDispatcherUpgradeable._parseCompose`.
         require(message.length - OFTComposeSettleVerify.COMPOSE_HEADER_LENGTH == 64, MalformedComposeMsg());
         // Decode as uint256, not (address, address): solc's strict decoder rejects dirty-high-bit address words with
@@ -100,7 +99,7 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
             // A non-zero deposit that returns 0 shares (a vault variant not reverting like the real vault does)
             // would settle silently with no shares and no recovery exit (the Settled slot blocks settlePendingCompose).
             // Revert instead so the CEI write rolls back and the beneficiary can still settle; zero-amount deposits
-            // return 0 by the interface contract and are exempt (zero-amount convergence, operations.md §3.13.1).
+            // return 0 by the interface contract and are exempt (zero-amount convergence).
             require(amount == 0 || shares != 0, IMemecoinYieldVault.ZeroSharesDeposit());
             // Zero any residual allowance: a vault that pulls less than the approved amount would otherwise keep a
             // live allowance over the staker's custody balance (which includes other users' stranded funds) and

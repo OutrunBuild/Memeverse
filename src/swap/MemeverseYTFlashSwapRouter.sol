@@ -190,7 +190,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
 
     /// @dev POL -> exact YT settlement, run inside the PoolManager unlock callback. Executes one ordinary exact-input
     ///      PT->POL swap, then closes the deltas with a single POL take, a POL pull of the actual cost, an approval of
-    ///      the splitter for exactly y, a split, a PT settle and a YT transfer. Fund flow (spec §8): swap y PT -> R POL; `take` R POL; pull `cost = y - R` POL
+    ///      the splitter for exactly y, a split, a PT settle and a YT transfer. Fund flow: swap y PT -> R POL; `take` R POL; pull `cost = y - R` POL
     ///      from the payer (only the actual cost, never `maxPOLIn`); approve the splitter for exactly y; split y into
     ///      y PT + y YT; settle the y PT against the -y PT delta; send the y YT to the recipient. The temporary POL
     ///      allowance must return to zero, and the router's PT/POL/YT balances must be exactly restored to their pre-call
@@ -210,11 +210,11 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         );
         (int128 ptDelta, int128 polDelta) = _deltasForPTAndPOL(d, ptIsCurrency0);
         // Structural guard: the PT leg must be exactly filled (-y) and the POL delta must not be negative. POL == 0 is
-        // intentionally allowed through here so it is reported as `InvalidBuyCost` below, matching spec §11
+        // intentionally allowed through here so it is reported as `InvalidBuyCost` below
         // (`R_actual == 0` -> InvalidBuyCost), not as a structural mismatch.
         if (ptDelta != -int128(int256(c.ytAmount)) || polDelta < 0) revert FlashDeltaMismatch(ptDelta, polDelta);
         uint256 r = uint256(uint128(polDelta));
-        // Cost validity per spec §8 item 2/§11: a valid buy requires `0 < R_actual < y`. `r == 0` (zero AMM-leg output) and
+        // Cost validity: a valid buy requires `0 < R_actual < y`. `r == 0` (zero AMM-leg output) and
         // `r >= y` (zero/negative cost) both fail closed here, and this check also guarantees the unsigned `y - r`
         // subtraction below never underflows.
         if (r == 0 || r >= c.ytAmount) revert InvalidBuyCost(r, c.ytAmount);
@@ -250,7 +250,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
     }
 
     /// @dev Encodes the referrer for the single underlying PT/POL swap. Zero referrer means empty hookData; a non-zero
-    ///      referrer is packed (not abi-encoded), matching spec §10.
+    ///      referrer is packed (not abi-encoded).
     function _hookData(address referrer) internal pure returns (bytes memory) {
         return referrer == address(0) ? bytes("") : abi.encodePacked(referrer);
     }
@@ -263,7 +263,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
 
     /// @dev Exact YT -> POL settlement, run inside the PoolManager unlock callback. Executes one ordinary exact-output
     ///      POL->PT swap for y PT, then closes the deltas with a single PT take, a YT pull of y, a 1:1 merge, a POL
-    ///      settle of `Q_actual`, and a net POL transfer. Fund flow (spec §9): swap q POL -> y PT; `take` y PT; pull
+    ///      settle of `Q_actual`, and a net POL transfer. Fund flow: swap q POL -> y PT; `take` y PT; pull
     ///      y YT from the payer; `merge` burns y PT + y YT into y POL (no ERC20 approval, the Splitter is the minter);
     ///      settle q POL against the -q POL delta; send the remaining `polOut = y - q` POL to the recipient. The router's
     ///      PT/YT/POL balances must be exactly restored to their pre-call baseline (pre-existing dust is preserved).
@@ -282,17 +282,17 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         );
         (int128 ptDelta, int128 polDelta) = _deltasForPTAndPOL(d, ptIsCurrency0);
         // Structural guard: the PT leg must be exactly filled (+y) and the POL delta must not be positive. POL == 0 is
-        // intentionally allowed through here so it is reported as `InvalidSellDebt` below, matching spec §11
+        // intentionally allowed through here so it is reported as `InvalidSellDebt` below
         // (`Q_actual == 0` -> InvalidSellDebt), not as a structural mismatch.
         if (ptDelta != int128(int256(c.ytAmount)) || polDelta > 0) revert FlashDeltaMismatch(ptDelta, polDelta);
         // `polDelta` is confirmed <= 0 here, so the signed negation is safe and never underflows. `q = Q_actual`.
         uint256 q = uint256(-int256(polDelta));
-        // Debt validity per spec §9 item 2/§11: a valid sell requires `0 < Q_actual < y`. `q == 0` (zero AMM-leg input) and
+        // Debt validity: a valid sell requires `0 < Q_actual < y`. `q == 0` (zero AMM-leg input) and
         // `q >= y` (zero/negative output) both fail closed here, and this check also guarantees the unsigned `y - q`
         // subtraction below never underflows.
         if (q == 0 || q >= c.ytAmount) revert InvalidSellDebt(q, c.ytAmount);
         uint256 out = c.ytAmount - q;
-        // Spec §9 item 3: `polOut >= minPOLOut` must be enforced before any take, payer pull, or merge so a failing sell
+        // `polOut >= minPOLOut` must be enforced before any take, payer pull, or merge so a failing sell
         // never moves funds.
         if (out < c.polLimit) revert MinPOLOutNotMet(out, c.polLimit);
         Currency.wrap(c.pt).take(poolManager, address(this), c.ytAmount, false);

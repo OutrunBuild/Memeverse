@@ -29,6 +29,7 @@ interface IPOLSplitter {
     error PermissionDenied();
     error ZeroInput();
     error InvalidClaim();
+    error TokenImplementationCodeNotReady(address implementation);
 
     event RedeemPT(uint256 indexed verseId, address indexed from, address indexed to, uint256 ptAmount);
     event RedeemYT(
@@ -45,6 +46,10 @@ interface IPOLSplitter {
     event Merge(uint256 indexed verseId, address indexed user, uint256 amount, uint256 polAmount);
     event BackingRatioRecorded(uint256 indexed verseId, uint256 numerator, uint256 denominator);
     event VerseSettled(uint256 indexed verseId, uint256 settlementUAsset, uint256 settlementMemecoin);
+
+    event TokenImplementationsUpdated(
+        address oldPrincipalToken, address oldYieldToken, address newPrincipalToken, address newYieldToken
+    );
 
     function splitInfos(uint256 verseId)
         external
@@ -113,4 +118,6 @@ interface IPOLSplitter {
         returns (uint256 uAssetAmount, uint256 memecoinAmount);
 
     function previewRedeemYTUAsset(uint256 verseId, uint256 ytAmount) external view returns (uint256 uAssetAmount);
+
+    function setTokenImplementations(address principalTokenImplementation_, address yieldTokenImplementation_) external;
 }

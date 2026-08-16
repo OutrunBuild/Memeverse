@@ -870,9 +870,12 @@ function getPTSettlementState(uint256 verseId) external view returns (address pt
 function getPOLAndMemecoin(uint256 verseId) external view returns (address pol, address memecoin);
 function splitInfos(uint256 verseId) external view returns (address pt, address yt, address pol, address memecoin, address uAsset, uint256 totalPOLCollateral, uint256 settlementUAsset, uint256 settlementMemecoin, uint256 ptBackingNumerator, uint256 ptBackingDenominator, bool settled);
 function getPTAndYTAndPOL(uint256 verseId) external view returns (address pt, address yt, address pol);
+function setTokenImplementations(address principalTokenImplementation_, address yieldTokenImplementation_) external;
 function launcher() external view returns (address);
 function polend() external view returns (address);
 ```
+
+`setTokenImplementations` 为 owner-only 模板换代配置入口（成对替换 PT/YT 克隆模板指针，仅影响后续 `initializeVerse`），非 Launcher 集成路径。
 
 `POLSplitterUpgradeable.initialize` 是 proxy 初始化入口，不是 per-verse 产品动作：
 

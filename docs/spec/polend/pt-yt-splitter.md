@@ -67,6 +67,24 @@ previewPTToUAsset(verseId, ptAmount) = Math.mulDiv(ptAmount, ptBackingNumerator,
 
 `mintPOLToken` 在 `Locked` 后使用 exact-liquidity minting。fixed PT backing ratio 由启动时记录的 `ptBackingNumerator / ptBackingDenominator` 定义；报价后的实际执行必须 mint 出请求的 LP/POL 数量，否则整笔 mint fail closed。额外 backing 不得改写该 PT/YT 经济关系。
 
+### 1.1 PT/YT 克隆模板与换代（setTokenImplementations）
+
+`POLSplitterUpgradeable.initialize` 在 proxy 初始化时部署默认 `PrincipalToken` / `YieldToken` 模板并写入 `principalTokenImplementation` / `yieldTokenImplementation` 指针（同名 getter 暴露）；`POLSplitterUpgradeable.initializeVerse` 每次调用都现读这两个 storage 指针，以 `cloneDeterministic(bytes32(verseId))` 为该 verse 克隆 PT/YT。
+
+owner 可经 `POLSplitterUpgradeable.sol::setTokenImplementations` 成对原子替换两个模板指针（一次调用同时换 PT 与 YT，避免同一 verse 混用两代模板）。链上校验仅覆盖：两个地址均 `!= address(0)`（违反 revert `ZeroInput`）且 `code.length > 0`（违反 revert `TokenImplementationCodeNotReady`）。
+
+替换只影响**之后** `initializeVerse` 创建的 verse：已存在的 per-verse PT/YT clone 是 EIP-1167 minimal proxy，克隆时即固化模板地址，永久指向旧模板，无迁移路径。多代 PT/YT 并存是设计边界，不是缺陷。
+
+新模板的 ABI 兼容责任在 owner：模板必须实现 `SplitterToken.initialize(name, symbol, splitter)`、onlySplitter `mint` / `burn` 与完整 ERC20 表面（clone 走 delegatecall 路径，链上无 ABI 检查）。执行该操作的 owner 应为多签。
+
+替换成功 emit：
+
+```solidity
+event TokenImplementationsUpdated(address oldPrincipalToken, address oldYieldToken, address newPrincipalToken, address newYieldToken);
+```
+
+该 setter 复用既有 `principalTokenImplementation` / `yieldTokenImplementation` storage 字段，零新增 storage。
+
 ## 2. POLSplitterUpgradeable settle
 
 `settle` 语义：
@@ -166,6 +184,7 @@ settle 后：
 - `NotUnlocked`：`settle` 阶段不正确（verse 尚未 Unlocked）
 - `NotSettled`：redeem 前尚未 settle
 - `AlreadyDeployed`：`initializeVerse` 重复调用
+- `TokenImplementationCodeNotReady`：`setTokenImplementations` 目标模板地址无代码
 - 不保留 `InsufficientSettlementUAsset`
 
 ## 3. PT / YT 兑付

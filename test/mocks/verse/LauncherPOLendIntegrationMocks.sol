@@ -688,6 +688,8 @@ contract MockPOLSplitterForPOLendIntegration is IPOLSplitter {
         return 0;
     }
 
+    function setTokenImplementations(address, address) external pure {}
+
     function polend() external view returns (address) {
         return polendAddr;
     }

@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
+import {OutrunERC20Init} from "../../../src/common/token/OutrunERC20Init.sol";
 import {IPOLSplitter} from "../../../src/polend/interfaces/IPOLSplitter.sol";
 
 interface IPOLSplitterReentryTarget {
@@ -83,5 +84,34 @@ contract POLSplitterReentryProbe is IPOLSplitterReentryTarget {
         } else if (mode == MODE_REDEEM_PT) {
             splitter.redeemPT(verseId, 1 ether, address(this));
         }
+    }
+}
+
+/// @title MarkerSplitterTokenTemplate
+/// @notice Test-only PT/YT clone template with an observable `marker()` so tests can prove which
+///         template generation a verse's PT/YT clone points at. Mirrors the SplitterToken surface
+///         that POLSplitterUpgradeable.initializeVerse/split/merge/redeem call.
+contract MarkerSplitterTokenTemplate is OutrunERC20Init {
+    error PermissionDenied();
+
+    address private splitter;
+
+    function initialize(string calldata name_, string calldata symbol_, address splitter_) external initializer {
+        __OutrunERC20_init(name_, symbol_);
+        splitter = splitter_;
+    }
+
+    function marker() external pure returns (uint256) {
+        return 42;
+    }
+
+    function mint(address to, uint256 amount) external {
+        if (msg.sender != splitter) revert PermissionDenied();
+        _mint(to, amount);
+    }
+
+    function burn(address from, uint256 amount) external {
+        if (msg.sender != splitter) revert PermissionDenied();
+        _burn(from, amount);
     }
 }

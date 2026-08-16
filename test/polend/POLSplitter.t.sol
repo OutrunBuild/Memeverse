@@ -11,9 +11,14 @@ import {IPOLSplitter} from "../../src/polend/interfaces/IPOLSplitter.sol";
 import {PrincipalToken} from "../../src/polend/tokens/PrincipalToken.sol";
 import {YieldToken} from "../../src/polend/tokens/YieldToken.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
+import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
 
 import {MockPOL} from "../mocks/polend/MockPOL.sol";
-import {ReentrantMockERC20, POLSplitterReentryProbe} from "../mocks/polend/POLSplitterMocks.sol";
+import {
+    MarkerSplitterTokenTemplate,
+    ReentrantMockERC20,
+    POLSplitterReentryProbe
+} from "../mocks/polend/POLSplitterMocks.sol";
 import {POLSplitterStorageHelper} from "../mocks/polend/POLSplitterStorageHelper.sol";
 
 contract MockLauncher {
@@ -121,6 +126,9 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
     event Merge(uint256 indexed verseId, address indexed user, uint256 amount, uint256 polAmount);
     event BackingRatioRecorded(uint256 indexed verseId, uint256 numerator, uint256 denominator);
     event VerseSettled(uint256 indexed verseId, uint256 settlementUAsset, uint256 settlementMemecoin);
+    event TokenImplementationsUpdated(
+        address oldPrincipalToken, address oldYieldToken, address newPrincipalToken, address newYieldToken
+    );
 
     MockERC20 internal memecoin;
     MockERC20 internal uAsset;
@@ -1055,6 +1063,152 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
 
         assertEq(uAsset.balanceOf(ALICE), 100 ether, "correct uAsset paid");
         assertEq(otherUAsset.balanceOf(ALICE), 0, "other uAsset untouched");
+    }
+
+    /// @notice setTokenImplementations swaps both clone-template pointers and emits
+    ///         TokenImplementationsUpdated carrying the old and new pair.
+    /// @dev The old pair is read from the getters before the swap; the new pair is freshly deployed
+    ///      marker templates, so all four emitted addresses are exact.
+    function testSetTokenImplementations_UpdatesPointersAndEmitsEvent() external {
+        address oldPt = splitter.principalTokenImplementation();
+        address oldYt = splitter.yieldTokenImplementation();
+        address newPt = address(new MarkerSplitterTokenTemplate());
+        address newYt = address(new MarkerSplitterTokenTemplate());
+
+        vm.expectEmit(true, true, true, true);
+        emit TokenImplementationsUpdated(oldPt, oldYt, newPt, newYt);
+        splitter.setTokenImplementations(newPt, newYt);
+
+        assertEq(splitter.principalTokenImplementation(), newPt, "pt implementation");
+        assertEq(splitter.yieldTokenImplementation(), newYt, "yt implementation");
+    }
+
+    /// @notice setTokenImplementations is owner-only: a non-owner call reverts with
+    ///         OwnableUnauthorizedAccount before any pointer changes.
+    function testSetTokenImplementations_RevertsForNonOwner() external {
+        MarkerSplitterTokenTemplate template = new MarkerSplitterTokenTemplate();
+
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, ALICE));
+        splitter.setTokenImplementations(address(template), address(template));
+    }
+
+    /// @notice setTokenImplementations rejects a zero address for either template pointer.
+    /// @dev The other argument is always a valid deployed template so each zero case is isolated.
+    function testSetTokenImplementations_RevertsForZeroAddress() external {
+        MarkerSplitterTokenTemplate template = new MarkerSplitterTokenTemplate();
+
+        vm.expectRevert(IPOLSplitter.ZeroInput.selector);
+        splitter.setTokenImplementations(address(0), address(template));
+
+        vm.expectRevert(IPOLSplitter.ZeroInput.selector);
+        splitter.setTokenImplementations(address(template), address(0));
+    }
+
+    /// @notice setTokenImplementations rejects codeless (EOA) addresses for either pointer with
+    ///         TokenImplementationCodeNotReady naming the offending address.
+    function testSetTokenImplementations_RevertsForCodelessAddress() external {
+        MarkerSplitterTokenTemplate template = new MarkerSplitterTokenTemplate();
+
+        vm.expectRevert(abi.encodeWithSelector(IPOLSplitter.TokenImplementationCodeNotReady.selector, ALICE));
+        splitter.setTokenImplementations(ALICE, address(template));
+
+        vm.expectRevert(abi.encodeWithSelector(IPOLSplitter.TokenImplementationCodeNotReady.selector, ALICE));
+        splitter.setTokenImplementations(address(template), ALICE);
+    }
+
+    /// @notice Generation isolation: after setTokenImplementations, only verses initialized later
+    ///         clone the new templates — existing PT/YT clones stay frozen on the old ones.
+    /// @dev EIP-1167 clones bake the template address into their own bytecode at creation, so
+    ///      `marker()` (present only on the rotated generation) succeeds on the new verse's clones
+    ///      and fails on the old verse's clones, while the old clone still answers the real
+    ///      PrincipalToken surface (`name()`) — proving it is alive and un-migrated.
+    function testSetTokenImplementations_NewVersesUseNewTemplates_OldVersesFrozen() external {
+        POLSplitterUpgradeable fresh = _deploySplitter(address(launcher));
+        vm.prank(address(launcher));
+        fresh.initializeVerse(VERSE_ID, address(pol), address(memecoin), address(uAsset), "Verse", "VRS");
+        (address oldPt, address oldYt) = fresh.getPTAndYT(VERSE_ID);
+
+        MarkerSplitterTokenTemplate ptTemplate = new MarkerSplitterTokenTemplate();
+        MarkerSplitterTokenTemplate ytTemplate = new MarkerSplitterTokenTemplate();
+        fresh.setTokenImplementations(address(ptTemplate), address(ytTemplate));
+
+        vm.prank(address(launcher));
+        fresh.initializeVerse(OTHER_VERSE_ID, address(pol), address(memecoin), address(uAsset), "Rotated", "ROT");
+        (address newPt, address newYt) = fresh.getPTAndYT(OTHER_VERSE_ID);
+
+        (bool ptOk, uint256 ptMarker) = _marker(newPt);
+        (bool ytOk, uint256 ytMarker) = _marker(newYt);
+        assertTrue(ptOk, "new pt clone points at marker template");
+        assertEq(ptMarker, 42, "pt marker value");
+        assertTrue(ytOk, "new yt clone points at marker template");
+        assertEq(ytMarker, 42, "yt marker value");
+
+        (bool oldPtOk,) = _marker(oldPt);
+        (bool oldYtOk,) = _marker(oldYt);
+        assertFalse(oldPtOk, "old pt clone stays on the old template");
+        assertFalse(oldYtOk, "old yt clone stays on the old template");
+        assertEq(PrincipalToken(oldPt).name(), "PT-Verse", "old pt clone still alive on old template");
+
+        // Replaying an already-deployed verseId must still revert after template rotation: the
+        // AlreadyDeployed guard reads splitInfos[verseId].pt, independent of the template pointers.
+        vm.prank(address(launcher));
+        vm.expectRevert(IPOLSplitter.AlreadyDeployed.selector);
+        fresh.initializeVerse(VERSE_ID, address(pol), address(memecoin), address(uAsset), "Verse", "VRS");
+    }
+
+    /// @notice Full verse lifecycle on rotated templates: split → settle → redeemPT → redeemYT all
+    ///         work against marker-template clones (non-regression for the template ABI the
+    ///         splitter calls through the clones).
+    /// @dev 1:1 backing; 500e18 POL in with a 900e18/400e18 seeded redemption => PT redeems 500e18
+    ///      uAsset, YT redeems the remaining 400e18 uAsset plus all 400e18 memecoin.
+    function testSetTokenImplementations_NewVerseFullFlowAfterRotation() external {
+        POLSplitterUpgradeable fresh = _deploySplitter(address(launcher));
+        MarkerSplitterTokenTemplate ptTemplate = new MarkerSplitterTokenTemplate();
+        MarkerSplitterTokenTemplate ytTemplate = new MarkerSplitterTokenTemplate();
+        fresh.setTokenImplementations(address(ptTemplate), address(ytTemplate));
+
+        vm.prank(address(launcher));
+        fresh.initializeVerse(VERSE_ID, address(pol), address(memecoin), address(uAsset), "Verse", "VRS");
+        (address versePt, address verseYt) = fresh.getPTAndYT(VERSE_ID);
+        (bool ptOk,) = _marker(versePt);
+        (bool ytOk,) = _marker(verseYt);
+        assertTrue(ptOk, "verse pt clone points at marker template");
+        assertTrue(ytOk, "verse yt clone points at marker template");
+
+        vm.prank(address(launcher));
+        fresh.recordPTBackingRatio(VERSE_ID, 1 ether, 1 ether);
+        pol.mint(address(this), 500 ether);
+        pol.approve(address(fresh), 500 ether);
+        (uint256 ptAmount, uint256 ytAmount) = fresh.split(VERSE_ID, 500 ether);
+        assertEq(ptAmount, 500 ether, "pt minted");
+        assertEq(ytAmount, 500 ether, "yt minted");
+
+        launcher.seedRedemption(VERSE_ID, 900 ether, 400 ether);
+        launcher.setStage(VERSE_ID, IMemeverseLauncher.Stage.Unlocked);
+        vm.prank(address(launcher));
+        fresh.settle(VERSE_ID);
+
+        uint256 uAssetBefore = uAsset.balanceOf(address(this));
+        uint256 redeemedUAsset = fresh.redeemPT(VERSE_ID, 500 ether, address(this));
+        assertEq(redeemedUAsset, 500 ether, "pt redemption at 1:1 backing");
+        assertEq(uAsset.balanceOf(address(this)) - uAssetBefore, 500 ether, "pt uAsset received");
+
+        uAssetBefore = uAsset.balanceOf(address(this));
+        uint256 memecoinBefore = memecoin.balanceOf(address(this));
+        (uint256 ytUAsset, uint256 ytMemecoin) = fresh.redeemYT(VERSE_ID, 500 ether, address(this));
+        assertEq(ytUAsset, 400 ether, "yt uAsset is settlement minus PT reserve");
+        assertEq(ytMemecoin, 400 ether, "yt memecoin");
+        assertEq(uAsset.balanceOf(address(this)) - uAssetBefore, 400 ether, "yt uAsset received");
+        assertEq(memecoin.balanceOf(address(this)) - memecoinBefore, 400 ether, "yt memecoin received");
+    }
+
+    /// @notice Probes `marker()` on a token address via staticcall; `ok == false` means the token's
+    ///         template generation has no marker (the pre-rotation templates).
+    function _marker(address token) internal view returns (bool ok, uint256 value) {
+        bytes memory returned;
+        (ok, returned) = token.staticcall(abi.encodeWithSignature("marker()"));
+        if (ok) value = abi.decode(returned, (uint256));
     }
 
     function _deployReentryVerse(ReentrantMockERC20 reentrantToken) internal returns (POLSplitterReentryProbe probe) {

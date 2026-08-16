@@ -41,6 +41,8 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         mapping(uint256 verseId => PreRedeemedState state) preRedeemedStates;
         address launcher;
         address polend;
+        // Clone templates: the owner replaces this PT/YT pair via `setTokenImplementations`; the swap
+        // only affects verses initialized afterwards.
         address principalTokenImplementation;
         address yieldTokenImplementation;
     }
@@ -169,6 +171,42 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         polSplitterStorage.polend = IMemeverseLauncher(_launcher).polend();
         polSplitterStorage.principalTokenImplementation = address(new PrincipalToken());
         polSplitterStorage.yieldTokenImplementation = address(new YieldToken());
+    }
+
+    /// @notice Replaces the PT/YT clone templates used by future `initializeVerse` calls.
+    /// @dev PT/YT clones are EIP-1167 minimal proxies: each clone bakes its template address into its
+    ///      own bytecode at creation and keeps delegating to it forever, so this swap affects only
+    ///      verses initialized afterwards — existing clones stay frozen on the old templates and
+    ///      multiple generations may coexist (no migration path). The two pointers swap as one pair so
+    ///      every verse always sees a matched PT/YT generation. On-chain checks cover only non-zero
+    ///      addresses with deployed code: ABI compatibility is the owner's responsibility — the new
+    ///      templates must expose the same surface as `PrincipalToken` / `YieldToken`
+    ///      (`initialize(name, symbol, splitter)`, onlySplitter `mint`/`burn`, and the ERC20
+    ///      transfer/view surface), because the clone delegatecall path performs no ABI validation.
+    ///      Operate the owner as a multisig when using this rotation channel.
+    /// @param principalTokenImplementation_ New PrincipalToken template.
+    /// @param yieldTokenImplementation_ New YieldToken template.
+    function setTokenImplementations(address principalTokenImplementation_, address yieldTokenImplementation_)
+        external
+        onlyOwner
+    {
+        if (principalTokenImplementation_ == address(0) || yieldTokenImplementation_ == address(0)) {
+            revert ZeroInput();
+        }
+        if (principalTokenImplementation_.code.length == 0) {
+            revert TokenImplementationCodeNotReady(principalTokenImplementation_);
+        }
+        if (yieldTokenImplementation_.code.length == 0) {
+            revert TokenImplementationCodeNotReady(yieldTokenImplementation_);
+        }
+
+        address oldPrincipalToken = polSplitterStorage.principalTokenImplementation;
+        address oldYieldToken = polSplitterStorage.yieldTokenImplementation;
+        polSplitterStorage.principalTokenImplementation = principalTokenImplementation_;
+        polSplitterStorage.yieldTokenImplementation = yieldTokenImplementation_;
+        emit TokenImplementationsUpdated(
+            oldPrincipalToken, oldYieldToken, principalTokenImplementation_, yieldTokenImplementation_
+        );
     }
 
     function initializeVerse(

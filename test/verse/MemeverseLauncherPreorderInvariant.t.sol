@@ -280,7 +280,7 @@ contract MemeverseLauncherPreorderSuccessInvariantTest is StdInvariant, Memevers
                         REGISTRAR,
                         address(0x3333),
                         address(0x4444),
-                        address(0x5555),
+                        address(registry),
                         address(polend),
                         address(splitter),
                         25,
@@ -316,7 +316,6 @@ contract MemeverseLauncherPreorderSuccessInvariantTest is StdInvariant, Memevers
         assertEq(hook.launcher(), address(launcher), "hook launcher");
         assertEq(hook.poolInitializer(), address(router), "hook initializer");
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         launcher.setFundMetaData(address(uAsset), 10 ether, 4);
         polend.setLendMarket(address(pt), address(yt));
 
@@ -447,7 +446,7 @@ contract MemeverseLauncherPreorderRefundInvariantTest is StdInvariant, Memeverse
                         REGISTRAR,
                         address(0x3333),
                         address(0x4444),
-                        address(0x5555),
+                        address(registry),
                         address(polend),
                         address(splitter),
                         25,
@@ -462,7 +461,6 @@ contract MemeverseLauncherPreorderRefundInvariantTest is StdInvariant, Memeverse
         launcher = IMemeverseLauncher(launcherProxy);
 
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         launcher.setFundMetaData(address(uAsset), 10 ether, 4);
         // Phase 3B: registerMemeverse/genesis/preorder delegatecall the launch sibling; bind it
         // before _registerVerse (which exercises registerMemeverse) or setUp reverts LaunchImplNotSet.

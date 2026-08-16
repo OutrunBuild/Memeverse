@@ -419,11 +419,6 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     /// @param memeverseHook The hook address to bind permanently.
     function setMemeverseUniswapHook(address memeverseHook) external;
 
-    /// @notice Repoints the launcher to a new LayerZero endpoint registry.
-    /// @dev Implementations are expected to guard this with their admin or owner flow.
-    /// @param lzEndpointRegistry The new endpoint registry contract address.
-    function setLzEndpointRegistry(address lzEndpointRegistry) external;
-
     /// @notice Replaces the registrar contract reference used by the launcher.
     /// @dev Implementations are expected to guard this with their admin or owner flow.
     /// @param memeverseRegistrar The new registrar address.
@@ -589,8 +584,6 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     event SetMemeverseSwapRouter(address memeverseSwapRouter);
 
     event SetMemeverseUniswapHook(address memeverseHook);
-
-    event SetLzEndpointRegistry(address lzEndpointRegistry);
 
     event SetMemeverseRegistrar(address memeverseRegistrar);
 

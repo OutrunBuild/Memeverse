@@ -101,7 +101,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
                         REGISTRAR,
                         address(0x3333),
                         address(0x4444),
-                        address(0x5555),
+                        address(registry),
                         placeholderPolend,
                         placeholderSplitter,
                         25,
@@ -178,7 +178,6 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         launcher.setFeePreviewReader(address(new MemeverseFeePreviewReader(address(launcher))));
         launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         launcher.setYieldDispatcher(address(dispatcher));
         // minTotalFund = 1 ether so 1 ether of leveraged interest alone triggers flashGenesis Locked;
         // fundBasedAmount = 1 ether keeps main-pool memecoin provisioning 1:1 with uAsset.

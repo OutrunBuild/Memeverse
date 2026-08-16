@@ -71,7 +71,7 @@ contract MemeverseLauncherBootstrapLiquidityTest is Test, MemeverseLauncherTestH
                         address(0x2),
                         address(0x3),
                         address(0x4),
-                        address(0x5),
+                        address(registry),
                         address(polend),
                         address(splitter),
                         25,
@@ -94,7 +94,6 @@ contract MemeverseLauncherBootstrapLiquidityTest is Test, MemeverseLauncherTestH
         // Deliberately omitted: launcher.setLiquidityImpl(...). Each test asserts the guard explicitly.
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         router.setLpToken(address(liquidProof), address(uAsset), address(new MockERC20("POL-U", "POL-U", 18)));
         router.setLpToken(address(pt), address(uAsset), address(new MockERC20("PT-U", "PT-U", 18)));
         router.setLpToken(address(pt), address(liquidProof), address(new MockERC20("PT-POL", "PT-POL", 18)));

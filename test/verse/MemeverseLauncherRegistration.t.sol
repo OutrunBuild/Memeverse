@@ -154,7 +154,7 @@ contract MemeverseLauncherRegistrationTest is Test, MemeverseLauncherTestHelper 
                         REGISTRAR,
                         address(0x3),
                         address(0x4),
-                        address(0x5),
+                        address(registry),
                         address(polend),
                         address(0x1234),
                         25,
@@ -172,7 +172,6 @@ contract MemeverseLauncherRegistrationTest is Test, MemeverseLauncherTestHelper 
 
         vm.startPrank(OWNER);
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         launcher.setFundMetaData(address(0x7777), 10 ether, 1);
         // Phase 3B: registerMemeverse delegatecalls the launch sibling; bind it before tests call it.
         launcher.setLaunchImpl(address(new MemeverseLaunchImpl()));

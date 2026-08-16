@@ -854,19 +854,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     }
 
     /**
-     * @notice Set the LayerZero endpoint registry contract.
-     * @dev Only callable by the owner.
-     * @param _lzEndpointRegistry - Address of LzEndpointRegistry
-     */
-    function setLzEndpointRegistry(address _lzEndpointRegistry) external override onlyOwner {
-        require(_lzEndpointRegistry != address(0), ZeroInput());
-
-        memeverseLauncherStorage.lzEndpointRegistry = _lzEndpointRegistry;
-
-        emit SetLzEndpointRegistry(_lzEndpointRegistry);
-    }
-
-    /**
      * @notice Set the memeverse registrar contract.
      * @dev Only callable by the owner.
      * @param _memeverseRegistrar - Address of the Memeverse registrar contract.

@@ -257,7 +257,7 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
                         REGISTRAR,
                         address(0x3333),
                         address(0x4444),
-                        address(0x5555),
+                        address(registry),
                         address(polend),
                         address(splitter),
                         25,
@@ -293,7 +293,6 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
         launcher.setMemeverseUniswapHook(address(router.hook()));
         launcher.setMemeverseSwapRouter(address(router));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         launcher.setFundMetaData(address(uAsset), 10 ether, 4);
         polend.setLendMarket(address(pt), address(yt));
 
@@ -488,7 +487,7 @@ contract MemeverseLauncherRefundEndToEndInvariantTest is
                         REGISTRAR,
                         address(0x3333),
                         address(0x4444),
-                        address(0x5555),
+                        address(registry),
                         address(polend),
                         address(splitter),
                         25,
@@ -524,7 +523,6 @@ contract MemeverseLauncherRefundEndToEndInvariantTest is
         assertEq(hook.launcher(), address(launcher), "hook launcher");
         assertEq(hook.poolInitializer(), address(router), "hook initializer");
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         launcher.setFundMetaData(address(uAsset), 10 ether, 4);
         polend.setLendMarket(address(pt), address(yt));
 

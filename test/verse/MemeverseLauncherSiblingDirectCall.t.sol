@@ -68,7 +68,7 @@ contract MemeverseLauncherSiblingDirectCall is Test {
                         address(0x2),
                         address(0x3),
                         address(0x4),
-                        address(0x5),
+                        address(registry),
                         address(polend),
                         address(splitter),
                         25,
@@ -92,7 +92,6 @@ contract MemeverseLauncherSiblingDirectCall is Test {
         launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         polend.setLendMarket(address(pt), address(yt));
     }
 

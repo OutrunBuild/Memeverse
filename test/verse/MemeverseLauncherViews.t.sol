@@ -198,7 +198,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
     }
 
     function _expectedLauncherSelectorSignatures() internal pure returns (string[] memory signatures) {
-        signatures = new string[](65);
+        signatures = new string[](64);
         signatures[0] = "RATIO()";
         signatures[1] = "auxiliaryLiquidities(uint256)";
         signatures[2] = "bootstrapResidualClaims(uint256)";
@@ -248,22 +248,21 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         signatures[46] = "setFeePreviewReader(address)";
         signatures[47] = "setFundMetaData(address,uint256,uint256)";
         signatures[48] = "setGasLimits(uint128,uint128)";
-        signatures[49] = "setLzEndpointRegistry(address)";
-        signatures[50] = "setMemeverseProxyDeployer(address)";
-        signatures[51] = "setMemeverseRegistrar(address)";
-        signatures[52] = "setMemeverseSwapRouter(address)";
-        signatures[53] = "setMemeverseUniswapHook(address)";
-        signatures[54] = "setLiquidityImpl(address)";
-        signatures[55] = "setPreorderConfig(uint256,uint256)";
-        signatures[56] = "setYieldDispatcher(address)";
-        signatures[57] = "settleLeveragedAuxiliaryLiquidity(uint256)";
-        signatures[58] = "totalNormalClaimableYT(uint256)";
-        signatures[59] = "totalNormalFunds(uint256)";
-        signatures[60] = "transferOwnership(address)";
-        signatures[61] = "unpause()";
-        signatures[62] = "userGenesisData(uint256,address)";
-        signatures[63] = "userNormalFeeClaims(uint256,address)";
-        signatures[64] = "userPreorderData(uint256,address)";
+        signatures[49] = "setMemeverseProxyDeployer(address)";
+        signatures[50] = "setMemeverseRegistrar(address)";
+        signatures[51] = "setMemeverseSwapRouter(address)";
+        signatures[52] = "setMemeverseUniswapHook(address)";
+        signatures[53] = "setLiquidityImpl(address)";
+        signatures[54] = "setPreorderConfig(uint256,uint256)";
+        signatures[55] = "setYieldDispatcher(address)";
+        signatures[56] = "settleLeveragedAuxiliaryLiquidity(uint256)";
+        signatures[57] = "totalNormalClaimableYT(uint256)";
+        signatures[58] = "totalNormalFunds(uint256)";
+        signatures[59] = "transferOwnership(address)";
+        signatures[60] = "unpause()";
+        signatures[61] = "userGenesisData(uint256,address)";
+        signatures[62] = "userNormalFeeClaims(uint256,address)";
+        signatures[63] = "userPreorderData(uint256,address)";
     }
 
     function _expectSelectorMissing(string memory signature) internal view {
@@ -274,9 +273,9 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
 
     function testExpectedSelectorBaselineIncludesRuntimeSurface() external {
         string[] memory signatures = _expectedLauncherSelectorSignatures();
-        assertEq(signatures.length, 65, "expected selector count");
+        assertEq(signatures.length, 64, "expected selector count");
         assertEq(signatures[0], "RATIO()", "first selector");
-        assertEq(signatures[64], "userPreorderData(uint256,address)", "last selector");
+        assertEq(signatures[63], "userPreorderData(uint256,address)", "last selector");
 
         // Verify every expected selector actually exists on the proxy.
         // Pad calldata with 256 zero-bytes so the abi decoder does not revert

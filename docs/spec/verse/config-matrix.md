@@ -14,7 +14,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `MemeverseLauncherUpgradeable` | `memeverseSwapRouter` | `setMemeverseSwapRouter` | 非零；set-time 三重校验与 `Genesis -> Locked` launch-time preflight 见 [docs/spec/invariants.md](../invariants.md) INV-04 | 启动建池、公开 router、preorder 结算 hook 绑定 | `[代码已证]` |
 | `MemeverseLauncherUpgradeable` | `memeverseUniswapHook` | `setMemeverseUniswapHook` | 非零；write-once（首次设置后 `revert HookAlreadyConfigured()`），完整绑定约束见 [docs/spec/invariants.md](../invariants.md) INV-04 | preorder 显式结算 + post-unlock 保护写入绑定 | `[代码已证]` |
-| `MemeverseLauncherUpgradeable` | `lzEndpointRegistry` | `setLzEndpointRegistry` | 非零 | 注册 peer 配置、跨链 endpoint 映射 | `[代码已证]` |
+| `MemeverseLauncherUpgradeable` | `lzEndpointRegistry` | `initialize(...)` | 非零；初始化后不可变更（无 setter） | 注册 peer 配置、跨链 endpoint 映射 | `[代码已证]` |
 | `MemeverseLauncherUpgradeable` | `memeverseRegistrar` | `setMemeverseRegistrar` | 非零 | 注册入口权限边界 | `[代码已证]` |
 | `MemeverseLauncherUpgradeable` | `memeverseProxyDeployer` | `setMemeverseProxyDeployer` | 非零 | per-verse token/vault/governor 部署 | `[代码已证]` |
 | `MemeverseLauncherUpgradeable` | `polend` | `initialize(...)` | 非零；当前代码没有 runtime setter | Launcher 保存 `POLendUpgradeable` 接线地址；注册同交易内调用 `POLendUpgradeable.registerLendMarket(verseId)`；`Genesis -> Locked` 时若有杠杆债务则调用 `finalizeLeveragedGenesis(verseId)`；`Locked -> Unlocked` 的 unlock settlement 中按需调用 `executeGlobalSettlement(verseId)`；同一地址还承担 `getTotalLeveragedDebt/Interest`、`preRedeemPTFee`、settlement dust reserve 等查询/执行依赖 | `[代码已证]`，其更细四池语义见 [docs/spec/polend/README.md](../polend/README.md) |
@@ -57,7 +57,7 @@ Launcher 当前为 UUPS proxy，下列 dependency 由 `initialize(...)` 一次�
 | `memeverseRegistrar` | `initialize(...)` | 初始值由 initializer 写入；后续运行期配置以本表对应 setter 行为准 | canonical registrar address |
 | `memeverseProxyDeployer` | `initialize(...)` | 初始值由 initializer 写入；后续运行期配置以本表对应 setter 行为准 | canonical proxy deployer address |
 | `yieldDispatcher` | `initialize(...)` | 初始值由 initializer 写入；后续运行期配置以本表对应 setter 行为准 | canonical yield dispatcher address |
-| `lzEndpointRegistry` | `initialize(...)` | 可通过 `setLzEndpointRegistry` 后续配置 | canonical endpoint registry address |
+| `lzEndpointRegistry` | `initialize(...)` | 无 runtime setter；初始化后不可变更——经 proxy upgrade 替换会与 interoperation/registrars/registration center 的 immutable registry 指针分裂，属禁止操作 | canonical endpoint registry address |
 | `polend` | `initialize(...)` | 无 runtime setter；替换需要 proxy upgrade 或 redeploy plan | canonical dependency proxy address |
 | `polSplitter` | `initialize(...)` | 无 runtime setter；替换需要 proxy upgrade 或 redeploy plan | canonical dependency proxy address |
 

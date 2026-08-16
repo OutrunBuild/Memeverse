@@ -99,7 +99,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
                         address(0x2),
                         address(0x3),
                         address(0x4),
-                        address(0x5),
+                        address(registry),
                         address(polend),
                         address(splitter),
                         25,
@@ -122,7 +122,6 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         polend.setLendMarket(address(pt), address(yt));
         router.setLpToken(address(liquidProof), address(uAsset), address(polUAssetLp));
         router.setLpToken(address(pt), address(uAsset), address(ptUAssetLp));
@@ -402,7 +401,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
                         address(0x2),
                         address(0x3),
                         address(0x4),
-                        address(0x5),
+                        address(registry),
                         polendAddr,
                         splitterAddr,
                         25,
@@ -437,7 +436,6 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         targetLauncher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         targetLauncher.setYieldDispatcher(address(dispatcher));
         targetLauncher.setMemeverseProxyDeployer(address(proxyDeployer));
-        targetLauncher.setLzEndpointRegistry(address(registry));
         targetPolend.setLendMarket(address(pt), address(yt));
     }
 
@@ -454,7 +452,6 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         targetLauncher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
         targetLauncher.setYieldDispatcher(address(dispatcher));
         targetLauncher.setMemeverseProxyDeployer(address(proxyDeployer));
-        targetLauncher.setLzEndpointRegistry(address(registry));
         targetPolend.setLendMarket(address(pt), address(yt));
     }
 }

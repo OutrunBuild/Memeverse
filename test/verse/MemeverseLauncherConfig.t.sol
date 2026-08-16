@@ -334,12 +334,6 @@ contract MemeverseLauncherConfigTest is Test {
         implementation.upgradeToAndCall(address(0), "");
     }
 
-    function testConfigSetterRevertsForNonOwner() external {
-        vm.prank(OTHER);
-        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, OTHER));
-        launcher.setLzEndpointRegistry(address(0xBEEF));
-    }
-
     /// @notice Verifies onlyOwner enforcement on config setters works through the proxy.
     function testSetExecutorRewardRate_RevertsWhenNotOwner() external {
         vm.prank(OTHER);
@@ -456,16 +450,6 @@ contract MemeverseLauncherConfigTest is Test {
 
         vm.expectRevert();
         launcher.setMemeverseUniswapHook(address(configuredHook));
-    }
-
-    /// @notice Test set lz endpoint registry stores address and rejects zero.
-    /// @dev Asserts the registry setter complains about zero addresses.
-    function testSetLzEndpointRegistryStoresAddressAndRejectsZero() external {
-        launcher.setLzEndpointRegistry(address(0xBEEF));
-        assertEq(launcher.getLauncherContracts().lzEndpointRegistry, address(0xBEEF));
-
-        vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
-        launcher.setLzEndpointRegistry(address(0));
     }
 
     /// @notice Test set memeverse registrar stores address and rejects zero.

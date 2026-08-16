@@ -222,7 +222,7 @@ contract MemeverseLauncherClaimRedeemInvariantTest is StdInvariant, Test, Memeve
                         address(0x2),
                         address(0x3),
                         address(0x4),
-                        address(0x5),
+                        address(registry),
                         polendAddr,
                         splitterAddr,
                         executorRewardRate,
@@ -243,6 +243,7 @@ contract MemeverseLauncherClaimRedeemInvariantTest is StdInvariant, Test, Memeve
         actors.push(BOB);
         actors.push(CHARLIE);
 
+        registry = new MockLzEndpointRegistry();
         launcher = _deployLauncher(address(0x10), address(0x11), 25, 115_000, 135_000, 2_500, 7 days);
         router = new MockSwapRouter(address(launcher));
         dispatcher = new MockOFTDispatcher();
@@ -252,13 +253,11 @@ contract MemeverseLauncherClaimRedeemInvariantTest is StdInvariant, Test, Memeve
         memecoinLp = new MockERC20("MEME-LP", "MEME-LP", 18);
         polLp = new MockERC20("POL-LP", "POL-LP", 18);
         proxyDeployer = new MockPredictOnlyProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
-        registry = new MockLzEndpointRegistry();
 
         launcher.setMemeverseUniswapHook(address(router.hook()));
         launcher.setMemeverseSwapRouter(address(router));
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
 
         IMemeverseLauncher.Memeverse memory verse;
         verse.uAsset = address(uAsset);
@@ -372,6 +371,7 @@ contract MemeverseLauncherMintPOLInvariantTest is StdInvariant, Test, MemeverseL
         actors.push(BOB);
         actors.push(CHARLIE);
 
+        registry = new MockLzEndpointRegistry();
         MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
@@ -384,7 +384,7 @@ contract MemeverseLauncherMintPOLInvariantTest is StdInvariant, Test, MemeverseL
                         address(0x2),
                         address(0x3),
                         address(0x4),
-                        address(0x5),
+                        address(registry),
                         address(0x10),
                         address(0x11),
                         25,
@@ -405,13 +405,11 @@ contract MemeverseLauncherMintPOLInvariantTest is StdInvariant, Test, MemeverseL
         liquidProof = new MockLiquidProof();
         memecoinLp = new MockERC20("MEME-LP", "MEME-LP", 18);
         proxyDeployer = new MockPredictOnlyProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
-        registry = new MockLzEndpointRegistry();
 
         launcher.setMemeverseUniswapHook(address(router.hook()));
         launcher.setMemeverseSwapRouter(address(router));
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
 
         setMemeverseForTest(
             launcherProxy,

@@ -104,7 +104,7 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
                         REGISTRAR,
                         address(0x3333),
                         address(0x4444),
-                        address(0x5555),
+                        address(registry),
                         address(polend),
                         address(splitter),
                         25,
@@ -142,7 +142,6 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
         assertEq(hook.launcher(), address(launcher), "hook launcher");
         assertEq(hook.poolInitializer(), address(router), "hook initializer");
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
-        launcher.setLzEndpointRegistry(address(registry));
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setFundMetaData(address(uAsset), 10 ether, 4);
         polend.setLendMarket(address(pt), address(yt));

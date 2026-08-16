@@ -280,8 +280,8 @@
       "impact": "Low",
       "confidence": "Medium",
       "location": "src/verse/registration/MemeverseRegistrationCenter.sol#L73-L109",
-      "summary": "MemeverseRegistrationCenter.quoteSend(uint32[],bytes) has external calls inside a loop: eid = ILzEndpointRegistry(MEMEVERSE_COMMON_INFO).lzEndpointIdOfChain(omnichainId)",
-      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenter.sol|MemeverseRegistrationCenter.quoteSend(uint32[],bytes) has external calls inside a loop: eid = ILzEndpointRegistry(MEMEVERSE_COMMON_INFO).lzEndpointIdOfChain(omnichainId)"
+      "summary": "MemeverseRegistrationCenter.quoteSend(uint32[],bytes) has external calls inside a loop: eid = ILzEndpointRegistry(LZ_ENDPOINT_REGISTRY).lzEndpointIdOfChain(omnichainId)",
+      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenter.sol|MemeverseRegistrationCenter.quoteSend(uint32[],bytes) has external calls inside a loop: eid = ILzEndpointRegistry(LZ_ENDPOINT_REGISTRY).lzEndpointIdOfChain(omnichainId)"
     },
     {
       "id": "c3221b5d4ba415db6c466b106cb54530ca44d1dcd43a50aa2ccdc9c88ad3a42b",
@@ -1576,8 +1576,8 @@
       "impact": "Low",
       "confidence": "High",
       "location": "src/yield/interfaces/IMemecoinYieldVault.sol#L106",
-      "summary": "IMemecoinYieldVault.initialize(string,string,address,address,uint256,uint256).asset shadows:",
-      "key": "shadowing-local|src/yield/interfaces/IMemecoinYieldVault.sol|IMemecoinYieldVault.initialize(string,string,address,address,uint256,uint256).asset shadows:"
+      "summary": "IMemecoinYieldVault.initialize(string,string,address,uint256,uint256).asset shadows:",
+      "key": "shadowing-local|src/yield/interfaces/IMemecoinYieldVault.sol|IMemecoinYieldVault.initialize(string,string,address,uint256,uint256).asset shadows:"
     },
     {
       "id": "6586653e588d74d72cb779b57f97c64bf2f42e19598d26e573e4200136622068",

@@ -27,7 +27,7 @@ library MemeverseLauncherLib {
 
     /// @dev Ratio basis (10000) used by `splitExecutorReward`. Single source of truth shared by the
     ///      distributor and preview reader so the two callers cannot drift.
-    uint256 internal constant RATIO = 10000;
+    uint256 internal constant BPS_BASE = 10000;
 
     /// @dev Numerator of the fixed 0.7% factor sizing the yield-vault virtual buffer. Single source of
     ///      truth shared by the facade's `setFundMetaData` validation and the launch sibling's vault-deploy
@@ -118,13 +118,13 @@ library MemeverseLauncherLib {
         govPTFee = FullMath.mulDiv(totalPTFee, totalLeveragedDebt, totalFunds);
     }
 
-    /// @notice Split a main-pool uAsset fee into the executor reward and governor share using ratio basis `RATIO`.
+    /// @notice Split a main-pool uAsset fee into the executor reward and governor share using ratio basis `BPS_BASE`.
     /// @dev Shared by `MemeverseSettlementImpl._splitExecutorReward` and
     ///      `MemeverseFeePreviewReader._splitExecutorReward`; the wrappers only differ in how they read
     ///      `executorRewardRate` (storage vs. proxy getter). Uses `FullMath.mulDiv` so the multiplication
     ///      cannot overflow before the divide.
     /// @param uAssetFee Total uAsset fee collected from the main pool.
-    /// @param executorRewardRate Basis-points rate (denominator `RATIO`) of `uAssetFee` paid to the executor.
+    /// @param executorRewardRate Basis-points rate (denominator `BPS_BASE`) of `uAssetFee` paid to the executor.
     /// @return govFee Remaining share routed to governance.
     /// @return executorReward Share paid out as the executor incentive.
     function splitExecutorReward(uint256 uAssetFee, uint256 executorRewardRate)
@@ -132,7 +132,7 @@ library MemeverseLauncherLib {
         pure
         returns (uint256 govFee, uint256 executorReward)
     {
-        executorReward = FullMath.mulDiv(uAssetFee, executorRewardRate, RATIO);
+        executorReward = FullMath.mulDiv(uAssetFee, executorRewardRate, BPS_BASE);
         govFee = uAssetFee - executorReward;
     }
 
@@ -196,10 +196,10 @@ library MemeverseLauncherLib {
 
     /// @notice Compute the per-verse preorder capacity ceiling from the current genesis base funds.
     /// @dev Shared by the facade view `previewPreorderCapacity` and the launch sibling's `preorder` so the
-    ///      two callers cannot drift on the 70% cap math (`totalBaseFunds * 7 * preorderCapRatio / 10 / RATIO`).
+    ///      two callers cannot drift on the 70% cap math (`totalBaseFunds * 7 * preorderCapRatio / 10 / BPS_BASE`).
     ///      Reading `preorderCapRatio` from the passed storage pointer `s` works identically in the facade
     ///      (its own `memeverseLauncherStorage`) and the sibling (the proxy's via delegatecall). The literal
-    ///      `10` is the cap denominator and `RATIO` is the basis-points denominator; both are kept inline to
+    ///      `10` is the cap denominator and `BPS_BASE` is the basis-points denominator; both are kept inline to
     ///      mirror the original facade `_preorderMaxCapacity` byte-for-byte.
     /// @param s The MemeverseLauncherStorage pointer (facade's or proxy's under delegatecall).
     /// @param totalBaseFunds Combined normal genesis funds + leveraged debt (from `checkedTotalGenesisFunds`).
@@ -209,7 +209,7 @@ library MemeverseLauncherLib {
         view
         returns (uint256)
     {
-        return FullMath.mulDiv(totalBaseFunds, 7 * s.preorderCapRatio, 10 * RATIO);
+        return FullMath.mulDiv(totalBaseFunds, 7 * s.preorderCapRatio, 10 * BPS_BASE);
     }
 
     /// @notice Compute the currently claimable (vested, unclaimed) preorder memecoin for an account.

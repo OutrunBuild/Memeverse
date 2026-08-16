@@ -21,6 +21,7 @@ contract LauncherReadinessMockBase {
     address internal memeverseRegistrar;
     address internal memeverseProxyDeployer;
     address internal yieldDispatcher;
+    address internal lzEndpointRegistry;
     address public polend;
     address internal polSplitter;
     address internal memeverseSwapRouter;
@@ -36,6 +37,10 @@ contract LauncherReadinessMockBase {
 
     function setOwner(address owner_) external {
         owner = owner_;
+    }
+
+    function setLzEndpointRegistry(address lzEndpointRegistry_) external {
+        lzEndpointRegistry = lzEndpointRegistry_;
     }
 
     function setMemeverseSwapRouter(address router_) external {
@@ -65,7 +70,7 @@ contract LauncherReadinessMockBase {
     function getLauncherContracts() external view returns (IMemeverseLauncher.LauncherContracts memory) {
         return IMemeverseLauncher.LauncherContracts({
             localLzEndpoint: address(0),
-            lzEndpointRegistry: address(0),
+            lzEndpointRegistry: lzEndpointRegistry,
             yieldDispatcher: yieldDispatcher,
             memeverseRegistrar: memeverseRegistrar,
             memeverseProxyDeployer: memeverseProxyDeployer,

@@ -720,7 +720,7 @@ contract VaultGovernorIntegrationTest is Test {
         asset = new MockERC20("Memecoin", "MEME", 18);
         MemecoinYieldVault vaultImpl = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(vaultImpl)));
-        vault.initialize("Staked MEME", "sMEME", ATTACKER, address(asset), 1, VIRTUAL_ASSETS);
+        vault.initialize("Staked MEME", "sMEME", address(asset), 1, VIRTUAL_ASSETS);
 
         asset.mint(ATTACKER, FULL_MEMECOIN_SUPPLY);
         vm.prank(ATTACKER);

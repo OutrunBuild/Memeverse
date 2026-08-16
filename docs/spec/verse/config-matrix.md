@@ -75,7 +75,7 @@ canonical Launcher address 是 `IOutrunDeployer` CREATE3 部署的 ERC1967 proxy
 
 | 模块 | 参数 | 当前值 | 说明 | 来源 |
 | --- | --- | --- | --- | --- |
-| `MemeverseLauncherUpgradeable` | `RATIO` | `10000` | 比率基数 | `[代码已证]` |
+| `MemeverseLauncherUpgradeable` | `BPS_BASE` | `10000` | 比率基数 | `[代码已证]` |
 | `MemeverseRegistrationCenter` | `DAY` | `180` 秒（测试值） | 注册时间单位（中心链实际生效）；部署 readiness 断言 `DAY() == expectedRegistrationDay`（`MemeverseScript.s.sol::_requireRegistrationCenterReady` 读回校验，由 `::_openSupportedUAssetsAfterReadiness` / `::onboardUAsset` 调用，脚本存储变量经 `_loadReadinessEnv` 从 `EXPECTED_DAY` env 装载：testnet 在 `.env` 设 `EXPECTED_DAY=180` 保留快窗，未设默认生产值 `24*3600`；失配 `REGISTRATION_DAY_NOT_READY` 阻断 registration 打开） | `[代码已证]` |
 | `MemeverseRegistrationCenter` | `FIXED_LOCKUP_DURATION` | `365 days` | 注册时固定锁定期；`unlockTime = endTime + 365 days`，不是注册参数或 owner 配置项 | `[代码已证]` |
 | `MemeverseRegistrarAtLocal` | `registrationCenter.DAY()` | 中心链配置值 | 本地报价读取 registration center 的时间单位 | `[代码已证]` |

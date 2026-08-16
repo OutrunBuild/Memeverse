@@ -11,6 +11,8 @@ import {OutrunDeployer} from "../../script/deployment/OutrunDeployer.sol";
 import {YieldDispatcherUpgradeable} from "../../src/verse/YieldDispatcherUpgradeable.sol";
 import {OmnichainMemecoinStaker} from "../../src/interoperation/OmnichainMemecoinStaker.sol";
 import {MemeverseOmnichainInteroperation} from "../../src/interoperation/MemeverseOmnichainInteroperation.sol";
+import {LzEndpointRegistry} from "../../src/common/omnichain/LzEndpointRegistry.sol";
+import {ILzEndpointRegistry} from "../../src/common/omnichain/interfaces/ILzEndpointRegistry.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {LauncherReadinessMockBase} from "../mocks/verse/LauncherReadinessMockBase.sol";
 
@@ -185,12 +187,40 @@ contract MockScriptRegistrationCenter {
         return day;
     }
 
+    // Defaulted to zero and must be pointed at the test's registry pin via setLzEndpointRegistry:
+    // setUp deploys a real LzEndpointRegistry at a runtime address, so no fixed default can match
+    // the pin (the script's identity readback REGISTRATION_CENTER_REGISTRY_NOT_READY fails loudly
+    // on a forgotten setter).
+    address internal lzEndpointRegistry;
+
+    function LZ_ENDPOINT_REGISTRY() external view returns (address) {
+        return lzEndpointRegistry;
+    }
+
     function setDay(uint256 day_) external {
         day = day_;
     }
 
+    function setLzEndpointRegistry(address lzEndpointRegistry_) external {
+        lzEndpointRegistry = lzEndpointRegistry_;
+    }
+
     function setSupportedUAsset(address uAsset, bool isSupported) external {
         supportedUAssets[uAsset] = isSupported;
+    }
+}
+
+// Minimal stand-in for the readiness face of MemeverseOmnichainInteroperation: readiness reads back
+// its constructor-baked LZ_ENDPOINT_REGISTRY immutable and compares it with the script pin.
+contract MockScriptInteroperation {
+    address public LZ_ENDPOINT_REGISTRY;
+
+    constructor(address lzEndpointRegistry_) {
+        LZ_ENDPOINT_REGISTRY = lzEndpointRegistry_;
+    }
+
+    function setLzEndpointRegistry(address lzEndpointRegistry_) external {
+        LZ_ENDPOINT_REGISTRY = lzEndpointRegistry_;
     }
 }
 
@@ -255,16 +285,30 @@ contract MemeverseScriptHarness is MemeverseScript {
         endpoints[chainId] = endpoint;
     }
 
+    /// @dev Content-probe inputs: production fills omnichainIds/endpointIds via _chainsInit (env);
+    ///      this harness has no env, so pin them explicitly to mirror the deployed registry pairs.
+    function setOmnichainIdsForTest(uint32[] memory chainIds) external {
+        omnichainIds = chainIds;
+    }
+
+    function setEndpointIdForTest(uint32 chainId, uint32 endpointId) external {
+        endpointIds[chainId] = endpointId;
+    }
+
     function setOmnichainMemecoinStakerForTest(address staker) external {
         OMNICHAIN_MEMECOIN_STAKER = staker;
+    }
+
+    function setMemeverseOmnichainInteroperationForTest(address interoperation) external {
+        MEMEVERSE_OMNICHAIN_INTEROPERATION = interoperation;
     }
 
     function setMemeverseLauncherForTest(address launcher_) external {
         MEMEVERSE_LAUNCHER = launcher_;
     }
 
-    function setMemeverseCommonInfoForTest(address commonInfo_) external {
-        MEMEVERSE_COMMON_INFO = commonInfo_;
+    function setLzEndpointRegistryForTest(address lzEndpointRegistry_) external {
+        LZ_ENDPOINT_REGISTRY = lzEndpointRegistry_;
     }
 
     function setProtocolTreasuryForTest(address treasury) external {
@@ -299,6 +343,10 @@ contract MemeverseScriptHarness is MemeverseScript {
         _deployMemeverseRegistrar(nonce);
     }
 
+    function deployLzEndpointRegistryForTest(uint256 nonce) external {
+        _deployLzEndpointRegistry(nonce);
+    }
+
     function optionalEnvAddressForTest(string memory name) external view returns (address) {
         return _optionalEnvAddress(name);
     }
@@ -313,6 +361,19 @@ contract MemeverseScriptTest is Test {
     address internal constant UUSD = address(0x1002);
     address internal constant LOCAL_ENDPOINT = address(0x1337);
     address internal constant STAKER = address(0x6002);
+    // Registry pin: assigned in setUp to a REAL LzEndpointRegistry (owner = this test contract) so
+    // the content probes exercise the production contract instead of an etch placeholder.
+    address internal LZ_ENDPOINT_REGISTRY;
+    // eid() the mocked local endpoint reports; must equal the registry's local-chain pair.
+    uint32 internal constant LOCAL_ENDPOINT_EID = 40_001;
+    // Probe chain/eid pairs, named after the _chainsInit env vars they mirror (BSC_TESTNET_* /
+    // BASE_SEPOLIA_*). Every registry pair, harness endpointId and wrong-value derivation below
+    // references these, so a chain-list edit cannot desynchronize setUp from the drift/boundary
+    // tests (a stale hardcoded chain would make the boundary test pass vacuously on 0 == 0).
+    uint32 internal constant BSC_TESTNET_CHAIN_ID = 97;
+    uint32 internal constant BASE_SEPOLIA_CHAIN_ID = 84532;
+    uint32 internal constant BSC_TESTNET_EID = 40102;
+    uint32 internal constant BASE_SEPOLIA_EID = 40245;
     address internal constant MOCK_POOL_MANAGER = address(0x4631);
     // Facet addresses wired onto readyHook by _mockFacetsOnHook; named so individual tests can override one facet.
     address internal constant READY_SWAP_FACET = address(uint160(0xFAB1));
@@ -321,12 +382,16 @@ contract MemeverseScriptTest is Test {
 
     MemeverseScriptHarness internal script;
     MemeverseUniswapHookLens internal lens;
+    // Typed handle on the deployed registry pin; owner (this contract) re-points pairs in the
+    // content-probe regression tests below.
+    LzEndpointRegistry internal lzEndpointRegistry;
     MockScriptLauncher internal launcher;
     MockScriptRegistrar internal registrar;
     MockScriptProxyDeployer internal proxyDeployer;
     MockScriptYieldDispatcher internal yieldDispatcher;
     MockScriptPOLend internal polend;
     MockScriptPOLSplitter internal splitter;
+    MockScriptInteroperation internal interoperation;
 
     function setUp() external {
         script = new MemeverseScriptHarness();
@@ -371,6 +436,42 @@ contract MemeverseScriptTest is Test {
         script.setOmnichainMemecoinStakerForTest(STAKER);
         yieldDispatcher.setLocalEndpoint(LOCAL_ENDPOINT);
         script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+        // Readiness wiring: _requireDeploymentReady checks code at the registry pin
+        // (REGISTRY_CODE_NOT_READY), reads the launcher's lzEndpointRegistry back against the same
+        // pin (LAUNCHER_REGISTRY_NOT_READY), and probes the registry's chain->eid pairs against the
+        // harness endpointIds plus a local anchor against the endpoint's own eid()
+        // (REGISTRY_PAIR_NOT_READY / REGISTRY_LOCAL_EID_NOT_READY). Deploy a REAL registry with
+        // owner-written pairs so the probes exercise the production contract; the pin is therefore
+        // an setUp-assigned address, not a fixed constant.
+        lzEndpointRegistry = new LzEndpointRegistry(address(this));
+        ILzEndpointRegistry.LzEndpointIdPair[] memory registryPairs = new ILzEndpointRegistry.LzEndpointIdPair[](3);
+        registryPairs[0] =
+            ILzEndpointRegistry.LzEndpointIdPair({chainId: BSC_TESTNET_CHAIN_ID, endpointId: BSC_TESTNET_EID});
+        registryPairs[1] =
+            ILzEndpointRegistry.LzEndpointIdPair({chainId: BASE_SEPOLIA_CHAIN_ID, endpointId: BASE_SEPOLIA_EID});
+        registryPairs[2] =
+            ILzEndpointRegistry.LzEndpointIdPair({chainId: uint32(block.chainid), endpointId: LOCAL_ENDPOINT_EID});
+        lzEndpointRegistry.setLzEndpointIds(registryPairs);
+        LZ_ENDPOINT_REGISTRY = address(lzEndpointRegistry);
+        launcher.setLzEndpointRegistry(LZ_ENDPOINT_REGISTRY);
+        script.setLzEndpointRegistryForTest(LZ_ENDPOINT_REGISTRY);
+        // Content-probe inputs: mirror the registry pairs above through the harness (production
+        // fills these via _chainsInit; this harness has no env).
+        uint32[] memory chainIds = new uint32[](2);
+        chainIds[0] = BSC_TESTNET_CHAIN_ID;
+        chainIds[1] = BASE_SEPOLIA_CHAIN_ID;
+        script.setOmnichainIdsForTest(chainIds);
+        script.setEndpointIdForTest(BSC_TESTNET_CHAIN_ID, BSC_TESTNET_EID);
+        script.setEndpointIdForTest(BASE_SEPOLIA_CHAIN_ID, BASE_SEPOLIA_EID);
+        // Local anchor: the probe reads the endpoint's eid() back on-chain, so satisfy it with the
+        // value the registry maps for the local chain (mockCall, like the composeQueue probe above).
+        vm.mockCall(LOCAL_ENDPOINT, abi.encodeWithSignature("eid()"), abi.encode(LOCAL_ENDPOINT_EID));
+        // Readiness wiring: _requireDeploymentReady checks code at the interoperation address and
+        // reads its constructor-baked LZ_ENDPOINT_REGISTRY immutable back against the same pin
+        // (INTEROPERATION_CODE_NOT_READY / INTEROPERATION_REGISTRY_NOT_READY). The deployed mock is a
+        // real contract, so the address has code without an extra etch.
+        interoperation = new MockScriptInteroperation(LZ_ENDPOINT_REGISTRY);
+        script.setMemeverseOmnichainInteroperationForTest(address(interoperation));
         // _deployYieldDispatcher reads PROTOCOL_TREASURY (UASSET no-code settlement sink). Default it to a non-zero
         // address so the dispatcher deploy tests pass; the zero-treasury test overrides it.
         script.setProtocolTreasuryForTest(address(0xBEEF));
@@ -497,6 +598,7 @@ contract MemeverseScriptTest is Test {
 
     function testOpenSupportedUAssetsAfterReadinessDoesNotOpenWhenReadinessFails() external {
         MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
+        center.setLzEndpointRegistry(LZ_ENDPOINT_REGISTRY);
         (address readyRouter, address readyHook) = _configureReadySwap();
         polend.setSettlementDustState(UETH, 0, 0);
         polend.setSettlementDustState(UUSD, 0, 1);
@@ -519,6 +621,7 @@ contract MemeverseScriptTest is Test {
 
     function testOpenSupportedUAssetsAfterReadinessOpensWhenReadinessPasses() external {
         MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
+        center.setLzEndpointRegistry(LZ_ENDPOINT_REGISTRY);
         (address readyRouter, address readyHook) = _configureReadySwap();
         polend.setSettlementDustState(UETH, 0, 1);
         polend.setSettlementDustState(UUSD, 0, 1);
@@ -552,6 +655,7 @@ contract MemeverseScriptTest is Test {
     function testOpenSupportedUAssetsAfterReadinessOpensWhenDayMatchesTestnetValue() external {
         MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
         center.setDay(180);
+        center.setLzEndpointRegistry(LZ_ENDPOINT_REGISTRY);
         script.setExpectedRegistrationDayForTest(180);
         (address readyRouter, address readyHook) = _configureReadySwap();
         polend.setSettlementDustState(UETH, 0, 1);
@@ -591,6 +695,110 @@ contract MemeverseScriptTest is Test {
 
         vm.expectRevert("YIELD_DISPATCHER_ENDPOINT_NOT_READY");
         script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // Readiness gate: the launcher's lzEndpointRegistry is initialize-only (no setter), so a launcher
+    // bound to a different registry than the script pin can only be fixed by redeploying; readiness
+    // must reject it before the system opens.
+    function testReadinessRevertsWhenLauncherRegistryMismatchesPin() external {
+        launcher.setLzEndpointRegistry(address(0xBAD));
+
+        vm.expectRevert("LAUNCHER_REGISTRY_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // Readiness gate: the registry pin must point at a contract with code like every other launcher
+    // dependency pin — launcher initialize deliberately accepts codeless predicted addresses, so
+    // equality alone cannot catch a wrong env value when both sides share the same mistake.
+    function testReadinessRevertsWhenRegistryPinHasNoCode() external {
+        address codelessRegistry = address(0x9999);
+        launcher.setLzEndpointRegistry(codelessRegistry);
+        script.setLzEndpointRegistryForTest(codelessRegistry);
+
+        vm.expectRevert("REGISTRY_CODE_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // Readiness gate: the RegistrationCenter bakes LZ_ENDPOINT_REGISTRY as a constructor immutable
+    // (quoteSend/registration resolve omnichain eids through it), so a center bound to a different
+    // registry than the script pin can only be fixed by redeploying; the center gate must reject it
+    // before the whitelist is written (runs inside _requireRegistrationCenterReady, before
+    // _requireDeploymentReady).
+    function testReadinessRevertsWhenCenterRegistryMismatchesPin() external {
+        MockScriptRegistrationCenter center = new MockScriptRegistrationCenter();
+        center.setLzEndpointRegistry(address(0xBAD));
+
+        vm.expectRevert("REGISTRATION_CENTER_REGISTRY_NOT_READY");
+        script.openSupportedUAssetsAfterReadinessForTest(address(center), address(0), address(0));
+
+        assertFalse(center.supportedUAssets(UETH));
+        assertFalse(center.supportedUAssets(UUSD));
+    }
+
+    // Readiness gate: MemeverseOmnichainInteroperation bakes LZ_ENDPOINT_REGISTRY as its own
+    // constructor immutable (gov-chain sends resolve dst eids through it); a mismatch with the script
+    // pin is only fixable by redeploying, so readiness must reject it before the system opens.
+    function testReadinessRevertsWhenInteroperationRegistryMismatchesPin() external {
+        interoperation.setLzEndpointRegistry(address(0xBAD));
+
+        vm.expectRevert("INTEROPERATION_REGISTRY_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // Readiness gate (content probe): the registry's chain->eid pairs must match the harness
+    // endpointIds for every omnichain chain. Models the pre-open owner re-point drift vector: an
+    // owner setLzEndpointIds between deploy and the gate re-points chain 97 to a different eid, so
+    // every consumer resolving dst eids through the registry would misroute; readiness must block
+    // with REGISTRY_PAIR_NOT_READY.
+    function testReadinessRevertsWhenRegistryPairDriftsFromEndpointIds() external {
+        ILzEndpointRegistry.LzEndpointIdPair[] memory repointed = new ILzEndpointRegistry.LzEndpointIdPair[](1);
+        repointed[0] =
+            ILzEndpointRegistry.LzEndpointIdPair({chainId: BSC_TESTNET_CHAIN_ID, endpointId: BSC_TESTNET_EID + 897});
+        lzEndpointRegistry.setLzEndpointIds(repointed);
+
+        vm.expectRevert("REGISTRY_PAIR_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // Readiness gate (local anchor): the registry's local-chain entry must equal the endpoint's own
+    // eid() read back on-chain — the env-independent slice of the content probe. A registry that
+    // disagrees with the endpoint deployed next to it must block with REGISTRY_LOCAL_EID_NOT_READY
+    // even when the env-sourced pairs all agree.
+    function testReadinessRevertsWhenRegistryLocalEidMismatchesEndpoint() external {
+        ILzEndpointRegistry.LzEndpointIdPair[] memory repointed = new ILzEndpointRegistry.LzEndpointIdPair[](1);
+        repointed[0] =
+            ILzEndpointRegistry.LzEndpointIdPair({chainId: uint32(block.chainid), endpointId: LOCAL_ENDPOINT_EID + 1});
+        lzEndpointRegistry.setLzEndpointIds(repointed);
+
+        vm.expectRevert("REGISTRY_LOCAL_EID_NOT_READY");
+        script.requireDeploymentReady(address(0), address(0));
+    }
+
+    // Epistemic boundary, pinned honestly: when the registry pairs and endpointIds drift TOGETHER
+    // (same wrong value on every chain, and the local anchor equally wrong on both sides), the
+    // content probe passes — inside one process there is no independent ground truth to disagree
+    // with. This is the same-source blind spot the script documents at the probe: its value is
+    // cross-session/standalone drift and stale registry instances, not same-source corruption
+    // (here registry, endpointIds and the mocked eid() all come from this one setUp, exactly like
+    // a single run() reads one env).
+    function testReadinessPassesWhenRegistryAndEndpointIdsShareSameWrongValues() external {
+        uint32 wrongBscEid = BSC_TESTNET_EID + 1000;
+        uint32 wrongBaseEid = BASE_SEPOLIA_EID + 1000;
+        uint32 wrongLocalEid = LOCAL_ENDPOINT_EID + 1000;
+        ILzEndpointRegistry.LzEndpointIdPair[] memory drifted = new ILzEndpointRegistry.LzEndpointIdPair[](3);
+        drifted[0] = ILzEndpointRegistry.LzEndpointIdPair({chainId: BSC_TESTNET_CHAIN_ID, endpointId: wrongBscEid});
+        drifted[1] = ILzEndpointRegistry.LzEndpointIdPair({chainId: BASE_SEPOLIA_CHAIN_ID, endpointId: wrongBaseEid});
+        drifted[2] = ILzEndpointRegistry.LzEndpointIdPair({chainId: uint32(block.chainid), endpointId: wrongLocalEid});
+        lzEndpointRegistry.setLzEndpointIds(drifted);
+        script.setEndpointIdForTest(BSC_TESTNET_CHAIN_ID, wrongBscEid);
+        script.setEndpointIdForTest(BASE_SEPOLIA_CHAIN_ID, wrongBaseEid);
+        vm.mockCall(LOCAL_ENDPOINT, abi.encodeWithSignature("eid()"), abi.encode(wrongLocalEid));
+
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+        (address readyRouter, address readyHook) = _configureReadySwap();
+
+        script.requireDeploymentReady(readyRouter, readyHook);
     }
 
     function testOptionalEnvAddressReturnsZeroWhenMissing() external view {
@@ -780,7 +988,6 @@ contract MemeverseScriptTest is Test {
         // as the first constructor arg and is the only input not exposed via a script storage slot, so it
         // is reused directly rather than re-set.
         address expectedOwner = address(script);
-        address commonInfo = address(0x4242);
         // Gas limits are hardcoded in the script (115000 / 135000); mirror them exactly so the
         // byte-equality check would fail if either literal were edited.
         uint128 oftReceiveGasLimit = 115000;
@@ -788,7 +995,7 @@ contract MemeverseScriptTest is Test {
 
         MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
         script.setOutrunDeployerForTest(address(deployer));
-        script.setMemeverseCommonInfoForTest(commonInfo);
+        script.setLzEndpointRegistryForTest(LZ_ENDPOINT_REGISTRY);
         script.setMemeverseLauncherForTest(address(launcher));
         script.setOmnichainMemecoinStakerForTest(STAKER);
 
@@ -799,7 +1006,12 @@ contract MemeverseScriptTest is Test {
             abi.encodePacked(
                 type(MemeverseOmnichainInteroperation).creationCode,
                 abi.encode(
-                    expectedOwner, commonInfo, address(launcher), STAKER, oftReceiveGasLimit, omnichainStakingGasLimit
+                    expectedOwner,
+                    LZ_ENDPOINT_REGISTRY,
+                    address(launcher),
+                    STAKER,
+                    oftReceiveGasLimit,
+                    omnichainStakingGasLimit
                 )
             )
         );
@@ -813,15 +1025,53 @@ contract MemeverseScriptTest is Test {
             deployed := create(0, add(creationCode, 0x20), mload(creationCode))
         }
         assertTrue(deployed != address(0), "creationCode deploy reverted");
-        // The script passes MEMEVERSE_COMMON_INFO as the `_lzEndpointRegistry` constructor arg, so the
-        // LZ_ENDPOINT_REGISTRY() read-back must equal commonInfo. Pinning this faithfully exposes any
-        // future change to which script slot feeds that arg.
-        assertEq(MemeverseOmnichainInteroperation(deployed).LZ_ENDPOINT_REGISTRY(), commonInfo);
+        // The script passes LZ_ENDPOINT_REGISTRY as the `_lzEndpointRegistry` constructor arg, so the
+        // LZ_ENDPOINT_REGISTRY() read-back must equal the pin set above. Pinning this faithfully exposes
+        // any future change to which script slot feeds that arg.
+        assertEq(MemeverseOmnichainInteroperation(deployed).LZ_ENDPOINT_REGISTRY(), LZ_ENDPOINT_REGISTRY);
         assertEq(MemeverseOmnichainInteroperation(deployed).MEMEVERSE_LAUNCHER(), address(launcher));
         assertEq(MemeverseOmnichainInteroperation(deployed).OMNICHAIN_MEMECOIN_STAKER(), STAKER);
         assertEq(MemeverseOmnichainInteroperation(deployed).oftReceiveGasLimit(), oftReceiveGasLimit);
         assertEq(MemeverseOmnichainInteroperation(deployed).omnichainStakingGasLimit(), omnichainStakingGasLimit);
         assertEq(MemeverseOmnichainInteroperation(deployed).owner(), expectedOwner);
+    }
+
+    // REGISTRY_DEPLOY_MISMATCH regression: LZ_ENDPOINT_REGISTRY is a required env pin consumed by the
+    // center/registrar/interoperation constructor args and the readiness probes. When the pin still
+    // points at a stale (old-nonce) instance while CREATE3 deploys a fresh registry, the new deploy
+    // would be orphaned and the whole system would wire itself to the env address — the deploy must
+    // fail fast instead. The stale pin is modeled by setUp's `new`-deployed registry instance.
+    function testDeployLzEndpointRegistryRevertsWhenPinMismatchesCreate3Address() external {
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        script.setOutrunDeployerForTest(address(realDeployer));
+
+        // Non-vacuous guard: the fresh CREATE3 prediction this run deploys at must differ from the pin.
+        bytes32 salt = keccak256(abi.encodePacked("LzEndpointRegistry", uint256(7)));
+        address predicted = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        assertFalse(predicted == LZ_ENDPOINT_REGISTRY, "stale pin must not equal fresh CREATE3 address");
+
+        vm.expectRevert("REGISTRY_DEPLOY_MISMATCH");
+        script.deployLzEndpointRegistryForTest(7);
+    }
+
+    // Positive mirror: when the env pin is pre-filled with the current-nonce CREATE3 prediction (the
+    // documented operator step, _getDeployedLzEndpointRegistry), the deploy passes the mismatch assert,
+    // and setLzEndpointIds writes this run's endpointIds pairs onto the deployed registry.
+    function testDeployLzEndpointRegistryDeploysWhenPinMatchesCreate3Address() external {
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        script.setOutrunDeployerForTest(address(realDeployer));
+
+        bytes32 salt = keccak256(abi.encodePacked("LzEndpointRegistry", uint256(7)));
+        address predicted = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        script.setLzEndpointRegistryForTest(predicted);
+
+        script.deployLzEndpointRegistryForTest(7);
+
+        // The registry is a real contract at the predicted address with the harness-written pairs; the
+        // onlyOwner setLzEndpointIds also transitively proves the constructor baked owner = address(script).
+        assertGt(predicted.code.length, 0, "registry not deployed at predicted address");
+        assertEq(ILzEndpointRegistry(predicted).lzEndpointIdOfChain(BSC_TESTNET_CHAIN_ID), BSC_TESTNET_EID);
+        assertEq(ILzEndpointRegistry(predicted).lzEndpointIdOfChain(BASE_SEPOLIA_CHAIN_ID), BASE_SEPOLIA_EID);
     }
 
     // Regression: a zero local endpoint must fail loudly at deploy time instead of baking

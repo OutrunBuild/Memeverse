@@ -704,7 +704,7 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
         vm.warp(block.timestamp + incentivizer.CYCLE_DURATION());
         incentivizer.finalizeCurrentCycle();
 
-        uint256 rewardPool = income * 2500 / incentivizer.RATIO();
+        uint256 rewardPool = income * 2500 / incentivizer.BPS_BASE();
         assertEq(
             incentivizer.getClaimableReward(address(this), address(tokenA)),
             rewardPool * userVotes / (userVotes + otherVotes)

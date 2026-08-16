@@ -22,7 +22,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
 {
     using OutrunSafeERC20 for IERC20;
 
-    uint256 public constant RATIO = 10000;
+    uint256 public constant BPS_BASE = 10000;
     uint256 public constant CYCLE_DURATION = 90 days;
     uint256 public constant MAX_TOKENS_LIMIT = 50;
 
@@ -45,7 +45,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         onlyInitializing
     {
         governanceCycleIncentivizerStorage._currentCycleId = 1;
-        governanceCycleIncentivizerStorage._rewardRatio = 2500; // 25% default treasury->reward split (RATIO = 10000)
+        governanceCycleIncentivizerStorage._rewardRatio = 2500; // 25% default treasury->reward split (BPS_BASE = 10000)
         uint128 startTime = uint128(block.timestamp);
         uint128 endTime = uint128(block.timestamp + CYCLE_DURATION);
         governanceCycleIncentivizerStorage._cycles[1].startTime = startTime;
@@ -390,7 +390,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
                 governanceCycleIncentivizerStorage._rewardTokens[token] && treasuryBalance > 0
                     && currentCycle.totalVotes > 0
             ) {
-                rewardAmount = treasuryBalance * governanceCycleIncentivizerStorage._rewardRatio / RATIO;
+                rewardAmount = treasuryBalance * governanceCycleIncentivizerStorage._rewardRatio / BPS_BASE;
                 currentCycle.rewardBalances[token] = rewardAmount;
                 treasuryBalance -= rewardAmount;
 
@@ -561,11 +561,11 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
 
     /**
      * @notice Updates the reward ratio used when finalizing a cycle.
-     * @dev The ratio is expressed in basis points and capped by `RATIO`.
+     * @dev The ratio is expressed in basis points and capped by `BPS_BASE`.
      * @param newRatio - The new reward ratio (basis points)
      */
     function updateRewardRatio(uint128 newRatio) external override onlyGovernance {
-        require(newRatio <= RATIO, InvalidRewardRatio());
+        require(newRatio <= BPS_BASE, InvalidRewardRatio());
 
         uint128 oldRatio = governanceCycleIncentivizerStorage._rewardRatio;
         governanceCycleIncentivizerStorage._rewardRatio = newRatio;

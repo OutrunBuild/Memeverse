@@ -473,7 +473,7 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
 
     /// @notice Updates the launcher-wide preorder cap and vesting configuration.
     /// @dev Implementations are expected to guard this with their admin or owner flow.
-    /// @param preorderCapRatio The preorder capacity ratio in `RATIO` precision.
+    /// @param preorderCapRatio The preorder capacity ratio in `BPS_BASE` precision.
     /// @param preorderVestingDuration The linear vesting duration for preorder memecoin.
     function setPreorderConfig(uint256 preorderCapRatio, uint256 preorderVestingDuration) external;
 

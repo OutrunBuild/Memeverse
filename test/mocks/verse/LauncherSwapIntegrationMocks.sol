@@ -13,7 +13,6 @@ import {
 contract MockLauncherSwapIntegrationYieldVault {
     string public name;
     string public symbol;
-    address public yieldDispatcher;
     address public asset;
     uint256 public verseId;
     uint256 public virtualAssets;
@@ -21,14 +20,12 @@ contract MockLauncherSwapIntegrationYieldVault {
     function initialize(
         string calldata name_,
         string calldata symbol_,
-        address yieldDispatcher_,
         address asset_,
         uint256 verseId_,
         uint256 virtualAssets_
     ) external {
         name = name_;
         symbol = symbol_;
-        yieldDispatcher = yieldDispatcher_;
         asset = asset_;
         verseId = verseId_;
         virtualAssets = virtualAssets_;

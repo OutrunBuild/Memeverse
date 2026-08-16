@@ -229,7 +229,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
     /// @notice Writes a full Memeverse struct into proxy storage via the helper.
     /// @dev Bridges the struct-based test pattern to the individual-field helper.
     /// @notice Returns the launcher cast to the concrete MemeverseLauncherUpgradeable type.
-    /// @dev Used for view functions not on IMemeverseLauncher (e.g. auxiliaryLiquidities, RATIO).
+    /// @dev Used for view functions not on IMemeverseLauncher (e.g. auxiliaryLiquidities, BPS_BASE).
     function _concrete() internal view returns (MemeverseLauncherUpgradeable) {
         return MemeverseLauncherUpgradeable(launcherProxy);
     }
@@ -1174,7 +1174,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         setTotalNormalClaimableYTForTest(launcherProxy, verseId, 2 ether);
         yt.mint(address(launcher), 2 ether);
 
-        uint256 expectedCapacity = uint256(type(uint128).max) * 7 * 2_500 / (10 * _concrete().RATIO());
+        uint256 expectedCapacity = uint256(type(uint128).max) * 7 * 2_500 / (10 * _concrete().BPS_BASE());
 
         assertEq(launcher.previewPreorderCapacity(verseId), expectedCapacity, "preview capacity");
 

@@ -24,9 +24,7 @@ contract POLendStorageHelperSanityTest is Test, POLendStorageHelper {
 
         seedLeveragedPositionForTest(proxy, 1, address(0xBEEF), 42 ether);
         assertEq(
-            POLendUpgradeable(proxy).leveragedInterestPaid(1, address(0xBEEF)),
-            42 ether,
-            "leveragedInterestPaid round-trip"
+            POLendUpgradeable(proxy).totalInterestPaid(1, address(0xBEEF)), 42 ether, "leveragedInterestPaid round-trip"
         );
 
         seedResidualForTest(proxy, 1, 200 ether, 100 ether, 40 ether);

@@ -364,7 +364,7 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
             totalFunds,
             (totalNormalFunds_ + leveragedDebt) * 7
                 * MemeverseLauncherUpgradeable(launcherProxy).getLauncherParameters().preorderCapRatio
-                / (10 * MemeverseLauncherUpgradeable(launcherProxy).RATIO()),
+                / (10 * MemeverseLauncherUpgradeable(launcherProxy).BPS_BASE()),
             "preorder cap"
         );
     }
@@ -612,7 +612,7 @@ contract MemeverseLauncherRefundEndToEndInvariantTest is
         uint256 preorderBase = (totalNormalFunds_ + leveragedDebt) * 7 / 10;
         uint256 maxCapacity = preorderBase
             * MemeverseLauncherUpgradeable(launcherProxy).getLauncherParameters().preorderCapRatio
-            / MemeverseLauncherUpgradeable(launcherProxy).RATIO();
+            / MemeverseLauncherUpgradeable(launcherProxy).BPS_BASE();
 
         assertLe(totalFunds, maxCapacity, "refund preorder cap");
         assertEq(totalFunds + launcher.previewPreorderCapacity(VERSE_ID), maxCapacity, "refund preorder capacity");

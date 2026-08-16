@@ -224,7 +224,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
 
     /// @notice Updates the quorum numerator used for future governor deployments.
     /// @dev Does not retroactively modify already deployed governors.
-    /// @param _quorumNumerator New quorum numerator basis points.
+    /// @param _quorumNumerator New quorum numerator as a percent of token supply (denominator 100).
     function setQuorumNumerator(uint256 _quorumNumerator) external override onlyOwner {
         require(_quorumNumerator != 0, ZeroInput());
 

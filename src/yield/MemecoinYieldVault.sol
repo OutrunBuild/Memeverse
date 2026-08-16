@@ -21,15 +21,6 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     uint256 public constant MAX_REDEEM_REQUESTS = 5;
     uint256 public constant REDEEM_DELAY = 1 days; // Preventing flash attacks
 
-    /// @dev Bound once in `initialize`. `reAccumulateYields` takes the dispatcher as a parameter
-    ///      instead of reading this slot (the launcher can rotate its canonical dispatcher after this vault is
-    ///      created). Retained only to preserve the clone + initializer storage layout.
-    ///      DO NOT use this slot for compose recovery: it is not read by any runtime path. After a launcher
-    ///      `setYieldDispatcher` rotation it holds a stale pointer that can diverge from the dispatcher a stuck compose
-    ///      was actually delivered to; passing it to `reAccumulateYields` reverts `NotDelivered` (wrong dispatcher's
-    ///      empty composeQueue slot). Recovery callers MUST source `dispatcher` from the endpoint's `ComposeSent` event
-    ///      `to` field, never here.
-    address public yieldDispatcher;
     address public asset;
     /// @dev Total managed assets. Implicit upper bound type(uint208).max: the governance asset checkpoint stores
     ///      uint208 (OutrunVotesInit), so the TotalAssetsOverflowed require in _accumulateYield/_deposit keeps it
@@ -51,8 +42,6 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     ///      the permanent virtual buffer used to dampen exchange-rate inflation.
     /// @param _name Share token name.
     /// @param _symbol Share token symbol.
-    /// @param _yieldDispatcher Address treated as the canonical remote-yield source. Reverts `ZeroAddress`
-    ///        if set to the zero address.
     /// @param _asset Underlying memecoin address. Reverts `ZeroAddress` if set to the zero address.
     /// @param _verseId Verse id associated with this vault.
     /// @param _virtualAssets Permanent virtual buffer. Must be non-zero so the `+virtualAssets` conversion guards can
@@ -60,18 +49,16 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     function initialize(
         string calldata _name,
         string calldata _symbol,
-        address _yieldDispatcher,
         address _asset,
         uint256 _verseId,
         uint256 _virtualAssets
     ) external override initializer {
         require(_virtualAssets > 0, ZeroVirtualAssets());
-        require(_yieldDispatcher != address(0) && _asset != address(0), ZeroAddress());
+        require(_asset != address(0), ZeroAddress());
 
         __OutrunERC20_init(_name, _symbol);
         __OutrunERC20Permit_init(_name);
 
-        yieldDispatcher = _yieldDispatcher;
         asset = _asset;
         verseId = _verseId;
         virtualAssets = _virtualAssets;
@@ -193,12 +180,12 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     /// @notice Retries yield accumulation after a LayerZero compose call to `accumulateYields` failed.
     /// @dev Delegates to the `dispatcher`'s `settlePendingCompose`, which proves the compose was delivered-but-unrun
     ///      via the endpoint's composeQueue and then settles by approving this vault and calling `accumulateYields`
-    ///      (pull + totalAssets accounting) in one step. The `dispatcher` is taken as a parameter rather than read from
-    ///      this vault's `initialize`-time `yieldDispatcher` storage: the launcher's `setYieldDispatcher` can rotate the
-    ///      canonical dispatcher after this vault was created, so a stuck compose may sit in a different dispatcher's
-    ///      composeQueue than the one captured at initialization. The caller must supply the dispatcher the compose was
-    ///      actually delivered to (the `to` field of the endpoint's `ComposeSent` event, sourced alongside `message`),
-    ///      plus the original compose `message`, reconstructable from the same `ComposeSent` log. `settlePendingCompose`
+    ///      (pull + totalAssets accounting) in one step. The vault stores no dispatcher at all: the launcher's
+    ///      `setYieldDispatcher` can rotate the canonical dispatcher after this vault was created, so a stuck compose may
+    ///      sit in a different dispatcher's composeQueue than the current canonical one. The caller must supply the
+    ///      dispatcher the compose was actually delivered to (the `to` field of the endpoint's `ComposeSent` event,
+    ///      sourced alongside `message`), plus the original compose `message`, reconstructable from the same
+    ///      `ComposeSent` log. `settlePendingCompose`
     ///      re-derives delivery against `composeQueue(token, dispatcher, guid, 0)`. This entry also verifies that the
     ///      message's inner receiver is this vault (revert `NotComposeBeneficiary`) and that the settlement released
     ///      a non-zero amount (revert `ComposeSettlementFailed`). A no-code `dispatcher` (EOA/empty contract) is not

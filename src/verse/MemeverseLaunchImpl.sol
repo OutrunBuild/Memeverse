@@ -403,7 +403,6 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
                 .initialize(
                     string(abi.encodePacked("Staked ", name)),
                     string(abi.encodePacked("s", symbol)),
-                    memeverseLauncherStorage.yieldDispatcher,
                     memecoin,
                     verseId,
                     _virtualAssets

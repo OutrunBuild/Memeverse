@@ -29,7 +29,7 @@
 - preorder 是独立账本，不参与四池部署本金。
 - preorder 入金、退款与结算都以该 verse 的 `uAsset` 记账和支付。
 - preorder 容量以当前 `totalNormalFunds + totalLeveragedDebt` 为基数计算：
-`preorderCap = (totalNormalFunds + totalLeveragedDebt) * 70% * preorderCapRatio / RATIO`
+`preorderCap = (totalNormalFunds + totalLeveragedDebt) * 70% * preorderCapRatio / BPS_BASE`
 - `totalLeveragedDebt` 由当前 market 利率和 `totalLeveragedInterest` 推导；无杠杆参与时视为 0。
 - `Refund` 状态下，preorder 用户按 `userPreorderFunds` 一次性退回该 verse 的 `uAsset`。
 - 原子合并入口 `genesisAndPreorder(verseId, genesisAmount, preorderAmount, user)`（`MemeverseLaunchImpl.sol::genesisAndPreorder`）在一笔交易内先完成 genesis 入账（`totalNormalFunds` 增加）、再完成 preorder 入账（`totalPreorderFunds` 增加）。preorder 容量在 preorder 步实时基于已更新的 `totalNormalFunds` + `totalLeveragedDebt` 计算（公式同上），故 genesis 步入金即时抬升本笔可用的 preorder 容量；`genesisAmount` 与 `preorderAmount` 均须 > 0，`user` 为两步共同受益人，`msg.sender` 为 payer。容量、退款与结算口径均与两次独立调用完全一致，不引入新记账口径。
@@ -40,7 +40,7 @@
 - ABI 前置条件：未注册或无效 `verseId` revert `InvalidVerseId`。
 - 计算口径：
   - `base = totalNormalFunds + totalLeveragedDebt`
-  - `cap = base * 70% * preorderCapRatio / RATIO`
+  - `cap = base * 70% * preorderCapRatio / BPS_BASE`
   - `remaining = max(cap - preorderState.totalFunds, 0)`
 - `totalLeveragedDebt` 来自 `POLendUpgradeable`。
 - `previewGenesisMakerFees(uint256 verseId) returns (uint256 uAssetFee,uint256 memecoinFee)` 预览可分发 genesis maker fee。该函数与 `quoteDistributionLzFee`（见 §5.4）由独立 view 合约 `MemeverseFeePreviewReader` 暴露，调用地址取 `getLauncherContracts().feePreviewReader`（见 [operations.md §3.3](../../operations.md)）；`previewPreorderCapacity` 由 Launcher 暴露。
@@ -144,7 +144,7 @@
 ### 5.3 执行者奖励与治理收入
 
 - 对主池 `memecoin/uAsset` 的 `uAsset` fee，`executorReward` 必须使用 full-precision `mulDiv` 或等价 overflow-safe 实现计算：`executorReward = fullPrecisionMulDiv(mainPoolUAssetFee, executorRewardRate, 10000)`。
-- `executorRewardRate` 单位为 protocol ratio units（分母 `RATIO = 10000`，即 bps）。合法区间 `[0, 10000)`：`src/verse/MemeverseLauncherUpgradeable.sol::initialize` 与 `src/verse/MemeverseLauncherUpgradeable.sol::setExecutorRewardRate` 均校验 `executorRewardRate < RATIO`，越界 revert `FeeRateOverFlow`（owner 经 `setExecutorRewardRate` 配置）。部署脚本默认值 `25`（0.25%）。
+- `executorRewardRate` 单位为 protocol ratio units（分母 `BPS_BASE = 10000`，即 bps）。合法区间 `[0, 10000)`：`src/verse/MemeverseLauncherUpgradeable.sol::initialize` 与 `src/verse/MemeverseLauncherUpgradeable.sol::setExecutorRewardRate` 均校验 `executorRewardRate < BPS_BASE`，越界 revert `FeeRateOverFlow`（owner 经 `setExecutorRewardRate` 配置）。部署脚本默认值 `25`（0.25%）。
 - `mainPoolGovFee = mainPoolUAssetFee - executorReward`，减法必须保持 checked arithmetic 语义。
 - 执行者奖励直接发给 `rewardReceiver`。
 - `quoteDistributionLzFee` 与 `redeemAndDistributeFees` 必须共享同一套执行者奖励分账算术语义；quote 口径不得因中间乘法溢出而偏离 redeem 实际执行结果。

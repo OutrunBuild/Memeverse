@@ -57,7 +57,8 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         mapping(uint256 => mapping(address => uint256)) creditInterestPaid;
         address creditFactory;
         mapping(uint256 => LendMarket) lendMarkets;
-        // Real-uAsset interest only (per user); credit is in creditInterestPaid, and the same-named getter sums both.
+        // Real-uAsset interest only (per user); credit is in creditInterestPaid, and the `totalInterestPaid`
+        // getter sums both.
         mapping(uint256 => mapping(address => uint256)) leveragedInterestPaid;
         mapping(uint256 => ResidualState) residualStates;
         mapping(address => uint256) globalDebtByUAsset;
@@ -677,7 +678,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
     /// @param verseId Verse identifier.
     /// @param user Participant address.
     /// @return Combined real-uAsset and credit interest paid by the user.
-    function leveragedInterestPaid(uint256 verseId, address user) external view returns (uint256) {
+    function totalInterestPaid(uint256 verseId, address user) external view returns (uint256) {
         // View-layer aggregate (real + credit): storage is split,
         // but the public view exposes the combined interest the user paid, matching
         // `getUserLeveragedDebt`'s aggregate accounting. The real-only ledger is internal.

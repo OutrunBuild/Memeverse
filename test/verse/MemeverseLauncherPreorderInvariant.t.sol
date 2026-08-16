@@ -364,7 +364,7 @@ contract MemeverseLauncherPreorderSuccessInvariantTest is StdInvariant, Memevers
         (uint256 totalFunds,,) = getPreorderStateForTest(launcherProxy, VERSE_ID);
         uint256 preorderBase = (totalNormalFunds_ + leveragedDebt) * 7 / 10;
         uint256 maxCapacity =
-            preorderBase * launcherImpl.getLauncherParameters().preorderCapRatio / launcherImpl.RATIO();
+            preorderBase * launcherImpl.getLauncherParameters().preorderCapRatio / launcherImpl.BPS_BASE();
 
         assertLe(totalFunds, maxCapacity, "preorder cap");
         assertEq(totalFunds + launcher.previewPreorderCapacity(VERSE_ID), maxCapacity, "preorder capacity accounting");
@@ -530,7 +530,7 @@ contract MemeverseLauncherPreorderRefundInvariantTest is StdInvariant, Memeverse
         (uint256 totalFunds,,) = getPreorderStateForTest(launcherProxy, VERSE_ID);
         uint256 preorderBase = (totalNormalFunds_ + leveragedDebt) * 7 / 10;
         uint256 maxCapacity =
-            preorderBase * launcherImpl.getLauncherParameters().preorderCapRatio / launcherImpl.RATIO();
+            preorderBase * launcherImpl.getLauncherParameters().preorderCapRatio / launcherImpl.BPS_BASE();
 
         assertLe(totalFunds, maxCapacity, "refund preorder cap");
         assertEq(totalFunds + launcher.previewPreorderCapacity(VERSE_ID), maxCapacity, "refund preorder capacity");

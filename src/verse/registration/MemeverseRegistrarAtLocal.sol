@@ -12,8 +12,8 @@ import {MemeverseRegistrationLib} from "../libraries/MemeverseRegistrationLib.so
 contract MemeverseRegistrarAtLocal is IMemeverseRegistrarAtLocal, MemeverseRegistrarAbstract {
     address public registrationCenter;
 
-    constructor(address _owner, address _registrationCenter, address _memeverseLauncher, address _memeverseCommonInfo)
-        MemeverseRegistrarAbstract(_owner, _memeverseLauncher, _memeverseCommonInfo)
+    constructor(address _owner, address _registrationCenter, address _memeverseLauncher, address _lzEndpointRegistry)
+        MemeverseRegistrarAbstract(_owner, _memeverseLauncher, _lzEndpointRegistry)
     {
         require(_registrationCenter != address(0), ZeroAddress());
         registrationCenter = _registrationCenter;

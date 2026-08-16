@@ -127,7 +127,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
         MemecoinYieldVault vaultImpl = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(vaultImpl)));
         // V = 1e18 virtual buffer (V > 0 required); shares mint 1:1 at the genesis rate.
-        vault.initialize("Verse 1 Vault", "vMEME", RECEIVER, address(memecoin), 1, 1e18);
+        vault.initialize("Verse 1 Vault", "vMEME", address(memecoin), 1, 1e18);
 
         // ---- Dispatcher ----
         // Re-etch the shared endpoint for the dispatcher's localEndpoint storage slot; the staker's slot state is

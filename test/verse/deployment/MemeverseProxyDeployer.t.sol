@@ -302,7 +302,7 @@ contract TestableMemeverseScript is MemeverseScript {
         MEMEVERSE_REGISTRAR = memeverseRegistrar_;
         MEMEVERSE_PROXY_DEPLOYER = memeverseProxyDeployer_;
         MEMEVERSE_YIELD_DISPATCHER = yieldDispatcher_;
-        MEMEVERSE_COMMON_INFO = lzEndpointRegistry_;
+        LZ_ENDPOINT_REGISTRY = lzEndpointRegistry_;
         POLEND = polend_;
         POLSPLITTER = polSplitter_;
         OUTRUN_DEPLOYER = outrunDeployer_;
@@ -317,6 +317,10 @@ contract TestableMemeverseScript is MemeverseScript {
 
     function setOmnichainMemecoinStakerForTest(address staker) external {
         OMNICHAIN_MEMECOIN_STAKER = staker;
+    }
+
+    function setMemeverseOmnichainInteroperationForTest(address interoperation) external {
+        MEMEVERSE_OMNICHAIN_INTEROPERATION = interoperation;
     }
 
     function configureReadinessHarness(
@@ -350,14 +354,6 @@ contract TestableMemeverseScript is MemeverseScript {
     function _endMemeverseLauncherOwnerExecution() internal override {
         vm.stopPrank();
     }
-
-    function envAddressWithFallbackHarness(string memory primary, string memory fallbackName)
-        external
-        view
-        returns (address)
-    {
-        return _envAddressWithFallback(primary, fallbackName);
-    }
 }
 
 /// @notice Production-faithful harness: inherits `MemeverseScript` WITHOUT overriding
@@ -383,7 +379,7 @@ contract ProductionFaithfulMemeverseScript is MemeverseScript {
         MEMEVERSE_REGISTRAR = memeverseRegistrar_;
         MEMEVERSE_PROXY_DEPLOYER = memeverseProxyDeployer_;
         MEMEVERSE_YIELD_DISPATCHER = yieldDispatcher_;
-        MEMEVERSE_COMMON_INFO = lzEndpointRegistry_;
+        LZ_ENDPOINT_REGISTRY = lzEndpointRegistry_;
         POLEND = polend_;
         POLSPLITTER = polSplitter_;
         OUTRUN_DEPLOYER = outrunDeployer_;
@@ -626,6 +622,10 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
     address internal constant POLSPLITTER = address(0x1007);
     address internal constant UETH = address(0x1008);
     address internal constant UUSD = address(0x1009);
+    address internal constant MEMEVERSE_OMNICHAIN_INTEROPERATION = address(0x100A);
+    // eid() the mocked local endpoint reports; must equal the registry pin's local-chain answer so
+    // the readiness local anchor (REGISTRY_LOCAL_EID_NOT_READY) is satisfied.
+    uint32 internal constant LOCAL_CHAIN_EID = 40_001;
 
     TestableMemeverseScript internal scriptHarness;
     ProductionFaithfulMemeverseScript internal productionHarness;
@@ -1020,27 +1020,6 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         scriptHarness.requireDeploymentReadyHarness(readySwapRouter, readySwapHook);
     }
 
-    function testEnvAddressWithFallbackUsesPrimaryWhenPresent() external {
-        vm.setEnv("TEST_PRIMARY_LZ_ENDPOINT_REGISTRY", "0x0000000000000000000000000000000000001234");
-        vm.setEnv("TEST_FALLBACK_MEMEVERSE_COMMON_INFO", "0x0000000000000000000000000000000000005678");
-
-        address resolved = scriptHarness.envAddressWithFallbackHarness(
-            "TEST_PRIMARY_LZ_ENDPOINT_REGISTRY", "TEST_FALLBACK_MEMEVERSE_COMMON_INFO"
-        );
-
-        assertEq(resolved, address(0x1234));
-    }
-
-    function testEnvAddressWithFallbackUsesFallbackWhenPrimaryMissing() external {
-        vm.setEnv("TEST_ONLY_FALLBACK_MEMEVERSE_COMMON_INFO", "0x0000000000000000000000000000000000009ABC");
-
-        address resolved = scriptHarness.envAddressWithFallbackHarness(
-            "TEST_MISSING_PRIMARY_LZ_ENDPOINT_REGISTRY", "TEST_ONLY_FALLBACK_MEMEVERSE_COMMON_INFO"
-        );
-
-        assertEq(resolved, address(0x9ABC));
-    }
-
     function _configureReadyDependencies(
         address launcherOwner,
         address registrarLauncher,
@@ -1065,6 +1044,11 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         registrar.setLauncher(registrarLauncher == address(0) ? launcherAddress : registrarLauncher);
         proxyDeployer.setLauncher(proxyDeployerLauncher == address(0) ? launcherAddress : proxyDeployerLauncher);
         dispatcher.setLauncher(dispatcherLauncher == address(0) ? launcherAddress : dispatcherLauncher);
+        // Readiness reads back launcher.lzEndpointRegistry and compares it with the script-side pin
+        // (set to LZ_ENDPOINT_REGISTRY by setUp's configureLauncherDeployment); keep them consistent
+        // and give the pin code (REGISTRY_CODE_NOT_READY) like the creditFactory/staker etches below.
+        launcher.setLzEndpointRegistry(LZ_ENDPOINT_REGISTRY);
+        vm.etch(LZ_ENDPOINT_REGISTRY, type(MockReadinessHook).creationCode);
         // Readiness reads back dispatcher.localEndpoint() and compares it with endpoints[block.chainid]
         // (set to LOCAL_ENDPOINT by setUp's configureLauncherDeployment); keep them consistent.
         dispatcher.setLocalEndpoint(LOCAL_ENDPOINT);
@@ -1096,6 +1080,28 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         // MockReadinessHook has no such getter, so mock it to match endpoints[block.chainid]
         // (LOCAL_ENDPOINT, kept consistent with the dispatcher above).
         vm.mockCall(stakerAddr, abi.encodeWithSignature("localEndpoint()"), abi.encode(LOCAL_ENDPOINT));
+        // Readiness requires code at MEMEVERSE_OMNICHAIN_INTEROPERATION and reads its constructor-baked
+        // LZ_ENDPOINT_REGISTRY immutable back against the pin (INTEROPERATION_CODE_NOT_READY /
+        // INTEROPERATION_REGISTRY_NOT_READY); etch code and mock the getter like the staker above
+        // (mockCall cannot fake EXTCODESIZE).
+        vm.etch(MEMEVERSE_OMNICHAIN_INTEROPERATION, type(MockReadinessHook).creationCode);
+        vm.mockCall(
+            MEMEVERSE_OMNICHAIN_INTEROPERATION,
+            abi.encodeWithSignature("LZ_ENDPOINT_REGISTRY()"),
+            abi.encode(LZ_ENDPOINT_REGISTRY)
+        );
+        scriptHarness.setMemeverseOmnichainInteroperationForTest(MEMEVERSE_OMNICHAIN_INTEROPERATION);
+        // Registry content probe: _requireDeploymentReady reads the registry pin's local-chain
+        // lzEndpointIdOfChain and anchors it against endpoints[block.chainid].eid(). This harness
+        // wires endpoints via configureLauncherDeployment (no env/_chainsInit, empty omnichainIds),
+        // so only the local anchor fires; satisfy both sides with consistent mockCall answers like
+        // the staker/interoperation mocks above.
+        vm.mockCall(
+            LZ_ENDPOINT_REGISTRY,
+            abi.encodeWithSignature("lzEndpointIdOfChain(uint32)", uint32(block.chainid)),
+            abi.encode(LOCAL_CHAIN_EID)
+        );
+        vm.mockCall(LOCAL_ENDPOINT, abi.encodeWithSignature("eid()"), abi.encode(LOCAL_CHAIN_EID));
         polend.setReserve(UETH, 1);
         polend.setReserve(UUSD, 1);
         // Minimum config that passes the derived virtual-buffer guard (143 * 1 * 7 / 1000 = 1 > 0);

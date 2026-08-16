@@ -82,12 +82,13 @@ contract MemeverseScript is BaseScript {
     address internal CYCLE_INCENTIVIZER_IMPLEMENTATION;
 
     address internal MEMEVERSE_REGISTRATION_CENTER;
-    address internal MEMEVERSE_COMMON_INFO;
+    address internal LZ_ENDPOINT_REGISTRY;
     address internal MEMEVERSE_REGISTRAR;
     address internal MEMEVERSE_PROXY_DEPLOYER;
     address internal MEMEVERSE_LAUNCHER;
     address internal MEMEVERSE_YIELD_DISPATCHER;
     address internal OMNICHAIN_MEMECOIN_STAKER;
+    address internal MEMEVERSE_OMNICHAIN_INTEROPERATION;
     address internal POLEND;
     address internal POLSPLITTER;
     address internal CREDIT_FACTORY;
@@ -114,8 +115,6 @@ contract MemeverseScript is BaseScript {
     function run() public broadcaster {
         _loadScriptEnv();
 
-        // OutrunTODO Testnet id
-        omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351, 11155111];
         _chainsInit();
 
         // _getDeployedImplementation(2);
@@ -169,7 +168,7 @@ contract MemeverseScript is BaseScript {
         CYCLE_INCENTIVIZER_IMPLEMENTATION = vm.envAddress("CYCLE_INCENTIVIZER_IMPLEMENTATION");
 
         MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
-        MEMEVERSE_COMMON_INFO = _envAddressWithFallback("LZ_ENDPOINT_REGISTRY", "MEMEVERSE_COMMON_INFO");
+        LZ_ENDPOINT_REGISTRY = vm.envAddress("LZ_ENDPOINT_REGISTRY");
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_PROXY_DEPLOYER = vm.envAddress("MEMEVERSE_PROXY_DEPLOYER");
         MEMEVERSE_YIELD_DISPATCHER = vm.envAddress("MEMEVERSE_YIELD_DISPATCHER");
@@ -186,7 +185,14 @@ contract MemeverseScript is BaseScript {
     // directly; for standalone readiness checks (openSupportedUAssetsAfterReadiness) the env vars
     // must be set to the deployed addresses. OMNICHAIN_MEMECOIN_STAKER is a REQUIRED env var here:
     // _requireDeploymentReady checks code at it (STAKER_CODE_NOT_READY), so the standalone readiness
-    // entry must load it from env just like _loadScriptEnv does.
+    // entry must load it from env just like _loadScriptEnv does. LZ_ENDPOINT_REGISTRY is likewise a
+    // REQUIRED env var: _requireDeploymentReady reads the launcher's lzEndpointRegistry back and
+    // compares it against this pin (LAUNCHER_REGISTRY_NOT_READY), so the standalone readiness entry
+    // must load it from env too. MEMEVERSE_OMNICHAIN_INTEROPERATION uses the POLEND/POLSPLITTER
+    // optional pattern instead: run() deploys it and _deployMemeverseOmnichainInteroperation writes
+    // the address back, so the single-session deploy flow never needs an env pre-fill; a standalone
+    // readiness run must provide the env, and a missing var fails readiness with the named
+    // INTEROPERATION_CODE_NOT_READY (optional load yields address(0), which has no code).
     function _loadReadinessEnv() internal {
         owner = vm.envAddress("OWNER");
         UUSD = vm.envAddress("UUSD");
@@ -195,13 +201,22 @@ contract MemeverseScript is BaseScript {
         MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
         MEMEVERSE_PROXY_DEPLOYER = vm.envAddress("MEMEVERSE_PROXY_DEPLOYER");
         MEMEVERSE_YIELD_DISPATCHER = vm.envAddress("MEMEVERSE_YIELD_DISPATCHER");
+        LZ_ENDPOINT_REGISTRY = vm.envAddress("LZ_ENDPOINT_REGISTRY");
         OMNICHAIN_MEMECOIN_STAKER = vm.envAddress("OMNICHAIN_MEMECOIN_STAKER");
+        MEMEVERSE_OMNICHAIN_INTEROPERATION = _optionalEnvAddress("MEMEVERSE_OMNICHAIN_INTEROPERATION");
         expectedRegistrationDay = vm.envOr("EXPECTED_DAY", DAY);
         POLEND = _optionalEnvAddress("POLEND");
         POLSPLITTER = _optionalEnvAddress("POLSPLITTER");
     }
 
     function _chainsInit() internal {
+        // OutrunTODO Testnet id
+        // The chain list lives here — not in run() — so every path reaching _requireDeploymentReady
+        // (run() AND the standalone openSupportedUAssetsAfterReadiness entry, which both call
+        // _chainsInit) has a non-empty omnichainIds for the registry content probe. run()-only
+        // assignment left the standalone entry probing an empty list, i.e. passing vacuously.
+        omnichainIds = [97, 84532, 421614, 43113, 80002, 57054, 168587773, 534351, 11155111];
+
         endpoints[97] = vm.envAddress("BSC_TESTNET_ENDPOINT");
         endpoints[84532] = vm.envAddress("BASE_SEPOLIA_ENDPOINT");
         endpoints[421614] = vm.envAddress("ARBITRUM_SEPOLIA_ENDPOINT");
@@ -344,7 +359,7 @@ contract MemeverseScript is BaseScript {
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
         bytes memory creationCode = abi.encodePacked(
             type(MemeverseRegistrationCenter).creationCode,
-            abi.encode(owner, localEndpoint, MEMEVERSE_REGISTRAR, MEMEVERSE_COMMON_INFO)
+            abi.encode(owner, localEndpoint, MEMEVERSE_REGISTRAR, LZ_ENDPOINT_REGISTRY)
         );
         address centerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
@@ -383,6 +398,11 @@ contract MemeverseScript is BaseScript {
         bytes memory creationCode = abi.encodePacked(type(LzEndpointRegistry).creationCode, abi.encode(owner));
         bytes32 salt = _saltFrom(SALT_LZ_ENDPOINT_REGISTRY, nonce);
         address lzEndpointRegistryAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+        // LZ_ENDPOINT_REGISTRY is a required env pin consumed by downstream constructor args (center/
+        // registrar/interoperation) and readiness probes; a CREATE3 actual address that diverges from it
+        // means the env was not pre-filled for the current nonce — fail fast so the fresh deploy cannot
+        // be orphaned while the whole system wires itself to the env address.
+        require(lzEndpointRegistryAddr == LZ_ENDPOINT_REGISTRY, "REGISTRY_DEPLOY_MISMATCH");
 
         uint256 length = omnichainIds.length;
         ILzEndpointRegistry.LzEndpointIdPair[] memory lzEndpointPairs =
@@ -403,14 +423,14 @@ contract MemeverseScript is BaseScript {
         address localEndpoint = endpoints[uint32(block.chainid)];
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
         if (block.chainid == vm.envUint("BSC_TESTNET_CHAINID")) {
-            encodedArgs = abi.encode(owner, MEMEVERSE_REGISTRATION_CENTER, MEMEVERSE_LAUNCHER, MEMEVERSE_COMMON_INFO);
+            encodedArgs = abi.encode(owner, MEMEVERSE_REGISTRATION_CENTER, MEMEVERSE_LAUNCHER, LZ_ENDPOINT_REGISTRY);
             creationBytecode = type(MemeverseRegistrarAtLocal).creationCode;
         } else {
             encodedArgs = abi.encode(
                 owner,
                 localEndpoint,
                 MEMEVERSE_LAUNCHER,
-                MEMEVERSE_COMMON_INFO,
+                LZ_ENDPOINT_REGISTRY,
                 uint32(vm.envUint("BSC_TESTNET_EID")),
                 uint32(vm.envUint("BSC_TESTNET_CHAINID")),
                 150000,
@@ -658,6 +678,17 @@ contract MemeverseScript is BaseScript {
         value = uint32(uint256(bytes32(data)));
     }
 
+    /// @dev Staticcall read of the registry pin's chain->eid mapping. Deliberately NOT the typed
+    ///      `ILzEndpointRegistry(...).lzEndpointIdOfChain(...)` call: a pin with code but no such
+    ///      selector (and no fallback) would bubble a nameless empty revert, while every sibling
+    ///      probe in the readiness gate fails with a named error (STATICCALL_*_FAILED family).
+    function _readLzEndpointIdOfChain(uint32 chainId) internal view returns (uint32 endpointId) {
+        (bool success, bytes memory data) =
+            LZ_ENDPOINT_REGISTRY.staticcall(abi.encodeWithSignature("lzEndpointIdOfChain(uint32)", chainId));
+        require(success && data.length >= 32, "REGISTRY_PROBE_CALL_FAILED");
+        endpointId = uint32(uint256(bytes32(data)));
+    }
+
     function _beginMemeverseLauncherOwnerExecution(address initialOwner) internal virtual {
         // Hook point for subclasses. The default implementation does nothing —
         // fund metadata is set inline when deployCaller == initialOwner, or
@@ -693,7 +724,7 @@ contract MemeverseScript is BaseScript {
         require(MEMEVERSE_REGISTRAR != address(0), "ZERO_MEMEVERSE_REGISTRAR");
         require(MEMEVERSE_PROXY_DEPLOYER != address(0), "ZERO_MEMEVERSE_PROXY_DEPLOYER");
         require(MEMEVERSE_YIELD_DISPATCHER != address(0), "ZERO_MEMEVERSE_YIELD_DISPATCHER");
-        require(MEMEVERSE_COMMON_INFO != address(0), "ZERO_LZ_ENDPOINT_REGISTRY");
+        require(LZ_ENDPOINT_REGISTRY != address(0), "ZERO_LZ_ENDPOINT_REGISTRY");
         require(polendProxy != address(0), "ZERO_POLEND_PROXY");
         require(polSplitterProxy != address(0), "ZERO_POLSPLITTER_PROXY");
         require(UETH != address(0), "ZERO_UETH");
@@ -707,7 +738,7 @@ contract MemeverseScript is BaseScript {
                 MEMEVERSE_REGISTRAR,
                 MEMEVERSE_PROXY_DEPLOYER,
                 MEMEVERSE_YIELD_DISPATCHER,
-                MEMEVERSE_COMMON_INFO,
+                LZ_ENDPOINT_REGISTRY,
                 // These are canonical dependency proxy addresses, not the launcher proxy.
                 polendProxy,
                 polSplitterProxy,
@@ -815,15 +846,6 @@ contract MemeverseScript is BaseScript {
         }
     }
 
-    function _envAddressWithFallback(string memory primary, string memory fallbackName)
-        internal
-        view
-        returns (address)
-    {
-        if (vm.envExists(primary)) return vm.envAddress(primary);
-        return vm.envAddress(fallbackName);
-    }
-
     function _optionalEnvAddress(string memory name) internal view returns (address) {
         if (!vm.envExists(name)) return address(0);
         return vm.envAddress(name);
@@ -863,9 +885,9 @@ contract MemeverseScript is BaseScript {
     ///      owner-only via the broadcaster modifier, so a mid-way failure leaves the uAsset fully
     ///      unregistered (whitelist never set). Standalone runs must provide the _loadReadinessEnv
     ///      vars (OWNER, UUSD, UETH, MEMEVERSE_LAUNCHER, MEMEVERSE_REGISTRAR,
-    ///      MEMEVERSE_PROXY_DEPLOYER, MEMEVERSE_YIELD_DISPATCHER, OMNICHAIN_MEMECOIN_STAKER,
-    ///      POLEND, POLSPLITTER), plus MEMEVERSE_REGISTRATION_CENTER and, when withCredit is true,
-    ///      CREDIT_FACTORY_PROXY.
+    ///      MEMEVERSE_PROXY_DEPLOYER, MEMEVERSE_YIELD_DISPATCHER, LZ_ENDPOINT_REGISTRY,
+    ///      OMNICHAIN_MEMECOIN_STAKER, MEMEVERSE_OMNICHAIN_INTEROPERATION, POLEND, POLSPLITTER), plus
+    ///      MEMEVERSE_REGISTRATION_CENTER and, when withCredit is true, CREDIT_FACTORY_PROXY.
     /// @param registrationCenter RegistrationCenter holding the whitelist (completion marker).
     /// @param uAsset The new uAsset to onboard (cannot be zero).
     /// @param minTotalFund Launcher minimum total fund for the uAsset.
@@ -927,13 +949,26 @@ contract MemeverseScript is BaseScript {
         require(_readSupportedUAsset(registrationCenter, uAsset), "SUPPORTED_UASSET_NOT_READY");
     }
 
-    /// @dev Registration-center readiness gate: the center must have code and its DAY() must equal the
-    ///      network's expected registration day (`expectedRegistrationDay`, loaded from EXPECTED_DAY env).
+    /// @dev Registration-center readiness gate: the center must have code, its DAY() must equal the
+    ///      network's expected registration day (`expectedRegistrationDay`, loaded from EXPECTED_DAY env),
+    ///      and its constructor-baked LZ_ENDPOINT_REGISTRY immutable must match the script pin — the
+    ///      center consumes that immutable in quoteSend/registration to resolve omnichain eids, and a
+    ///      mismatch is only fixable by redeploying. Read via _readAddress because the interface only
+    ///      declares DAY().
     function _requireRegistrationCenterReady(address registrationCenter) internal view {
         _requireContractCode(registrationCenter, "REGISTRATION_CENTER_CODE_NOT_READY");
         require(
             IMemeverseRegistrationCenter(registrationCenter).DAY() == expectedRegistrationDay,
             "REGISTRATION_DAY_NOT_READY"
+        );
+        // The pin needs a code check on this gate too: onboardUAsset enters through here without
+        // passing _requireDeploymentReady, and the identity readback alone cannot catch a wrong env
+        // value when the center and the pin share the same codeless mistake. Idempotent with the
+        // copy in _requireDeploymentReady (kept for the launcher path, which does not pass here).
+        _requireContractCode(LZ_ENDPOINT_REGISTRY, "REGISTRY_CODE_NOT_READY");
+        require(
+            _readAddress(registrationCenter, "LZ_ENDPOINT_REGISTRY()") == LZ_ENDPOINT_REGISTRY,
+            "REGISTRATION_CENTER_REGISTRY_NOT_READY"
         );
     }
 
@@ -942,9 +977,14 @@ contract MemeverseScript is BaseScript {
         _requireContractCode(MEMEVERSE_REGISTRAR, "REGISTRAR_CODE_NOT_READY");
         _requireContractCode(MEMEVERSE_PROXY_DEPLOYER, "PROXY_DEPLOYER_CODE_NOT_READY");
         _requireContractCode(MEMEVERSE_YIELD_DISPATCHER, "YIELD_DISPATCHER_CODE_NOT_READY");
+        // Registry pin gets a code check like the sibling deps: launcher initialize deliberately
+        // accepts codeless predicted addresses, so the identity readback alone cannot catch a wrong
+        // env value when launcher and readiness share the same mistake.
+        _requireContractCode(LZ_ENDPOINT_REGISTRY, "REGISTRY_CODE_NOT_READY");
         _requireContractCode(POLEND, "POLEND_CODE_NOT_READY");
         _requireContractCode(POLSPLITTER, "POLSPLITTER_CODE_NOT_READY");
         _requireContractCode(OMNICHAIN_MEMECOIN_STAKER, "STAKER_CODE_NOT_READY");
+        _requireContractCode(MEMEVERSE_OMNICHAIN_INTEROPERATION, "INTEROPERATION_CODE_NOT_READY");
         require(
             _readAddress(OMNICHAIN_MEMECOIN_STAKER, "localEndpoint()") == endpoints[uint32(block.chainid)],
             "STAKER_ENDPOINT_NOT_READY"
@@ -973,6 +1013,38 @@ contract MemeverseScript is BaseScript {
         require(launcherContracts.yieldDispatcher == MEMEVERSE_YIELD_DISPATCHER, "LAUNCHER_YIELD_DISPATCHER_NOT_READY");
         require(_readAddress(MEMEVERSE_LAUNCHER, "polend()") == POLEND, "LAUNCHER_POLEND_NOT_READY");
         require(launcherContracts.polSplitter == POLSPLITTER, "LAUNCHER_POLSPLITTER_NOT_READY");
+        // The registry pointer is initialize-only on the launcher (setter removed), so a mismatch
+        // with the script pin cannot be remediated in place — readiness must block (redeploy is the
+        // only fix).
+        require(launcherContracts.lzEndpointRegistry == LZ_ENDPOINT_REGISTRY, "LAUNCHER_REGISTRY_NOT_READY");
+        // Same identity readback for the interoperation's own immutable: gov-chain sends resolve dst
+        // eids through it, and like every constructor-baked pointer a mismatch is redeploy-only.
+        require(
+            _readAddress(MEMEVERSE_OMNICHAIN_INTEROPERATION, "LZ_ENDPOINT_REGISTRY()") == LZ_ENDPOINT_REGISTRY,
+            "INTEROPERATION_REGISTRY_NOT_READY"
+        );
+        // Registry CONTENT probe: the identity readbacks above pin WHICH registry every consumer
+        // points at, not WHAT it maps — and launcher/center/interoperation resolve every dst eid
+        // through lzEndpointIdOfChain, so pairs that drifted from this run's endpointIds silently
+        // misroute all omnichain sends. Epistemic limit: inside a single run() the probe is
+        // tautological (deploy writes the registry pairs from the same env endpointIds came from);
+        // its value is the other paths — a standalone readiness run whose EID env forked from the
+        // deploying session, the pin pointing at a stale pre-nonce-bump registry instance, or an
+        // owner setLzEndpointIds re-point between deploy and this gate. Post-open re-pointing is
+        // beyond the reach of any gate and stays an operational invariant.
+        uint256 chainCount = omnichainIds.length;
+        for (uint32 i = 0; i < chainCount; i++) {
+            uint32 chainId = omnichainIds[i];
+            require(_readLzEndpointIdOfChain(chainId) == endpointIds[chainId], "REGISTRY_PAIR_NOT_READY");
+        }
+        // Env-independent local anchor: the local slice of the registry is compared against the
+        // endpoint's own eid() read back on-chain — the one chain with in-place ground truth. This
+        // kills the "registry and env share the same wrong value" blind spot for the local chain;
+        // remote chains have no readable ground truth here, so their slice stays env-compared above.
+        require(
+            _readLzEndpointIdOfChain(uint32(block.chainid)) == _readUint32(endpoints[uint32(block.chainid)], "eid()"),
+            "REGISTRY_LOCAL_EID_NOT_READY"
+        );
         require(
             _readAddress(MEMEVERSE_REGISTRAR, "MEMEVERSE_LAUNCHER()") == MEMEVERSE_LAUNCHER,
             "REGISTRAR_LAUNCHER_NOT_READY"
@@ -1177,13 +1249,17 @@ contract MemeverseScript is BaseScript {
         require(OUTRUN_DEPLOYER != address(0), "ZERO_OUTRUN_DEPLOYER");
         bytes memory creationCode = abi.encodePacked(
             type(MemeverseOmnichainInteroperation).creationCode,
-            abi.encode(owner, MEMEVERSE_COMMON_INFO, MEMEVERSE_LAUNCHER, OMNICHAIN_MEMECOIN_STAKER, 115000, 135000)
+            abi.encode(owner, LZ_ENDPOINT_REGISTRY, MEMEVERSE_LAUNCHER, OMNICHAIN_MEMECOIN_STAKER, 115000, 135000)
         );
 
         bytes32 salt = _saltFrom(SALT_MEMEVERSE_OMNICHAIN_INTEROPERATION, nonce);
-        address staker = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+        address interoperation = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
 
-        console.log("MemeverseOmnichainInteroperation deployed on %s", staker);
+        // Cache the artifact so a same-run readiness gate (_requireDeploymentReady) reads the real
+        // address instead of requiring the env pre-fill (mirrors the LAUNCHER/POLEND/POLSPLITTER
+        // write-backs; standalone readiness runs load it from env via _loadReadinessEnv).
+        MEMEVERSE_OMNICHAIN_INTEROPERATION = interoperation;
+        console.log("MemeverseOmnichainInteroperation deployed on %s", interoperation);
     }
 
     function _deployOmnichainMemecoinStaker(uint256 nonce) internal {

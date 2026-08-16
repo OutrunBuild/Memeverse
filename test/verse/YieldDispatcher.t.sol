@@ -1010,11 +1010,10 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     ///      the burn branch emits no AccumulateYields: a future change that absorbs instead of burns, flips burnedAtDispatcher,
     ///      or adds a spurious event on this path fails below.
     function testSettlePendingComposeToEmptyVaultBurnsYieldButEmitsIsBurnedFalse() external {
-        // Real vault, no shares: settle hits the empty-vault burn branch. _yieldDispatcher is unused by the settle
-        // path; the dispatcher address is passed for realism.
+        // Real vault, no shares: settle hits the empty-vault burn branch.
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         MemecoinYieldVault emptyVault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        emptyVault.initialize("Staked Memecoin", "sMEME", address(dispatcher), address(token), 1, 100 ether);
+        emptyVault.initialize("Staked Memecoin", "sMEME", address(token), 1, 100 ether);
         assertEq(emptyVault.totalSupply(), 0, "vault must start empty");
 
         bytes32 guid = bytes32("compose-empty-vault");

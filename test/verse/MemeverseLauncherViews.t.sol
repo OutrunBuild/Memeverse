@@ -199,7 +199,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
 
     function _expectedLauncherSelectorSignatures() internal pure returns (string[] memory signatures) {
         signatures = new string[](64);
-        signatures[0] = "RATIO()";
+        signatures[0] = "BPS_BASE()";
         signatures[1] = "auxiliaryLiquidities(uint256)";
         signatures[2] = "bootstrapResidualClaims(uint256)";
         signatures[3] = "changeStage(uint256)";
@@ -274,7 +274,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
     function testExpectedSelectorBaselineIncludesRuntimeSurface() external {
         string[] memory signatures = _expectedLauncherSelectorSignatures();
         assertEq(signatures.length, 64, "expected selector count");
-        assertEq(signatures[0], "RATIO()", "first selector");
+        assertEq(signatures[0], "BPS_BASE()", "first selector");
         assertEq(signatures[63], "userPreorderData(uint256,address)", "last selector");
 
         // Verify every expected selector actually exists on the proxy.
@@ -322,7 +322,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
                     (uint32(uint8(code[i + 1])) << 24) | (uint32(uint8(code[i + 2])) << 16)
                         | (uint32(uint8(code[i + 3])) << 8) | uint32(uint8(code[i + 4]))
                 );
-                // Skip selectors below the RATIO() floor — compiler metadata noise.
+                // Skip selectors below the BPS_BASE() floor — compiler metadata noise.
                 if (uint32(sel) < 0x10000000) continue;
 
                 // De-duplicate.

@@ -216,7 +216,7 @@ realInterest = market.totalLeveragedInterest - market.totalCreditInterest
 
 `totalCreditInterest` / `totalLeveragedInterest` 都是只增累计量，refund 路径不扣减，并用 `refundClaimed` 防重复。`markRefundable` 与 `finalizeLeveragedGenesis` 都 `require market.state == Genesis` 并分别迁移到 `Refund` / `Locked` 终态（状态机互斥），同一 verse 的 refund 与 finalize 不会都发生，故 `totalCreditInterest` 在 finalize 时刻仍精确等于该 verse 未退走的 GenesisCredit 托管量。
 
-`leveragedInterestPaid` 存储 real 部分，与 `creditInterestPaid` 分栏；对外 view `leveragedInterestPaid(verseId, user)` 返回 real+credit 合计，与 `getUserLeveragedDebt` 合计口径一致。real 部分用 `totalLeveragedInterest - totalCreditInterest` 差值推导仅在 finalize treasury 清扫时用。
+`leveragedInterestPaid` 存储 real 部分，与 `creditInterestPaid` 分栏；对外 view `totalInterestPaid(verseId, user)` 返回 real+credit 合计，与 `getUserLeveragedDebt` 合计口径一致。real 部分用 `totalLeveragedInterest - totalCreditInterest` 差值推导仅在 finalize treasury 清扫时用。
 
 per-verse `totalCreditInterest` 必须独立记账的原因：POLendUpgradeable 对某 uAsset 的 GenesisCredit 托管余额是该 uAsset 所有 verse 的 credit 利息合计（混池），finalize verse X 时 burn 的量必须精确等于 verse X 的 `totalCreditInterest`，不能动 verse Y 的份额。
 

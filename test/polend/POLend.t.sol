@@ -445,7 +445,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uint256 borrowed = polend.leveragedGenesis(VERSE_ID, 10 ether);
         assertEq(borrowed, 100 ether, "borrowed");
 
-        uint256 interestPaid = polend.leveragedInterestPaid(VERSE_ID, ALICE);
+        uint256 interestPaid = polend.totalInterestPaid(VERSE_ID, ALICE);
         assertEq(interestPaid, 10 ether, "interest");
         assertEq(polend.getUserLeveragedDebt(VERSE_ID, ALICE), 100 ether, "debt");
         assertEq(polend.getTotalLeveragedDebt(VERSE_ID), 100 ether, "total debt");
@@ -480,8 +480,8 @@ contract POLendTest is Test, POLendStorageHelper {
 
         assertEq(borrowed, 100 ether, "borrowed");
         assertEq(hookedUAsset.balanceOf(address(polend)), 15 ether, "transferred");
-        assertEq(polend.leveragedInterestPaid(VERSE_ID, ALICE), 10 ether, "interest");
-        assertEq(polend.leveragedInterestPaid(VERSE_ID, address(hookedUAsset)), 5 ether, "reentry interest");
+        assertEq(polend.totalInterestPaid(VERSE_ID, ALICE), 10 ether, "interest");
+        assertEq(polend.totalInterestPaid(VERSE_ID, address(hookedUAsset)), 5 ether, "reentry interest");
         assertEq(polend.getTotalLeveragedInterest(VERSE_ID), 15 ether, "total interest");
         assertEq(polend.getTotalLeveragedDebt(VERSE_ID), 150 ether, "total debt");
     }
@@ -524,7 +524,7 @@ contract POLendTest is Test, POLendStorageHelper {
         assertEq(uAsset.balanceOf(address(polend)), 0, "no transfer");
         assertEq(market.totalLeveragedInterest, 0, "interest unchanged");
         assertEq(uint256(market.state), uint256(IPOLend.MarketState.None), "state unchanged");
-        assertEq(polend.leveragedInterestPaid(VERSE_ID, ALICE), 0, "position unchanged");
+        assertEq(polend.totalInterestPaid(VERSE_ID, ALICE), 0, "position unchanged");
     }
 
     function testLeveragedGenesis_UsesMinTotalFundForDebtCapWhenNormalFundsAreZero() external {
@@ -754,9 +754,9 @@ contract POLendTest is Test, POLendStorageHelper {
         assertEq(market.totalCreditInterest, 4 ether, "credit-only tally");
         assertEq(uAsset.balanceOf(address(polend)), 10 ether, "uAsset escrow unchanged");
         assertEq(credit.balanceOf(address(polend)), 4 ether, "credit escrow");
-        assertEq(polend.leveragedInterestPaid(VERSE_ID, ALICE), 10 ether, "alice real interest");
+        assertEq(polend.totalInterestPaid(VERSE_ID, ALICE), 10 ether, "alice real interest");
         // Getter now returns the view-layer aggregate (real + credit): BOB has 0 real + 4e18 credit.
-        assertEq(polend.leveragedInterestPaid(VERSE_ID, BOB), 4 ether, "bob combined real+credit interest");
+        assertEq(polend.totalInterestPaid(VERSE_ID, BOB), 4 ether, "bob combined real+credit interest");
         // BOB's debt comes from credit ledger only; aggregate user debt view sums both ledgers.
         assertEq(polend.getUserLeveragedDebt(VERSE_ID, BOB), 40 ether, "bob debt via credit");
         assertEq(polend.getUserLeveragedDebt(VERSE_ID, ALICE), 100 ether, "alice debt via real");
@@ -2138,7 +2138,7 @@ contract POLendTest is Test, POLendStorageHelper {
         (uint128 reserve,) = polend.settlementDustStates(address(uAsset));
         assertEq(reserve, uint128(MAX_SETTLEMENT_DUST), "reserve");
         assertEq(uAsset.balanceOf(address(polend)), MAX_SETTLEMENT_DUST, "balance");
-        assertEq(polend.leveragedInterestPaid(VERSE_ID, ALICE), 0, "no interest claim");
+        assertEq(polend.totalInterestPaid(VERSE_ID, ALICE), 0, "no interest claim");
         (uint256 residualUAsset, uint256 residualMemecoin) = polend.residualStates(VERSE_ID);
         assertEq(residualUAsset, 0, "no residual uasset claim");
         assertEq(residualMemecoin, 0, "no residual memecoin claim");

@@ -37,7 +37,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
 {
     using Address for address;
 
-    uint256 public constant RATIO = 10000;
+    uint256 public constant BPS_BASE = 10000;
     uint256 internal constant MAX_FUND_BASED_AMOUNT = (1 << 64) - 1;
 
     /// @dev Namespaced storage. The contract header's `layout at erc7201(...)` binds this struct to
@@ -82,8 +82,8 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         );
         require(oftReceiveGasLimit_ > 0 && yieldDispatcherGasLimit_ > 0, ZeroInput());
         require(preorderCapRatio_ != 0 && preorderVestingDuration_ != 0, ZeroInput());
-        require(preorderCapRatio_ <= RATIO, FeeRateOverFlow());
-        require(executorRewardRate_ < RATIO, FeeRateOverFlow());
+        require(preorderCapRatio_ <= BPS_BASE, FeeRateOverFlow());
+        require(executorRewardRate_ < BPS_BASE, FeeRateOverFlow());
 
         _storeInitializedConfig(
             localLzEndpoint_,
@@ -931,7 +931,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
      * @param _executorRewardRate - Executor reward rate
      */
     function setExecutorRewardRate(uint256 _executorRewardRate) external override onlyOwner {
-        require(_executorRewardRate < RATIO, FeeRateOverFlow());
+        require(_executorRewardRate < BPS_BASE, FeeRateOverFlow());
 
         memeverseLauncherStorage.executorRewardRate = _executorRewardRate;
 
@@ -941,7 +941,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     /**
      * @notice Set preorder cap and vesting parameters.
      * @dev Only callable by the owner.
-     * @param _preorderCapRatio Preorder capacity ratio in `RATIO` precision.
+     * @param _preorderCapRatio Preorder capacity ratio in `BPS_BASE` precision.
      * @param _preorderVestingDuration Vesting duration for preorder memecoin.
      */
     function setPreorderConfig(uint256 _preorderCapRatio, uint256 _preorderVestingDuration)
@@ -950,7 +950,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         onlyOwner
     {
         require(_preorderCapRatio != 0 && _preorderVestingDuration != 0, ZeroInput());
-        require(_preorderCapRatio <= RATIO, FeeRateOverFlow());
+        require(_preorderCapRatio <= BPS_BASE, FeeRateOverFlow());
         memeverseLauncherStorage.preorderCapRatio = _preorderCapRatio;
         memeverseLauncherStorage.preorderVestingDuration = _preorderVestingDuration;
 

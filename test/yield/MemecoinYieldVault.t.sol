@@ -39,7 +39,7 @@ contract MemecoinYieldVaultTest is Test {
         asset = new MockERC20("Memecoin", "MEME", 18);
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        vault.initialize("Staked Memecoin", "sMEME", address(0xD15A7), address(asset), 1, VIRTUAL_ASSETS);
+        vault.initialize("Staked Memecoin", "sMEME", address(asset), 1, VIRTUAL_ASSETS);
 
         asset.mint(ATTACKER, 1_001 ether);
         asset.mint(VICTIM, 2_000 ether);
@@ -375,18 +375,19 @@ contract MemecoinYieldVaultTest is Test {
     }
 
     /// @notice `reAccumulateYields` succeeds when the caller passes the dispatcher the compose was actually
-    ///         delivered to, even if it differs from the vault's initialize-time pointer (launcher rotation).
+    ///         delivered to, even if it differs from the launcher's canonical dispatcher at call time (launcher rotation).
     /// @dev Covers the rotation fix: after `setYieldDispatcher` rotates the canonical dispatcher, a stuck compose for a
-    ///      pre-rotation vault lands in the NEW dispatcher's composeQueue. The vault's `reAccumulateYields` must
-    ///      accept the new dispatcher as a parameter and settle from ITS queue. Passing the stale initialize-time
-    ///      dispatcher reads an empty queue slot and reverts NotDelivered — the bug this fix resolves for the success path.
+    ///      pre-rotation vault lands in the NEW dispatcher's composeQueue. The vault stores no dispatcher, so
+    ///      `reAccumulateYields` must take the target dispatcher as a parameter and settle from ITS queue. Passing a
+    ///      dispatcher the compose was not delivered to reads an empty queue slot and reverts NotDelivered — the bug
+    ///      this fix resolves for the success path.
     function testReAccumulateYieldsSettlesViaRotatedDispatcher() external {
         MockComposeAsset composeAsset = new MockComposeAsset();
         (MemecoinYieldVault composeVault, address dispatcherA, address endpointAddr) =
             _deployComposeVaultWithDispatcher(address(composeAsset));
 
-        // dispatcherA (0xD15A7) is the vault's initialize-time storage pointer. Simulate a post-creation rotation
-        // by deploying a second YieldDispatcherUpgradeable whose localEndpoint points at the same mock endpoint (0x9999) the
+        // dispatcherA is the fixture dispatcher deployed by _deployComposeVaultWithDispatcher. Simulate a post-creation
+        // rotation by deploying a second YieldDispatcherUpgradeable whose localEndpoint points at the same mock endpoint (0x9999) the
         // settle path reads. The stuck compose is delivered into dispatcherB's queue, not dispatcherA's.
         // Native deploy (no etch): composeStates and the composeQueue `to` key both derive from dispatcherB's own
         // address, and the ERC-7201 storage addresses are set by initialize, so a fresh impl+proxy deploy is
@@ -411,7 +412,7 @@ contract MemecoinYieldVaultTest is Test {
         vm.prank(ATTACKER);
         composeVault.deposit(10 ether, ATTACKER);
 
-        // ── Positive: settle via the rotated dispatcher (dispatcherB), not the initialize-time pointer (dispatcherA).
+        // ── Positive: settle via the rotated dispatcher (dispatcherB), not the fixture dispatcher (dispatcherA).
         bytes32 guid = keccak256("rotated-guid");
         uint256 yieldAmount = 5 ether;
         composeAsset.mint(address(dispatcherB), yieldAmount);
@@ -431,8 +432,8 @@ contract MemecoinYieldVaultTest is Test {
             "rotated dispatcher marked released"
         );
 
-        // ── Negative: a second compose also delivered to dispatcherB fails when the caller passes the stale
-        //    initialize-time pointer (dispatcherA). verifySettle keys composeQueue on address(this) = the
+        // ── Negative: a second compose also delivered to dispatcherB fails when the caller passes a
+        //    dispatcher it was not delivered to (dispatcherA). verifySettle keys composeQueue on address(this) = the
         //    dispatcher it runs under, so dispatcherA reads its own (empty) queue slot and reverts NotDelivered
         //    before any state or fund movement.
         bytes32 guid2 = keccak256("rotated-guid-2");
@@ -808,7 +809,7 @@ contract MemecoinYieldVaultTest is Test {
         // Deploy a standard production vault (no test-harness subclass).
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         MemecoinYieldVault overflowVault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        overflowVault.initialize("Overflow Vault", "ovMEME", address(0xD15A7), address(asset), 99, VIRTUAL_ASSETS);
+        overflowVault.initialize("Overflow Vault", "ovMEME", address(asset), 99, VIRTUAL_ASSETS);
 
         // Give the attacker 1 wei of shares via a real deposit so _burn has a valid balance to debit.
         vm.startPrank(ATTACKER);
@@ -822,8 +823,8 @@ contract MemecoinYieldVaultTest is Test {
         // asset value of uint128.max shares exceeds uint192. Using ~2^210 guarantees the quotient is far
         // above the uint192 ceiling with margin for the floor division.
         uint256 oversizedAssets = uint256(1) << 210;
-        // Slot 2 = totalAssets (regular storage, after yieldDispatcher and asset).
-        vm.store(address(overflowVault), bytes32(uint256(2)), bytes32(oversizedAssets));
+        // Slot 1 = totalAssets (regular storage, after asset).
+        vm.store(address(overflowVault), bytes32(uint256(1)), bytes32(oversizedAssets));
 
         // Also inflate ERC20 totalSupply so _burn doesn't underflow.
         // ERC20_STORAGE_LOCATION + 2 = totalSupply (after two mapping fields).
@@ -858,8 +859,8 @@ contract MemecoinYieldVaultTest is Test {
         vault.deposit(1, ATTACKER);
         assertEq(vault.totalSupply(), 1, "fixture: shares outstanding so yield is absorbed, not burned");
 
-        // Slot 2 = totalAssets (regular storage, after yieldDispatcher and asset).
-        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(type(uint208).max)));
+        // Slot 1 = totalAssets (regular storage, after asset).
+        vm.store(address(vault), bytes32(uint256(1)), bytes32(uint256(type(uint208).max)));
 
         asset.mint(ATTACKER, 1 ether);
         vm.prank(ATTACKER);
@@ -875,8 +876,8 @@ contract MemecoinYieldVaultTest is Test {
     ///      are both pinned at the cap so the rate stays 1:1 and the 1-wei deposit maps to 1 share (bypassing the
     ///      ZeroSharesDeposit rounding guard), then the increment crosses the bound and the require fires.
     function test_DepositRevertsWhenTotalAssetsExceedsUint208() external {
-        // Slot 2 = totalAssets; ERC20_STORAGE_LOCATION + 2 = totalSupply (same slots as the uint192 overflow test).
-        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(type(uint208).max)));
+        // Slot 1 = totalAssets; ERC20_STORAGE_LOCATION + 2 = totalSupply (same slots as the uint192 overflow test).
+        vm.store(address(vault), bytes32(uint256(1)), bytes32(uint256(type(uint208).max)));
         vm.store(
             address(vault),
             bytes32(0xae36c519e2a406a79e4c05a9c40dc957f3757904fff7f6a4d18b68c3b12f9302),
@@ -1444,10 +1445,10 @@ contract MemecoinYieldVaultTest is Test {
     ///      F-144 pins the rate-scaled domain, so exact amounts (750/250) must break this test if the
     ///      rounding semantics change.
     function test_RoundTripLossInResidualState() external {
-        // Pin the exact F-144 state: virtualAssets at slot 4, totalAssets at slot 2, totalSupply at the
+        // Pin the exact F-144 state: virtualAssets at slot 3, totalAssets at slot 1, totalSupply at the
         // ERC20 storage location (same slots as the uint192/uint208 overflow tests).
-        vm.store(address(vault), bytes32(uint256(4)), bytes32(uint256(1)));
-        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(500)));
+        vm.store(address(vault), bytes32(uint256(3)), bytes32(uint256(1)));
+        vm.store(address(vault), bytes32(uint256(1)), bytes32(uint256(500)));
         vm.store(
             address(vault),
             bytes32(0xae36c519e2a406a79e4c05a9c40dc957f3757904fff7f6a4d18b68c3b12f9302),
@@ -1481,10 +1482,10 @@ contract MemecoinYieldVaultTest is Test {
     ///      prices that share at floor(2001 / 3) = 667 wei. Exact amounts (667/333) are asserted so any
     ///      change to the floor-floor rounding or to conversion at post-deposit state breaks this test.
     function test_RoundTripLossInHighRateState() external {
-        // Pin the exact F-144 state: virtualAssets at slot 4, totalAssets at slot 2, totalSupply at the
+        // Pin the exact F-144 state: virtualAssets at slot 3, totalAssets at slot 1, totalSupply at the
         // ERC20 storage location.
-        vm.store(address(vault), bytes32(uint256(4)), bytes32(uint256(1)));
-        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(1000)));
+        vm.store(address(vault), bytes32(uint256(3)), bytes32(uint256(1)));
+        vm.store(address(vault), bytes32(uint256(1)), bytes32(uint256(1000)));
         vm.store(
             address(vault),
             bytes32(0xae36c519e2a406a79e4c05a9c40dc957f3757904fff7f6a4d18b68c3b12f9302),
@@ -1643,7 +1644,7 @@ contract MemecoinYieldVaultTest is Test {
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         MemecoinYieldVault zeroVault = MemecoinYieldVault(Clones.clone(address(implementation)));
         vm.expectRevert(IMemecoinYieldVault.ZeroVirtualAssets.selector);
-        zeroVault.initialize("Zero V", "zMEME", address(0xD15A7), address(asset), 1, 0);
+        zeroVault.initialize("Zero V", "zMEME", address(asset), 1, 0);
     }
 
     /// @notice A large yield injection moves the exchange rate by far less than the un-buffered case.
@@ -1699,7 +1700,7 @@ contract MemecoinYieldVaultTest is Test {
         MockComposeAsset burnableAsset = new MockComposeAsset();
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         MemecoinYieldVault emptyVault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        emptyVault.initialize("Empty Vault", "eMEME", address(0xD15A7), address(burnableAsset), 3, VIRTUAL_ASSETS);
+        emptyVault.initialize("Empty Vault", "eMEME", address(burnableAsset), 3, VIRTUAL_ASSETS);
 
         burnableAsset.mint(ATTACKER, 50 ether);
         vm.prank(ATTACKER);
@@ -1828,7 +1829,7 @@ contract MemecoinYieldVaultTest is Test {
             )
         );
         dispatcherAddr = address(dispatcher);
-        composeVault.initialize("Compose Vault", "cvMEME", dispatcherAddr, asset, 2, VIRTUAL_ASSETS);
+        composeVault.initialize("Compose Vault", "cvMEME", asset, 2, VIRTUAL_ASSETS);
     }
 
     /// @dev Builds the OFT compose payload a launcher would have sent for a memecoin-yield retry:
@@ -2261,8 +2262,8 @@ contract MemecoinYieldVaultTest is Test {
     ///      totalSupply are both pinned at the cap so the rate stays 1:1 and minting 1 share pulls exactly
     ///      1 asset (ceil(1 * (cap+V)/(cap+V)) = 1), then the increment crosses the bound and the require fires.
     function test_MintRevertsWhenTotalAssetsExceedsUint208() external {
-        // Slot 2 = totalAssets; ERC20_STORAGE_LOCATION + 2 = totalSupply (same slots as the deposit overflow test).
-        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(type(uint208).max)));
+        // Slot 1 = totalAssets; ERC20_STORAGE_LOCATION + 2 = totalSupply (same slots as the deposit overflow test).
+        vm.store(address(vault), bytes32(uint256(1)), bytes32(uint256(type(uint208).max)));
         vm.store(
             address(vault),
             bytes32(0xae36c519e2a406a79e4c05a9c40dc957f3757904fff7f6a4d18b68c3b12f9302),

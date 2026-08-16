@@ -60,12 +60,12 @@ userGenesisFund
 `preorder` 容量只基于主池 memecoin 侧资金计算：
 
 ```text
-preorderCap = (totalNormalFunds + totalLeveragedDebt) * 7 / 10 * preorderCapRatio / RATIO
+preorderCap = (totalNormalFunds + totalLeveragedDebt) * 7 / 10 * preorderCapRatio / BPS_BASE
 ```
 
 `preorderCap` 不把辅助池 30% 纳入容量。
 
-`preorderCapRatio` 必须满足 `0 < preorderCapRatio <= RATIO`。
+`preorderCapRatio` 必须满足 `0 < preorderCapRatio <= BPS_BASE`。
 
 `preorder` 写入前必须满足：
 

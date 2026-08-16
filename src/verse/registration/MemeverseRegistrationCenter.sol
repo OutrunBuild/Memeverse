@@ -22,7 +22,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
     // uint256 public constant DAY = 24 * 3600;
     uint256 public constant DAY = 180; // OutrunTODO 180 seconds for testing
     address public immutable MEMEVERSE_REGISTRAR;
-    address public immutable MEMEVERSE_COMMON_INFO;
+    address public immutable LZ_ENDPOINT_REGISTRY;
 
     uint128 public minDurationDays;
     uint128 public maxDurationDays;
@@ -42,13 +42,13 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
      * @param _lzEndpoint - The lz endpoint
      * @param _memeverseRegistrar - The memeverse registrar
      */
-    constructor(address _owner, address _lzEndpoint, address _memeverseRegistrar, address _memeverseCommonInfo)
+    constructor(address _owner, address _lzEndpoint, address _memeverseRegistrar, address _lzEndpointRegistry)
         OApp(_lzEndpoint, _owner)
         Ownable(_owner)
     {
-        require(_memeverseRegistrar != address(0) && _memeverseCommonInfo != address(0), ZeroInput());
+        require(_memeverseRegistrar != address(0) && _lzEndpointRegistry != address(0), ZeroInput());
         MEMEVERSE_REGISTRAR = _memeverseRegistrar;
-        MEMEVERSE_COMMON_INFO = _memeverseCommonInfo;
+        LZ_ENDPOINT_REGISTRY = _lzEndpointRegistry;
     }
 
     receive() external payable {}
@@ -93,7 +93,7 @@ contract MemeverseRegistrationCenter is IMemeverseRegistrationCenter, OApp, Toke
                 continue;
             }
 
-            uint32 eid = ILzEndpointRegistry(MEMEVERSE_COMMON_INFO).lzEndpointIdOfChain(omnichainId);
+            uint32 eid = ILzEndpointRegistry(LZ_ENDPOINT_REGISTRY).lzEndpointIdOfChain(omnichainId);
             require(eid != 0, InvalidOmnichainId(omnichainId));
 
             uint256 fee = _quote(eid, message, options, false).nativeFee;

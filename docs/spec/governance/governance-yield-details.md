@@ -324,7 +324,7 @@ Incentivizer 负责把 treasury ledger 的一部分，按周期转成 reward led
 
 - 周期长度固定
 - `rewardRatio`（奖励比例）是以 basis points 表示的 treasury-to-reward 划拨比例；`finalizeCurrentCycle()` 按 `rewardAmount = treasuryBalance * rewardRatio / 10000` 把满足全部以下条件的 treasury ledger 余额划入 reward ledger：该 token 已注册为 reward token（`GovernanceCycleIncentivizerUpgradeable.sol::registerRewardToken`）、当期 `treasuryBalance > 0`、当期 `totalVotes > 0`；三个条件缺一即不划拨
-- 初始 `rewardRatio = 2500`（25%）：由 `GovernanceCycleIncentivizerUpgradeable.sol::__GovernanceCycleIncentivizer_init` 硬编码写入，deployer 不可传参；修改仅可经 `GovernanceCycleIncentivizerUpgradeable.sol::updateRewardRatio`（`onlyGovernance`，即需治理提案；上界 `RATIO = 10000`）
+- 初始 `rewardRatio = 2500`（25%）：由 `GovernanceCycleIncentivizerUpgradeable.sol::__GovernanceCycleIncentivizer_init` 硬编码写入，deployer 不可传参；修改仅可经 `GovernanceCycleIncentivizerUpgradeable.sol::updateRewardRatio`（`onlyGovernance`，即需治理提案；上界 `BPS_BASE = 10000`）
 - 无票周期（`totalVotes == 0`）不划拨任何奖励，当期 treasury ledger 余额全额 rollover 至下一周期 treasury ledger（下一周期仍可参与划拨）
 - `rewardRatio` 在 `finalizeCurrentCycle()` 调用时刻取当前存储最新值，不是周期开始时的快照（周期结构不保存 per-cycle ratio）
 - 用户最终按“上一周期 userVotes / totalVotes”获取奖励

@@ -11,17 +11,17 @@ import {IMemeverseLauncher} from "../interfaces/IMemeverseLauncher.sol";
  */
 abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
     address public immutable MEMEVERSE_LAUNCHER;
-    address public immutable MEMEVERSE_COMMON_INFO;
+    address public immutable LZ_ENDPOINT_REGISTRY;
 
     /**
      * @notice Constructor to initialize the MemeverseRegistrar.
      * @param _owner - The owner of the contract.
      * @param _memeverseLauncher - Address of memeverseLauncher.
-     * @param _memeverseCommonInfo - Address of LzEndpointRegistry.
+     * @param _lzEndpointRegistry - Address of LzEndpointRegistry.
      */
-    constructor(address _owner, address _memeverseLauncher, address _memeverseCommonInfo) Ownable(_owner) {
+    constructor(address _owner, address _memeverseLauncher, address _lzEndpointRegistry) Ownable(_owner) {
         MEMEVERSE_LAUNCHER = _memeverseLauncher;
-        MEMEVERSE_COMMON_INFO = _memeverseCommonInfo;
+        LZ_ENDPOINT_REGISTRY = _lzEndpointRegistry;
     }
 
     /**

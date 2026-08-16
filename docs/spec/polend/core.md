@@ -468,6 +468,7 @@ GenesisCredit 侧（permissionless，home-chain 限定）：
 - `ZeroInput()`：`claim(amount == 0)` 或 `burn(amount == 0)`。
 - `AlreadyClaimed()`：`claim` 时 `claimed[msg.sender] != 0`（每用户最多领一次）。
 - `InvalidProof()`：`claim` 的 merkle proof 校验失败。
+- `EnforcedPause()`：GenesisCredit 处于 pause 状态时，所有 ERC20 状态变更路径（`transfer` / `transferFrom` / `claim` 的 mint / `burn` / OFT send 侧 `_burn` 与 receive 侧 `_mint`，经 `_update` 全挡）revert；未 pause 时 `unpause` revert `ExpectedPause()`。`pause()` / `unpause()` 为 owner-only（继承 OZ `ERC20Pausable`，与 `setMerkleRoot` 同一权限面），pause 期间对 POLend credit 路径（`leveragedGenesisWithCredit` 托管 / `claimRefund` 退 credit / `finalizeLeveragedGenesis` burn）的阻断见 [genesis.md §4.1](genesis.md)。
 
 GenesisCreditFactory 侧（owner-only 部署）：
 

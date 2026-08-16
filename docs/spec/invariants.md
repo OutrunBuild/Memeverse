@@ -271,6 +271,16 @@ settlementUAsset >= previewPTToUAsset(PT.totalSupply())
 - 价值：历史票权的资产计价换算依赖三条 trace 在同一历史 timepoint 配对读取——`OutrunVotesInit.sol::getPastVotes` / `::getPastTotalSupply` 分别经 `Checkpoints.sol::upperLookupRecent` 取同一 timepoint 的 delegate / total / totalAssets 三份快照，交给 `MemecoinYieldVault.sol::_convertPastVotes` / `::_convertPastTotalSupply` 换算；配对断裂（如 share 变更未写资产 checkpoint、或资产 checkpoint 落后于 share trace）会导致历史查询错价或换算到过期的资产值。
 - 主要锚点：`src/common/token/extensions/governance/OutrunVotesInit.sol::getPastVotes`、`::getPastTotalSupply`、`::_transferVotingUnits`、`::_writeTotalAssetCheckpoint`，`src/common/token/extensions/governance/OutrunERC20VotesInit.sol::_update`，`src/yield/MemecoinYieldVault.sol::deposit`、`::mint`、`::requestRedeem`、`::_accumulateYield`、`::redeem`、`::withdraw`、`::_convertPastVotes`、`::_convertPastTotalSupply`
 
+### INV-27 GenesisCredit 暂停开关不变量 `[代码已证]`
+
+- 约束（全挡范围）：GenesisCredit 处于 pause 状态时，所有 ERC20 状态变更路径——`transfer` / `transferFrom` / `claim`（mint）/ `burn` / OFT 桥接（send 侧 `_burn` 与 receive 侧 `_mint`）——必须 revert `EnforcedPause`（继承 OZ `ERC20Pausable`，override `_update` 单点全挡）；`paused() == false` 时上述路径不受 pause 影响。`[代码已证]`
+- 约束（状态迁移权限）：`paused` 状态只能由该 GenesisCredit owner 经 `pause` / `unpause` 迁移（复用 OFTCore 的 OZ Ownable，与 `setMerkleRoot` 同一权限面，不新增角色）；事件与错误复用 OZ Pausable（`Paused(address account)` / `Unpaused(address account)` / `EnforcedPause()` / `ExpectedPause()`），不自定义。`[代码已证]`
+- 约束（幂等方向错误）：已 paused 时再 `pause` revert `EnforcedPause`；未 paused 时 `unpause` revert `ExpectedPause`。`[代码已证]`
+- 约束（POLend 路径交互）：pause 期间 `POLendUpgradeable.leveragedGenesisWithCredit` 的 `transferFrom` 托管、Refund 终态 `claimRefund` 的 credit `transfer` 退回（托管仍在，资金不丢，延迟到 unpause 可领）、`finalizeLeveragedGenesis` 的托管 `burn` 均被阻断并 revert `EnforcedPause`，unpause 后恢复；零 credit 路径不受 pause 影响（`POLendUpgradeable.sol::claimRefund` 的 `realPaid != 0` 与 `creditPaid != 0` 两分支各自条件执行）：real-only 参与者（`creditInterestPaid == 0`）的 `claimRefund` 只走 real `uAsset` transfer 分支、不被阻断，mixed 参与者（real 与 credit 两栏均非零）pause 期间整笔 revert、real 部分随整笔延迟到 unpause，real-only 市场（`totalCreditInterest == 0`）的 `finalizeLeveragedGenesis` 不调用 credit burn、finalize 不被阻断；home pause 期间 LayerZero 消息 delivery 失败转为 retryable/storeable，不丢失。每个链上 GenesisCredit 部署的 pause 状态互相独立，由各自 owner 控制。`[代码已证]`
+- 价值：为 owner 提供应急冻结 GenesisCredit 全部 token 移动的开关（含 claim、桥、finalize burn、refund transfer 的阻断与恢复），权限面、事件与错误语义完全复用 OZ `ERC20Pausable`，无自定义分叉。
+- 主要锚点：`src/credit/GenesisCredit.sol::pause`，`::unpause`，`::paused`，`::_update`（OZ `ERC20Pausable` override）；`src/polend/POLendUpgradeable.sol::leveragedGenesisWithCredit`，`::claimRefund`，`::finalizeLeveragedGenesis`（受影响 credit 路径，real-only / mixed 分支为各自条件执行）；测试锚点 `test/credit/GenesisCredit.t.sol`（pause 全挡 / 权限 / 幂等方向语义）与 `test/credit/GenesisCreditPOLendIntegration.t.sol`（`test_RevertWhen_CreditPaused_LeveragedGenesisWithCredit_RevertsAndRealPathUnaffected`、`test_CreditPaused_RefundClaim_RealOnlyUnblockedMixedDelayedUntilUnpause`，覆盖 POLend 路径交互约束）
+- 主要真源：[docs/spec/polend/genesis.md §4.1](polend/genesis.md)，[docs/spec/polend/core.md §8](polend/core.md)，[docs/SECURITY_AND_APPROVALS.md §4.3](../SECURITY_AND_APPROVALS.md)
+
 ## 3. 确定性边界
 
 - 高确定性：以上带 `[代码已证]` 标签的不变量有函数级源码锚点；普通动态 Swap 的 INV-22 锚点为 `OrdinarySwapMath`、`SwapFacet`、`DynamicFeeFacet`、Lens bridge 与相应测试。其余 `[目标规范]` 条目须待对应源码和测试落地后再升级证据标签。

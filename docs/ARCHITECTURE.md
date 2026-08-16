@@ -141,7 +141,7 @@ preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，
 ### 1.7 GenesisCredit 冷启动层
 
 - `src/credit/GenesisCredit.sol` + `src/credit/GenesisCreditFactory.sol`
-- 负责 GenesisCredit（per-uAsset ERC20+OFT 凭证）的部署、跨链 merkle claim 与自烧路径，支撑 `POLendUpgradeable.leveragedGenesisWithCredit` 的冷启动抵扣。GenesisCredit 是 plain contract，直接继承 LayerZero 官方 `OFT`（非 minimal-proxy / clone），由 `GenesisCreditFactory.deployCredit` CREATE3 直接部署完整合约。
+- 负责 GenesisCredit（per-uAsset ERC20+OFT 凭证）的部署、跨链 merkle claim 与自烧路径，支撑 `POLendUpgradeable.leveragedGenesisWithCredit` 的冷启动抵扣。GenesisCredit 是 plain contract，直接继承 LayerZero 官方 `OFT`（非 minimal-proxy / clone），由 `GenesisCreditFactory.deployCredit` CREATE3 直接部署完整合约。owner 另持应急暂停开关（`GenesisCredit.sol::pause` / `GenesisCredit.sol::unpause`，OZ `ERC20Pausable`），可全量冻结 GenesisCredit 的 token 移动。
 - per-uAsset 本链确定性地址：`GenesisCreditFactory.deployCredit(uAsset, ...)` 以 `CREATE3 salt = keccak256(abi.encode(uAsset))` 部署，`creditOf / predictCredit` 可在本链确定性地解析/预测地址，不依赖运行期可变指针（CREATE3 地址与构造参数无关，故各链 `lzEndpoint` 不同也不影响地址）。跨链同址不是合约保证：仅当 `factory` 与 `uAsset` 均跨链同址时才成立，而 `uAsset`（Outrun UniversalAssets）是外部资产，其跨链同址性是部署前提、非本代码所校验。`setPeer` 必须逐链查询各链实际 `creditOf(localUAsset)`，不得复用 home 链地址。
 - 跨链拓扑：home 链（Ethereum 主网）写入 merkle root 单点写入 → 用户在 home 链 `claim(...)`（permissionless merkle 校验，单次防重领）→ GenesisCredit 作为 OFT 经 LayerZero 桥到目标链 → 目标链上 GenesisCredit 持有人用 `burn` 或 `leveragedGenesisWithCredit` 抵扣。
 - `POLendUpgradeable.finalizeLeveragedGenesis` 成功路径按该 verse `market.totalCreditInterest` 调 `GenesisCredit.burn` 烧掉 POLendUpgradeable 托管的 GenesisCredit；`Refund` 终态经 `claimRefund` 把 GenesisCredit token 退回给 credit 用户。会计约束见 [docs/spec/invariants.md INV-21](spec/invariants.md)，定义见 [docs/GLOSSARY.md](GLOSSARY.md) `GenesisCredit`。

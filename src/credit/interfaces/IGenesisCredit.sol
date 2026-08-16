@@ -34,6 +34,14 @@ interface IGenesisCredit {
     /// @param newMerkleRoot New merkle root governing valid claims.
     function setMerkleRoot(bytes32 newMerkleRoot) external;
 
+    /// @notice Emergency stop: halts all token state changes (transfers, claims, burns and OFT
+    ///         bridging in both directions). Reverts with `EnforcedPause` if already paused.
+    function pause() external;
+
+    /// @notice Lifts an existing pause so all token state changes resume. Reverts with
+    ///         `ExpectedPause` if not currently paused.
+    function unpause() external;
+
     /// @notice LayerZero endpoint id of the home chain where claims are allowed.
     function homeChainEid() external view returns (uint32);
 
@@ -44,4 +52,8 @@ interface IGenesisCredit {
     /// @param user Claimant address.
     /// @return Credit amount the user has already claimed.
     function claimed(address user) external view returns (uint256);
+
+    /// @notice Whether the token is currently paused (all token state changes revert).
+    /// @return True when paused.
+    function paused() external view returns (bool);
 }

@@ -713,6 +713,14 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
   - root 清空为 `bytes32(0)` 等于全局禁用剩余 claim（任何 proof 对零 root 恒 `InvalidProof`）；`MerkleRootSet` 事件无旧值参数（`IGenesisCredit` 事件签名仅 `bytes32 merkleRoot`），树版本追踪只能外部记录。
   - 轮换属于正常运维操作（修正快照、扩展空投），勿按「写入一次」假设不可变。
 
+#### `pause` / `unpause` 应急暂停开关
+
+- `GenesisCredit.sol::pause` / `GenesisCredit.sol::unpause` 为 owner-only（该 GenesisCredit 的 owner，与 `setMerkleRoot` 同一权限面；继承 OZ `ERC20Pausable`）；`paused()` view 查询当前状态；事件复用 OZ Pausable（`Paused(account)` / `Unpaused(account)`）。
+- 触发条件建议：检测到 GenesisCredit 相关漏洞利用、异常 claim / 桥移动、merkle root 争议或 incident response 需要冻结 token 移动时，由 owner 立即 `pause`。
+- 影响面（全挡，pause 期间全部 revert `EnforcedPause`）：用户 `transfer` / `transferFrom`；home 链 `claim`（mint）；`burn`；OFT 桥接 send / receive。协议路径：`leveragedGenesisWithCredit` 新 credit 抵扣被阻断（真付 `uAsset` 的 `leveragedGenesis` 不受影响）；Refund 终态 `claimRefund` 的 credit 退回延迟到 unpause（POLendUpgradeable 托管仍在，资金不丢）；`finalizeLeveragedGenesis` 的托管 burn 被阻断，`Genesis -> Locked` finalize 无法完成——incident 期间须权衡对 verse 生命周期编排的影响。
+- OFT 提示：home pause 期间发往该 GenesisCredit 的 LayerZero 消息 delivery 失败（receive 侧 `_mint` revert `EnforcedPause`），转为 retryable/storeable，不丢失；unpause 后经 LayerZero 重试 / 重投递落地。每个链上 GenesisCredit 部署的 pause 状态互相独立，须逐链核对 `paused()`；home pause 不影响目标链部署。
+- 恢复：owner `unpause()` 后全部路径立即恢复；方向错误 revert `EnforcedPause`（已 paused 再 `pause`）/ `ExpectedPause`（未 paused `unpause`）。pause 不清账本、不动余额，只阻断状态变更。
+
 ### 3.13 跨链 compose 失败的人工重试（YieldDispatcherUpgradeable）
 
 入口：`MemecoinYieldVault.reAccumulateYields(dispatcher, guid, message)`（MEMECOIN 路径）或 `YieldDispatcherUpgradeable.settlePendingCompose(token, guid, message)`（MEMECOIN/UASSET 通用）。本节（dispatcher 侧）两个入口都 permissionless——任何地址可执行，不需要 admin 权限；协议有意不提供 onlyOwner 恢复入口。跨链 staking compose 的恢复入口在 `OmnichainMemecoinStaker`，权限与结算语义不同（仅接收人可调、恒释放裸币不建仓），见 §3.13.1。

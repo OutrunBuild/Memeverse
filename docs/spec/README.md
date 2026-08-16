@@ -116,6 +116,7 @@
 | INV-24 YT Flash Swap 结算不变量 | [invariants.md](invariants.md) | 恰好一次 swap + 真实 delta + baseline 恢复 |
 | INV-25 OFT compose 兜底结算单一解析 | [invariants.md](invariants.md) | 每 (token,guid) 至多解析一次，互斥+幂等+纵深防御 |
 | INV-26 资产计价投票 checkpoint 三 trace 配对 | [invariants.md](invariants.md) | 三条 trace 任意历史 timepoint 配对一致 |
+| INV-27 GenesisCredit 暂停开关不变量 | [invariants.md](invariants.md) | owner-only pause/unpause 全挡 ERC20 状态变更（transfer/claim/burn/OFT），错误事件复用 OZ Pausable |
 
 ### 2.3 权限边界
 

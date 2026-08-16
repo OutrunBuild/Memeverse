@@ -9,6 +9,7 @@ import {
     Origin
 } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {SendParam} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 import {GenesisCredit} from "../../src/credit/GenesisCredit.sol";
 import {IGenesisCredit} from "../../src/credit/interfaces/IGenesisCredit.sol";
@@ -108,21 +109,8 @@ contract GenesisCreditTest is Test {
         credit.claim(100 ether, aliceProof);
 
         uint256 bridgeAmount = 40 ether;
-        SendParam memory sendParam = SendParam({
-            dstEid: REMOTE_EID,
-            to: bytes32(uint256(uint160(BOB))),
-            amountLD: bridgeAmount,
-            minAmountLD: bridgeAmount,
-            extraOptions: bytes(""),
-            composeMsg: bytes(""),
-            oftCmd: bytes("")
-        });
-        GenesisCredit remoteCredit =
-            new GenesisCredit("GenesisCredit", "GCR", address(remoteEndpoint), DELEGATE, HOME_EID);
-        vm.prank(DELEGATE);
-        credit.setPeer(REMOTE_EID, bytes32(uint256(uint160(address(remoteCredit)))));
-        vm.prank(DELEGATE);
-        remoteCredit.setPeer(HOME_EID, bytes32(uint256(uint160(address(credit)))));
+        SendParam memory sendParam = _bobSendParam(bridgeAmount);
+        GenesisCredit remoteCredit = _deployPairedRemote();
 
         MessagingFee memory fee = MessagingFee({nativeFee: 0.01 ether, lzTokenFee: 0});
         homeEndpoint.setQuoteNativeFee(fee.nativeFee);
@@ -348,6 +336,232 @@ contract GenesisCreditTest is Test {
         credit.burn(0);
     }
 
+    /// @notice A fresh deployment is not paused.
+    function test_Pause_InitiallyNotPaused() external {
+        assertFalse(credit.paused());
+    }
+
+    /// @notice pause/unpause emit the OZ Pausable events with the owner as account. The events and
+    ///         errors are deliberately NOT redeclared in IGenesisCredit — they come from OZ Pausable.
+    function test_Pause_EmitsOZPausableEvents() external {
+        vm.prank(DELEGATE);
+        vm.expectEmit(false, false, false, true);
+        emit Pausable.Paused(DELEGATE);
+        credit.pause();
+        assertTrue(credit.paused());
+
+        vm.prank(DELEGATE);
+        vm.expectEmit(false, false, false, true);
+        emit Pausable.Unpaused(DELEGATE);
+        credit.unpause();
+        assertFalse(credit.paused());
+    }
+
+    /// @notice A paused token cannot transfer.
+    function test_RevertWhen_Paused_Transfer() external {
+        vm.prank(ALICE);
+        credit.claim(100 ether, aliceProof);
+
+        vm.prank(DELEGATE);
+        credit.pause();
+
+        vm.prank(ALICE);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        credit.transfer(BOB, 10 ether);
+    }
+
+    /// @notice A paused token cannot spend an existing allowance via transferFrom.
+    function test_RevertWhen_Paused_TransferFrom() external {
+        vm.prank(ALICE);
+        credit.claim(100 ether, aliceProof);
+        vm.prank(ALICE);
+        credit.approve(BOB, 50 ether);
+
+        vm.prank(DELEGATE);
+        credit.pause();
+
+        vm.prank(BOB);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        credit.transferFrom(ALICE, BOB, 10 ether);
+    }
+
+    /// @notice A paused token cannot mint via claims: a valid proof reverts before `claimed` is
+    ///         durably set (the whole call reverts atomically).
+    function test_RevertWhen_Paused_Claim() external {
+        vm.prank(DELEGATE);
+        credit.pause();
+
+        vm.prank(ALICE);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        credit.claim(100 ether, aliceProof);
+
+        // The mint never happened, so the double-claim record stays unset.
+        assertEq(credit.claimed(ALICE), 0);
+    }
+
+    /// @notice A paused token cannot burn.
+    function test_RevertWhen_Paused_Burn() external {
+        vm.prank(ALICE);
+        credit.claim(100 ether, aliceProof);
+
+        vm.prank(DELEGATE);
+        credit.pause();
+
+        vm.prank(ALICE);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        credit.burn(10 ether);
+    }
+
+    /// @notice A paused token cannot bridge out: the OFT send path debits via `_burn`, which is
+    ///         gated by the same ERC20Pausable `_update` override as every other state change.
+    function test_RevertWhen_Paused_OFTSend() external {
+        vm.prank(ALICE);
+        credit.claim(100 ether, aliceProof);
+        _deployPairedRemote();
+
+        MessagingFee memory fee = MessagingFee({nativeFee: 0.01 ether, lzTokenFee: 0});
+        homeEndpoint.setQuoteNativeFee(fee.nativeFee);
+
+        vm.prank(DELEGATE);
+        credit.pause();
+
+        vm.deal(ALICE, fee.nativeFee);
+        vm.prank(ALICE);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        credit.send{value: fee.nativeFee}(_bobSendParam(40 ether), fee, ALICE);
+
+        // The failed send burned nothing.
+        assertEq(credit.balanceOf(ALICE), 100 ether);
+    }
+
+    /// @notice A paused remote deployment cannot mint incoming bridged credit: the OFT receive
+    ///         path credits via `_mint`, gated by the same ERC20Pausable `_update` override. Pause
+    ///         is per-deployment, so the (unpaused) home side still burns and sends normally.
+    function test_RevertWhen_Paused_OFTReceive() external {
+        vm.prank(ALICE);
+        credit.claim(100 ether, aliceProof);
+        GenesisCredit remoteCredit = _deployPairedRemote();
+
+        MessagingFee memory fee = MessagingFee({nativeFee: 0.01 ether, lzTokenFee: 0});
+        homeEndpoint.setQuoteNativeFee(fee.nativeFee);
+
+        // Only the remote instance is paused; the home side stays live and its send must succeed.
+        vm.prank(DELEGATE);
+        remoteCredit.pause();
+
+        vm.deal(ALICE, fee.nativeFee);
+        vm.prank(ALICE);
+        credit.send{value: fee.nativeFee}(_bobSendParam(40 ether), fee, ALICE);
+        assertEq(credit.balanceOf(ALICE), 60 ether);
+
+        bytes memory message = homeEndpoint.lastMessage();
+        Origin memory origin = Origin({srcEid: HOME_EID, sender: bytes32(uint256(uint160(address(credit)))), nonce: 1});
+
+        vm.prank(address(remoteEndpoint));
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        remoteCredit.lzReceive(origin, bytes32("receive-guid"), message, address(0), bytes(""));
+
+        // The failed receive minted nothing on the remote chain.
+        assertEq(remoteCredit.balanceOf(BOB), 0);
+    }
+
+    /// @notice Failed mutations while paused leave balances, allowance, claim records and total
+    ///         supply untouched — revert atomicity is the whole pause safety story.
+    function test_RevertWhen_Paused_FailedCallsLeaveViewsUnchanged() external {
+        vm.prank(ALICE);
+        credit.claim(100 ether, aliceProof);
+        vm.prank(ALICE);
+        credit.approve(BOB, 50 ether);
+
+        vm.prank(DELEGATE);
+        credit.pause();
+
+        vm.startPrank(ALICE);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        credit.transfer(BOB, 10 ether);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        credit.burn(10 ether);
+        vm.stopPrank();
+        vm.prank(BOB);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        credit.transferFrom(ALICE, BOB, 10 ether);
+
+        assertEq(credit.balanceOf(ALICE), 100 ether);
+        assertEq(credit.balanceOf(BOB), 0);
+        assertEq(credit.allowance(ALICE, BOB), 50 ether);
+        assertEq(credit.claimed(ALICE), 100 ether);
+        assertEq(credit.totalSupply(), 100 ether);
+    }
+
+    /// @notice Unpausing restores every mutating surface: claim, transfer, transferFrom, burn and
+    ///         OFT send all succeed again.
+    function test_Unpause_RestoresAllSurfaces() external {
+        vm.prank(DELEGATE);
+        credit.pause();
+        vm.prank(DELEGATE);
+        credit.unpause();
+
+        vm.prank(ALICE);
+        credit.claim(100 ether, aliceProof);
+
+        vm.prank(ALICE);
+        credit.transfer(BOB, 10 ether);
+
+        vm.prank(ALICE);
+        credit.approve(BOB, 10 ether);
+        vm.prank(BOB);
+        credit.transferFrom(ALICE, BOB, 10 ether);
+
+        vm.prank(ALICE);
+        credit.burn(10 ether);
+
+        _deployPairedRemote();
+        MessagingFee memory fee = MessagingFee({nativeFee: 0.01 ether, lzTokenFee: 0});
+        homeEndpoint.setQuoteNativeFee(fee.nativeFee);
+        vm.deal(ALICE, fee.nativeFee);
+        vm.prank(ALICE);
+        credit.send{value: fee.nativeFee}(_bobSendParam(10 ether), fee, ALICE);
+
+        // 100 claimed - 10 transferred - 10 transferFrom'd - 10 burned - 10 bridged = 60 for ALICE;
+        // BOB keeps the 10 + 10 he received on the home chain.
+        assertEq(credit.balanceOf(ALICE), 60 ether);
+        assertEq(credit.balanceOf(BOB), 20 ether);
+    }
+
+    /// @notice The pause switch is owner-only (same OZ Ownable face as setMerkleRoot).
+    function test_RevertWhen_PauseByNonOwner() external {
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodePacked(OwnableUnauthorizedAccountSelector, abi.encode(ALICE)));
+        credit.pause();
+    }
+
+    /// @notice The unpause switch is owner-only.
+    function test_RevertWhen_UnpauseByNonOwner() external {
+        vm.prank(DELEGATE);
+        credit.pause();
+
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodePacked(OwnableUnauthorizedAccountSelector, abi.encode(ALICE)));
+        credit.unpause();
+    }
+
+    /// @notice Pausing an already-paused token reverts with OZ EnforcedPause (OZ `_pause()` is
+    ///         guarded by `whenNotPaused` in the vendored OZ version).
+    function test_RevertWhen_PauseTwice() external {
+        vm.startPrank(DELEGATE);
+        credit.pause();
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        credit.pause();
+        vm.stopPrank();
+    }
+
+    /// @notice Unpausing a token that is not paused reverts with OZ ExpectedPause.
+    function test_RevertWhen_UnpauseWhenNotPaused() external {
+        vm.prank(DELEGATE);
+        vm.expectRevert(Pausable.ExpectedPause.selector);
+        credit.unpause();
+    }
+
     /// @notice Immutable home-chain eid survives a plain deployment, and ERC-20 metadata +
     ///         ownership are wired through the OFT constructor.
     function test_ImmutableConfigAfterDeploy() external {
@@ -363,6 +577,29 @@ contract GenesisCreditTest is Test {
     function _buildMerkle(address user, uint256 amount) internal pure returns (bytes32 root, bytes32[] memory proof) {
         root = _leaf(user, amount);
         proof = new bytes32[](0);
+    }
+
+    /// @dev Deploys a remote GenesisCredit against the remote endpoint and wires both peers, so
+    ///      the home-chain `credit` can bridge to it (mirrors the OFT surface test wiring).
+    function _deployPairedRemote() internal returns (GenesisCredit remoteCredit) {
+        remoteCredit = new GenesisCredit("GenesisCredit", "GCR", address(remoteEndpoint), DELEGATE, HOME_EID);
+        vm.prank(DELEGATE);
+        credit.setPeer(REMOTE_EID, bytes32(uint256(uint160(address(remoteCredit)))));
+        vm.prank(DELEGATE);
+        remoteCredit.setPeer(HOME_EID, bytes32(uint256(uint160(address(credit)))));
+    }
+
+    /// @dev SendParam bridging `amount` to BOB on the remote chain.
+    function _bobSendParam(uint256 amount) internal pure returns (SendParam memory) {
+        return SendParam({
+            dstEid: REMOTE_EID,
+            to: bytes32(uint256(uint160(BOB))),
+            amountLD: amount,
+            minAmountLD: amount,
+            extraOptions: bytes(""),
+            composeMsg: bytes(""),
+            oftCmd: bytes("")
+        });
     }
 
     /// @dev Double-hashed leaf, matching GenesisCredit.claim's second-preimage defense.

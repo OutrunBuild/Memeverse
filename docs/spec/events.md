@@ -81,6 +81,8 @@
 | `CreditDeployed(address indexed uAsset,address indexed credit)` | `GenesisCreditFactory` | owner 调 `deployCredit` 成功后 | per-uAsset GenesisCredit 地址发现、冷启动索引、部署审计 | `[代码已证]` |
 | `MerkleRootSet(bytes32 merkleRoot)` | `GenesisCredit` | owner 调 `setMerkleRoot` 成功后 | merkle claim root 配置审计、claim 数据版本追踪（版本追踪仅能外部记录：`MerkleRootSet` 无旧值参数） | `[代码已证]` |
 | `Claimed(address indexed user,uint256 amount)` | `GenesisCredit` | home-chain merkle claim 成功后 | 用户 claim 流水、空投供应索引；区分 claim mint 与 OFT inbound mint | `[代码已证]` |
+| `Paused(address account)` | `GenesisCredit`（来源 OZ Pausable） | owner 调 `pause` 成功后 | owner 应急暂停开关审计：pause 生效锚点，此后全部 ERC20 状态变更路径 revert `EnforcedPause` | `[代码已证]` |
+| `Unpaused(address account)` | `GenesisCredit`（来源 OZ Pausable） | owner 调 `unpause` 成功后 | owner 应急暂停开关审计：暂停解除锚点，token 移动恢复（含 claim / 桥 / finalize burn / refund transfer 的阻断解除） | `[代码已证]` |
 
 ### 2.4 Swap 与 LP
 
@@ -211,4 +213,4 @@ verse 组件部署阶段（Launcher `Locked` → 部署治理组件）由 `Memev
 ## 5. 确定性边界
 
 - 除明确标注为目标事件规格或 target-only 的条目外，本文只覆盖仓库 `src/**` 明确 `emit` 的事件。
-- 继承自 OpenZeppelin 的通用事件（如 `Paused/Unpaused`、`OwnershipTransferred`）存在，但未作为 Memeverse 业务主索引面展开（其中 `OwnershipTransferred` 由两个共享同一 ERC7201 owner 槽（`outrun.storage.Ownable`，`0x7f241041…f00`）但基类不同的 Outrun Ownable 家族 emit：`OutrunOwnableInit`（自定义 Initializable 基）由 `__OutrunOwnable_init` / `transferOwnership` emit，覆盖 OApp/OFT clone 系（最小代理 clone，不可升级）；`OutrunOwnableUpgradeable`（OZ Initializable 基）同样由 `__OutrunOwnable_init` / `transferOwnership` emit，覆盖 `MemeverseLauncherUpgradeable` / `MemeverseUniswapHookUpgradeable` / `POLendUpgradeable` / `POLSplitterUpgradeable`（UUPS 可升级）的 owner 迁移面；`SplitterToken` / `PrincipalToken` / `YieldToken` 不继承任一家族，不 emit 该事件，不降级为业务主索引）。
+- `Paused`/`Unpaused` 已在 §2.3 作为 GenesisCredit 应急暂停开关审计行展开，不在本文其他位置展开。其余继承自 OpenZeppelin 的通用事件（如 `OwnershipTransferred`）存在，但未作为 Memeverse 业务主索引面展开。其中 `OwnershipTransferred` 由两个共享同一 ERC7201 owner 槽（`outrun.storage.Ownable`，`0x7f241041…f00`）但基类不同的 Outrun Ownable 家族 emit：`OutrunOwnableInit`（自定义 Initializable 基）由 `__OutrunOwnable_init` / `transferOwnership` emit，覆盖 OApp/OFT clone 系（最小代理 clone，不可升级）；`OutrunOwnableUpgradeable`（OZ Initializable 基）同样由 `__OutrunOwnable_init` / `transferOwnership` emit，覆盖 `MemeverseLauncherUpgradeable` / `MemeverseUniswapHookUpgradeable` / `POLendUpgradeable` / `POLSplitterUpgradeable`（UUPS 可升级）的 owner 迁移面；`SplitterToken` / `PrincipalToken` / `YieldToken` 不继承任一家族，不 emit 该事件，不降级为业务主索引。

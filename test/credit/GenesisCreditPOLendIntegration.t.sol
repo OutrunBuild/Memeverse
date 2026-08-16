@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
@@ -11,6 +12,7 @@ import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.
 import {MintableToken, BurnableMockERC20} from "../mocks/polend/POLendMocks.sol";
 import {MockPOL} from "../mocks/polend/MockPOL.sol";
 import {MockGenesisCreditFactory} from "../mocks/credit/MockGenesisCreditFactory.sol";
+import {PausableBurnableMockERC20} from "../mocks/credit/PausableBurnableMockERC20.sol";
 
 /// @notice Launcher mock that drives a verse through Genesis -> Locked -> Settled for the
 ///         mixed real+credit integration test. Unlike the POLendUpgradeable unit-test launcher mock, it
@@ -193,9 +195,12 @@ contract GenesisCreditPOLendIntegration is Test {
     address internal constant BOB = address(0xB0B);
     address internal constant ALICE_REC = address(0xA11CE01);
     address internal constant BOB_REC = address(0xB0B02);
+    // Credit-token admin: distinct from the POLend owner (the test contract) so pause prank sites
+    // read as the credit token's own emergency switch, not a POLend-owner action.
+    address internal constant CREDIT_OWNER = address(0xC0DE17);
 
     BurnableMockERC20 internal uAsset;
-    BurnableMockERC20 internal credit;
+    PausableBurnableMockERC20 internal credit;
     MintableToken internal yt;
     MockERC20 internal memecoin;
     MockPOL internal pol;
@@ -206,7 +211,7 @@ contract GenesisCreditPOLendIntegration is Test {
 
     function setUp() external {
         uAsset = new BurnableMockERC20("UASSET", "UASSET");
-        credit = new BurnableMockERC20("CREDIT", "CREDIT");
+        credit = new PausableBurnableMockERC20("CREDIT", "CREDIT", CREDIT_OWNER);
         yt = new MintableToken("YT", "YT");
         memecoin = new MockERC20("MEME", "MEME", 18);
         pol = new MockPOL(address(memecoin));
@@ -558,5 +563,163 @@ contract GenesisCreditPOLendIntegration is Test {
         // A's burn is not reversed by B's refund; B's refund is a transfer, not a burn.
         assertEq(credit.burnedAmount(), aliceCredit, "A burn persists after B refund");
         assertEq(credit.totalSupply(), creditSupplyBefore - aliceCredit, "supply unchanged by B refund");
+    }
+
+    // ===== GenesisCredit pause x POLendUpgradeable interaction =====
+
+    /// @dev Pausing the GenesisCredit token (not POLend) blocks only the credit-funded entry path:
+    ///      `leveragedGenesisWithCredit` does its ledger writes first (CEI) and then pulls credit via
+    ///      `safeTransferFrom`, which reverts `EnforcedPause` and bubbles up through
+    ///      OutrunSafeERC20, rolling the whole call back — zero ledger/escrow movement. The real-uAsset
+    ///      path `leveragedGenesis` touches a different token, so it keeps working in the same pause state.
+    function test_RevertWhen_CreditPaused_LeveragedGenesisWithCredit_RevertsAndRealPathUnaffected() external {
+        // Baseline real participation so the market is live before the pause.
+        uAsset.mint(ALICE, 10 ether);
+        vm.prank(ALICE);
+        uAsset.approve(address(polend), 10 ether);
+        vm.prank(ALICE);
+        polend.leveragedGenesis(VERSE_ID, 10 ether);
+
+        // Arm the credit allowance BEFORE pausing: like OZ ERC20Pausable, only token moves are gated.
+        credit.mint(BOB, 5 ether);
+        vm.prank(BOB);
+        credit.approve(address(polend), 5 ether);
+
+        vm.prank(CREDIT_OWNER);
+        credit.pause();
+
+        // Credit entry reverts with the credit token's own pause error, bubbled through safeTransferFrom.
+        vm.prank(BOB);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 5 ether);
+
+        // The failed call's CEI writes all rolled back: no credit interest, no aggregate bump, no escrow.
+        assertEq(polend.getTotalLeveragedInterest(VERSE_ID), 10 ether, "aggregate interest unchanged");
+        assertEq(polend.getTotalCreditInterest(VERSE_ID), 0, "credit interest unchanged");
+        // Bob's per-user credit ledger is implied by the verse-level zero above (he is this test's only
+        // credit participant); the per-user getter is mid-rename in an uncommitted change, so it is not
+        // anchored here.
+        assertEq(credit.balanceOf(address(polend)), 0, "credit escrow unchanged");
+        assertEq(credit.balanceOf(BOB), 5 ether, "bob credit balance unchanged");
+
+        // Same pause state: the real-uAsset path still pays, borrows and escrows.
+        uAsset.mint(ALICE, 2 ether);
+        vm.prank(ALICE);
+        uAsset.approve(address(polend), 2 ether);
+        vm.prank(ALICE);
+        uint256 borrowed = polend.leveragedGenesis(VERSE_ID, 2 ether);
+
+        assertEq(borrowed, 20 ether, "real path borrows while credit paused");
+        assertEq(polend.getTotalLeveragedInterest(VERSE_ID), 12 ether, "real interest accrues");
+        assertEq(polend.getTotalCreditInterest(VERSE_ID), 0, "credit tally still zero");
+        assertEq(uAsset.balanceOf(address(polend)), 12 ether, "real escrow grew");
+    }
+
+    /// @dev Refund terminal state under credit pause: `claimRefund` executes each payout branch
+    ///      conditionally, so a real-only participant (`creditInterestPaid == 0`) never touches the
+    ///      paused token and withdraws uAsset normally, while a mixed participant (both ledgers
+    ///      non-zero) has the real leg rolled back by the credit leg's `EnforcedPause` — including
+    ///      `_consumeClaimFlag`, so the retry-after-unpause is not eaten by InvalidClaim. After
+    ///      unpause the mixed participant receives both legs in a single call.
+    function test_CreditPaused_RefundClaim_RealOnlyUnblockedMixedDelayedUntilUnpause() external {
+        // Real-only participant: only `leveragedInterestPaid` is non-zero.
+        uAsset.mint(ALICE, 10 ether);
+        vm.prank(ALICE);
+        uAsset.approve(address(polend), 10 ether);
+        vm.prank(ALICE);
+        polend.leveragedGenesis(VERSE_ID, 10 ether);
+
+        // Mixed participant: both ledgers non-zero (10 real + 5 credit).
+        uAsset.mint(BOB, 10 ether);
+        vm.prank(BOB);
+        uAsset.approve(address(polend), 10 ether);
+        vm.prank(BOB);
+        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        credit.mint(BOB, 5 ether);
+        vm.prank(BOB);
+        credit.approve(address(polend), 5 ether);
+        vm.prank(BOB);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 5 ether);
+
+        assertEq(credit.balanceOf(address(polend)), 5 ether, "credit escrowed");
+
+        // Verse fails into the Refund terminal state, then the credit token is paused.
+        vm.prank(address(launcher));
+        polend.markRefundable(VERSE_ID);
+        assertEq(uint256(polend.getLendMarket(VERSE_ID).state), uint256(IPOLend.MarketState.Refund), "refund");
+
+        vm.prank(CREDIT_OWNER);
+        credit.pause();
+
+        // Real-only claim: the credit branch is skipped entirely, so the pause never bites.
+        vm.prank(ALICE);
+        uint256 aliceRefunded = polend.claimRefund(VERSE_ID, ALICE_REC);
+        assertEq(aliceRefunded, 10 ether, "alice refund amount");
+        assertEq(uAsset.balanceOf(ALICE_REC), 10 ether, "alice recipient uAsset while paused");
+
+        // Mixed claim: the real leg would transfer, but the credit leg reverts EnforcedPause and the
+        // whole call (real leg + claim flag) rolls back.
+        vm.prank(BOB);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        polend.claimRefund(VERSE_ID, BOB_REC);
+        assertEq(uAsset.balanceOf(BOB_REC), 0, "mixed real leg rolled back");
+        assertEq(credit.balanceOf(BOB_REC), 0, "mixed credit leg rolled back");
+        assertEq(uAsset.balanceOf(address(polend)), 10 ether, "bob real escrow intact");
+        assertEq(credit.balanceOf(address(polend)), 5 ether, "bob credit escrow intact");
+
+        // Claim flag NOT consumed: retrying while paused hits EnforcedPause again, not InvalidClaim —
+        // proving `_consumeClaimFlag` was rolled back with the call.
+        vm.prank(BOB);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        polend.claimRefund(VERSE_ID, BOB_REC);
+
+        // Unpause releases the mixed participant: both legs settle in one call.
+        vm.prank(CREDIT_OWNER);
+        credit.unpause();
+
+        vm.prank(BOB);
+        uint256 bobRefunded = polend.claimRefund(VERSE_ID, BOB_REC);
+        assertEq(bobRefunded, 10 ether, "bob refund amount is the real slice");
+        assertEq(uAsset.balanceOf(BOB_REC), 10 ether, "bob recipient uAsset");
+        assertEq(credit.balanceOf(BOB_REC), 5 ether, "bob recipient credit");
+        assertEq(uAsset.balanceOf(address(polend)), 0, "uAsset escrow drained");
+        assertEq(credit.balanceOf(address(polend)), 0, "credit escrow drained");
+    }
+
+    /// @dev Finalize skips the credit burn entirely for a real-only market (`totalCreditInterest == 0`
+    ///      guards the `IGenesisCredit.burn` call), so a paused credit token cannot block a verse whose
+    ///      participants never used credit: debt is minted, the real slice sweeps to treasury, and the
+    ///      paused token is never called.
+    function test_CreditPaused_RealOnlyMarket_FinalizesWithoutCreditBurn() external {
+        // Second verse on the same uAsset: real-only participation, so the (shared) credit token is
+        // resolved by the factory but never entered on this verse.
+        uint256 verse2 = 2;
+        launcher.setVerseUAsset(verse2, address(uAsset));
+        vm.prank(address(launcher));
+        polend.registerLendMarket(verse2);
+
+        uAsset.mint(ALICE, 10 ether);
+        vm.prank(ALICE);
+        uAsset.approve(address(polend), 10 ether);
+        vm.prank(ALICE);
+        polend.leveragedGenesis(verse2, 10 ether);
+        assertEq(polend.getTotalCreditInterest(verse2), 0, "no credit on verse 2");
+
+        vm.prank(CREDIT_OWNER);
+        credit.pause();
+
+        uint256 treasuryBefore = uAsset.balanceOf(address(this));
+        uint256 creditSupplyBefore = credit.totalSupply();
+
+        vm.prank(address(launcher));
+        polend.finalizeLeveragedGenesis(verse2);
+
+        assertEq(
+            uint256(polend.getLendMarket(verse2).state), uint256(IPOLend.MarketState.Locked), "real-only market locks"
+        );
+        assertEq(uAsset.balanceOf(address(launcher)), 100 ether, "debt minted to launcher");
+        assertEq(uAsset.balanceOf(address(this)) - treasuryBefore, 10 ether, "treasury real sweep");
+        assertEq(credit.burnedAmount(), 0, "no credit burn attempted");
+        assertEq(credit.totalSupply(), creditSupplyBefore, "credit supply unchanged");
     }
 }

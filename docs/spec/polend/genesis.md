@@ -235,6 +235,16 @@ GenesisCredit 抵扣的利息**计入 `minTotalFund` 启动门槛且不封顶**�
 event LeveragedGenesisWithCredit(uint256 indexed verseId, address indexed user, uint256 creditAmount);
 ```
 
+GenesisCredit pause 开关与 credit 路径的交互：GenesisCredit 提供 owner-only 转账暂停开关（`src/credit/GenesisCredit.sol::pause` / `::unpause`，继承 OZ `ERC20Pausable`，override `_update` 的标准全挡模式；与 `setMerkleRoot` 复用同一 OZ Ownable 权限面，不新增角色；`paused()` view 查询状态）。pause 期间该 GenesisCredit 的所有 ERC20 状态变更路径 revert OZ `EnforcedPause`，对 POLend 侧 credit 路径的影响：
+
+- `leveragedGenesisWithCredit` 的 `GenesisCredit.transferFrom` 托管 revert，新 credit 抵扣被阻断（真付 `uAsset` 的 `leveragedGenesis` 路径不受影响）
+- Refund 终态 `claimRefund` 的 credit 退回（`GenesisCredit.transfer`）revert，退款延迟到 unpause 后可领（POLendUpgradeable 托管仍在，资金不丢）。零 credit 路径（`POLendUpgradeable.sol::claimRefund` 的 `realPaid != 0` 与 `creditPaid != 0` 两分支各自条件执行）：real-only 参与者（`creditInterestPaid == 0`）只执行 real `uAsset` transfer 分支，不受 pause 影响；mixed 参与者（real 与 credit 两栏均非零）pause 期间整笔 revert——credit 分支的 transfer 回滚连同 real 分支一起回滚，real 部分随整笔延迟到 unpause
+- `finalizeLeveragedGenesis` 的 `GenesisCredit.burn`（烧托管 credit）revert，finalize 被阻断——burn 仅在 `market.totalCreditInterest != 0` 时调用（`POLendUpgradeable.sol::finalizeLeveragedGenesis`）；real-only 市场（`totalCreditInterest == 0`）不触碰 credit token，finalize 不受 pause 影响
+- OFT 语义：send 侧 `_burn` 与 receive 侧 `_mint` 同受全挡；home pause 期间 LayerZero 消息 delivery 失败转为 retryable/storeable，不丢失
+- 每个链上 GenesisCredit 部署的 pause 状态互相独立，由各自 owner 控制；home pause 不影响目标链部署
+
+unpause 后上述路径全部恢复。约束收口见 [invariants.md INV-27](../invariants.md)。
+
 如果最终进入 `Refund`：
 
 - 杠杆用户只取回自己支付的利息

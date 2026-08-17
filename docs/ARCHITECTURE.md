@@ -13,7 +13,7 @@
 
 ### 1.2 注册与跨链注册
 
-- `src/verse/registration/MemeverseRegistrationCenter.sol`
+- `src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol`（UUPS：`ERC1967Proxy` 部署，地址稳定、可升级修复）
 - `src/verse/registration/MemeverseRegistrarAtLocal.sol`
 - `src/verse/registration/MemeverseRegistrarOmnichain.sol`
 - 负责参数校验、symbol 占用、local/remote fan-out，以及对 launcher 的落库调用。
@@ -135,7 +135,7 @@ preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，
 
 - `src/verse/YieldDispatcherUpgradeable.sol`
 - `src/interoperation/MemeverseOmnichainInteroperation.sol`
-- `src/interoperation/OmnichainMemecoinStaker.sol`
+- `src/interoperation/OmnichainMemecoinStakerUpgradeable.sol`（UUPS：`ERC1967Proxy` 部署，地址稳定、可升级修复）
 - 负责治理收益跨链投递与 memecoin 跨链 staking。
 
 ### 1.7 GenesisCredit 冷启动层

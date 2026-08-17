@@ -13,8 +13,9 @@
 ### INV-01 注册写入链路是单入口
 
 - 约束：`MemeverseLauncherUpgradeable.registerMemeverse(...)` 只能由 `memeverseRegistrar` 调用；注册中心与 registrar 只能作为上游入口。`[代码已证]`
+- 约束（center 侧 origin 校验绑定当前配置的 registrar 指针）：`MemeverseRegistrationCenterUpgradeable.sol::_lzReceive` 校验 `_origin.sender ==` 当前 storage 指针；该指针 owner 可经 `MemeverseRegistrationCenterUpgradeable.sol::setMemeverseRegistrar` 变更（owner-mutable）。与旧 immutable 语义等价：OApp 基座 `peers[]`（`setPeer`，onlyOwner）与 launcher 侧 registrar 指针同属 owner 信任域。`[代码已证]`
 - 价值：保证 verse 创建不会被任意地址绕过中心化校验路径。
-- 主要锚点：`src/verse/MemeverseLauncherUpgradeable.sol::registerMemeverse`，`src/verse/registration/MemeverseRegistrarAbstract.sol::_registerMemeverse`，`src/verse/registration/MemeverseRegistrationCenter.sol::registration`
+- 主要锚点：`src/verse/MemeverseLauncherUpgradeable.sol::registerMemeverse`，`src/verse/registration/MemeverseRegistrarAbstract.sol::_registerMemeverse`，`src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol::registration`、`::_lzReceive`、`::setMemeverseRegistrar`
 
 ### INV-02 `memecoin -> verseId` 映射在注册时建立且后续不重写
 
@@ -101,15 +102,16 @@
 
 ### INV-10 OFT compose 回调具备 replay 防护
 
-- 约束：`YieldDispatcherUpgradeable` 与 `OmnichainMemecoinStaker` 在 endpoint 路径的 `ComposeState.None` 状态下检查 `guid` 未执行、再置 `Settled`；`ComposeState.Released` 态下 `lzCompose` 幂等放行（no-op），不标记执行、不结算。`[代码已证]`
+- 约束：`YieldDispatcherUpgradeable` 与 `OmnichainMemecoinStakerUpgradeable` 在 endpoint 路径的 `ComposeState.None` 状态下检查 `guid` 未执行、再置 `Settled`；`ComposeState.Released` 态下 `lzCompose` 幂等放行（no-op），不标记执行、不结算。`[代码已证]`
+- 约束（staker 互斥锁现居 proxy storage）：`OmnichainMemecoinStakerUpgradeable` 改 UUPS（`ERC1967Proxy`）后，`composeStates` 互斥锁位于 ERC-7201 namespace `outrun.storage.OmnichainMemecoinStaker`，升级保留；该 namespace 字段只允许尾部追加、不得重排或插入。`[代码已证]`
 - 价值：跨链到账处理不可重复记账。
-- 主要锚点：`src/verse/YieldDispatcherUpgradeable.sol::lzCompose`，`src/interoperation/OmnichainMemecoinStaker.sol::lzCompose`
+- 主要锚点：`src/verse/YieldDispatcherUpgradeable.sol::lzCompose`，`src/interoperation/OmnichainMemecoinStakerUpgradeable.sol::lzCompose`
 
 ### INV-11 注册时间权威值来自注册中心写入
 
 - 约束：launcher 不自行重算 `endTime/unlockTime`，以 registrar 传入值为准；本地报价读取注册中心 `DAY`，中心写入为最终来源，并写入固定 `unlockTime = endTime + FIXED_LOCKUP_DURATION`。`[代码已证]`
 - 价值：链上最终时间语义由中心写入决定，报价仅供参考。
-- 主要锚点：`src/verse/MemeverseLaunchImpl.sol::_storeRegisteredMemeverse`，`src/verse/libraries/MemeverseRegistrationLib.sol::FIXED_LOCKUP_DURATION (constant)`（`RegistrarAtLocal` 与 `RegistrationCenter` 共享的单一来源），`src/verse/registration/MemeverseRegistrarAtLocal.sol::quoteRegister`，`src/verse/registration/MemeverseRegistrationCenter.sol::DAY (constant)`，`src/verse/registration/MemeverseRegistrationCenter.sol::registration`
+- 主要锚点：`src/verse/MemeverseLaunchImpl.sol::_storeRegisteredMemeverse`，`src/verse/libraries/MemeverseRegistrationLib.sol::FIXED_LOCKUP_DURATION (constant)`（`RegistrarAtLocal` 与 `RegistrationCenter` 共享的单一来源），`src/verse/registration/MemeverseRegistrarAtLocal.sol::quoteRegister`，`src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol::DAY (constant)`，`src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol::registration`
 
 ### INV-12 解锁后必须先经过保护窗口，再恢复公开 swap
 
@@ -262,7 +264,7 @@ settlementUAsset >= previewPTToUAsset(PT.totalSupply())
 - 不变量：每个 (token, guid) 对在每个 composer 上至多被解析一次——`lzCompose`（置 `Settled`）与 `settlePendingCompose`（置 `Released`）经按 token 键控的 `ComposeState` 单向迁移互斥（None→Settled 或 None→Released，不可逆），endpoint 的 `RECEIVED_MESSAGE_HASH` 作纵深防御；OFT token 合约不再托管 compose 状态（无 `withdrawIfNotExecuted`/`ComposeTxStatus`/UBO），mint 即终态；staker 的 deposit 分支在外部 deposit 调用前校验 `vault.asset() == 投递 token`、`YieldDispatcherUpgradeable._settleToContract` MEMECOIN 分支同样在 approve 前绑定 `receiver.asset() == 投递 token`（本轮 code writer 同步落地；均 `TokenVaultMismatch`）——伪造 (token, vault) 配对在 staker 与 dispatcher 两侧均 revert、无资金移动，“伪造防护”因此同时覆盖 deposit 与 settle 两条资金流，而不只是互斥锁槽。
 - 机制细节（投递证明、键控互斥与伪造防护、CEI 置位顺序、结算分支）：见 [docs/spec/interoperation/layerzero-oapp-oft.md §4](interoperation/layerzero-oapp-oft.md)。
 - 价值：消除 COMMON-001（to=0 经 `withdrawIfNotExecuted` 二次 mint 通胀）攻击面，并修复 UBO 机制系统性失效（三路径已投递未执行 compose 兜底结算全坏）。token 合约回归官方 LayerZero OFTCore，兜底结算复杂度住在 composer，符合市场最佳实践。
-- 主要锚点：`src/verse/YieldDispatcherUpgradeable.sol::settlePendingCompose`/`::_settle`/`::lzCompose`，`src/interoperation/OmnichainMemecoinStaker.sol::settlePendingCompose`/`::lzCompose`，`src/verse/interfaces/IYieldDispatcher.sol`（`ComposeState`/错误/事件），`src/interoperation/interfaces/IOmnichainMemecoinStaker.sol`，`src/yield/MemecoinYieldVault.sol::reAccumulateYields`，`src/common/omnichain/oft/OutrunOFTCoreInit.sol::_lzReceive`（回归官方）。
+- 主要锚点：`src/verse/YieldDispatcherUpgradeable.sol::settlePendingCompose`/`::_settle`/`::lzCompose`，`src/interoperation/OmnichainMemecoinStakerUpgradeable.sol::settlePendingCompose`/`::lzCompose`，`src/verse/interfaces/IYieldDispatcher.sol`（`ComposeState`/错误/事件），`src/interoperation/interfaces/IOmnichainMemecoinStaker.sol`，`src/yield/MemecoinYieldVault.sol::reAccumulateYields`，`src/common/omnichain/oft/OutrunOFTCoreInit.sol::_lzReceive`（回归官方）。
 
 ### INV-26 资产计价投票的 checkpoint 三条 trace 必须配对一致 `[代码已证]`
 

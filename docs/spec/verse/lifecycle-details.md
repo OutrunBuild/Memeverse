@@ -33,7 +33,7 @@ MemeverseV2 的主路径可以概括为：
 
 ## 3. 注册阶段
 
-注册阶段由 `MemeverseRegistrationCenter` 统一生成并写入以下关键时间与标识：
+注册阶段由 `MemeverseRegistrationCenterUpgradeable` 统一生成并写入以下关键时间与标识：
 
 - `uniqueId`
 - `endTime`

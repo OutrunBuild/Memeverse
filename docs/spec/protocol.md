@@ -20,7 +20,7 @@
 
 | 模块 | 主要职责 | 对用户可见影响 | 规则状态 |
 | --- | --- | --- | --- |
-| `MemeverseRegistrationCenter` | 注册参数校验、symbol 占用与历史、多链分发 | 是否能注册、注册费与跨链分发成功与否 | 当前规则（代码已证） |
+| `MemeverseRegistrationCenterUpgradeable` | 注册参数校验、symbol 占用与历史、多链分发 | 是否能注册、注册费与跨链分发成功与否 | 当前规则（代码已证） |
 | `MemeverseRegistrarAtLocal` / `MemeverseRegistrarOmnichain` | 把注册结果写入 Launcher | 本地/异链注册路径差异 | 当前规则（代码已证） |
 | `MemeverseLauncherUpgradeable` | verse 状态机与资金主编排 | Genesis/Refund/Locked/Unlocked 行为、领取/退款/赎回/分发 | 当前规则（代码已证） |
 | `MemeverseProxyDeployer` | memecoin/POL/vault/governor/incentivizer 部署或地址预测 | Locked 时治理与收益组件是否就绪 | 当前规则（代码已证） |
@@ -29,7 +29,7 @@
 | `Memecoin` / `MemePol` | 发行与销毁权限边界 | 谁可 mint、如何 burn、POL 与 LP 的关系 | 当前规则（代码已证） |
 | `MemecoinYieldVault` | memecoin 收益累积、份额化与延迟赎回 | 质押收益、请求赎回与延迟执行 | 当前规则（代码已证） |
 | `MemecoinDaoGovernorUpgradeable` + `GovernanceCycleIncentivizerUpgradeable` | DAO treasury 与投票激励周期 | 国库收入记录、周期奖励结算 | 当前规则（代码已证） |
-| `YieldDispatcherUpgradeable` / `MemeverseOmnichainInteroperation` / `OmnichainMemecoinStaker` | 跨链收益与跨链 staking 路径 | 异链 fee 要求、到帐目标（Governor / Vault） | 当前规则（代码已证） |
+| `YieldDispatcherUpgradeable` / `MemeverseOmnichainInteroperation` / `OmnichainMemecoinStakerUpgradeable` | 跨链收益与跨链 staking 路径 | 异链 fee 要求、到帐目标（Governor / Vault） | 当前规则（代码已证） |
 | `POLendUpgradeable` / `POLSplitterUpgradeable` | 杠杆创世、PT/YT、辅助池、settlement、残值领取 | 杠杆 YT、PT/YT 兑付、辅助池退出、杠杆残值 | 当前规则（代码已证） |
 
 **`MemePol` 双 burn 重载区分**（当前规则，代码已证）：

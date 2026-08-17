@@ -12,9 +12,10 @@
 - `MemeverseOmnichainInteroperation`
   - 用户侧 memecoin staking 入口
   - 根据治理链位置决定本链或异链路径
-- `OmnichainMemecoinStaker`
+- `OmnichainMemecoinStakerUpgradeable`
   - 治理链侧接收跨链 staking compose
   - 把 memecoin 存入 yieldVault；异链 compose 时若目标 vault 不存在，走 `fallback`（回退路径），直接把到账 memecoin 转给 receiver
+  - UUPS（`ERC1967Proxy`）部署：地址稳定、可经升级修复；`localEndpoint` 与 `composeStates` 互斥锁位于 ERC-7201 namespace `outrun.storage.OmnichainMemecoinStaker`，升级保留（namespace 字段只允许尾部追加）；`lzCompose`（仅 endpoint）与 `settlePendingCompose`（仅受益人）权限面不变；owner 仅持升级授权（`_authorizeUpgrade` onlyOwner），升级权等同对滞留 bridged memecoin 的托管权（与 `YieldDispatcherUpgradeable` 同一接受的 residual）。见 `OmnichainMemecoinStakerUpgradeable.sol`
 
 ## 3. 治理收益分发路径
 
@@ -54,7 +55,7 @@
 
 这里的 `retry`（重试）是重新执行尚未成功的目标链处理，不是重新发起一次源链 send。源链 OFT send 成功后，目标链的 `lzReceive` 或 `lzCompose` 失败不会回滚源链状态；LayerZero 可在目标链重新投递/执行消息。对于未执行的 memecoin yield compose，`MemecoinYieldVault.reAccumulateYields(address dispatcher, bytes32 guid, bytes calldata message)` 是 permissionless（无需权限、任何地址可调用）的恢复入口：
 
-1. 委托 `IYieldDispatcher(dispatcher).settlePendingCompose(asset, guid, message)`；`settlePendingCompose` 内部完成全部结算——settle 在 approve 前先做 token↔vault 的 `asset()` 绑定校验（`TokenVaultMismatch`，本轮 code writer 同步落地），通过后 approve 本 vault 再调 `accumulateYields`，由 vault 的 `accumulateYields` 一步完成 pull + `totalAssets` 记账（空 vault 时按现有规则 burn；零金额 payload 在 settle 入口直接以 `ZeroInput` 拒绝、不改变状态、`(token, guid)` 槽位保持 `None`；零金额 lzCompose 对除自引用分支外的全部分支（vault / EOA / governor）均收敛（零金额自引用帧被 `lzCompose` 自引用守卫先于 `_settle` 拦截、emit `ComposeRejected(guid, token, 0)`，见 operations.md §3.13）——`_settle` 在 amount==0 时短路（不 burn、不记账），置 `Settled` + emit `OFTProcessed(amount=0, burnedAtDispatcher=false)`，endpoint 状态机收敛到 `ComposeDelivered`），vault 无独立本地记账步骤；`dispatcher` 由调用者按 compose 实际投递的 composer 提供（即 endpoint `ComposeSent` 事件的 `to` 字段，与 message 同源获取）；`verifySettle` 读 `composeQueue(token, dispatcher, guid, 0)` 在运行时校验该 dispatcher（错地址的失败形态取决于该地址：无代码地址 → 空数据 revert、无具名错误；有代码同接口 dispatcher → `NotDelivered`；误传 staker：真实 staking message → `NotComposeBeneficiary`（内层 receiver=staking 用户 ≠ vault，入口门先触发）、yield message → `NotDelivered`（staker 队列槽空）；`NotBeneficiary` 仅直连 `OmnichainMemecoinStaker.settlePendingCompose` 时出现（§3.13.1）（特例：内层 receiver 恰为 vault 的 staking 帧会经 staker settle 裸转至 vault——staker 的 msg.sender==receiver 被 vault 自洽满足，金额限发送者自身 amountLD、资金惰性滞留 vault，属自伤类）），vault 不存储 dispatcher（initialize 不接收 dispatcher 参数），恢复调用必须传 compose 实际投递的 dispatcher（launcher `setYieldDispatcher` 旋转后可能是历史 dispatcher）。入口自校验：`reAccumulateYields` 先校验 message 长度（<108 字节 revert `ComposeMessageTooShort`）、再校验 message 内层 receiver 为本 vault（否则 revert `NotComposeBeneficiary`）、再断言 settle 返回金额非零（否则 revert `ComposeSettlementFailed`）——零金额 × <108 字节帧在 vault 入口先 revert `ComposeMessageTooShort`（长度闸先于 `ZeroInput`）；错传 message 或返回零金额的壳/空实现 dispatcher 不再静默成功（返回非零金额的伪实现仍会静默成功、无入口信号，对账仍须以 `ComposeSettled`/`Released` 与资金核对为准）。receiver word 高位脏但低 160 位恰为本 vault 的自造帧会通过入口门、随后在 dispatcher 处 revert（≥140 字节帧：严格 `abi.decode` 空数据回退；108-139 字节带：具名 `MalformedComposeMsg` 长度守卫）——槽位保持 `None`、可重试，按错误名 grep 的监控对此类不应期待 `NotComposeBeneficiary`。`message` 从 endpoint `ComposeSent` 事件原样拷贝（按 `guid` 过滤、`to` 为本 dispatcher 的事件），重建步骤见 [layerzero-oapp-oft.md §4](layerzero-oapp-oft.md)。
+1. 委托 `IYieldDispatcher(dispatcher).settlePendingCompose(asset, guid, message)`；`settlePendingCompose` 内部完成全部结算——settle 在 approve 前先做 token↔vault 的 `asset()` 绑定校验（`TokenVaultMismatch`，本轮 code writer 同步落地），通过后 approve 本 vault 再调 `accumulateYields`，由 vault 的 `accumulateYields` 一步完成 pull + `totalAssets` 记账（空 vault 时按现有规则 burn；零金额 payload 在 settle 入口直接以 `ZeroInput` 拒绝、不改变状态、`(token, guid)` 槽位保持 `None`；零金额 lzCompose 对除自引用分支外的全部分支（vault / EOA / governor）均收敛（零金额自引用帧被 `lzCompose` 自引用守卫先于 `_settle` 拦截、emit `ComposeRejected(guid, token, 0)`，见 operations.md §3.13）——`_settle` 在 amount==0 时短路（不 burn、不记账），置 `Settled` + emit `OFTProcessed(amount=0, burnedAtDispatcher=false)`，endpoint 状态机收敛到 `ComposeDelivered`），vault 无独立本地记账步骤；`dispatcher` 由调用者按 compose 实际投递的 composer 提供（即 endpoint `ComposeSent` 事件的 `to` 字段，与 message 同源获取）；`verifySettle` 读 `composeQueue(token, dispatcher, guid, 0)` 在运行时校验该 dispatcher（错地址的失败形态取决于该地址：无代码地址 → 空数据 revert、无具名错误；有代码同接口 dispatcher → `NotDelivered`；误传 staker：真实 staking message → `NotComposeBeneficiary`（内层 receiver=staking 用户 ≠ vault，入口门先触发）、yield message → `NotDelivered`（staker 队列槽空）；`NotBeneficiary` 仅直连 `OmnichainMemecoinStakerUpgradeable.settlePendingCompose` 时出现（§3.13.1）（特例：内层 receiver 恰为 vault 的 staking 帧会经 staker settle 裸转至 vault——staker 的 msg.sender==receiver 被 vault 自洽满足，金额限发送者自身 amountLD、资金惰性滞留 vault，属自伤类）），vault 不存储 dispatcher（initialize 不接收 dispatcher 参数），恢复调用必须传 compose 实际投递的 dispatcher（launcher `setYieldDispatcher` 旋转后可能是历史 dispatcher）。入口自校验：`reAccumulateYields` 先校验 message 长度（<108 字节 revert `ComposeMessageTooShort`）、再校验 message 内层 receiver 为本 vault（否则 revert `NotComposeBeneficiary`）、再断言 settle 返回金额非零（否则 revert `ComposeSettlementFailed`）——零金额 × <108 字节帧在 vault 入口先 revert `ComposeMessageTooShort`（长度闸先于 `ZeroInput`）；错传 message 或返回零金额的壳/空实现 dispatcher 不再静默成功（返回非零金额的伪实现仍会静默成功、无入口信号，对账仍须以 `ComposeSettled`/`Released` 与资金核对为准）。receiver word 高位脏但低 160 位恰为本 vault 的自造帧会通过入口门、随后在 dispatcher 处 revert（≥140 字节帧：严格 `abi.decode` 空数据回退；108-139 字节带：具名 `MalformedComposeMsg` 长度守卫）——槽位保持 `None`、可重试，按错误名 grep 的监控对此类不应期待 `NotComposeBeneficiary`。`message` 从 endpoint `ComposeSent` 事件原样拷贝（按 `guid` 过滤、`to` 为本 dispatcher 的事件），重建步骤见 [layerzero-oapp-oft.md §4](layerzero-oapp-oft.md)。
 
 该入口只处理仍未结算（sentinel 为 `ComposeState.None`）的 compose transfer；它是 destination accumulation 的 retry path，不会撤销已经成功完成的 source send。
 
@@ -77,7 +78,7 @@
 - 用户先 quote
 - `msg.value` 必须精确匹配报价
 - memecoin 通过 OFT 发到治理链
-- `OmnichainMemecoinStaker` 在 compose 中完成最终 deposit / fallback transfer：vault 有 code 时调用 `deposit(amount, receiver)`，vault 无 code 时直接把到账数量转给 receiver
+- `OmnichainMemecoinStakerUpgradeable` 在 compose 中完成最终 deposit / fallback transfer：vault 有 code 时调用 `deposit(amount, receiver)`，vault 无 code 时直接把到账数量转给 receiver
 - 非整数倍金额（`amount % decimalConversionRate != 0`）：OFT `send` 只烧掉截断后的 `amountSentLD`，同一交易内把未烧余数（`amount - amountSentLD`）经 `_transferOut` 退回 `msg.sender`（源链），无滞留；退款量以 `amountSentLD`（实际烧毁量，守恒推导）为准而非 `amountReceivedLD`——默认 memecoin OFT 两者相等（`OutrunOFTCoreInit.sol::_debitView`），未来 fee-taking OFT 使其相异时需重审
 - 亚尘金额（`amount < decimalConversionRate`，OFT 截断到零）在 `_transferIn` 之前即被 `_requireNonZeroRemoteDelivery` 以 `DustAmount()` 拒绝——被拒金额零资金移动、零跨链费损失
 
@@ -97,7 +98,7 @@
 
 ### 4.4 阶段与 vault 部署状态
 
-跨链 staking 无 verse 阶段门控：`MemeverseOmnichainInteroperation.sol::memecoinStaking` 与 `::quoteMemecoinStaking` 的异链/远端分支均不检查 verse 阶段或 gov 链 vault 部署状态（本链分支的 vault-code 检查见 §4.1 与 §4.3）。compose 消息编码的 vault word 取源链本地 `verse.yieldVault`（`MemeverseOmnichainInteroperation.sol::_buildStakingSendParam` 编码 composeMsg；该字段的唯一赋值点 `MemeverseLaunchImpl.sol::_deployAndSetupMemeverse` 内 `verse.yieldVault = yieldVault` 仅在源链完成 Genesis→Locked 后执行）。`MemeverseLauncherUpgradeable.sol::changeStage` 为 per-chain、permissionless 的本地执行（无跨链同步），故 vault-absent fallback 的触发面包含两种情形：① 源链未完成 Genesis→Locked——compose 的 vault word 取源链本地 `verse.yieldVault`，此时为零地址，即使 gov 链 vault 已部署（部署顺序完全正确），远端 staking 仍静默降级；② gov 链未进入 Locked——gov 链仍在 Genesis 或进入 Refund 终态（Refund 后 vault 永不部署）时，其 yieldVault 未部署。两种情形下远端 staking 的 compose 均在 `OmnichainMemecoinStaker.sol::lzCompose` 命中 vault-absent fallback（含脏/零 vault word 处理），到账 memecoin 直接转给 receiver——非质押、无 vault 份额/投票权。`quoteMemecoinStaking` 仅返回 LZ fee，不反映目标链 vault 部署状态，调用方无法在发送前得知该降级。多链 verse 应确保 gov 链与所有可能发起 staking 的源链均先完成 Genesis→Locked，避免静默降级。
+跨链 staking 无 verse 阶段门控：`MemeverseOmnichainInteroperation.sol::memecoinStaking` 与 `::quoteMemecoinStaking` 的异链/远端分支均不检查 verse 阶段或 gov 链 vault 部署状态（本链分支的 vault-code 检查见 §4.1 与 §4.3）。compose 消息编码的 vault word 取源链本地 `verse.yieldVault`（`MemeverseOmnichainInteroperation.sol::_buildStakingSendParam` 编码 composeMsg；该字段的唯一赋值点 `MemeverseLaunchImpl.sol::_deployAndSetupMemeverse` 内 `verse.yieldVault = yieldVault` 仅在源链完成 Genesis→Locked 后执行）。`MemeverseLauncherUpgradeable.sol::changeStage` 为 per-chain、permissionless 的本地执行（无跨链同步），故 vault-absent fallback 的触发面包含两种情形：① 源链未完成 Genesis→Locked——compose 的 vault word 取源链本地 `verse.yieldVault`，此时为零地址，即使 gov 链 vault 已部署（部署顺序完全正确），远端 staking 仍静默降级；② gov 链未进入 Locked——gov 链仍在 Genesis 或进入 Refund 终态（Refund 后 vault 永不部署）时，其 yieldVault 未部署。两种情形下远端 staking 的 compose 均在 `OmnichainMemecoinStakerUpgradeable.sol::lzCompose` 命中 vault-absent fallback（含脏/零 vault word 处理），到账 memecoin 直接转给 receiver——非质押、无 vault 份额/投票权。`quoteMemecoinStaking` 仅返回 LZ fee，不反映目标链 vault 部署状态，调用方无法在发送前得知该降级。多链 verse 应确保 gov 链与所有可能发起 staking 的源链均先完成 Genesis→Locked，避免静默降级。
 
 ### 4.5 金额截断、余量退款与源链事件语义
 
@@ -117,7 +118,7 @@
 
 ## 6. compose 回调与 replay 防护
 
-`YieldDispatcherUpgradeable` 和 `OmnichainMemecoinStaker` 都依赖 compose 回调处理跨链到账。
+`YieldDispatcherUpgradeable` 和 `OmnichainMemecoinStakerUpgradeable` 都依赖 compose 回调处理跨链到账。
 
 replay 防护规则本体（endpoint 路径检查 `guid` 未执行、置 Settled（CEI）后结算，`Released` 态幂等放行）见 [docs/spec/invariants.md INV-10](../invariants.md) 与 [docs/spec/interoperation/layerzero-oapp-oft.md §4](layerzero-oapp-oft.md)。
 

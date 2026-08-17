@@ -3,13 +3,17 @@ pragma solidity ^0.8.35;
 
 import {Vm} from "forge-std/Vm.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import {OFTComposeSettleVerify} from "../../src/common/omnichain/OFTComposeSettleVerify.sol";
 import {IOmnichainMemecoinStaker} from "../../src/interoperation/interfaces/IOmnichainMemecoinStaker.sol";
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
 import {IMemecoinYieldVault} from "../../src/yield/interfaces/IMemecoinYieldVault.sol";
-import {OmnichainMemecoinStaker} from "../../src/interoperation/OmnichainMemecoinStaker.sol";
+import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
 import {ReentrancyGuard} from "../../src/common/access/ReentrancyGuard.sol";
+import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
+import {OmnichainMemecoinStakerUpgradeableV2} from "../mocks/upgrade/OmnichainMemecoinStakerUpgradeableV2.sol";
 import {
     AttackStakerToken,
     ERC20InvalidReceiver,
@@ -28,13 +32,13 @@ import {ComposerEndpointFixture} from "../mocks/infrastructure/ComposerEndpointF
 ///      `settlePendingCompose`) must revert `ReentrancyGuardReentrantCall`. This pins the defense-in-depth lock as a
 ///      regression guard: if the `composeStates` mutex or CEI order were ever removed, this test catches it.
 contract ReentrantMemecoin {
-    OmnichainMemecoinStaker internal immutable staker;
+    OmnichainMemecoinStakerUpgradeable internal immutable staker;
     // The reentry target: a different guid (pre-seeded in the queue) so the reentrant call passes the mutex/proof
     // checks and reaches `_transferOut`, where the `nonReentrant` lock (held by the outer `_transferOut`) fires.
     bytes32 internal reentryGuid;
     bytes internal reentryMessage;
 
-    constructor(OmnichainMemecoinStaker staker_) {
+    constructor(OmnichainMemecoinStakerUpgradeable staker_) {
         staker = staker_;
     }
 
@@ -56,14 +60,17 @@ contract ReentrantMemecoin {
 contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
     address internal constant RECEIVER = address(0xBEEF);
 
-    OmnichainMemecoinStaker internal staker;
+    OmnichainMemecoinStakerUpgradeable internal staker;
     MockStakerComposeToken internal memecoin;
     MockStakerYieldVault internal yieldVault;
     MockMessagingComposerEndpoint internal endpoint;
 
     /// @notice Set up.
+    /// @dev The staker is deployed through the shared fixture helper (production UUPS shape, mirroring the
+    ///      script's `_deployOmnichainMemecoinStaker`); owner = this test contract, endpoint = the fixed
+    ///      LOCAL_ENDPOINT.
     function setUp() external {
-        staker = new OmnichainMemecoinStaker(LOCAL_ENDPOINT);
+        staker = _deployStaker(address(this), LOCAL_ENDPOINT);
         memecoin = new MockStakerComposeToken();
         yieldVault = new MockStakerYieldVault(address(memecoin));
 
@@ -72,10 +79,81 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
         endpoint = _etchComposer();
     }
 
-    /// @notice Test constructor rejects zero local endpoint.
-    function testConstructorRejectsZeroLocalEndpoint() external {
+    /// @notice Test initialize rejects zero local endpoint.
+    /// @dev initialize runs inside the ERC1967Proxy constructor, so the reverting initializer fails the
+    ///      proxy deploy itself. This deploy deliberately bypasses `_deployStaker`: the expectRevert must
+    ///      wrap the proxy CREATE directly — the helper's impl `new` would run first and match the
+    ///      expectation against a creation that cannot revert.
+    function testInitializeRejectsZeroLocalEndpoint() external {
+        OmnichainMemecoinStakerUpgradeable implementation = new OmnichainMemecoinStakerUpgradeable();
+
         vm.expectRevert(IOmnichainMemecoinStaker.ZeroAddress.selector);
-        new OmnichainMemecoinStaker(address(0));
+        new ERC1967Proxy(
+            address(implementation),
+            abi.encodeCall(OmnichainMemecoinStakerUpgradeable.initialize, (address(this), address(0)))
+        );
+    }
+
+    /// @notice Test initialize cannot run twice on the proxy (OZ initializer guard).
+    function testInitializeCannotBeReRunOnTheProxy() external {
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        staker.initialize(address(this), LOCAL_ENDPOINT);
+    }
+
+    /// @notice Test owner-upgraded V2 shell keeps the composeStates mutex and localEndpoint storage intact.
+    /// @dev The V2 shell (test/mocks/upgrade) has no getters, so post-upgrade state is proven by raw
+    ///      `vm.load` reads on the erc7201("outrun.storage.OmnichainMemecoinStaker") namespace. The
+    ///      pre-upgrade `vm.load` assertions double as a self-check of the slot math: a wrong base slot or
+    ///      nested-mapping formula would fail them before the upgrade ever runs.
+    function testUpgradeToV2ShellPreservesComposeStateStorage() external {
+        // Known state: a settled compose mutex entry plus the initializer's localEndpoint pointer.
+        bytes32 guid = bytes32("upgrade-preserve");
+        uint256 amount = 1 ether;
+        memecoin.mint(address(staker), amount);
+        // Vault word names an undeployed address so the fallback branch settles without a vault fixture.
+        bytes memory message = _stakeMessage(amount, RECEIVER, RECEIVER, address(0x1234));
+        vm.prank(LOCAL_ENDPOINT);
+        staker.lzCompose(address(memecoin), guid, message, address(0), "");
+        assertEq(uint256(staker.composeStates(address(memecoin), guid)), uint256(IComposeState.ComposeState.Settled));
+
+        // ERC-7201 base slot: keccak256(abi.encode(uint256(keccak256(ns)) - 1)) & ~bytes32(uint256(0xff)).
+        // localEndpoint is field 0; composeStates is the nested mapping at field 1, so the (memecoin, guid)
+        // entry sits at keccak256(abi.encode(guid, keccak256(abi.encode(memecoin, base + 1)))).
+        bytes32 baseSlot = _stakerStorageBaseSlot();
+        assertEq(vm.load(address(staker), baseSlot), bytes32(uint256(uint160(LOCAL_ENDPOINT))));
+        bytes32 composeSlot =
+            keccak256(abi.encode(guid, keccak256(abi.encode(address(memecoin), bytes32(uint256(baseSlot) + 1)))));
+        assertEq(vm.load(address(staker), composeSlot), bytes32(uint256(IComposeState.ComposeState.Settled)));
+
+        // Capture the observed words: the post-upgrade assertions compare against these captures, so the
+        // endpoint/state derivations stay maintained exactly once, in the pre-upgrade block above.
+        bytes32 localEndpointSlotValue = vm.load(address(staker), baseSlot);
+        bytes32 composeStateSlotValue = vm.load(address(staker), composeSlot);
+
+        // Owner (= this test contract) upgrades to the bare shell; V1's plain onlyOwner guard runs.
+        OmnichainMemecoinStakerUpgradeableV2 shell = new OmnichainMemecoinStakerUpgradeableV2();
+        staker.upgradeToAndCall(address(shell), "");
+
+        assertEq(OmnichainMemecoinStakerUpgradeableV2(address(staker)).upgradeVersion(), 2);
+        // Storage preserved: post-upgrade slots equal the captured pre-upgrade words.
+        assertEq(vm.load(address(staker), baseSlot), localEndpointSlotValue);
+        assertEq(vm.load(address(staker), composeSlot), composeStateSlotValue);
+    }
+
+    /// @notice Test upgradeToAndCall reverts for a non-owner.
+    function testUpgradeToAndCallRevertsForNonOwner() external {
+        OmnichainMemecoinStakerUpgradeableV2 shell = new OmnichainMemecoinStakerUpgradeableV2();
+        address attacker = address(0xBAD);
+
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, attacker));
+        staker.upgradeToAndCall(address(shell), "");
+    }
+
+    /// @notice ERC-7201 base slot of the staker's namespaced storage.
+    function _stakerStorageBaseSlot() internal pure returns (bytes32) {
+        return keccak256(abi.encode(uint256(keccak256("outrun.storage.OmnichainMemecoinStaker")) - 1))
+            & ~bytes32(uint256(0xff));
     }
 
     /// @notice Test lz compose rejects unauthorized caller and replayed guid.

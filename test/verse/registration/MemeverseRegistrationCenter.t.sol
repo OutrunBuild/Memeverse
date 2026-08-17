@@ -10,16 +10,29 @@ import {
 import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 
-import {MemeverseRegistrationCenter} from "../../../src/verse/registration/MemeverseRegistrationCenter.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
+
+import {
+    MemeverseRegistrationCenterUpgradeable
+} from "../../../src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol";
 import {IMemeverseRegistrar} from "../../../src/verse/interfaces/IMemeverseRegistrar.sol";
 import {IMemeverseRegistrationCenter} from "../../../src/verse/interfaces/IMemeverseRegistrationCenter.sol";
 import {LzEndpointRegistry} from "../../../src/common/omnichain/LzEndpointRegistry.sol";
 import {ILzEndpointRegistry} from "../../../src/common/omnichain/interfaces/ILzEndpointRegistry.sol";
+import {OutrunOAppUpgradeable} from "../../../src/common/omnichain/oapp/OutrunOAppUpgradeable.sol";
+import {
+    MemeverseRegistrationCenterUpgradeableV2
+} from "../../mocks/upgrade/MemeverseRegistrationCenterUpgradeableV2.sol";
 
 contract MockCenterEndpoint {
     bool public quoteBlocked;
     bool public sendBlocked;
-    address public delegate;
+    /// @dev Keyed by the calling OApp, mirroring EndpointV2's own `delegates(address)` mapping, so tests can
+    ///      prove which address the endpoint saw as the caller of `setDelegate`.
+    mapping(address oapp => address delegate) public delegates;
     uint256 public quotedNativeFee;
     uint256 public actualNativeFee;
     address public lastRefundAddress;
@@ -36,7 +49,7 @@ contract MockCenterEndpoint {
     /// @notice Set delegate.
     /// @param delegate_ See implementation.
     function setDelegate(address delegate_) external {
-        delegate = delegate_;
+        delegates[msg.sender] = delegate_;
     }
 
     /// @notice Lz token.
@@ -133,6 +146,39 @@ contract MockCenterRegistrar {
     }
 }
 
+/// @notice Upgrade-target shell that deploys with code but exposes no `endpoint()` getter.
+/// @dev The center's `_authorizeUpgrade` probes targets through `IOAppCore.endpoint()`; with no matching
+///      selector and no fallback the probe call reverts into the probe's catch branch.
+contract EndpointGetterMissingShell {
+    /// @notice Unrelated placeholder whose only job is to give the shell deployed code.
+    /// @return Fixed marker value.
+    function marker() external pure returns (uint256) {
+        return 1;
+    }
+}
+
+/// @notice Upgrade-target shell whose `endpoint()` getter exists but always reverts.
+contract EndpointGetterRevertingShell {
+    error GetterReverted();
+
+    /// @notice Getter-shaped probe target that fails on demand.
+    function endpoint() external view {
+        revert GetterReverted();
+    }
+}
+
+/// @notice Upgrade-target shell whose `endpoint()` getter succeeds but returns empty returndata.
+contract EndpointGetterEmptyReturnShell {
+    /// @notice Getter-shaped probe target returning zero bytes of returndata.
+    /// @dev A plain view function must return a declared value, so `return(0, 0)` in assembly is the only
+    ///      way to make the STATICCALL succeed while returning nothing decodable into an address.
+    function endpoint() external view {
+        assembly {
+            return(0, 0)
+        }
+    }
+}
+
 contract MemeverseRegistrationCenterTest is Test {
     using OptionsBuilder for bytes;
 
@@ -144,14 +190,28 @@ contract MemeverseRegistrationCenterTest is Test {
     MockCenterEndpoint internal endpoint;
     MockCenterRegistrar internal registrar;
     LzEndpointRegistry internal registry;
-    MemeverseRegistrationCenter internal center;
+    MemeverseRegistrationCenterUpgradeable internal center;
 
     /// @notice Set up.
+    /// @dev UUPS deployment shape: implementation + ERC1967Proxy with initialize in the constructor data,
+    ///      mirroring the script's `_deployRegistrationCenter`.
     function setUp() external {
         endpoint = new MockCenterEndpoint();
         registrar = new MockCenterRegistrar();
         registry = new LzEndpointRegistry(OWNER);
-        center = new MemeverseRegistrationCenter(OWNER, address(endpoint), address(registrar), address(registry));
+        MemeverseRegistrationCenterUpgradeable implementation =
+            new MemeverseRegistrationCenterUpgradeable(address(endpoint));
+        center = MemeverseRegistrationCenterUpgradeable(
+            payable(address(
+                    new ERC1967Proxy(
+                        address(implementation),
+                        abi.encodeCall(
+                            MemeverseRegistrationCenterUpgradeable.initialize,
+                            (OWNER, address(registrar), address(registry))
+                        )
+                    )
+                ))
+        );
 
         vm.prank(OWNER);
         registry.setLzEndpointIds(_endpointPairs());
@@ -205,6 +265,26 @@ contract MemeverseRegistrationCenterTest is Test {
         vm.prank(OWNER);
         vm.expectRevert(IMemeverseRegistrationCenter.ZeroInput.selector);
         center.setRegisterGasLimit(0);
+    }
+
+    /// @notice Test setRegisterGasLimit rejects values above the uint128 consumption ceiling.
+    /// @dev Storage keeps the full uint256, but the LayerZero receive-options builder narrows the stored
+    ///      limit to uint128 (`quoteSend` / `_omnichainSend`); a value above `type(uint128).max` would be
+    ///      silently truncated there, so the setter must reject it with `InvalidInput`.
+    function testSetRegisterGasLimitRejectsValuesAboveUint128() external {
+        vm.prank(OWNER);
+        vm.expectRevert(IMemeverseRegistrationCenter.InvalidInput.selector);
+        center.setRegisterGasLimit(2 ** 128);
+    }
+
+    /// @notice Test setRegisterGasLimit accepts the exact uint128 ceiling losslessly.
+    /// @dev `type(uint128).max` is the largest value whose uint128 narrowing cast in the options builder
+    ///      is lossless, so the getter must read back the exact stored value.
+    function testSetRegisterGasLimitAcceptsUint128Max() external {
+        vm.prank(OWNER);
+        center.setRegisterGasLimit(type(uint128).max);
+
+        assertEq(center.registerGasLimit(), type(uint128).max);
     }
 
     /// @notice Test quote send skips local and quotes remote path.
@@ -353,6 +433,41 @@ contract MemeverseRegistrationCenterTest is Test {
         assertEq(endpoint.lastSendValue(), 0.4 ether);
         assertEq(endpoint.lastRefundedNative(), 0.05 ether);
         assertEq(address(center).balance, 0.05 ether);
+    }
+
+    /// @notice Test a direct plain-ETH send to the raw implementation reverts and bounces the funds back.
+    /// @dev The implementation lives at a deterministic, publicly derivable address with a permanently
+    ///      zero owner (`_disableInitializers`), so ETH landing there could never be swept via the
+    ///      owner-only `removeGasDust`. The inherited `DelegatecallOnly.onlyDelegatecall` guard makes the
+    ///      send revert instead of stranding the ETH.
+    function testReceiveRevertsOnDirectPlainSendToTheImplementation() external {
+        MemeverseRegistrationCenterUpgradeable implementation =
+            new MemeverseRegistrationCenterUpgradeable(address(endpoint));
+        vm.deal(address(this), 1 ether);
+
+        (bool ok,) = address(implementation).call{value: 1 ether}("");
+
+        assertFalse(ok);
+        assertEq(address(this).balance, 1 ether, "misdirected ETH must bounce back to the sender");
+        assertEq(address(implementation).balance, 0);
+    }
+
+    /// @notice Test a plain-ETH send to the proxy still lands (the LayerZero refund acceptance path).
+    /// @dev Refunds arrive at the proxy as empty-calldata value calls; under the delegatecall
+    ///      `address(this)` is the proxy (not the implementation's `_SELF`), so the `onlyDelegatecall`
+    ///      guard passes and the refund acceptance pinned by
+    ///      `testRegistrationAcceptsRemoteNativeRefundsAtCenter` is preserved.
+    function testReceiveAcceptsPlainNativeSendAtTheProxy() external {
+        vm.deal(address(this), 1 ether);
+
+        (bool ok,) = address(center).call{value: 1 ether}("");
+
+        assertTrue(ok);
+        assertEq(address(center).balance, 1 ether);
+
+        vm.prank(OWNER);
+        center.removeGasDust(OWNER);
+        assertEq(address(center).balance, 0);
     }
 
     /// @notice Test registration increments nonce and changes unique id on re-registration.
@@ -512,6 +627,277 @@ contract MemeverseRegistrationCenterTest is Test {
 
         assertEq(OWNER.balance - before, 1 ether);
         assertEq(address(center).balance, 0);
+    }
+
+    /// @notice Test initialize rejects zero registrar or zero registry pointers.
+    /// @dev initialize runs inside the ERC1967Proxy constructor, so the reverting initializer fails the
+    ///      proxy deploy itself.
+    function testInitializeRejectsZeroRegistrarAndRegistry() external {
+        MemeverseRegistrationCenterUpgradeable implementation =
+            new MemeverseRegistrationCenterUpgradeable(address(endpoint));
+
+        vm.expectRevert(IMemeverseRegistrationCenter.ZeroInput.selector);
+        new ERC1967Proxy(
+            address(implementation),
+            abi.encodeCall(MemeverseRegistrationCenterUpgradeable.initialize, (OWNER, address(0), address(registry)))
+        );
+
+        vm.expectRevert(IMemeverseRegistrationCenter.ZeroInput.selector);
+        new ERC1967Proxy(
+            address(implementation),
+            abi.encodeCall(MemeverseRegistrationCenterUpgradeable.initialize, (OWNER, address(registrar), address(0)))
+        );
+    }
+
+    /// @notice Test the implementation constructor rejects a zero endpoint with the named error.
+    /// @dev OAppCoreUpgradeable's own constructor does not zero-check; without this guard a zero endpoint
+    ///      would only surface at initialize's setDelegate CALL with an opaque revert.
+    function testConstructorRejectsZeroEndpoint() external {
+        vm.expectRevert(IMemeverseRegistrationCenter.ZeroInput.selector);
+        new MemeverseRegistrationCenterUpgradeable(address(0));
+    }
+
+    /// @notice Test initialize cannot run twice on the proxy (OZ initializer guard).
+    function testInitializeCannotBeReRunOnTheProxy() external {
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        center.initialize(OWNER, address(registrar), address(registry));
+    }
+
+    /// @notice Test initialize registers the owner as the endpoint delegate keyed by the proxy address.
+    /// @dev SECR-001 adjudication: initialize runs inside the ERC1967Proxy constructor delegatecall, so
+    ///      `__OApp_init`'s `endpoint.setDelegate(_owner)` CALL executes with msg.sender == the proxy
+    ///      (address(this) of the delegatecall frame), not the implementation or any deploy factory. The
+    ///      mock keys `delegates` by caller, so this assertion fails under any other keying.
+    function testInitializeRegistersOwnerAsEndpointDelegate() external {
+        assertEq(endpoint.delegates(address(center)), OWNER, "delegate must be keyed by the proxy address");
+    }
+
+    /// @notice Test owner-upgraded V2 shell keeps every namespaced storage slot intact.
+    /// @dev The V2 shell (test/mocks/upgrade) has no getters, so post-upgrade state is proven by raw
+    ///      `vm.load` reads on the erc7201("outrun.storage.MemeverseRegistrationCenter") namespace. The
+    ///      pre-upgrade `vm.load` assertions double as a self-check of the slot math: a wrong base slot or
+    ///      mapping-key formula would fail them before the upgrade ever runs.
+    function testUpgradeToV2ShellPreservesNamespacedStorage() external {
+        // Known state: one local-only registration plus the setUp config vars.
+        IMemeverseRegistrationCenter.RegistrationParam memory param = _localOnlyRegistrationParam();
+        center.registration(param);
+        uint256 expectedUniqueId = uint256(keccak256(abi.encodePacked(param.symbol, uint192(1), param.uAsset)));
+        (uint256 uniqueId, uint64 endTime, uint192 nonce) = center.symbolRegistry(param.symbol);
+        assertEq(uniqueId, expectedUniqueId);
+        assertEq(nonce, 1);
+
+        // ERC-7201 base slot: keccak256(abi.encode(uint256(keccak256(ns)) - 1)) & ~bytes32(uint256(0xff)).
+        bytes32 baseSlot = _centerStorageBaseSlot();
+        // Scalar fields: memeverseRegistrar(+0), lzEndpointRegistry(+1), min/maxDurationDays packed(+2),
+        // registerGasLimit(+3).
+        assertEq(vm.load(address(center), baseSlot), bytes32(uint256(uint160(address(registrar)))));
+        assertEq(vm.load(address(center), bytes32(uint256(baseSlot) + 1)), bytes32(uint256(uint160(address(registry)))));
+        assertEq(vm.load(address(center), bytes32(uint256(baseSlot) + 2)), bytes32(uint256(1) | (uint256(10) << 128)));
+        assertEq(vm.load(address(center), bytes32(uint256(baseSlot) + 3)), bytes32(uint256(150)));
+        // symbolRegistry lives at +4; a string key hashes via its unpadded bytes (Solidity storage layout),
+        // and the SymbolRegistration struct packs endTime (low 8 bytes) with nonce (high 24 bytes) one slot
+        // past uniqueId.
+        bytes32 symbolSlot = keccak256(abi.encodePacked(bytes(param.symbol), bytes32(uint256(baseSlot) + 4)));
+        assertEq(vm.load(address(center), symbolSlot), bytes32(expectedUniqueId));
+        assertEq(
+            vm.load(address(center), bytes32(uint256(symbolSlot) + 1)),
+            bytes32(uint256(endTime) | (uint256(uint192(1)) << 64))
+        );
+
+        // Capture the six observed words: post-upgrade assertions compare against these captures, so the
+        // config literals above stay maintained exactly once, in the pre-upgrade block.
+        bytes32 registrarSlotValue = vm.load(address(center), baseSlot);
+        bytes32 registrySlotValue = vm.load(address(center), bytes32(uint256(baseSlot) + 1));
+        bytes32 durationLimitsSlotValue = vm.load(address(center), bytes32(uint256(baseSlot) + 2));
+        bytes32 registerGasLimitSlotValue = vm.load(address(center), bytes32(uint256(baseSlot) + 3));
+        bytes32 uniqueIdSlotValue = vm.load(address(center), symbolSlot);
+        bytes32 endTimeNonceSlotValue = vm.load(address(center), bytes32(uint256(symbolSlot) + 1));
+
+        // Owner upgrades to the shell constructed with the SAME endpoint; the V1 guard runs during the jump.
+        MemeverseRegistrationCenterUpgradeableV2 shell = new MemeverseRegistrationCenterUpgradeableV2(address(endpoint));
+        vm.prank(OWNER);
+        center.upgradeToAndCall(address(shell), "");
+
+        assertEq(MemeverseRegistrationCenterUpgradeableV2(address(center)).upgradeVersion(), 2);
+        // Storage preserved: post-upgrade slots equal the captured pre-upgrade words.
+        assertEq(vm.load(address(center), baseSlot), registrarSlotValue);
+        assertEq(vm.load(address(center), bytes32(uint256(baseSlot) + 1)), registrySlotValue);
+        assertEq(vm.load(address(center), bytes32(uint256(baseSlot) + 2)), durationLimitsSlotValue);
+        assertEq(vm.load(address(center), bytes32(uint256(baseSlot) + 3)), registerGasLimitSlotValue);
+        assertEq(vm.load(address(center), symbolSlot), uniqueIdSlotValue);
+        assertEq(vm.load(address(center), bytes32(uint256(symbolSlot) + 1)), endTimeNonceSlotValue);
+    }
+
+    /// @notice Test upgradeToAndCall reverts for a non-owner.
+    function testUpgradeToAndCallRevertsForNonOwner() external {
+        MemeverseRegistrationCenterUpgradeableV2 shell = new MemeverseRegistrationCenterUpgradeableV2(address(endpoint));
+        address attacker = address(0xBAD);
+
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, attacker));
+        center.upgradeToAndCall(address(shell), "");
+    }
+
+    /// @notice Test upgradeToAndCall reverts on a no-code target with the named guard error.
+    function testUpgradeToAndCallRevertsOnNoCodeTarget() external {
+        address codeless = makeAddr("codeless-upgrade-target");
+        assertTrue(codeless.code.length == 0);
+
+        vm.prank(OWNER);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemeverseRegistrationCenter.UpgradeTargetCodeNotReady.selector, codeless)
+        );
+        center.upgradeToAndCall(codeless, "");
+    }
+
+    /// @notice Test upgradeToAndCall reverts when the shell was constructed with a different endpoint.
+    function testUpgradeToAndCallRevertsOnEndpointMismatch() external {
+        MockCenterEndpoint otherEndpoint = new MockCenterEndpoint();
+        MemeverseRegistrationCenterUpgradeableV2 wrongShell =
+            new MemeverseRegistrationCenterUpgradeableV2(address(otherEndpoint));
+
+        vm.prank(OWNER);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMemeverseRegistrationCenter.UpgradeEndpointMismatch.selector, address(endpoint), address(otherEndpoint)
+            )
+        );
+        center.upgradeToAndCall(address(wrongShell), "");
+    }
+
+    /// @notice Test upgradeToAndCall reverts with the named guard error when the target has code but no
+    ///         `endpoint()` getter at all.
+    /// @dev LR-001 coverage: the `_authorizeUpgrade` probe's catch branch must fold this honest-failure
+    ///      class into `UpgradeEndpointUnreadable` so the upgrade still fails closed with a greppable
+    ///      label instead of a bare revert.
+    function testUpgradeRevertsWhenEndpointGetterMissing() external {
+        EndpointGetterMissingShell shell = new EndpointGetterMissingShell();
+
+        vm.prank(OWNER);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemeverseRegistrationCenter.UpgradeEndpointUnreadable.selector, address(shell))
+        );
+        center.upgradeToAndCall(address(shell), "");
+    }
+
+    /// @notice Test upgradeToAndCall reverts with the named guard error when the target's `endpoint()`
+    ///         getter exists but reverts.
+    /// @dev LR-001 coverage: second catch-branch input — a reverting getter must fail closed through the
+    ///      same `UpgradeEndpointUnreadable` label, not surface the getter's own error.
+    function testUpgradeRevertsWhenEndpointGetterReverts() external {
+        EndpointGetterRevertingShell shell = new EndpointGetterRevertingShell();
+
+        vm.prank(OWNER);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMemeverseRegistrationCenter.UpgradeEndpointUnreadable.selector, address(shell))
+        );
+        center.upgradeToAndCall(address(shell), "");
+    }
+
+    /// @notice Test upgradeToAndCall still fails closed when the target's `endpoint()` getter succeeds but
+    ///         returns undecodable (empty) data.
+    /// @dev Semantic boundary of the catch branch, pinned as an executable negative-space assertion: the
+    ///      raw low-level call must revert while its revert selector must NOT equal
+    ///      `UpgradeEndpointUnreadable` — Solidity try/catch does not catch "call succeeded but return
+    ///      data cannot be ABI-decoded", so that class bubbles up as the raw decode revert instead of the
+    ///      named error; the upgrade is still rejected (fail-closed holds, only the label differs; see
+    ///      `_authorizeUpgrade`'s dev note and the `UpgradeEndpointUnreadable` doc comment on the
+    ///      interface). If the probe is ever rewritten as a manual staticcall that folds decode failure
+    ///      into the named error, this test fails and flags those two docs (plus this comment) as stale.
+    ///      A bare `vm.expectRevert()` matches any revert, so it cannot distinguish the two labels.
+    ///      `bytes4(ret)` zero-pads returndata shorter than 4 bytes, keeping the selector comparison
+    ///      safe for any revert payload shape.
+    function testUpgradeRevertsWhenEndpointGetterReturnsUndecodableData() external {
+        EndpointGetterEmptyReturnShell shell = new EndpointGetterEmptyReturnShell();
+
+        // Owner prank is load-bearing: without it the call dies at `onlyOwner` before the probe and the
+        // negative-space assertion below would pass vacuously.
+        vm.prank(OWNER);
+        (bool ok, bytes memory ret) =
+            address(center).call(abi.encodeCall(center.upgradeToAndCall, (address(shell), "")));
+
+        assertFalse(ok, "undecodable getter returndata must still reject the upgrade (fail-closed)");
+        assertFalse(
+            bytes4(ret) == IMemeverseRegistrationCenter.UpgradeEndpointUnreadable.selector,
+            "decode failure must bubble up as the raw decode revert, not fold into the named error"
+        );
+    }
+
+    /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
+    /// @dev The error is declared on the shared `OutrunOAppUpgradeable` base (single declaration —
+    ///      re-declaring it on the interface alongside the inherited base copy is compile Error 9097);
+    ///      qualified error lookup resolves on the declaring contract, hence the base-qualified selector.
+    function testRenounceOwnershipIsDisabled() external {
+        vm.prank(OWNER);
+        vm.expectRevert(OutrunOAppUpgradeable.OwnershipRenounceDisabled.selector);
+        center.renounceOwnership();
+    }
+
+    /// @notice Test registrar-pointer replacement unlocks the local path immediately and pairs with
+    ///         `setPeer` for inbound (LR-003 deadlock unlock).
+    /// @dev The local-chain `localRegistration` callback follows the storage pointer alone; inbound
+    ///      `_lzReceive` additionally passes the OApp base's peer check first, so re-pointing inbound
+    ///      traffic requires the paired `setPeer`. The intermediate state (pointer moved, peer still old)
+    ///      must fail closed on BOTH origins.
+    function testSetMemeverseRegistrarUnlocksLocalPathAndPairsWithSetPeerForInbound() external {
+        MockCenterRegistrar newRegistrar = new MockCenterRegistrar();
+
+        // Zero address and non-owner calls are rejected.
+        vm.prank(OWNER);
+        vm.expectRevert(IMemeverseRegistrationCenter.ZeroInput.selector);
+        center.setMemeverseRegistrar(address(0));
+
+        address attacker = address(0xBAD);
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, attacker));
+        center.setMemeverseRegistrar(address(newRegistrar));
+
+        // The setter emits old + new pointers.
+        vm.prank(OWNER);
+        vm.expectEmit(true, true, true, true);
+        emit IMemeverseRegistrationCenter.SetMemeverseRegistrar(address(registrar), address(newRegistrar));
+        center.setMemeverseRegistrar(address(newRegistrar));
+
+        // Local-chain path: a local-only registration now records on the NEW registrar mock; the old mock
+        // was never called (setUp only wires it, no registration ran against it).
+        IMemeverseRegistrationCenter.RegistrationParam memory param = _localOnlyRegistrationParam();
+        center.registration(param);
+        assertEq(newRegistrar.lastSymbol(), param.symbol);
+        assertEq(newRegistrar.lastUAsset(), param.uAsset);
+        assertEq(registrar.lastSymbol(), "");
+
+        // Intermediate fail-closed state, side 1: inbound from the OLD origin passes the peer check (the
+        // peer is still the old registrar) but dies at `_lzReceive`'s storage-pointer check.
+        Origin memory oldOrigin =
+            Origin({srcEid: SOURCE_EID, sender: bytes32(uint256(uint160(address(registrar)))), nonce: 1});
+        vm.prank(address(endpoint));
+        vm.expectRevert(IMemeverseRegistrationCenter.PermissionDenied.selector);
+        center.lzReceive(oldOrigin, bytes32("guid"), abi.encode(param), address(0), "");
+
+        // Intermediate fail-closed state, side 2: inbound from the NEW origin dies at the OApp base's
+        // peer check — the pointer moved but the peer did not.
+        Origin memory newOrigin =
+            Origin({srcEid: SOURCE_EID, sender: bytes32(uint256(uint160(address(newRegistrar)))), nonce: 2});
+        vm.prank(address(endpoint));
+        vm.expectRevert(abi.encodeWithSelector(IOAppCore.OnlyPeer.selector, SOURCE_EID, newOrigin.sender));
+        center.lzReceive(newOrigin, bytes32("guid"), abi.encode(param), address(0), "");
+
+        // Paired setPeer completes the runbook: inbound from the NEW origin now registers (fresh symbol,
+        // since the local-path registration above locked the previous one).
+        vm.prank(OWNER);
+        center.setPeer(SOURCE_EID, bytes32(uint256(uint160(address(newRegistrar)))));
+        param.symbol = "INBOUND";
+        vm.prank(address(endpoint));
+        center.lzReceive(newOrigin, bytes32("guid"), abi.encode(param), address(0), "");
+
+        assertEq(newRegistrar.lastSymbol(), "INBOUND");
+        assertEq(newRegistrar.lastUAsset(), param.uAsset);
+    }
+
+    /// @notice ERC-7201 base slot of the center's namespaced storage.
+    function _centerStorageBaseSlot() internal pure returns (bytes32) {
+        return keccak256(abi.encode(uint256(keccak256("outrun.storage.MemeverseRegistrationCenter")) - 1))
+            & ~bytes32(uint256(0xff));
     }
 
     function _registrationParam() internal view returns (IMemeverseRegistrationCenter.RegistrationParam memory param) {

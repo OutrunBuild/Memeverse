@@ -4,17 +4,23 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 
 import {MemeverseScript} from "../../script/MemeverseScript.s.sol";
 import {IOutrunDeployer} from "../../script/IOutrunDeployer.sol";
 import {OutrunDeployer} from "../../script/deployment/OutrunDeployer.sol";
 import {YieldDispatcherUpgradeable} from "../../src/verse/YieldDispatcherUpgradeable.sol";
-import {OmnichainMemecoinStaker} from "../../src/interoperation/OmnichainMemecoinStaker.sol";
+import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
 import {MemeverseOmnichainInteroperation} from "../../src/interoperation/MemeverseOmnichainInteroperation.sol";
+import {
+    MemeverseRegistrationCenterUpgradeable
+} from "../../src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol";
+import {IMemeverseRegistrationCenter} from "../../src/verse/interfaces/IMemeverseRegistrationCenter.sol";
 import {LzEndpointRegistry} from "../../src/common/omnichain/LzEndpointRegistry.sol";
 import {ILzEndpointRegistry} from "../../src/common/omnichain/interfaces/ILzEndpointRegistry.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {LauncherReadinessMockBase} from "../mocks/verse/LauncherReadinessMockBase.sol";
+import {MockMessagingComposerEndpoint} from "../mocks/infrastructure/MockMessagingComposerEndpoint.sol";
 
 contract MockScriptLauncher is LauncherReadinessMockBase {
     mapping(address => FundMetaData) internal metadata;
@@ -191,10 +197,10 @@ contract MockScriptRegistrationCenter {
     // setUp deploys a real LzEndpointRegistry at a runtime address, so no fixed default can match
     // the pin (the script's identity readback REGISTRATION_CENTER_REGISTRY_NOT_READY fails loudly
     // on a forgotten setter).
-    address internal lzEndpointRegistry;
+    address internal registryPin;
 
-    function LZ_ENDPOINT_REGISTRY() external view returns (address) {
-        return lzEndpointRegistry;
+    function lzEndpointRegistry() external view returns (address) {
+        return registryPin;
     }
 
     function setDay(uint256 day_) external {
@@ -202,7 +208,7 @@ contract MockScriptRegistrationCenter {
     }
 
     function setLzEndpointRegistry(address lzEndpointRegistry_) external {
-        lzEndpointRegistry = lzEndpointRegistry_;
+        registryPin = lzEndpointRegistry_;
     }
 
     function setSupportedUAsset(address uAsset, bool isSupported) external {
@@ -719,9 +725,10 @@ contract MemeverseScriptTest is Test {
         script.requireDeploymentReady(address(0), address(0));
     }
 
-    // Readiness gate: the RegistrationCenter bakes LZ_ENDPOINT_REGISTRY as a constructor immutable
-    // (quoteSend/registration resolve omnichain eids through it), so a center bound to a different
-    // registry than the script pin can only be fixed by redeploying; the center gate must reject it
+    // Readiness gate: the RegistrationCenter binds lzEndpointRegistry as an initialize-time storage
+    // pointer with no setter (quoteSend/registration resolve omnichain eids through it), so a center
+    // bound to a different registry than the script pin can only be fixed by redeploying; the center
+    // gate must reject it
     // before the whitelist is written (runs inside _requireRegistrationCenterReady, before
     // _requireDeploymentReady).
     function testReadinessRevertsWhenCenterRegistryMismatchesPin() external {
@@ -945,37 +952,126 @@ contract MemeverseScriptTest is Test {
     }
 
     // Mirror of testDeployYieldDispatcherPinsConstructorArgEncoding for the staker. Same motivation:
-    // _deployOmnichainMemecoinStaker builds the creation code by type-erased abi.encode, so a constructor
-    // signature change would compile cleanly and silently bake a wrong localEndpoint immutable. A wrong
-    // localEndpoint makes the lzCompose `msg.sender == localEndpoint` guard permanently false, so the
-    // staker would silently drop every omnichain staking message. Byte-equality alone cannot catch
-    // arg-order drift (both sides keep the handwritten order), so the captured bytes are also executed
-    // and localEndpoint() read back: any arg-count mismatch reverts the create, any order mismatch
-    // flips the read-back.
+    // _deployOmnichainMemecoinStaker builds both creation codes by type-erased abi encoding (a bare
+    // parameterless UUPS implementation, then an ERC1967Proxy wrapping initializeData), so an
+    // initialize-signature drift compiles cleanly and would silently bake a proxy that initializes with
+    // wrong args — a wrong localEndpoint makes the lzCompose `msg.sender == localEndpoint` guard
+    // permanently false, so the staker would silently drop every omnichain staking message.
+    // Byte-equality alone cannot catch arg-order drift (both sides keep the same handwritten order), so
+    // initializeData is ALSO executed against a real impl+proxy and every arg read back: any arg-count
+    // mismatch reverts the proxy's delegatecall, any arg-order mismatch flips a read-back. The captured
+    // proxy creationCode embeds implementation=address(0) (the mock returns 0), so the read-back uses a
+    // separate real impl+proxy deploy with the identical initializeData args instead.
     function testDeployOmnichainMemecoinStakerPinsConstructorArgEncoding() external {
         MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
         address localEndpoint = address(0x1234);
+        // owner comes from setUp (setDeploymentAddresses wired owner = address(script)).
+        address expectedOwner = address(script);
         script.setOutrunDeployerForTest(address(deployer));
         script.setEndpointForTest(uint32(block.chainid), localEndpoint);
 
         script.deployOmnichainMemecoinStakerForTest(2);
 
-        assertEq(
-            deployer.lastCreationCode(),
-            abi.encodePacked(type(OmnichainMemecoinStaker).creationCode, abi.encode(localEndpoint))
-        );
-        assertEq(deployer.lastSalt(), keccak256(abi.encodePacked("OmnichainMemecoinStaker", uint256(2))));
+        // Deploy #1: parameterless UUPS implementation (bare creationCode).
+        (bytes32 implSalt, bytes memory implCreationCode) = deployer.deployCalls(0);
+        assertEq(implSalt, keccak256(abi.encodePacked("OmnichainMemecoinStakerImplementation", uint256(2))));
+        assertEq(implCreationCode, type(OmnichainMemecoinStakerUpgradeable).creationCode);
 
-        // Execute the exact creation code the script handed to the deployer and read back the immutable
-        // the real constructor assigns. The staker constructor performs no external calls, so a plain
-        // create is safe in the test EVM.
-        bytes memory creationCode = deployer.lastCreationCode();
-        address deployed;
-        assembly {
-            deployed := create(0, add(creationCode, 0x20), mload(creationCode))
-        }
-        assertTrue(deployed != address(0), "creationCode deploy reverted");
-        assertEq(OmnichainMemecoinStaker(deployed).localEndpoint(), localEndpoint);
+        // Deploy #2: ERC1967Proxy wrapping (implementation, initializeData). The mock returns address(0)
+        // for the impl deploy, so the encoded implementation address is address(0).
+        bytes memory initializeData =
+            abi.encodeCall(OmnichainMemecoinStakerUpgradeable.initialize, (expectedOwner, localEndpoint));
+        (bytes32 proxySalt, bytes memory proxyCreationCode) = deployer.deployCalls(1);
+        assertEq(proxySalt, keccak256(abi.encodePacked("OmnichainMemecoinStaker", uint256(2))));
+        assertEq(
+            proxyCreationCode, abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(address(0), initializeData))
+        );
+
+        // Read-back: a REAL impl+proxy deploy with the identical initializeData args, read through the
+        // proxy.
+        OmnichainMemecoinStakerUpgradeable impl = new OmnichainMemecoinStakerUpgradeable();
+        OmnichainMemecoinStakerUpgradeable proxy =
+            OmnichainMemecoinStakerUpgradeable(address(new ERC1967Proxy(address(impl), initializeData)));
+        assertEq(proxy.localEndpoint(), localEndpoint);
+        assertEq(proxy.owner(), expectedOwner);
+    }
+
+    // Mirror of testDeployYieldDispatcherPinsConstructorArgEncoding for the registration center. The center
+    // is the family's only conversion that combines BOTH encodings: the implementation creationCode itself
+    // takes abi.encode(localEndpoint) (burned in as the constructor immutable, unlike the parameterless
+    // dispatcher/staker implementations) AND the proxy calldata packs a three-arg initialize by type-erased
+    // abi encoding. A parameter reorder there compiles cleanly and silently bakes a proxy whose
+    // registrar/registry pointers are swapped (both address-typed — the swap only surfaces at runtime as
+    // misrouted registrations). Byte-equality alone cannot catch arg-order drift (both sides keep the same
+    // handwritten order), so initializeData is ALSO executed against a real impl+proxy and every arg read
+    // back: any arg-count mismatch reverts the proxy's delegatecall, any arg-order mismatch flips a
+    // read-back. The captured proxy creationCode embeds implementation=address(0) (the mock returns 0), so
+    // the read-back uses a separate real impl+proxy deploy with the identical initializeData args instead.
+    function testDeployRegistrationCenterPinsConstructorArgEncoding() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        address localEndpoint = address(0x1234);
+        // owner and MEMEVERSE_REGISTRAR come from setUp (setDeploymentAddresses wired owner =
+        // address(script) and the registrar pin); LZ_ENDPOINT_REGISTRY is setUp's real registry instance.
+        address expectedOwner = address(script);
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), localEndpoint);
+        // The post-deploy peer/ULN wiring loop targets centerAddr = address(0) (the mock's return), which
+        // this pin does not cover; clear setUp's probe chains so the loop is skipped.
+        script.setOmnichainIdsForTest(new uint32[](0));
+        // Same reason for the script's trailing owner wiring (setRegisterGasLimit/setDurationDaysRange on
+        // centerAddr = address(0)): a high-level void call reverts on Solidity's extcodesize guard (the
+        // compiled script checks extcodesize before the CALL), so mock both. foundry intercepts any call
+        // matching the registered (address(0), exact calldata prefix) and bypasses that guard entirely.
+        // Using the script's exact wiring literals (1000000 / 1,3) in the prefix is a deliberate secondary
+        // pin: editing either literal makes the interception miss, the real call falls back to the guard,
+        // and the test fails.
+        vm.mockCall(
+            address(0),
+            abi.encodeWithSelector(IMemeverseRegistrationCenter.setRegisterGasLimit.selector, uint256(1000000)),
+            bytes("mocked")
+        );
+        vm.mockCall(
+            address(0),
+            abi.encodeWithSelector(IMemeverseRegistrationCenter.setDurationDaysRange.selector, uint128(1), uint128(3)),
+            bytes("mocked")
+        );
+
+        script.deployRegistrationCenterForTest(2);
+
+        // Deploy #1: UUPS implementation whose creationCode appends the local endpoint (its only constructor
+        // arg, shared by every upgrade).
+        (bytes32 implSalt, bytes memory implCreationCode) = deployer.deployCalls(0);
+        assertEq(implSalt, keccak256(abi.encodePacked("MemeverseRegistrationCenterImplementation", uint256(2))));
+        assertEq(
+            implCreationCode,
+            abi.encodePacked(type(MemeverseRegistrationCenterUpgradeable).creationCode, abi.encode(localEndpoint))
+        );
+
+        // Deploy #2: ERC1967Proxy wrapping (implementation, initializeData). The mock returns address(0)
+        // for the impl deploy, so the encoded implementation address is address(0).
+        bytes memory initializeData = abi.encodeCall(
+            MemeverseRegistrationCenterUpgradeable.initialize, (expectedOwner, address(registrar), LZ_ENDPOINT_REGISTRY)
+        );
+        (bytes32 proxySalt, bytes memory proxyCreationCode) = deployer.deployCalls(1);
+        assertEq(proxySalt, keccak256(abi.encodePacked("MemeverseRegistrationCenter", uint256(2))));
+        assertEq(
+            proxyCreationCode, abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(address(0), initializeData))
+        );
+
+        // Read-back: a REAL impl+proxy deploy with the identical initializeData args, read through the
+        // proxy. initialize runs __OApp_init -> endpoint.setDelegate(owner), so the endpoint burned into the
+        // read-back implementation must be a contract accepting setDelegate (the composer mock); the
+        // script-side localEndpoint baked into deploy #1's creationCode is already pinned byte-exactly above.
+        MockMessagingComposerEndpoint endpointMock = new MockMessagingComposerEndpoint();
+        MemeverseRegistrationCenterUpgradeable impl = new MemeverseRegistrationCenterUpgradeable(address(endpointMock));
+        MemeverseRegistrationCenterUpgradeable proxy =
+            MemeverseRegistrationCenterUpgradeable(payable(address(new ERC1967Proxy(address(impl), initializeData))));
+        assertEq(proxy.memeverseRegistrar(), address(registrar));
+        assertEq(proxy.lzEndpointRegistry(), LZ_ENDPOINT_REGISTRY);
+        assertEq(proxy.owner(), expectedOwner);
+        // The constructor endpoint is read back through the OApp core getter exactly like _authorizeUpgrade.
+        assertEq(address(IOAppCore(address(proxy)).endpoint()), address(endpointMock));
+        assertEq(endpointMock.delegate(), expectedOwner);
     }
 
     // Mirror of testDeployYieldDispatcherPinsConstructorArgEncoding for the interoperation. Same

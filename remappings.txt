@@ -9,6 +9,7 @@ permit2/=lib/v4-periphery/lib/permit2/
 
 @layerzerolabs/oft-evm/=lib/devtools/packages/oft-evm/
 @layerzerolabs/oapp-evm/=lib/devtools/packages/oapp-evm/
+@layerzerolabs/oapp-evm-upgradeable/=lib/devtools/packages/oapp-evm-upgradeable/
 @layerzerolabs/lz-evm-protocol-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/protocol
 @layerzerolabs/lz-evm-messagelib-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/messagelib
 solidity-bytes-utils/=lib/solidity-bytes-utils/

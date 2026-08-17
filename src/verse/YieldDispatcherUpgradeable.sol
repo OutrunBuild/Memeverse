@@ -316,7 +316,7 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
         if (tokenType == TokenType.MEMECOIN) {
             // Bind the delivered token to the vault's own underlying asset: a forged (fake token, real vault)
             // pairing must revert here, before any approval, or the real vault's pull could drain real memecoin
-            // from this contract's custody. Mirrors OmnichainMemecoinStaker's deposit-branch binding.
+            // from this contract's custody. Mirrors OmnichainMemecoinStakerUpgradeable's deposit-branch binding.
             require(IMemecoinYieldVault(receiver).asset() == token, TokenVaultMismatch());
             _safeApprove(token, receiver, amount);
             IMemecoinYieldVault(receiver).accumulateYields(amount);

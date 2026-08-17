@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
-import {Test} from "forge-std/Test.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
-import {OmnichainMemecoinStaker} from "../../src/interoperation/OmnichainMemecoinStaker.sol";
+import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
 import {IOmnichainMemecoinStaker} from "../../src/interoperation/interfaces/IOmnichainMemecoinStaker.sol";
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
 import {Memecoin} from "../../src/token/Memecoin.sol";
 import {MemecoinYieldVault} from "../../src/yield/MemecoinYieldVault.sol";
 import {IMemecoinYieldVault} from "../../src/yield/interfaces/IMemecoinYieldVault.sol";
 import {MockMessagingComposerEndpoint} from "../mocks/infrastructure/MockMessagingComposerEndpoint.sol";
+import {ComposerEndpointFixture} from "../mocks/infrastructure/ComposerEndpointFixture.sol";
 import {ForgedComposeToken} from "../mocks/interoperation/ForgedComposeToken.sol";
 
 /// @dev Attacker-controlled vault whose `asset()` is attacker-chosen, used to exercise the token-vault binding
@@ -93,14 +93,14 @@ contract PartialPullVault {
 ///      pre-fix state) would otherwise let the real vault pull the staker's real memecoin and mint shares to the
 ///      attacker. Genuine (real memecoin, real vault) composes still deposit and mint shares.
 ///      Uses the REAL Memecoin, the REAL MemecoinYieldVault (minimal-proxy clones, matching production deployment),
-///      the REAL OmnichainMemecoinStaker, and the repo's MessagingComposer endpoint mock — a byte-level behavioral
+///      the REAL OmnichainMemecoinStakerUpgradeable, and the repo's MessagingComposer endpoint mock — a byte-level behavioral
 ///      mirror of the real LayerZero composer (sendCompose keyed by msg.sender; lzCompose hash-check + RECEIVED
 ///      sentinel + forward with msg.sender=endpoint), which the canonical EndpointV2 inherits without override.
-contract StakerTokenVaultBindingTest is Test {
+contract StakerTokenVaultBindingTest is ComposerEndpointFixture {
     MockMessagingComposerEndpoint internal endpoint;
     Memecoin internal memecoin;
     MemecoinYieldVault internal vault;
-    OmnichainMemecoinStaker internal staker;
+    OmnichainMemecoinStakerUpgradeable internal staker;
     ForgedComposeToken internal fake;
 
     address internal constant RECEIVER = address(0xBEEF); // genuine staking beneficiary
@@ -123,7 +123,9 @@ contract StakerTokenVaultBindingTest is Test {
         vault.initialize("Verse 1 Vault", "vMEME", address(memecoin), 1, 1e18);
 
         // The victim contract under attack; localEndpoint wired like the deploy script (canonical endpoint).
-        staker = new OmnichainMemecoinStaker(address(endpoint));
+        // Deployed through the shared fixture helper (production UUPS shape, mirroring the script's
+        // `_deployOmnichainMemecoinStaker`); the endpoint here is the fresh mock instance, not an etched slot.
+        staker = _deployStaker(address(this), address(endpoint));
 
         fake = new ForgedComposeToken(address(endpoint));
     }

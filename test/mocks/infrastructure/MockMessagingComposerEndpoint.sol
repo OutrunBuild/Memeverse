@@ -6,7 +6,7 @@ import {OFTComposeSettleVerify} from "../../../src/common/omnichain/OFTComposeSe
 
 /// @title MockMessagingComposerEndpoint
 /// @notice Stand-in for the LayerZero MessagingComposer's `composeQueue` surface, etched onto a fixed endpoint address.
-/// @dev Production contracts (YieldDispatcherUpgradeable.settlePendingCompose, OmnichainMemecoinStaker.settlePendingCompose) read
+/// @dev Production contracts (YieldDispatcherUpgradeable.settlePendingCompose, OmnichainMemecoinStakerUpgradeable.settlePendingCompose) read
 ///      `IMessagingComposer(localEndpoint).composeQueue(...)` to prove a compose was delivered before settling a stuck compose.
 ///      `sendCompose` mirrors the real composer's write path (`composeQueue[msg.sender][to][guid][index] = keccak256(message)`,
 ///      MessagingComposer.sol), so an OFT's `_lzReceive` → `endpoint.sendCompose` produces exactly the key the compose-release

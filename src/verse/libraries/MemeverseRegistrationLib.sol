@@ -3,9 +3,9 @@ pragma solidity ^0.8.35;
 
 /// @title MemeverseRegistrationLib
 /// @notice Shared constants and pure helpers for the Memeverse registration subtree:
-///         `MemeverseRegistrarAtLocal` (deploy path) and `MemeverseRegistrationCenter` (center chain).
+///         `MemeverseRegistrarAtLocal` (deploy path) and `MemeverseRegistrationCenterUpgradeable` (center chain).
 /// @dev The two consumers share NO ancestor (RegistrarAtLocal inherits `MemeverseRegistrarAbstract`;
-///      RegistrationCenter inherits `OApp`), so this library is the only mechanism to keep their identical
+///      RegistrationCenter inherits the upgradeable OApp base), so this library is the only mechanism to keep their identical
 ///      lockup-duration constants and omnichain-id dedup logic from drifting. Functions are `internal` and
 ///      compile inline into each caller, so there is no storage/external-read concern.
 library MemeverseRegistrationLib {
@@ -64,7 +64,7 @@ library MemeverseRegistrationLib {
 
     /// @notice Derives the canonical verse id from a registration's symbol, nonce, and fundraising token.
     /// @dev Single source of truth for the registration subtree so the center-chain write
-    ///      (`MemeverseRegistrationCenter.registration`) and the local pre-quote
+    ///      (`MemeverseRegistrationCenterUpgradeable.registration`) and the local pre-quote
     ///      (`MemeverseRegistrarAtLocal.quoteRegister`) compute the same id. `nonce` is the post-increment
     ///      value (i.e. `currentNonce + 1`); both call sites pass the same value they used to inline.
     ///      Compiles inline into each caller, so there is no storage/external-read concern.

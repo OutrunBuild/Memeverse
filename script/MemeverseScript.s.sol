@@ -18,7 +18,9 @@ import {MemecoinYieldVault} from "../src/yield/MemecoinYieldVault.sol";
 import {MemeverseProxyDeployer} from "../src/verse/deployment/MemeverseProxyDeployer.sol";
 import {YieldDispatcherUpgradeable} from "../src/verse/YieldDispatcherUpgradeable.sol";
 import {MemeverseRegistrarAtLocal} from "../src/verse/registration/MemeverseRegistrarAtLocal.sol";
-import {MemeverseRegistrationCenter} from "../src/verse/registration/MemeverseRegistrationCenter.sol";
+import {
+    MemeverseRegistrationCenterUpgradeable
+} from "../src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol";
 import {MemeverseRegistrarOmnichain} from "../src/verse/registration/MemeverseRegistrarOmnichain.sol";
 import {MemeverseLauncherUpgradeable, IMemeverseLauncher} from "../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../src/verse/MemeverseLaunchImpl.sol";
@@ -28,7 +30,7 @@ import {MemeverseLiquidityImpl} from "../src/verse/MemeverseLiquidityImpl.sol";
 import {POLendUpgradeable} from "../src/polend/POLendUpgradeable.sol";
 import {POLSplitterUpgradeable} from "../src/polend/POLSplitterUpgradeable.sol";
 import {GenesisCreditFactory} from "../src/credit/GenesisCreditFactory.sol";
-import {OmnichainMemecoinStaker} from "../src/interoperation/OmnichainMemecoinStaker.sol";
+import {OmnichainMemecoinStakerUpgradeable} from "../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
 import {LzEndpointRegistry} from "../src/common/omnichain/LzEndpointRegistry.sol";
 import {ILzEndpointRegistry} from "../src/common/omnichain/interfaces/ILzEndpointRegistry.sol";
 import {MemecoinDaoGovernorUpgradeable} from "../src/governance/MemecoinDaoGovernorUpgradeable.sol";
@@ -52,6 +54,8 @@ contract MemeverseScript is BaseScript {
     string internal constant SALT_MEMECOIN_GOVERNOR_IMPLEMENTATION = "MemecoinDaoGovernorImplementation";
     string internal constant SALT_CYCLE_INCENTIVIZER_IMPLEMENTATION = "GovernanceCycleIncentivizerImplementation";
     string internal constant SALT_MEMEVERSE_REGISTRATION_CENTER = "MemeverseRegistrationCenter";
+    string internal constant SALT_MEMEVERSE_REGISTRATION_CENTER_IMPLEMENTATION =
+        "MemeverseRegistrationCenterImplementation";
     string internal constant SALT_LZ_ENDPOINT_REGISTRY = "LzEndpointRegistry";
     string internal constant SALT_MEMEVERSE_REGISTRAR = "MemeverseRegistrar";
     string internal constant SALT_MEMEVERSE_PROXY_DEPLOYER = "MemeverseProxyDeployer";
@@ -61,6 +65,7 @@ contract MemeverseScript is BaseScript {
     string internal constant SALT_YIELD_DISPATCHER_IMPLEMENTATION = "YieldDispatcherImplementation";
     string internal constant SALT_MEMEVERSE_OMNICHAIN_INTEROPERATION = "MemeverseOmnichainInteroperation";
     string internal constant SALT_OMNICHAIN_MEMECOIN_STAKER = "OmnichainMemecoinStaker";
+    string internal constant SALT_OMNICHAIN_MEMECOIN_STAKER_IMPLEMENTATION = "OmnichainMemecoinStakerImplementation";
     string internal constant SALT_POLEND = "POLend";
     string internal constant SALT_POLEND_IMPLEMENTATION = "POLendImplementation";
     string internal constant SALT_POLSPLITTER = "POLSplitter";
@@ -309,9 +314,39 @@ contract MemeverseScript is BaseScript {
         _getDeployed(SALT_POLSPLITTER, _memeverseLauncherDeployCaller(), nonce);
     }
 
-    /**
-     *
-     */
+    /// @dev Shared two-step UUPS deploy behind `_deployYieldDispatcher` / `_deployRegistrationCenter` /
+    ///      `_deployOmnichainMemecoinStaker`: CREATE3 the implementation under `implementationSaltName`,
+    ///      then CREATE3 an ERC1967Proxy wrapping (implementation, initializeData) under `proxySaltName`,
+    ///      and return the proxy address. Two invariants live here: (1) the CREATE3 prediction passed to
+    ///      getDeployed MUST use the deploy caller `_memeverseLauncherDeployCaller()`, NOT `owner`:
+    ///      OutrunDeployer hashes msg.sender into each salt and the deploys below run as the broadcaster,
+    ///      while `owner` is only initialize's initialOwner (a distinct role under the documented
+    ///      dual-role deployment); (2) the predict-vs-actual assert is fail-closed and must never be
+    ///      dropped: it turns a salt or caller drift into a loud revert instead of a silently orphaned
+    ///      proxy. The CREATE3 address is f(factory, caller, salt) — independent of creationCode — so
+    ///      each proxy still lands at the same address its old single-step constructor deploy did,
+    ///      preserving the cross-chain same-address property (same OutrunDeployer + same deploy caller
+    ///      + same saltName + nonce). Value guards, creationCode / initializeData construction, and
+    ///      post-deploy wiring stay at each call site.
+    function _deployUupsProxyViaCreate3(
+        uint256 nonce,
+        string memory implementationSaltName,
+        bytes memory implementationCreationCode,
+        string memory proxySaltName,
+        bytes memory initializeData,
+        string memory proxyMismatchError
+    ) internal returns (address proxy) {
+        address implementation = IOutrunDeployer(OUTRUN_DEPLOYER)
+            .deploy(_saltFrom(implementationSaltName, nonce), implementationCreationCode);
+
+        bytes memory creationCode =
+            abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(implementation, initializeData));
+
+        bytes32 salt = _saltFrom(proxySaltName, nonce);
+        address predictedProxy = IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(_memeverseLauncherDeployCaller(), salt);
+        proxy = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+        require(proxy == predictedProxy, proxyMismatchError);
+    }
 
     function _deployImplementation(uint256 nonce) internal {
         bytes32 memecoinSalt = _saltFrom(SALT_MEMECOIN_IMPLEMENTATION, nonce);
@@ -354,14 +389,31 @@ contract MemeverseScript is BaseScript {
     }
 
     function _deployRegistrationCenter(uint256 nonce) internal {
-        bytes32 salt = _saltFrom(SALT_MEMEVERSE_REGISTRATION_CENTER, nonce);
         address localEndpoint = endpoints[uint32(block.chainid)];
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
-        bytes memory creationCode = abi.encodePacked(
-            type(MemeverseRegistrationCenter).creationCode,
-            abi.encode(owner, localEndpoint, MEMEVERSE_REGISTRAR, LZ_ENDPOINT_REGISTRY)
+        require(OUTRUN_DEPLOYER != address(0), "ZERO_OUTRUN_DEPLOYER");
+
+        // Unlike the parameterless composer implementations, this implementation constructor TAKES the
+        // local endpoint (burned in as an immutable shared by every upgrade), so its creationCode
+        // appends abi.encode(localEndpoint). Deploy mechanics and address stability live in
+        // _deployUupsProxyViaCreate3.
+        bytes memory implementationCreationCode =
+            abi.encodePacked(type(MemeverseRegistrationCenterUpgradeable).creationCode, abi.encode(localEndpoint));
+
+        // initialize sets the owner (and performs endpoint.setDelegate on the proxy), so the broadcaster
+        // of the owner-only wiring below must be the owner — same flow as _deployYieldDispatcher.
+        bytes memory initializeData = abi.encodeCall(
+            MemeverseRegistrationCenterUpgradeable.initialize, (owner, MEMEVERSE_REGISTRAR, LZ_ENDPOINT_REGISTRY)
         );
-        address centerAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+
+        address centerAddr = _deployUupsProxyViaCreate3(
+            nonce,
+            SALT_MEMEVERSE_REGISTRATION_CENTER_IMPLEMENTATION,
+            implementationCreationCode,
+            SALT_MEMEVERSE_REGISTRATION_CENTER,
+            initializeData,
+            "REGISTRATION_CENTER_PROXY_MISMATCH"
+        );
 
         uint256 chainCount = omnichainIds.length;
         for (uint32 i = 0; i < chainCount; i++) {
@@ -951,10 +1003,10 @@ contract MemeverseScript is BaseScript {
 
     /// @dev Registration-center readiness gate: the center must have code, its DAY() must equal the
     ///      network's expected registration day (`expectedRegistrationDay`, loaded from EXPECTED_DAY env),
-    ///      and its constructor-baked LZ_ENDPOINT_REGISTRY immutable must match the script pin — the
-    ///      center consumes that immutable in quoteSend/registration to resolve omnichain eids, and a
-    ///      mismatch is only fixable by redeploying. Read via _readAddress because the interface only
-    ///      declares DAY().
+    ///      and its lzEndpointRegistry() storage pointer must match the script pin — the center consumes
+    ///      that pointer in quoteSend/registration to resolve omnichain eids, and there is no setter, so
+    ///      a mismatch is only fixable by deploying a fresh proxy. Read via _readAddress because the
+    ///      interface only declares DAY() (the selector now matches the center's explicit view getter).
     function _requireRegistrationCenterReady(address registrationCenter) internal view {
         _requireContractCode(registrationCenter, "REGISTRATION_CENTER_CODE_NOT_READY");
         require(
@@ -967,7 +1019,7 @@ contract MemeverseScript is BaseScript {
         // copy in _requireDeploymentReady (kept for the launcher path, which does not pass here).
         _requireContractCode(LZ_ENDPOINT_REGISTRY, "REGISTRY_CODE_NOT_READY");
         require(
-            _readAddress(registrationCenter, "LZ_ENDPOINT_REGISTRY()") == LZ_ENDPOINT_REGISTRY,
+            _readAddress(registrationCenter, "lzEndpointRegistry()") == LZ_ENDPOINT_REGISTRY,
             "REGISTRATION_CENTER_REGISTRY_NOT_READY"
         );
     }
@@ -1217,29 +1269,20 @@ contract MemeverseScript is BaseScript {
         require(OUTRUN_DEPLOYER != address(0), "ZERO_OUTRUN_DEPLOYER");
         require(PROTOCOL_TREASURY != address(0), "ZERO_PROTOCOL_TREASURY");
 
-        // Two-step UUPS deploy mirroring _deployMemeverseLauncher / _deployPOLend: CREATE3 the implementation, then
-        // CREATE3 the ERC1967Proxy under SALT_YIELD_DISPATCHER. CREATE3 address = f(factory, caller, salt), independent
-        // of creationCode, so the proxy still lands at the same address the single-step constructor deploy did — keeping
-        // the cross-chain same-address property (same OutrunDeployer + same deploy caller + same saltName + nonce).
-        bytes32 implementationSalt = _saltFrom(SALT_YIELD_DISPATCHER_IMPLEMENTATION, nonce);
-        address implementation =
-            IOutrunDeployer(OUTRUN_DEPLOYER).deploy(implementationSalt, type(YieldDispatcherUpgradeable).creationCode);
-
+        // Parameterless implementation constructor (bare creationCode); all bindings go through
+        // initialize below. Deploy mechanics and address stability live in _deployUupsProxyViaCreate3.
         bytes memory initializeData = abi.encodeCall(
             YieldDispatcherUpgradeable.initialize, (owner, localEndpoint, MEMEVERSE_LAUNCHER, PROTOCOL_TREASURY)
         );
 
-        bytes32 salt = _saltFrom(SALT_YIELD_DISPATCHER, nonce);
-        // Predict the proxy address under the same CREATE3 namespace as the deploy below, then assert it lands there.
-        // The caller passed to getDeployed must be the deploy caller (_memeverseLauncherDeployCaller()), NOT owner:
-        // OutrunDeployer hashes msg.sender into the salt, and the deploy below runs as msg.sender = the broadcaster.
-        // owner is only initialize's initialOwner — a different role.
-        address predictedDispatcher =
-            IOutrunDeployer(OUTRUN_DEPLOYER).getDeployed(_memeverseLauncherDeployCaller(), salt);
-        bytes memory creationCode =
-            abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(implementation, initializeData));
-        address memeverseOFTDispatcher = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
-        require(memeverseOFTDispatcher == predictedDispatcher, "YIELD_DISPATCHER_PROXY_MISMATCH");
+        address memeverseOFTDispatcher = _deployUupsProxyViaCreate3(
+            nonce,
+            SALT_YIELD_DISPATCHER_IMPLEMENTATION,
+            type(YieldDispatcherUpgradeable).creationCode,
+            SALT_YIELD_DISPATCHER,
+            initializeData,
+            "YIELD_DISPATCHER_PROXY_MISMATCH"
+        );
 
         console.log("YieldDispatcherUpgradeable deployed on %s", memeverseOFTDispatcher);
     }
@@ -1267,11 +1310,20 @@ contract MemeverseScript is BaseScript {
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
         require(OUTRUN_DEPLOYER != address(0), "ZERO_OUTRUN_DEPLOYER");
 
-        bytes memory creationCode =
-            abi.encodePacked(type(OmnichainMemecoinStaker).creationCode, abi.encode(localEndpoint));
+        // Parameterless implementation constructor (bare creationCode); initialize binds
+        // owner + localEndpoint through the proxy. Deploy mechanics and address stability live in
+        // _deployUupsProxyViaCreate3.
+        bytes memory initializeData =
+            abi.encodeCall(OmnichainMemecoinStakerUpgradeable.initialize, (owner, localEndpoint));
 
-        bytes32 salt = _saltFrom(SALT_OMNICHAIN_MEMECOIN_STAKER, nonce);
-        address staker = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+        address staker = _deployUupsProxyViaCreate3(
+            nonce,
+            SALT_OMNICHAIN_MEMECOIN_STAKER_IMPLEMENTATION,
+            type(OmnichainMemecoinStakerUpgradeable).creationCode,
+            SALT_OMNICHAIN_MEMECOIN_STAKER,
+            initializeData,
+            "OMNICHAIN_MEMECOIN_STAKER_PROXY_MISMATCH"
+        );
 
         console.log("OmnichainMemecoinStaker deployed on %s", staker);
     }

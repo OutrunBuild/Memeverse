@@ -35,7 +35,8 @@ interface IOmnichainMemecoinStaker is IComposeState, ILayerZeroComposer {
     /// (token, vault) pairing is rejected before any fund movement.
     error TokenVaultMismatch();
 
-    /// @dev A constructor argument is the zero address; the contract would be permanently unusable.
+    /// @dev An `initialize` argument is the zero address; the proxy would be permanently unusable. In the
+    ///      UUPS form the check moved from the former constructor to `initialize(initialOwner, _localEndpoint)`.
     error ZeroAddress();
 
     /// @dev `MalformedComposeMsg` (declared in `IComposeState`) reverts on invalid schema shape. The two

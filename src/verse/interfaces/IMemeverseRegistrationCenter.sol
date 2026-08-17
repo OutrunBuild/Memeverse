@@ -111,6 +111,19 @@ interface IMemeverseRegistrationCenter {
      */
     function setRegisterGasLimit(uint256 registerGasLimit) external;
 
+    /**
+     * @notice Replaces the registrar pointer used by registration fan-out and inbound origin checks.
+     * @dev Owner-only deadlock-unlock path (the registrar was previously constructor-baked). Inbound
+     *      re-pointing must be paired with `setPeer` for each relevant eid: the OApp base enforces the
+     *      peer check before `_lzReceive`, so until the peer is updated, inbound messages from the new
+     *      registrar fail closed at the peer check (`OnlyPeer`), while messages from the OLD origin
+     *      still pass it and die at `_lzReceive`'s storage-pointer origin check (`PermissionDenied`),
+     *      burning LayerZero retry gas until the pairing completes — monitor both errors. The
+     *      local-chain callback follows the storage pointer alone.
+     * @param newRegistrar New registrar address (must not be zero).
+     */
+    function setMemeverseRegistrar(address newRegistrar) external;
+
     event Registration(uint256 indexed uniqueId, RegistrationParam param);
 
     event RemoveGasDust(address indexed receiver, uint256 dust);
@@ -120,6 +133,8 @@ interface IMemeverseRegistrationCenter {
     event SetDurationDaysRange(uint128 minDurationDays, uint128 maxDurationDays);
 
     event SetRegisterGasLimit(uint256 registerGasLimit);
+
+    event SetMemeverseRegistrar(address indexed oldRegistrar, address indexed newRegistrar);
 
     error ZeroInput();
 
@@ -138,4 +153,21 @@ interface IMemeverseRegistrationCenter {
     error SymbolNotUnlock(uint64 unlockTime);
 
     error InvalidOmnichainId(uint32 omnichainId);
+
+    /// @notice Reverts when a UUPS upgrade target's LayerZero endpoint differs from this center's.
+    /// @dev Operational guardrail, not a security boundary — see `_authorizeUpgrade` dev comment.
+    error UpgradeEndpointMismatch(address expected, address actual);
+
+    /// @notice Reverts when a UUPS upgrade target's LayerZero endpoint getter cannot be read.
+    /// @dev The target has code but the `IOAppCore.endpoint()` probe reverts or the getter is missing —
+    ///      surfaced as this named error instead of a bare revert, the same greppable honest-failure
+    ///      class as `UpgradeTargetCodeNotReady`. A successful call with non-decodable return data is
+    ///      outside Solidity try/catch semantics and bubbles up as the raw decode revert; the upgrade
+    ///      is rejected (fail-closed) either way.
+    error UpgradeEndpointUnreadable(address newImplementation);
+
+    /// @notice Reverts when a UUPS upgrade target address has no deployed code.
+    /// @dev Pre-check so a no-code target fails with a named, locatable error instead of an opaque
+    ///      ABI-decode revert from the endpoint probe.
+    error UpgradeTargetCodeNotReady(address target);
 }

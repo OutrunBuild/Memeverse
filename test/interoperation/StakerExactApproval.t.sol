@@ -10,7 +10,7 @@ import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppRec
 import {SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
-import {OmnichainMemecoinStaker} from "../../src/interoperation/OmnichainMemecoinStaker.sol";
+import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
 import {IOmnichainMemecoinStaker} from "../../src/interoperation/interfaces/IOmnichainMemecoinStaker.sol";
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
 import {MockStakerYieldVault} from "../mocks/interoperation/InteroperationMocks.sol";
@@ -98,7 +98,7 @@ contract StakerExactApprovalTest is ComposerEndpointFixture {
     uint32 internal constant SRC_EID = 30102;
     uint32 internal constant DST_EID = 30101;
 
-    OmnichainMemecoinStaker internal staker;
+    OmnichainMemecoinStakerUpgradeable internal staker;
     MockMessagingComposerEndpoint internal composer; // etched at LOCAL_ENDPOINT (EndpointV2 embeds MessagingComposer)
     MockOFTEndpoint internal srcEndpoint;
     OFTHarness internal srcOft; // source-chain memecoin OFT instance (attacker/victim hold tokens there)
@@ -107,10 +107,12 @@ contract StakerExactApprovalTest is ComposerEndpointFixture {
     SpoofedYieldVault internal evilVault;
 
     /// @notice Set up.
+    /// @dev The staker is deployed through the shared fixture helper (production UUPS shape, mirroring the
+    ///      script's `_deployOmnichainMemecoinStaker`).
     function setUp() external {
         composer = _etchComposer();
 
-        staker = new OmnichainMemecoinStaker(LOCAL_ENDPOINT);
+        staker = _deployStaker(address(this), LOCAL_ENDPOINT);
 
         // Source-chain OFT (endpoint = MockOFTEndpoint) and destination-chain OFT (endpoint = LOCAL_ENDPOINT).
         // The repo's Initializable locks the logic contract, so deploy via minimal proxy clones like the OFT tests.

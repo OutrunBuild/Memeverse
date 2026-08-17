@@ -2,28 +2,82 @@
 pragma solidity ^0.8.35;
 
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {TokenHelper} from "../common/token/TokenHelper.sol";
+import {OutrunOwnableUpgradeable} from "../common/access/OutrunOwnableUpgradeable.sol";
 import {OFTComposeSettleVerify} from "../common/omnichain/OFTComposeSettleVerify.sol";
 import {IMemecoinYieldVault} from "../yield/interfaces/IMemecoinYieldVault.sol";
 import {IOmnichainMemecoinStaker} from "./interfaces/IOmnichainMemecoinStaker.sol";
 
 /**
- * @title Omnichain Memecoin Staker
+ * @title OmnichainMemecoinStakerUpgradeable
  * @dev The contract is designed to interact with LayerZero's Omnichain Fungible Token (OFT) Standard,
- *      accepts Memecoin and stakes to the yield vault.
+ *      accepts Memecoin and stakes to the yield vault. UUPS form of the former constructor-deployed
+ *      OmnichainMemecoinStaker: identical business logic and storage semantics behind an ERC1967Proxy,
+ *      so the custody of stranded bridged memecoin survives implementation repair at a stable address.
+ *      The owner holds upgrade authorization only — `lzCompose` / `settlePendingCompose` carry zero
+ *      owner permissions, and there is no pause or rescue path.
  */
-contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
-    address public immutable localEndpoint;
+contract OmnichainMemecoinStakerUpgradeable layout at erc7201("outrun.storage.OmnichainMemecoinStaker")
+    is
+    IOmnichainMemecoinStaker,
+    Initializable,
+    OutrunOwnableUpgradeable,
+    UUPSUpgradeable,
+    TokenHelper
+{
+    /// @notice Storage layout for the OmnichainMemecoinStakerUpgradeable ERC-7201 namespace.
+    ///         When adding fields in upgrades, append only at the end. Never reorder or insert fields.
+    /// @custom:storage-location erc7201:outrun.storage.OmnichainMemecoinStaker
+    struct OmnichainMemecoinStakerStorage {
+        address localEndpoint;
+        /// @dev Single-resolution state per (memecoin, guid), shared by `lzCompose` (Settled) and
+        ///      `settlePendingCompose` (Released). Keying on the bridged memecoin (not just the guid) means
+        ///      a forged settle with an arbitrary token only advances the attacker's own slot, never a real
+        ///      guid's mutex.
+        mapping(address memecoin => mapping(bytes32 guid => ComposeState)) composeStates;
+    }
 
-    /// @dev Single-resolution state per (memecoin, guid), shared by `lzCompose` (Settled) and
-    ///      `settlePendingCompose` (Released). Keying on the bridged memecoin (not just the guid) means a forged
-    ///      settle with an arbitrary token only advances the attacker's own slot, never a real guid's mutex.
-    mapping(address memecoin => mapping(bytes32 guid => ComposeState)) public composeStates;
+    /// @dev Namespaced storage. The contract header's `layout at erc7201(...)` binds this struct to the
+    ///      ERC-7201 base slot of "outrun.storage.OmnichainMemecoinStaker".
+    OmnichainMemecoinStakerStorage private omnichainMemecoinStakerStorage;
 
-    constructor(address _localEndpoint) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    /// @notice This is the UUPS implementation contract. Do not call directly.
+    ///         Use the proxy contract for all interactions.
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice One-time proxy initializer. Binds the owner and the local LayerZero endpoint.
+    /// @dev Deterministic dependencies may be predicted addresses during CREATE3 deployment, so
+    ///      initialization checks non-zero addresses without requiring code to exist yet. The initial
+    ///      owner zero-check is enforced by `__OutrunOwnable_init` (`OwnableInvalidOwner`).
+    /// @param initialOwner Address that becomes the initial owner (upgrade authorization only).
+    /// @param _localEndpoint Local LayerZero endpoint that is allowed to call `lzCompose`.
+    function initialize(address initialOwner, address _localEndpoint) external initializer {
+        __OutrunOwnable_init(initialOwner);
         require(_localEndpoint != address(0), ZeroAddress());
-        localEndpoint = _localEndpoint;
+        omnichainMemecoinStakerStorage.localEndpoint = _localEndpoint;
+    }
+
+    function _authorizeUpgrade(address) internal view override onlyOwner {}
+
+    /// @notice Local LayerZero endpoint that is allowed to call `lzCompose` (set once by `initialize`).
+    /// @return Configured local endpoint address.
+    function localEndpoint() external view returns (address) {
+        return omnichainMemecoinStakerStorage.localEndpoint;
+    }
+
+    /// @notice Per-(memecoin, guid) compose mutex shared by `lzCompose` (writes Settled) and
+    ///         `settlePendingCompose` (writes Released); a pair resolves at most once.
+    /// @param memecoin Bridged memecoin address keying the mutex.
+    /// @param guid Compose guid keying the mutex.
+    /// @return Current ComposeState of the pair (None / Settled / Released).
+    function composeStates(address memecoin, bytes32 guid) external view returns (ComposeState) {
+        return omnichainMemecoinStakerStorage.composeStates[memecoin][guid];
     }
 
     /// @notice Finalizes a remote memecoin staking compose message.
@@ -44,13 +98,13 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
         payable
         override
     {
-        require(msg.sender == localEndpoint, PermissionDenied());
+        require(msg.sender == omnichainMemecoinStakerStorage.localEndpoint, PermissionDenied());
         // Single-resolution guard shared with `settlePendingCompose`: a guid settles at most once via this path.
-        ComposeState state = composeStates[memecoin][guid];
+        ComposeState state = omnichainMemecoinStakerStorage.composeStates[memecoin][guid];
         if (state == ComposeState.Released) return;
         require(state == ComposeState.None, AlreadyResolved());
         // CEI: mark settled first; a revert below rolls the write back, leaving the guid releasable and retryable.
-        composeStates[memecoin][guid] = ComposeState.Settled;
+        omnichainMemecoinStakerStorage.composeStates[memecoin][guid] = ComposeState.Settled;
 
         // Reject a short frame (header incomplete) with a named error before the codec slices (`amountLD` [12:44],
         // `composeMsg` [76:]) revert opaquely. Mirrors `verifySettle`'s header guard. CEI rolls the `Settled` write
@@ -117,10 +171,11 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
         returns (uint256 amount)
     {
         // Single-resolution guard shared with `lzCompose`: a guid may be settled at most once, and only if never settled.
-        require(composeStates[memecoin][guid] == ComposeState.None, AlreadyResolved());
+        require(omnichainMemecoinStakerStorage.composeStates[memecoin][guid] == ComposeState.None, AlreadyResolved());
 
         bytes memory composeMsg;
-        (amount, composeMsg) = OFTComposeSettleVerify.verifySettle(localEndpoint, memecoin, guid, message);
+        (amount, composeMsg) =
+            OFTComposeSettleVerify.verifySettle(omnichainMemecoinStakerStorage.localEndpoint, memecoin, guid, message);
         require(amount != 0, ZeroInput());
         // Release-path schema guard. Unlike `lzCompose`, which reads both `receiver` and `yieldVault` and enforces an
         // exact 64-byte composeMsg, the release path only needs the beneficiary (always pushes via `_transferOut`,
@@ -140,7 +195,7 @@ contract OmnichainMemecoinStaker is IOmnichainMemecoinStaker, TokenHelper {
         require(msg.sender == receiver, NotBeneficiary());
 
         // CEI: flip to Released before the outward transfer so the same guid cannot be released twice.
-        composeStates[memecoin][guid] = ComposeState.Released;
+        omnichainMemecoinStakerStorage.composeStates[memecoin][guid] = ComposeState.Released;
         _transferOut(memecoin, receiver, amount);
 
         emit StakingComposeSettled(guid, memecoin, receiver, amount);

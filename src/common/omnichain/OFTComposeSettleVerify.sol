@@ -7,7 +7,7 @@ import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTCompo
 import {IComposeState} from "../types/IComposeState.sol";
 
 /// @dev Shared delivery + authenticity proof for the two composers' `settlePendingCompose`. Both `YieldDispatcherUpgradeable` and
-///      `OmnichainMemecoinStaker` previously inlined the same verification prefix (endpoint `composeQueue` read,
+///      `OmnichainMemecoinStakerUpgradeable` previously inlined the same verification prefix (endpoint `composeQueue` read,
 ///      NotDelivered / AlreadyExecuted / keccak256 binding, amountLD); single-sourcing it here prevents the two
 ///      copies from drifting apart (a one-sided edit of the fund-release authorization gate would create a hole).
 library OFTComposeSettleVerify {
@@ -66,7 +66,7 @@ library OFTComposeSettleVerify {
         // (`amountLD` reads [12:44], `composeMsg` reads [76:]) would revert with an opaque bare revert. 76 is
         // OFTComposeMsgCodec's COMPOSE_FROM_OFFSET — the full compose header length (nonce 8 + srcEid 4 + amountLD 32
         // + composeFrom 32). The callers separately enforce their own inner schema-shape guards — `YieldDispatcherUpgradeable`
-        // requires `composeMsg.length >= 64` and `OmnichainMemecoinStaker` requires `>= 32`; this guard only secures
+        // requires `composeMsg.length >= 64` and `OmnichainMemecoinStakerUpgradeable` requires `>= 32`; this guard only secures
         // header integrity.
         require(message.length >= COMPOSE_HEADER_LENGTH, IComposeState.MalformedComposeMsg());
 

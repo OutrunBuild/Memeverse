@@ -738,7 +738,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     }
 
     /// @notice A failed settle rolls back the Settled write, leaving the guid retryable; success pins it and blocks replay.
-    /// @dev Mirrors OmnichainMemecoinStaker.testLzComposeAllowsRetryAfterFailedDepositAndBlocksReplayAfterSuccess:
+    /// @dev Mirrors OmnichainMemecoinStakerUpgradeable.testLzComposeAllowsRetryAfterFailedDepositAndBlocksReplayAfterSuccess:
     ///      a settle-fail revert (vault accumulates revert) must roll the whole lzCompose back so composeStates returns to
     ///      None and the endpoint can retry, then a successful retry pins the guid and a further replay reverts.
     function testLzComposeAllowsRetryAfterFailedSettleAndBlocksReplayAfterSuccess() external {
@@ -1174,7 +1174,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     }
 
     /// @notice settlePendingCompose rejects a malformed composeMsg (length < 64) with a named `MalformedComposeMsg`
-    ///         error instead of an opaque `abi.decode` revert, mirroring `OmnichainMemecoinStaker.settlePendingCompose`.
+    ///         error instead of an opaque `abi.decode` revert, mirroring `OmnichainMemecoinStakerUpgradeable.settlePendingCompose`.
     ///         Overlong frames (inner composeMsg > 64 bytes) are NOT rejected — the schema guard is >= 64 — and their
     ///         settle-side settlement is covered by testSettlePendingComposeSettlesOverlongPayloadIgnoringTail.
     /// @dev The inner composeMsg is a single 32-byte address (not the 64-byte (address, TokenType) tuple), so the
@@ -1335,7 +1335,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice settlePendingCompose reverts with a named `MalformedComposeMsg` on a frame shorter than the 76-byte header,
     ///         before the codec slice in `verifySettle` could revert opaquely. Symmetric with the `lzCompose`-side
-    ///         short-frame guard in `OmnichainMemecoinStaker`.
+    ///         short-frame guard in `OmnichainMemecoinStakerUpgradeable`.
     /// @dev A 48-byte frame passes the queue hash proof (hash-bound to the guid) but has no `composeFrom` word, so
     ///      `composeMsg` ([76:]) would slice out of bounds; verifySettle's pre-guard fires `MalformedComposeMsg` first.
     function testSettlePendingComposeRevertsOnShortFrameBeforeHeaderComplete() external {

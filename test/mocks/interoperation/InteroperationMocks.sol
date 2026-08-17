@@ -15,8 +15,7 @@ import {
 } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
 import {IMemeverseLauncher} from "../../../src/verse/interfaces/IMemeverseLauncher.sol";
-import {OmnichainMemecoinStaker} from "../../../src/interoperation/OmnichainMemecoinStaker.sol";
-import {IOmnichainMemecoinStaker} from "../../../src/interoperation/interfaces/IOmnichainMemecoinStaker.sol";
+import {OmnichainMemecoinStakerUpgradeable} from "../../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
 import {IComposeState} from "../../../src/common/types/IComposeState.sol";
 
 /// @dev Mirrors the real memecoin's transfer-to-zero-address guard (`OutrunERC20Init._transfer` reverts OZ's
@@ -54,7 +53,7 @@ contract MockStakerComposeToken is BurnableMockERC20Base {
     /// @notice Arm the mid-call Released-state probe: the next transfer asserts the (token, guid) mutex is already
     ///         Released mid-call, pinning the settlePendingCompose CEI write order (Released written before the
     ///         settle external call).
-    /// @param staker_ The OmnichainMemecoinStaker whose composeStates to read.
+    /// @param staker_ The OmnichainMemecoinStakerUpgradeable whose composeStates to read.
     /// @param guid_ The compose guid to probe.
     function setComposeProbeReleased(address staker_, bytes32 guid_) external {
         composeProbeStaker = staker_;
@@ -73,7 +72,7 @@ contract MockStakerComposeToken is BurnableMockERC20Base {
         // Probe pins that settlePendingCompose wrote Released before the outward transfer (CEI write order).
         if (composeProbeStaker != address(0)) {
             require(
-                OmnichainMemecoinStaker(composeProbeStaker).composeStates(address(this), composeProbeGuid)
+                OmnichainMemecoinStakerUpgradeable(composeProbeStaker).composeStates(address(this), composeProbeGuid)
                     == IComposeState.ComposeState.Released,
                 "released write not visible mid-call"
             );
@@ -124,7 +123,7 @@ contract MockStakerYieldVault {
     /// @notice Arm the mid-call compose-state probe: the next deposit callback asserts the (token, guid) mutex is
     ///         already Settled mid-call, pinning the lzCompose deposit-branch CEI write order (Settled written before
     ///         the deposit external call). Symmetric to YieldDispatcherMockBase.setComposeProbe on the dispatcher side.
-    /// @param staker_ The OmnichainMemecoinStaker whose composeStates to read.
+    /// @param staker_ The OmnichainMemecoinStakerUpgradeable whose composeStates to read.
     /// @param guid_ The compose guid to probe.
     function setComposeProbe(address staker_, bytes32 guid_) external {
         composeProbeStaker = staker_;
@@ -142,7 +141,7 @@ contract MockStakerYieldVault {
         // this probe is the regression guard that catches a reorder moving Settled after the deposit.
         if (composeProbeStaker != address(0)) {
             require(
-                OmnichainMemecoinStaker(composeProbeStaker).composeStates(token, composeProbeGuid)
+                OmnichainMemecoinStakerUpgradeable(composeProbeStaker).composeStates(token, composeProbeGuid)
                     == IComposeState.ComposeState.Settled,
                 "settled write not visible mid-call"
             );
@@ -185,12 +184,12 @@ contract MockStakerYieldVault {
 ///      reentry would read `None`, pass that first guard, and proceed — this test would catch the reorder. Symmetric to
 ///      ReentrantDispatcherVault (test/verse/YieldDispatcher.t.sol) on the dispatcher settle path.
 contract ReentrantStakerVault {
-    OmnichainMemecoinStaker internal immutable staker;
+    OmnichainMemecoinStakerUpgradeable internal immutable staker;
     address internal memecoin;
     bytes32 internal reentryGuid;
     bytes internal reentryMessage;
 
-    constructor(OmnichainMemecoinStaker staker_) {
+    constructor(OmnichainMemecoinStakerUpgradeable staker_) {
         staker = staker_;
     }
 

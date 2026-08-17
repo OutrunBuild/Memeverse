@@ -5,8 +5,9 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 
-import {OmnichainMemecoinStaker} from "../../src/interoperation/OmnichainMemecoinStaker.sol";
+import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
 import {IMemeverseOFTEnum} from "../../src/common/types/IMemeverseOFTEnum.sol";
 import {IBurnable} from "../../src/common/interfaces/IBurnable.sol";
@@ -62,7 +63,10 @@ contract GasBurnableToken is MockERC20, IBurnable {
 ///         MR-58: the executor's compose gas budget (`omnichainStakingGasLimit` / `yieldDispatcherGasLimit`) must
 ///         comfortably bound the post-rewrite `lzCompose` footprint (asset() binding, abi.decode, _safeApprove,
 ///         _parseCompose dual slices, mutex SLOAD+SSTORE). Each test reports the measured gas and asserts a ceiling
-///         at the measured warm footprint + ~40% regression margin. The deployment budgets these are checked
+///         shaped by two constraints: a regression margin over the measured warm footprint (~40% for most branches),
+///         and a fixed safety gap between the ceiling and the optioned compose budget when a branch's measured
+///         footprint sits close to it (the staker deposit ceiling is tightened by that gap). The deployment budgets
+///         these are checked
 ///         against are `omnichainStakingGasLimit` = 135000 (staking compose, `MemeverseOmnichainInteroperation`
 ///         constructor arg 6) and `yieldDispatcherGasLimit` = 135000 (yield compose, `MemeverseLauncherUpgradeable.initialize`
 ///         arg 11); the staking arg 5 `oftReceiveGasLimit` = 115000 is the OFT *receive* gas, NOT the compose budget.
@@ -77,7 +81,9 @@ contract GasBurnableToken is MockERC20, IBurnable {
 ///      slot (`totalAssets`, checkpoints, share balances, allowances, the dispatcher/staker compose-state mapping)
 ///      is WARM (EIP-2929). A naive forge test starts from a freshly-deployed clone and over-counts by the full
 ///      cold-access surcharge (~2,600 per cold slot): a cold probe measured the staker deposit branch at ~268k,
-///      while the warm-state value (after one pre-deposit warms the vault slots) is ~79k — a 3.4x distortion. To
+///      while the warm-state value (after one pre-deposit warms the vault slots) is ~86k post-UUPS-conversion
+///      (~79k pre-conversion; the delta is the ERC1967Proxy delegatecall hop plus the ERC-7201 namespaced
+///      storage reads on the lzCompose path) — a ~3.1x distortion. To
 ///      reflect production, each test runs a WARM-UP that seeds the vault/governor with one prior settle BEFORE the
 ///      gas window opens (mirroring the swap benchmark's documented warm-up model, `MemeverseSwapGasBenchmark`).
 ///      The compose-state slot for the *measured* guid is always fresh (each guid resolves once in production too),
@@ -97,7 +103,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     using OFTComposeMsgCodec for bytes;
 
     // --- Staker fixtures (real Memecoin + real MemecoinYieldVault, minimal-proxy clones like production) ---
-    OmnichainMemecoinStaker internal staker;
+    OmnichainMemecoinStakerUpgradeable internal staker;
     Memecoin internal memecoin;
     MemecoinYieldVault internal vault;
 
@@ -116,9 +122,17 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     bytes32 private _guidNonce = bytes32(uint256(1));
 
     function setUp() external {
+        // Skipped under coverage: --ir-minimum instrumentation inflates the measured gas so the ceilings are only
+        // meaningful in normal runs (same coverage skip pattern as the swap-router gas-ceiling tests).
+        if (vm.isContext(VmSafe.ForgeContext.Coverage)) {
+            vm.skip(true);
+            return;
+        }
+
         // ---- Staker ----
         _etchComposer();
-        staker = new OmnichainMemecoinStaker(LOCAL_ENDPOINT);
+        // Deployed through the shared fixture helper (production UUPS shape); owner is this benchmark contract.
+        staker = _deployStaker(address(this), LOCAL_ENDPOINT);
 
         Memecoin memecoinImpl = new Memecoin(LOCAL_ENDPOINT);
         memecoin = Memecoin(Clones.clone(address(memecoinImpl)));
@@ -204,7 +218,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     }
 
     // -----------------------------------------------------------------------------------------------
-    // OmnichainMemecoinStaker.lzCompose
+    // OmnichainMemecoinStakerUpgradeable.lzCompose
     // -----------------------------------------------------------------------------------------------
 
     /// @notice Staker deposit branch: real vault pulls the bridged memecoin and mints shares to the receiver.
@@ -212,7 +226,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     ///         `_safeApprove` (zero). Executor budget: `omnichainStakingGasLimit` = 135000 (compose arg, not the
     ///         separate 115000 `oftReceiveGasLimit`).
     /// @dev The vault is warmed by a prior deposit (`_warmStakerVault`) to reflect a live production vault; without
-    ///      it, a fresh-clone vault over-counts by the full EIP-2929 cold-slot surcharge (cold ~268k vs warm ~79k).
+    ///      it, a fresh-clone vault over-counts by the full EIP-2929 cold-slot surcharge (cold ~268k vs warm ~86k).
     function test_Gas_StakerDepositBranch() public {
         _warmStakerVault();
         uint256 amount = 100 ether;
@@ -233,10 +247,17 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
 
         assertEq(uint256(staker.composeStates(address(memecoin), guid)), uint256(IComposeState.ComposeState.Settled));
         emit log_named_uint("GAS staker lzCompose deposit branch (endpoint.lzCompose body)", gasUsed);
-        // Ceiling set generously above the measured warm footprint. If the assertion fails, the path regressed;
-        // raise `omnichainStakingGasLimit` in the deploy script/config via `setGasLimits`, do not raise this
-        // ceiling without re-measuring.
-        assertLt(gasUsed, 110_000, "staker deposit lzCompose gas ceiling exceeded");
+        // Post-UUPS-conversion re-measure (2026-08): 86_082 warm, up from the pre-conversion ~79k — the delta is
+        // the ERC1967Proxy delegatecall hop plus the ERC-7201 namespaced storage reads on the lzCompose path. The
+        // 100_000 ceiling = that footprint + ~14k regression tolerance, and it also pins a ~35k fixed gap below the
+        // optioned compose budget `omnichainStakingGasLimit` = 135000 (symmetric with the fallback branch's
+        // 99k-vs-135k gap): a CI-green body drift that eats the gap OOGs the live delivery once the executor compose
+        // prologue (~1.5k) and the EIP-150 63/64 forwarding loss are subtracted, stranding the guid in compose
+        // revert-retry. If the assertion fails, the path regressed; re-measure, then raise
+        // `omnichainStakingGasLimit` in the deploy script/config via `setGasLimits` — do not raise this ceiling
+        // without re-measuring. The 115000 `oftReceiveGasLimit` is the separate OFT *receive* budget (see header):
+        // a different, unmeasured surface with no settle fallback — not a comparison budget for this branch.
+        assertLt(gasUsed, 100_000, "staker deposit lzCompose gas ceiling exceeded");
     }
 
     /// @notice Staker fallback branch: the predicted vault is not deployed on the destination chain, so the bridged
@@ -262,7 +283,11 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
 
         assertEq(memecoin.balanceOf(RECEIVER), amount, "fallback released the bridged memecoin to the receiver");
         emit log_named_uint("GAS staker lzCompose fallback branch (endpoint.lzCompose body)", gasUsed);
-        assertLt(gasUsed, 90_000, "staker fallback lzCompose gas ceiling exceeded");
+        // Post-UUPS-conversion re-measure (2026-08): 70_594 warm, up from ~64k pre-conversion — same ERC1967Proxy
+        // delegatecall + ERC-7201 namespaced-storage attribution as the deposit branch above. 99_000 = that footprint
+        // + ~40% regression margin; it also holds a ~36k gap below the 135000 compose budget, mirroring the fixed-gap
+        // constraint the deposit ceiling pins.
+        assertLt(gasUsed, 99_000, "staker fallback lzCompose gas ceiling exceeded");
     }
 
     // -----------------------------------------------------------------------------------------------

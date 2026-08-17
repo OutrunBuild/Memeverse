@@ -11,6 +11,8 @@
 - Pi Claude-rules loader: .pi/extensions/claude-rules.ts (project-scoped, version-controlled)
 - ZCode hooks: ~/.zcode/cli/config.json (user-scope, machine-local, NOT version-controlled)
 - Enforcement entrypoint: script/harness/gate.sh
+- Scope-rule generator: script/harness/sync-agent-docs.sh (regenerates `.claude/rules/solidity-*.md` from the nested `src/AGENTS.md`, `script/AGENTS.md`, `test/AGENTS.md`; `--check` verifies no drift)
+- Generated scope rules: `.claude/rules/solidity-contracts.md` (from `src/AGENTS.md`), `.claude/rules/solidity-scripts.md` (from `script/AGENTS.md`), `.claude/rules/solidity-tests.md` (from `test/AGENTS.md`)
 - CI gate entrypoint: script/harness/ci-gate-entrypoint.sh
 
 Mixed `harness_control` + Solidity changed-file sets are legal. The gate reports phase fields for `harness_writer_roles`, `code_writer_roles`, and `code_review_roles`.

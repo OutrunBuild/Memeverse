@@ -1794,6 +1794,24 @@ if [ "$classify_only" -eq 1 ]; then
     exit 0
 fi
 
+# Verify the generated per-scope .claude/rules/*.md files have not drifted from
+# their single source of truth (the nested src/script/test AGENTS.md). Gate fails
+# on drift so stale generated rules are never silently relied on. Runs in the
+# real verification path (not classify-only) and applies to every change.
+if [ "$hard_blocked" -eq 0 ] && [ -f "$repo_root/script/harness/sync-agent-docs.sh" ]; then
+    sync_check_output="$(mktemp "$repo_root/.harness/tmp/sync-docs.XXXXXX")"
+    register_cleanup "$sync_check_output"
+    set +e
+    bash "$repo_root/script/harness/sync-agent-docs.sh" --check > "$sync_check_output" 2>&1
+    sync_check_exit=$?
+    set -e
+    if [ "$sync_check_exit" -ne 0 ]; then
+        cat "$sync_check_output" >&2
+        verification_failed=1
+        append_finding blocking_findings_json "verifier" "generated .claude/rules/*.md drifted from the nested AGENTS.md source (run bash script/harness/sync-agent-docs.sh)" "sync-agent-docs" "error"
+    fi
+fi
+
 declare -a targeted_test_files=()
 if [ "$verification_profile" = "fast" ] && [ "$hard_blocked" -eq 0 ]; then
     for changed_test_file in "${solidity_test_files[@]}"; do

@@ -20,9 +20,10 @@ docs/superpowers
 docs/review
 docs/prompts
 
-# Dotenv file
+# Dotenv files (keep the committed template)
 .env
-.env.example
+.env.*
+!.env.example
 
 # Claude Code local settings
 .claude/settings.local.json

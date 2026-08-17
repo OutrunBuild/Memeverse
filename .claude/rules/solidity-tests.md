@@ -2,7 +2,6 @@
 paths:
   - "test/**/*.sol"
 ---
-
 # Solidity tests (test/)
 
 Auto-loads when you edit `test/` files.
@@ -19,8 +18,8 @@ Auto-loads when you edit `test/` files.
 ## Organization
 - Test files end with `.t.sol`, test contracts inherit `forge-std/Test.sol`, test functions start with `test`/`test_`.
 - `setUp()` runs before each test — use it to establish fresh state.
-- Mirror `src/`: `src/token/Foo.sol` → `test/token/Foo.t.sol`.
-- Group related tests in one contract: `contract FooTransferTest is Test { … }`.
+- Mirror `src/`: `src/token/Memecoin.sol` → `test/token/Memecoin.t.sol`.
+- Group related tests in one contract: `contract TokenTransferTest is Test { … }`.
 - Expose internals via a harness in `test/mocks/` (e.g. `exposed_mint` wrapping `_mint`), never by widening production visibility.
 
 ## Common cheatcodes
@@ -35,7 +34,7 @@ Auto-loads when you edit `test/` files.
 ## Invariant tests
 - Function names start with `invariant_`; Forge asserts the invariant holds after a random sequence of calls during fuzzing.
 - Use a handler contract plus `targetContract()`/`targetSelector()` to restrict which entry points the fuzzer may call, avoiding arbitrary calls to any function.
-- This repo already uses invariant tests — new invariants must follow the same pattern.
+- This repo already uses invariant tests (e.g. `MemeverseLauncherAssetFlowInvariant`) — new invariants must follow the same pattern.
 
 ## Fork testing
 - Test against live chain state: `forge test --fork-url <rpc> --fork-block-number <n>` (pin the block number for reproducibility); or set `eth_rpc_url` in `foundry.toml`.
@@ -52,3 +51,6 @@ Never inherit an upgradeable production contract (`Initializable`, proxy/storage
 - `-vvv`: traces for failing tests only (most common for debugging).
 - `-vvvv`: traces for all tests, including setup.
 - `-vvvvv`: traces plus storage changes.
+
+## Comments
+Comments and NatSpec MUST be written in English — same rule as `src/AGENTS.md` ("NatSpec"). Test files have previously needed full Chinese-to-English comment conversion; write English from the start.

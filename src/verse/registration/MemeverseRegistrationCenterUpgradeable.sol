@@ -256,8 +256,8 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
         // Single `registerGasLimit` slot read for the send-time options; `quoteSend` above already read
         // the same slot once for pricing. No writer can run between the two reads
         // (`setRegisterGasLimit` is owner-only external), so both observe the same value.
-        uint128 registerGasLimit = uint128(registrationCenterStorage.registerGasLimit);
-        bytes memory options = _registerOptions(registerGasLimit);
+        uint128 registerGasLimit_ = uint128(registrationCenterStorage.registerGasLimit);
+        bytes memory options = _registerOptions(registerGasLimit_);
         uint256 eidsLength = eids.length;
         // Registrar pointer read once before the fan-out: the loop's only consumer is the local branch's
         // call, and nothing can re-point it mid-loop (`setMemeverseRegistrar` is owner-only while the loop's
@@ -287,8 +287,8 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
     ///      `registration` call no writer can run between the quote-time read and the send-time read
     ///      (`setRegisterGasLimit` is owner-only external), so the send options are always built from the
     ///      exact value the just-completed quote was priced with.
-    function _registerOptions(uint128 registerGasLimit) internal pure returns (bytes memory) {
-        return OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimit, 0);
+    function _registerOptions(uint128 registerGasLimit_) internal pure returns (bytes memory) {
+        return OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimit_, 0);
     }
 
     /**

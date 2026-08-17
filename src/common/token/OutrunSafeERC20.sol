@@ -38,9 +38,11 @@ library OutrunSafeERC20 {
      * calls are assumed to be successful.
      */
     function safeApprove(IERC20 token, address spender, uint256 value) internal {
-        // solhint-disable-next-line avoid-low-level-calls
-        (bool success, bytes memory data) =
-            address(token).call(abi.encodeWithSelector(IERC20.approve.selector, spender, value));
+        (
+            bool success,
+            bytes memory data
+            // solhint-disable-next-line avoid-low-level-calls
+        ) = address(token).call(abi.encodeWithSelector(IERC20.approve.selector, spender, value));
         require(success && (data.length == 0 || abi.decode(data, (bool))), SafeERC20FailedOperation(address(token)));
     }
 

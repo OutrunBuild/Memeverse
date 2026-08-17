@@ -11,8 +11,9 @@ module.exports = {
         "gas-length-in-loops": "error",
         "gas-multitoken1155": "error",
         // erc7201() namespace strings hash to a single bytes32 slot via keccak256, so the
-        // multi-slot gas heuristic false-positives on `layout at erc7201("...")` declarations.
-        "gas-small-strings": "warn",
+        // multi-slot gas heuristic false-positives on `layout at erc7201("...")` declarations —
+        // currently the only >32-byte string literals in src/, so the rule is pure noise.
+        "gas-small-strings": "off",
         "gas-strict-inequalities": "off",
         "gas-struct-packing": "off",
         "immutable-vars-naming": "off",

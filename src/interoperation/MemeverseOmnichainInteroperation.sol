@@ -127,8 +127,8 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
 
         (
             MessagingReceipt memory rec,
-            // solhint-disable-next-line check-send-result
             OFTReceipt memory oftReceipt
+            // solhint-disable-next-line check-send-result
         ) = IOFT(memecoin).send{value: messagingFee.nativeFee}(sendParam, messagingFee, msg.sender);
 
         // `_debit` burnt the truncated `amountSentLD`; the remainder (`amount - amountSentLD`, the part `_removeDust`

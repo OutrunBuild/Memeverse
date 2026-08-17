@@ -16,9 +16,12 @@ gas_reports = ["*"]
 # 6335/2424: pre-existing. 2018 (view/pure suggestion): noise — most hits are
 # v4 IHooks / forge invariant interface impls that cannot add view/pure.
 # 8429 (virtual modifier deprecation): emitted by lib/ dependencies.
+# 2394 (EIP-1153 transient storage notice): informational only — the sole emitter,
+# MemeverseTransientState.sol, is deliberate transient-state usage whose clear
+# discipline is pinned by test/swap/MemeverseTransientState.t.sol.
 # 3860 (initcode size) is intentionally NOT ignored: it must stay visible for src/
 # production contracts even though current hits are test contracts.
-ignored_error_codes = [6335, 2424, 2018, 8429]
+ignored_error_codes = [6335, 2424, 2018, 8429, 2394]
 
 [rpc_endpoints]
 bsc_testnet = "${BSC_TESTNET_RPC}"

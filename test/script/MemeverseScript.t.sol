@@ -93,7 +93,7 @@ contract MockScriptOutrunDeployer is IOutrunDeployer {
         return address(0);
     }
 
-    function getDeployed(address deployer, bytes32 salt) external view returns (address deployed) {
+    function getDeployed(address, bytes32) external view returns (address deployed) {
         return address(0);
     }
 }

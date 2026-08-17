@@ -1422,6 +1422,8 @@ contract MockOFTToken is MockERC20, IOFT {
         returns (OFTLimit memory, OFTFeeDetail[] memory, OFTReceipt memory)
     {
         uint256 rate = 10 ** (this.decimals() - this.sharedDecimals());
+        // Intentional LayerZero `_removeDust` truncation — the mock must match the real OFT.
+        // forge-lint: disable-next-line(divide-before-multiply)
         uint256 amountSentLD = (sendParam.amountLD / rate) * rate;
         return (OFTLimit(0, type(uint64).max), new OFTFeeDetail[](0), OFTReceipt(amountSentLD, amountSentLD));
     }

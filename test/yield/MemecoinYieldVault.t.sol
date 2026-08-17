@@ -1808,7 +1808,7 @@ contract MemecoinYieldVaultTest is Test {
     ///      vault is wired to the proxy address: post-upgrade the dispatcher has no immutables (its addresses live
     ///      in ERC-7201 storage set by initialize), so the prior etch-onto-a-fixed-address pattern no longer works
     ///      (`vm.etch` copies only code, not storage). Returns the deployed `dispatcherAddr`.
-    function _deployComposeVaultWithDispatcher(address asset)
+    function _deployComposeVaultWithDispatcher(address asset_)
         internal
         returns (MemecoinYieldVault composeVault, address dispatcherAddr, address endpointAddr)
     {
@@ -1829,7 +1829,7 @@ contract MemecoinYieldVaultTest is Test {
             )
         );
         dispatcherAddr = address(dispatcher);
-        composeVault.initialize("Compose Vault", "cvMEME", asset, 2, VIRTUAL_ASSETS);
+        composeVault.initialize("Compose Vault", "cvMEME", asset_, 2, VIRTUAL_ASSETS);
     }
 
     /// @dev Builds the OFT compose payload a launcher would have sent for a memecoin-yield retry:
@@ -2037,7 +2037,7 @@ contract MemecoinYieldVaultTest is Test {
     ///      matured entries remain claimable up to their locked value.
     function test_MaxRedeemAndMaxWithdrawReflectClaimableWhenQueueFull() external {
         vm.prank(ATTACKER);
-        uint256 shares = vault.deposit(10 ether, ATTACKER);
+        vault.deposit(10 ether, ATTACKER);
 
         // Fill the 5-entry queue; each 1-ether request burns its shares immediately and locks at the
         // current (1:1) rate. Capture each locked value before its request mutates totalAssets.
@@ -2353,7 +2353,7 @@ contract MemecoinYieldVaultTest is Test {
     ///         lockedAssets in lockstep, so the summed payout equals the total locked (no drift).
     function test_RedeemFifoPartialClaimAcrossDifferentRatesNoDrift() external {
         vm.prank(ATTACKER);
-        uint256 shares = vault.deposit(10 ether, ATTACKER); // TA=TS=10, rate 1
+        vault.deposit(10 ether, ATTACKER); // TA=TS=10, rate 1
 
         // request1 locks at rate 1.
         uint256 locked1 = vault.convertToAssets(5 ether); // 5 ether
@@ -2668,7 +2668,7 @@ contract MemecoinYieldVaultTest is Test {
     ///      because lockedAssets was deducted from totalAssets at request time.
     function test_RequestRedeemLocksAssetsAgainstPostRequestYield() external {
         vm.prank(ATTACKER);
-        uint256 shares = vault.deposit(10 ether, ATTACKER); // TA=10, rate 1
+        vault.deposit(10 ether, ATTACKER); // TA=10, rate 1
         uint256 locked = vault.convertToAssets(5 ether); // 5 ether
         vm.prank(ATTACKER);
         vault.requestRedeem(5 ether, ATTACKER, ATTACKER); // TA 10->5, TS 10->5

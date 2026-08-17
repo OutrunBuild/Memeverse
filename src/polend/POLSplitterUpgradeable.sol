@@ -448,12 +448,12 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         uint256 polAmount = info.totalPOLCollateral;
         address memecoin = info.memecoin;
         address uAsset = info.uAsset;
-        address launcher = polSplitterStorage.launcher;
+        address launcher_ = polSplitterStorage.launcher;
         uint256 beforeUAsset = IERC20(uAsset).balanceOf(address(this));
         uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
 
-        IERC20(info.pol).safeApprove(launcher, polAmount);
-        IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId, polAmount, true);
+        IERC20(info.pol).safeApprove(launcher_, polAmount);
+        IMemeverseLauncher(launcher_).redeemMemecoinLiquidity(verseId, polAmount, true);
 
         settlementUAsset = IERC20(uAsset).balanceOf(address(this)) - beforeUAsset;
         settlementMemecoin = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;

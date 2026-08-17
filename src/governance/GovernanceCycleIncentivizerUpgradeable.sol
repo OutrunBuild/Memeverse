@@ -628,17 +628,17 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
      * _registerTreasuryToken so the max(G - R, 0) ledger formula cannot drift between the two sites.
      * @param token - The token address
      * @return synced - The computed treasury balance for the current cycle
-     * @return currentCycleId - The active cycle id
+     * @return _currentCycleId - The active cycle id
      */
     function _computeSyncedTreasuryBalance(address token)
         internal
         view
-        returns (uint256 synced, uint128 currentCycleId)
+        returns (uint256 synced, uint128 _currentCycleId)
     {
         // External read first so a reentrant finalize cannot target a stale cycle.
         uint256 governorBalance = IERC20(token).balanceOf(governanceCycleIncentivizerStorage._governor);
-        currentCycleId = governanceCycleIncentivizerStorage._currentCycleId;
-        uint256 unclaimedReserve = governanceCycleIncentivizerStorage._cycles[currentCycleId - 1].rewardBalances[token];
+        _currentCycleId = governanceCycleIncentivizerStorage._currentCycleId;
+        uint256 unclaimedReserve = governanceCycleIncentivizerStorage._cycles[_currentCycleId - 1].rewardBalances[token];
         synced = governorBalance >= unclaimedReserve ? governorBalance - unclaimedReserve : 0;
     }
 

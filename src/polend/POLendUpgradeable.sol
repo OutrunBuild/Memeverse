@@ -226,18 +226,18 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         if (rate == 0) revert InvalidState();
         if (currentState != MarketState.None && currentState != MarketState.Genesis) revert InvalidState();
         address marketUAsset = market.uAsset;
-        address launcher = polendStorage.launcher;
-        if (IMemeverseLauncher(launcher).getStageByVerseId(verseId) != IMemeverseLauncher.Stage.Genesis) {
+        address launcher_ = polendStorage.launcher;
+        if (IMemeverseLauncher(launcher_).getStageByVerseId(verseId) != IMemeverseLauncher.Stage.Genesis) {
             revert InvalidState();
         }
-        uint256 actualNormalFunds = IMemeverseLauncher(launcher).totalNormalFunds(verseId);
+        uint256 actualNormalFunds = IMemeverseLauncher(launcher_).totalNormalFunds(verseId);
         if (actualNormalFunds > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS) revert InvalidConfig();
 
         uint256 nextTotalInterest = market.totalLeveragedInterest + interestAmount;
         uint256 previewTotalDebt = Math.mulDiv(nextTotalInterest, 1e18, rate);
         // Aggregate genesis funds include all leveraged debt already accumulated for the verse.
         if (previewTotalDebt > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds) revert InvalidConfig();
-        if (previewTotalDebt > _debtCap(verseId, launcher)) revert DebtCapExceeded();
+        if (previewTotalDebt > _debtCap(verseId, launcher_)) revert DebtCapExceeded();
 
         borrowedAmount = Math.mulDiv(interestAmount, 1e18, rate);
         polendStorage.leveragedInterestPaid[verseId][msg.sender] += interestAmount;
@@ -273,8 +273,8 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         uint256 rate = market.interestRate;
         if (rate == 0) revert InvalidState();
         if (currentState != MarketState.None && currentState != MarketState.Genesis) revert InvalidState();
-        address launcher = polendStorage.launcher;
-        if (IMemeverseLauncher(launcher).getStageByVerseId(verseId) != IMemeverseLauncher.Stage.Genesis) {
+        address launcher_ = polendStorage.launcher;
+        if (IMemeverseLauncher(launcher_).getStageByVerseId(verseId) != IMemeverseLauncher.Stage.Genesis) {
             revert InvalidState();
         }
         // Read the cached credit token first; only resolve via the factory on first credit
@@ -302,13 +302,13 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
             market.creditToken = credit;
         }
 
-        uint256 actualNormalFunds = IMemeverseLauncher(launcher).totalNormalFunds(verseId);
+        uint256 actualNormalFunds = IMemeverseLauncher(launcher_).totalNormalFunds(verseId);
         if (actualNormalFunds > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS) revert InvalidConfig();
 
         uint256 nextTotalInterest = market.totalLeveragedInterest + creditAmount;
         uint256 previewTotalDebt = Math.mulDiv(nextTotalInterest, 1e18, rate);
         if (previewTotalDebt > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds) revert InvalidConfig();
-        if (previewTotalDebt > _debtCap(verseId, launcher)) revert DebtCapExceeded();
+        if (previewTotalDebt > _debtCap(verseId, launcher_)) revert DebtCapExceeded();
 
         borrowedAmount = Math.mulDiv(creditAmount, 1e18, rate);
         polendStorage.creditInterestPaid[verseId][msg.sender] += creditAmount;
@@ -787,13 +787,13 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         if (polendStorage.settlementDustStates[market.uAsset].maxReserve == 0) return (0, 0);
         // Cache the launcher once: the launcher calls below are external, so any read between
         // them would otherwise force a fresh SLOAD each time.
-        address launcher = polendStorage.launcher;
-        if (IMemeverseLauncher(launcher).getStageByVerseId(verseId) != IMemeverseLauncher.Stage.Genesis) {
+        address launcher_ = polendStorage.launcher;
+        if (IMemeverseLauncher(launcher_).getStageByVerseId(verseId) != IMemeverseLauncher.Stage.Genesis) {
             return (0, 0);
         }
 
-        debtCap = _debtCap(verseId, launcher);
-        uint256 actualNormalFunds = IMemeverseLauncher(launcher).totalNormalFunds(verseId);
+        debtCap = _debtCap(verseId, launcher_);
+        uint256 actualNormalFunds = IMemeverseLauncher(launcher_).totalNormalFunds(verseId);
         if (actualNormalFunds >= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS) return (0, 0);
         uint256 aggregateDebtCap = MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds;
         if (debtCap > aggregateDebtCap) debtCap = aggregateDebtCap;
@@ -816,8 +816,8 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         if (debtFactor < minDebtFactor) revert InvalidConfig();
     }
 
-    function _debtCap(uint256 verseId, address launcher) internal view returns (uint256) {
-        uint256 capBase = IMemeverseLauncher(launcher).getDebtCapBaseByVerseId(verseId);
+    function _debtCap(uint256 verseId, address launcher_) internal view returns (uint256) {
+        uint256 capBase = IMemeverseLauncher(launcher_).getDebtCapBaseByVerseId(verseId);
         return _mulDiv1e18Saturating(polendStorage.leveragedDebtFactor, capBase);
     }
 
@@ -859,12 +859,12 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         LendMarket storage market = polendStorage.lendMarkets[verseId];
         (address pol, address memecoin) = IPOLSplitter(polendStorage.splitter).getPOLAndMemecoin(verseId);
         address marketUAsset = market.uAsset;
-        address launcher = polendStorage.launcher;
+        address launcher_ = polendStorage.launcher;
         uint256 beforeUAsset = IERC20(marketUAsset).balanceOf(address(this));
         uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
 
-        IERC20(pol).safeApprove(launcher, polAmount);
-        IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId, polAmount, true);
+        IERC20(pol).safeApprove(launcher_, polAmount);
+        IMemeverseLauncher(launcher_).redeemMemecoinLiquidity(verseId, polAmount, true);
 
         uAssetAmount = IERC20(marketUAsset).balanceOf(address(this)) - beforeUAsset;
         memecoinAmount = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;

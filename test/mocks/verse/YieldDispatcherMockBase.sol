@@ -2,7 +2,6 @@
 pragma solidity ^0.8.35;
 
 import {YieldDispatcherUpgradeable} from "../../../src/verse/YieldDispatcherUpgradeable.sol";
-import {IYieldDispatcher} from "../../../src/verse/interfaces/IYieldDispatcher.sol";
 import {IComposeState} from "../../../src/common/types/IComposeState.sol";
 
 /// @notice Shared failure-switch and mid-call compose-state probe mechanism for the YieldDispatcherUpgradeable settlement mocks.

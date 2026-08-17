@@ -44,7 +44,7 @@ Auto-loads when you edit `test/` files.
 - Always cover: zero / max amounts, unauthorized caller (`vm.prank(attacker)` + `vm.expectRevert(...)`).
 - Coverage: `forge coverage` (`--report lcov` for lcov).
 
-## Inheritance (strict — see AGENTS.md "Test Code Rules")
+## Inheritance (strict — see .harness/runtime/editing-conventions.md "Test Code Rules")
 Never inherit an upgradeable production contract (`Initializable`, proxy/storage-inherited). Simulate dependencies with interfaces, abstract contracts, or standalone implementations. Mocks go in `test/mocks/`. The only exception: inheriting an upgradeable `src/` contract declared `abstract` (to implement its abstract functions or expose internal `pure`/`view`). (AGENTS.md is always in context — this is a reminder.)
 
 ## Debugging verbosity

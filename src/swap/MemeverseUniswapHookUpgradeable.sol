@@ -208,17 +208,27 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     ///      malicious owner could ship a fake `poolManager()` getter, but it catches honest constructor
     ///      mistakes during upgrade.
     function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
-        // Fail fast on a no-code target with a named error, mirroring `_requireFacetPoolManager`.
-        // Without this, the ImmutableState call below would revert with an opaque ABI-decode error.
+        // Named pre-check for a no-code target: without it the probe's STATICCALL to a codeless
+        // address would SUCCEED with empty returndata, and that success-path decode failure is
+        // outside Solidity try/catch — it bubbles as a raw decode revert (see the boundary note
+        // below), losing the precise `UpgradeTargetCodeNotReady` label.
         if (newImplementation.code.length == 0) revert UpgradeTargetCodeNotReady(newImplementation);
         // Read the new implementation's immutable PoolManager via the same ImmutableState getter the
-        // facets use, then reject drift. Caching the getter result in `newPoolManager` avoids
-        // re-issuing that STATICCALL when assembling the revert payload; `currentPoolManager` is the
-        // local immutable self-read (address(poolManager), not an external call).
+        // facets use, then reject drift. The try/catch folds the unreadable-target failures it can see
+        // (getter missing, probe reverts) into the named `UpgradePoolManagerUnreadable` instead of a bare
+        // revert. One class stays outside the catch: a successful call whose return data cannot be
+        // ABI-decoded is NOT caught by Solidity try/catch semantics and bubbles up as the raw decode
+        // revert — still fail-closed, the upgrade is rejected either way, only the error label differs.
+        // `currentPoolManager` is the local immutable self-read (address(poolManager), not an external
+        // call); caching the getter result in `newPoolManager` avoids re-issuing that STATICCALL when
+        // assembling the revert payload.
         address currentPoolManager = address(poolManager);
-        address newPoolManager = address(ImmutableState(newImplementation).poolManager());
-        if (newPoolManager != currentPoolManager) {
-            revert UpgradePoolManagerMismatch(currentPoolManager, newPoolManager);
+        try ImmutableState(newImplementation).poolManager() returns (IPoolManager newPoolManager) {
+            if (address(newPoolManager) != currentPoolManager) {
+                revert UpgradePoolManagerMismatch(currentPoolManager, address(newPoolManager));
+            }
+        } catch {
+            revert UpgradePoolManagerUnreadable(newImplementation);
         }
     }
 
@@ -280,11 +290,19 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
 
     function _requireFacetPoolManager(address facet) internal view {
         if (facet.code.length == 0) revert FacetCodeNotReady(facet);
-        // ImmutableState exposes `poolManager` as a public immutable getter on each facet. Cache it so the
-        // mismatch revert reuses the same value instead of re-issuing the STATICCALL; mirrors _authorizeUpgrade.
-        address facetPoolManager = address(ImmutableState(facet).poolManager());
-        if (facetPoolManager != address(poolManager)) {
-            revert FacetPoolManagerMismatch(facet, address(poolManager), facetPoolManager);
+        // ImmutableState exposes `poolManager` as a public immutable getter on each facet. The try/catch
+        // folds the unreadable-facet failures it can see (getter missing, probe reverts) into the named
+        // `FacetPoolManagerUnreadable` instead of a bare revert; a successful call whose return data cannot
+        // be ABI-decoded is NOT caught by Solidity try/catch semantics and bubbles up as the raw decode
+        // revert — the facet swap is rejected (fail-closed) either way. Caching the getter result in
+        // `facetPoolManager` reuses the same value for the mismatch revert instead of re-issuing the
+        // STATICCALL; mirrors `_authorizeUpgrade`.
+        try ImmutableState(facet).poolManager() returns (IPoolManager facetPoolManager) {
+            if (address(facetPoolManager) != address(poolManager)) {
+                revert FacetPoolManagerMismatch(facet, address(poolManager), address(facetPoolManager));
+            }
+        } catch {
+            revert FacetPoolManagerUnreadable(facet);
         }
     }
 

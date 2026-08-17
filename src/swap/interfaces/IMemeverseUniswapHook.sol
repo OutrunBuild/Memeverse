@@ -513,10 +513,24 @@ interface IMemeverseUniswapHook is IImmutableState {
     error FacetCodeNotReady(address facet);
     /// @notice Reverts when a facet is bound to a different PoolManager than this hook.
     error FacetPoolManagerMismatch(address facet, address hookPoolManager, address facetPoolManager);
+    /// @notice Reverts when a facet's immutable PoolManager getter cannot be read.
+    /// @dev The facet has code but the `ImmutableState.poolManager()` probe reverts or the getter is
+    ///      missing — folded into this named error instead of a bare revert, the same greppable
+    ///      honest-failure class as `FacetCodeNotReady`. A successful call with non-decodable return data is
+    ///      outside Solidity try/catch semantics and bubbles up as the raw decode revert; the facet swap is
+    ///      rejected (fail-closed) either way.
+    error FacetPoolManagerUnreadable(address facet);
 
     /// @notice Reverts when a UUPS upgrade target's immutable PoolManager differs from this hook's.
     /// @dev Operational guardrail, not a security boundary — see `_authorizeUpgrade` dev comment.
     error UpgradePoolManagerMismatch(address expected, address actual);
+    /// @notice Reverts when a UUPS upgrade target's immutable PoolManager getter cannot be read.
+    /// @dev The target has code but the `ImmutableState.poolManager()` probe reverts or the getter is
+    ///      missing — folded into this named error instead of a bare revert, mirroring the registration
+    ///      center's `UpgradeEndpointUnreadable`. A successful call with non-decodable return data is
+    ///      outside Solidity try/catch semantics and bubbles up as the raw decode revert; the upgrade is
+    ///      rejected (fail-closed) either way.
+    error UpgradePoolManagerUnreadable(address newImplementation);
     /// @notice Reverts when a UUPS upgrade target address has no deployed code.
     /// @dev Mirrors the `code.length` pre-check used by `_requireFacetPoolManager` so a no-code
     ///      target fails with a named, locatable error instead of an opaque ABI-decode revert.

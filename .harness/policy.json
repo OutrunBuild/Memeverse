@@ -72,6 +72,7 @@
       "^\\.github/workflows/pr-template-check\\.yml$",
       "^\\.gitmodules$",
       "^\\.gitignore$",
+      "^\\.env\\.example$",
       "^\\.harness/policy\\.json$",
       "^\\.harness/runtime/main-session-contract\\.md$",
       "^\\.harness/schemas/.*$",
@@ -268,7 +269,7 @@
             "src/verse/registration/MemeverseRegistrarAbstract.sol",
             "src/verse/registration/MemeverseRegistrarAtLocal.sol",
             "src/verse/registration/MemeverseRegistrarOmnichain.sol",
-            "src/verse/registration/MemeverseRegistrationCenter.sol",
+            "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol",
             "src/verse/interfaces/IMemeverseRegistrar.sol",
             "src/verse/interfaces/IMemeverseRegistrarAtLocal.sol",
             "src/verse/interfaces/IMemeverseRegistrarOmnichain.sol",
@@ -324,7 +325,7 @@
           "id": "interoperation-core",
           "paths": [
             "src/interoperation/MemeverseOmnichainInteroperation.sol",
-            "src/interoperation/OmnichainMemecoinStaker.sol",
+            "src/interoperation/OmnichainMemecoinStakerUpgradeable.sol",
             "src/interoperation/interfaces/IMemeverseOmnichainInteroperation.sol",
             "src/interoperation/interfaces/IOmnichainMemecoinStaker.sol"
           ]

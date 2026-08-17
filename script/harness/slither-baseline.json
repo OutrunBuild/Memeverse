@@ -2,7 +2,7 @@
   "version": 1,
   "tool": "slither",
   "target": "src",
-  "generated_at": "2026-08-14",
+  "generated_at": "2026-08-17",
   "findings": [
     {
       "id": "e163167ea2a8da58d71805492bd107224e97f810a45709be440869ca28cf3e87",
@@ -23,29 +23,29 @@
       "key": "arbitrary-send-erc20|src/common/token/TokenHelper.sol|TokenHelper._transferIn(address,address,uint256) uses arbitrary from in transferFrom: IERC20(token).safeTransferFrom(from,address(this),amount)"
     },
     {
-      "id": "41bfc86d6ac7787a8be854f0dee48c656ea17e0f7a49fbc74db19d497ffc51c1",
+      "id": "bde4ee2dd1bd626df8045b4e3ec093e3511657ba65521e7a1062750588d50e7a",
       "check": "arbitrary-send-erc20",
       "impact": "High",
       "confidence": "High",
-      "location": "src/swap/MemeverseSwapRouter.sol#L607-L612",
+      "location": "src/swap/MemeverseSwapRouter.sol#L506-L511",
       "summary": "MemeverseSwapRouter._pullCurrency(Currency,address,uint256) uses arbitrary from in transferFrom: ! IERC20Minimal(Currency.unwrap(currency)).transferFrom(from,address(this),amount)",
       "key": "arbitrary-send-erc20|src/swap/MemeverseSwapRouter.sol|MemeverseSwapRouter._pullCurrency(Currency,address,uint256) uses arbitrary from in transferFrom: ! IERC20Minimal(Currency.unwrap(currency)).transferFrom(from,address(this),amount)"
     },
     {
-      "id": "65010aae5738f32c207b3f804991eee18ceceba0f21fa39f7165f4d74742d5a8",
+      "id": "926995111686aa7dfa9d73d8bdc027b0fda1027e48437fe8f118abacba7a23f9",
       "check": "arbitrary-send-erc20",
       "impact": "High",
       "confidence": "High",
-      "location": "src/swap/MemeverseSwapRouter.sol#L740-L770",
+      "location": "src/swap/MemeverseSwapRouter.sol#L639-L669",
       "summary": "MemeverseSwapRouter._removeLiquidity(Currency,Currency,uint128,uint256,uint256,address,uint256,address,bool,PoolKey) uses arbitrary from in transferFrom: IERC20(liquidityToken).safeTransferFrom(payer,address(this),liquidity)",
       "key": "arbitrary-send-erc20|src/swap/MemeverseSwapRouter.sol|MemeverseSwapRouter._removeLiquidity(Currency,Currency,uint128,uint256,uint256,address,uint256,address,bool,PoolKey) uses arbitrary from in transferFrom: IERC20(liquidityToken).safeTransferFrom(payer,address(this),liquidity)"
     },
     {
-      "id": "f0a6aeb2b50759e3b47999dffd64f64142164ec5229f9269678f467116d76256",
+      "id": "a29c643c3ce5b3764a3fa74b63013a58fbeabbae8faa7387663caf34536e3c48",
       "check": "arbitrary-send-eth",
       "impact": "High",
       "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrarAtLocal.sol#L73-L80",
+      "location": "src/verse/registration/MemeverseRegistrarAtLocal.sol#L71-L78",
       "summary": "MemeverseRegistrarAtLocal.registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam,uint128) sends eth to arbitrary user",
       "key": "arbitrary-send-eth|src/verse/registration/MemeverseRegistrarAtLocal.sol|MemeverseRegistrarAtLocal.registerAtCenter(IMemeverseRegistrationCenter.RegistrationParam,uint128) sends eth to arbitrary user"
     },
@@ -158,20 +158,20 @@
       "key": "assembly|src/common/token/extensions/governance/OutrunVotesInit.sol|OutrunVotesInit._getVotesStorage() uses assembly"
     },
     {
-      "id": "a72b255d139682428ebe0d81497a70b879ce0799432cee1df2d3407c51069f26",
+      "id": "13384c6387d2d2b864876325327debd66285654cee6456c6d9e5e0bc5990856a",
       "check": "assembly",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L428-L502",
+      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L358-L432",
       "summary": "GovernanceCycleIncentivizerUpgradeable.finalizeCurrentCycle() uses assembly",
       "key": "assembly|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|GovernanceCycleIncentivizerUpgradeable.finalizeCurrentCycle() uses assembly"
     },
     {
-      "id": "8b2bb22ef8f08ebcf75817368b609f979e4502c8ca4528d60ea490aec923f6b2",
+      "id": "66c15e56eebed54920d8ccd148ae7c97c24a8f60b27fca81e9ce5fb837f764d5",
       "check": "assembly",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/polend/POLendUpgradeable.sol#L825-L842",
+      "location": "src/polend/POLendUpgradeable.sol#L824-L841",
       "summary": "POLendUpgradeable._mulDiv1e18Saturating(uint256,uint256) uses assembly",
       "key": "assembly|src/polend/POLendUpgradeable.sol|POLendUpgradeable._mulDiv1e18Saturating(uint256,uint256) uses assembly"
     },
@@ -185,11 +185,11 @@
       "key": "assembly|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable._forwardCalldataAndReturn(address,bytes4) uses assembly"
     },
     {
-      "id": "f3ea2cb0bbdf2c7e5fed9d9f190ccb7a4b109f709c27a07cf90ddc2ea6bc68a2",
+      "id": "ad15fbd78d55319119ee77faca904c4a62b106fd415654e0f687e131131d48da",
       "check": "assembly",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L860-L896",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L851-L887",
       "summary": "MemeverseUniswapHookUpgradeable.quoteSwapFeeWithContext(PoolId,SwapParams,address,uint160,uint128,bool) uses assembly",
       "key": "assembly|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable.quoteSwapFeeWithContext(PoolId,SwapParams,address,uint160,uint128,bool) uses assembly"
     },
@@ -203,85 +203,85 @@
       "key": "calls-loop|src/common/omnichain/oapp/OutrunOAppPreCrimeSimulatorInit.sol|OutrunOAppPreCrimeSimulatorInit.lzReceiveAndRevert(InboundPacket[]) has external calls inside a loop: this.lzReceiveSimulate{value: packet.value}(packet.origin,packet.guid,packet.message,packet.executor,packet.extraData)"
     },
     {
-      "id": "5dcd40c344cc70eb81fca2e1d9a60a659320d011b99be0d2ffe41da7b00b1596",
+      "id": "4e482e1cc01d3605771b5a1c23d2035c7419d9bdda6b11847fbf837690b942d4",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L703-L713",
+      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L633-L643",
       "summary": "GovernanceCycleIncentivizerUpgradeable._computeSyncedTreasuryBalance(address) has external calls inside a loop: governorBalance = IERC20(token).balanceOf(governanceCycleIncentivizerStorage._governor)",
       "key": "calls-loop|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|GovernanceCycleIncentivizerUpgradeable._computeSyncedTreasuryBalance(address) has external calls inside a loop: governorBalance = IERC20(token).balanceOf(governanceCycleIncentivizerStorage._governor)"
     },
     {
-      "id": "d83d53801fce10dd80ab1f3f749c51fe4647387e2bdf368f5be8ef032fa3f6b8",
+      "id": "7d21afc2fa78605ad2a11b376bc622ebc0577dd4a1f6bb9dd382caee7d760c59",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L508-L537",
+      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L438-L467",
       "summary": "GovernanceCycleIncentivizerUpgradeable.claimReward() has external calls inside a loop: IMemecoinDaoGovernor(governanceCycleIncentivizerStorage._governor).disburseReward(token,user,rewardAmount)",
       "key": "calls-loop|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|GovernanceCycleIncentivizerUpgradeable.claimReward() has external calls inside a loop: IMemecoinDaoGovernor(governanceCycleIncentivizerStorage._governor).disburseReward(token,user,rewardAmount)"
     },
     {
-      "id": "919e8f0e3bd344a5c0db83d8a6b5057dfc5b6f86897f6c221f84eb361130b123",
+      "id": "60ee6581876752a0894fcfc9d3e2c054a1451ae76816d10f6344e5d287508ec0",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L332-L389",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L326-L383",
       "summary": "MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) has external calls inside a loop: postBalance = IERC20(treasuryTokens[i_scope_1]).balanceOf(address(this))",
       "key": "calls-loop|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) has external calls inside a loop: postBalance = IERC20(treasuryTokens[i_scope_1]).balanceOf(address(this))"
     },
     {
-      "id": "18d37c1d1c08900d7fb11889089a04e83fe540c46c4bb8fb6cedc17d8de84de0",
+      "id": "4d881ac5b399e6a6d32447e9c207272db6825c5dc453fa17efb704f5d66be748",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L332-L389",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L326-L383",
       "summary": "MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) has external calls inside a loop: preBalances[i_scope_0] = IERC20(treasuryTokens[i_scope_0]).balanceOf(address(this))",
       "key": "calls-loop|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) has external calls inside a loop: preBalances[i_scope_0] = IERC20(treasuryTokens[i_scope_0]).balanceOf(address(this))"
     },
     {
-      "id": "0d2e8623b57676c453804634e5539c08917e575d2cf3d1a5a433638ee73add57",
+      "id": "2f6fdc924762516560e8e7cc054e2695956d7ae054e0d88af51d6df232753e61",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L141-L163",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L140-L162",
       "summary": "MemeverseLaunchImpl._lzConfigure(address,address,uint32[]) has external calls inside a loop: IOAppCore(memecoin).setPeer(remoteEndpointId,bytes32(uint256(uint160(memecoin))))",
       "key": "calls-loop|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl._lzConfigure(address,address,uint32[]) has external calls inside a loop: IOAppCore(memecoin).setPeer(remoteEndpointId,bytes32(uint256(uint160(memecoin))))"
     },
     {
-      "id": "06486873415fd14a0e25e5e6539cf6ae95dc2d204af4ae90cff6d63096b97cbb",
+      "id": "e79edc6313a757708f478c2119b13d07532c873894151bdf667aaccd484e363e",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L141-L163",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L140-L162",
       "summary": "MemeverseLaunchImpl._lzConfigure(address,address,uint32[]) has external calls inside a loop: IOAppCore(pol).setPeer(remoteEndpointId,bytes32(uint256(uint160(pol))))",
       "key": "calls-loop|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl._lzConfigure(address,address,uint32[]) has external calls inside a loop: IOAppCore(pol).setPeer(remoteEndpointId,bytes32(uint256(uint160(pol))))"
     },
     {
-      "id": "bc5e6bf71bdd90a5d14bc0d4d912cc1be3743c58a41ff0ac7691e16ccf10fc02",
+      "id": "b75d451fbd4aba71704f6715b4d90367b925acf07851c7e25e40e2faf1329e72",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L141-L163",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L140-L162",
       "summary": "MemeverseLaunchImpl._lzConfigure(address,address,uint32[]) has external calls inside a loop: remoteEndpointId = ILzEndpointRegistry(_lzEndpointRegistry).lzEndpointIdOfChain(omnichainId)",
       "key": "calls-loop|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl._lzConfigure(address,address,uint32[]) has external calls inside a loop: remoteEndpointId = ILzEndpointRegistry(_lzEndpointRegistry).lzEndpointIdOfChain(omnichainId)"
     },
     {
-      "id": "0b05ef463c8b60e1cbb3e237605377783de1c8e88f0e9df046a8602905bc5d6d",
+      "id": "c0fa20f2c5c7e9f42e7b5385349f852579b278be4704e1a73887ed5f00d102a4",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenter.sol#L194-L217",
-      "summary": "MemeverseRegistrationCenter._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) has external calls inside a loop: IMemeverseRegistrarAtLocal(MEMEVERSE_REGISTRAR).localRegistration(param)",
-      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenter.sol|MemeverseRegistrationCenter._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) has external calls inside a loop: IMemeverseRegistrarAtLocal(MEMEVERSE_REGISTRAR).localRegistration(param)"
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L251-L282",
+      "summary": "MemeverseRegistrationCenterUpgradeable._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) has external calls inside a loop: IMemeverseRegistrarAtLocal(registrar).localRegistration(param)",
+      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) has external calls inside a loop: IMemeverseRegistrarAtLocal(registrar).localRegistration(param)"
     },
     {
-      "id": "17465069aa2d391bddad01829cded50099d0bc84c64abbac0641529623e68b9a",
+      "id": "864071b481713f39bdf9501426893c1cb06973f1bc665b0a5243fd0b3ebe8577",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenter.sol#L73-L109",
-      "summary": "MemeverseRegistrationCenter.quoteSend(uint32[],bytes) has external calls inside a loop: eid = ILzEndpointRegistry(LZ_ENDPOINT_REGISTRY).lzEndpointIdOfChain(omnichainId)",
-      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenter.sol|MemeverseRegistrationCenter.quoteSend(uint32[],bytes) has external calls inside a loop: eid = ILzEndpointRegistry(LZ_ENDPOINT_REGISTRY).lzEndpointIdOfChain(omnichainId)"
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L126-L166",
+      "summary": "MemeverseRegistrationCenterUpgradeable.quoteSend(uint32[],bytes) has external calls inside a loop: eid = registry.lzEndpointIdOfChain(omnichainId)",
+      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable.quoteSend(uint32[],bytes) has external calls inside a loop: eid = registry.lzEndpointIdOfChain(omnichainId)"
     },
     {
       "id": "c3221b5d4ba415db6c466b106cb54530ca44d1dcd43a50aa2ccdc9c88ad3a42b",
@@ -306,7 +306,7 @@
       "check": "cyclomatic-complexity",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/swap/SettlementFacet.sol#L226-L313",
+      "location": "src/swap/SettlementFacet.sol#L226-L308",
       "summary": "SettlementFacet.settlementUnlockCallback(ISettlementFacet.SettlementCallbackData) has a high cyclomatic complexity (15).",
       "key": "cyclomatic-complexity|src/swap/SettlementFacet.sol|SettlementFacet.settlementUnlockCallback(ISettlementFacet.SettlementCallbackData) has a high cyclomatic complexity (15)."
     },
@@ -500,6 +500,15 @@
       "key": "dead-code|src/common/token/extensions/governance/OutrunVotesInit.sol|OutrunVotesInit._subtract(uint208,uint208) is never used and should be removed"
     },
     {
+      "id": "d5e256d8682942d1ceb443cea5f2bcfe7b112bbb4ddff99f477424cd47fe64ae",
+      "check": "dead-code",
+      "impact": "Informational",
+      "confidence": "Medium",
+      "location": "src/polend/POLendUpgradeable.sol#L885",
+      "summary": "POLendUpgradeable._authorizeUpgrade(address) is never used and should be removed",
+      "key": "dead-code|src/polend/POLendUpgradeable.sol|POLendUpgradeable._authorizeUpgrade(address) is never used and should be removed"
+    },
+    {
       "id": "f29fe34b0033cf3e9f1ef0d93b5a18a968ede52c809e0892f5a55aeda1fd0300",
       "check": "dead-code",
       "impact": "Informational",
@@ -536,22 +545,13 @@
       "key": "incorrect-equality|src/common/token/TokenHelper.sol|TokenHelper._transferOut(address,address,uint256) uses a dangerous strict equality:"
     },
     {
-      "id": "4aa52fa24cf562934106fe31490c634f88f3a7d54fc4cfae03d01665b1424e33",
+      "id": "52af927c1e9f7e6736c879b53ebf14f9731c21c12c034aab7aaa42088ff493e9",
       "check": "incorrect-equality",
       "impact": "Medium",
       "confidence": "High",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L213-L233",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L207-L227",
       "summary": "MemecoinDaoGovernorUpgradeable.propose(address[],uint256[],bytes[],string) uses a dangerous strict equality:",
       "key": "incorrect-equality|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable.propose(address[],uint256[],bytes[],string) uses a dangerous strict equality:"
-    },
-    {
-      "id": "a218c0a4f8ce100446df7dffdb51a214eaf516f057320c9ae9f7898324684e5d",
-      "check": "incorrect-equality",
-      "impact": "Medium",
-      "confidence": "High",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L396-L400",
-      "summary": "POLSplitterUpgradeable._isUnlocked(uint256) uses a dangerous strict equality:",
-      "key": "incorrect-equality|src/polend/POLSplitterUpgradeable.sol|POLSplitterUpgradeable._isUnlocked(uint256) uses a dangerous strict equality:"
     },
     {
       "id": "7e48b8a1154d457b9778051a5f544ac6a7a27a314417e80850ebf18f69d644d4",
@@ -579,6 +579,15 @@
       "location": "src/verse/MemeverseLiquidityImpl.sol#L814-L824",
       "summary": "MemeverseLiquidityImpl._removeAuxiliaryLiquidityIfNonZero(Currency,Currency,uint128,address,address) uses a dangerous strict equality:",
       "key": "incorrect-equality|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._removeAuxiliaryLiquidityIfNonZero(Currency,Currency,uint128,address,address) uses a dangerous strict equality:"
+    },
+    {
+      "id": "dee858780c59bfa634d103bd50f0a7c63abf8a803e796a6a0d41beec0cbdb8d1",
+      "check": "incorrect-equality",
+      "impact": "Medium",
+      "confidence": "High",
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L320-L336",
+      "summary": "MemeverseRegistrationCenterUpgradeable._lzReceive(Origin,bytes32,bytes,address,bytes) uses a dangerous strict equality:",
+      "key": "incorrect-equality|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable._lzReceive(Origin,bytes32,bytes,address,bytes) uses a dangerous strict equality:"
     },
     {
       "id": "fed8d3233b8e0204460b43e144e4d39f3aba13bc1e29bce93aeb1d8d90087e28",
@@ -621,7 +630,7 @@
       "check": "missing-inheritance",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L43-L449",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L43-L447",
       "summary": "MemeverseLaunchImpl should inherit from IMemeverseLaunchImpl",
       "key": "missing-inheritance|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl should inherit from IMemeverseLaunchImpl"
     },
@@ -714,15 +723,6 @@
       "location": "src/verse/registration/MemeverseRegistrarAtLocal.sol#L34",
       "summary": "Redundant expression \"value\" inMemeverseRegistrarAtLocal",
       "key": "redundant-statements|src/verse/registration/MemeverseRegistrarAtLocal.sol|Redundant expression \"value\" inMemeverseRegistrarAtLocal"
-    },
-    {
-      "id": "133a9bfc745c4b3d2edf35073118f73592a87b1e7ea8940fc3988af567a9d9af",
-      "check": "reentrancy-balance",
-      "impact": "High",
-      "confidence": "Medium",
-      "location": "src/polend/POLendUpgradeable.sol#L400-L459",
-      "summary": "Reentrancy in POLendUpgradeable.executeGlobalSettlement(uint256):",
-      "key": "reentrancy-balance|src/polend/POLendUpgradeable.sol|Reentrancy in POLendUpgradeable.executeGlobalSettlement(uint256):"
     },
     {
       "id": "7a6d560ab76167547c601166cb51a5dde5d385d4f47415a304558e08299e4b39",
@@ -842,7 +842,7 @@
       "key": "reentrancy-eth|src/verse/MemeverseSettlementImpl.sol|Reentrancy in MemeverseSettlementImpl.claimNormalFees(uint256):"
     },
     {
-      "id": "6fa8da6180b8dbc12b1715b02ad65e045df5f710c87513c01252b9d710304923",
+      "id": "233a7ca41f7d7d3868b38ef023909ad3d2ebd3e0e52cce77f8ace6a8e0cc37cf",
       "check": "reentrancy-eth",
       "impact": "High",
       "confidence": "Medium",
@@ -869,56 +869,56 @@
       "key": "reentrancy-events|src/common/omnichain/oft/OutrunOFTCoreInit.sol|Reentrancy in OutrunOFTCoreInit.send(SendParam,MessagingFee,address):"
     },
     {
-      "id": "232722ec57b4089a645ab78ab29dff3c789c05ef9a97fc4b8d40afb0fe73131f",
+      "id": "d32ef261078da6168a9ec6b96603f842c86586ccf91a08067d2254c0a6e94317",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L508-L537",
+      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L438-L467",
       "summary": "Reentrancy in GovernanceCycleIncentivizerUpgradeable.claimReward():",
       "key": "reentrancy-events|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|Reentrancy in GovernanceCycleIncentivizerUpgradeable.claimReward():"
     },
     {
-      "id": "23c0ca8205dffd6ee03929057fd168b05d34aae6548c573602c6e385fd2f4f29",
+      "id": "a05e613927a1ee1dc3938b3a42914c5d0fe3baf7ce6f804beb09983199f6dacd",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/interoperation/MemeverseOmnichainInteroperation.sol#L104-L154",
+      "location": "src/interoperation/MemeverseOmnichainInteroperation.sol#L100-L145",
       "summary": "Reentrancy in MemeverseOmnichainInteroperation.memecoinStaking(address,address,uint256):",
       "key": "reentrancy-events|src/interoperation/MemeverseOmnichainInteroperation.sol|Reentrancy in MemeverseOmnichainInteroperation.memecoinStaking(address,address,uint256):"
     },
     {
-      "id": "cf50a41868d2e7347f38021281cc6dba9646b624771bfa78ea662c6dca41e6de",
+      "id": "724976c136f65512a7f5a2531e5712a3a45ee7c8977a0afcf286e8070fe6476b",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/interoperation/OmnichainMemecoinStaker.sol#L44-L121",
-      "summary": "Reentrancy in OmnichainMemecoinStaker.lzCompose(address,bytes32,bytes,address,bytes):",
-      "key": "reentrancy-events|src/interoperation/OmnichainMemecoinStaker.sol|Reentrancy in OmnichainMemecoinStaker.lzCompose(address,bytes32,bytes,address,bytes):"
+      "location": "src/interoperation/OmnichainMemecoinStakerUpgradeable.sol#L96-L165",
+      "summary": "Reentrancy in OmnichainMemecoinStakerUpgradeable.lzCompose(address,bytes32,bytes,address,bytes):",
+      "key": "reentrancy-events|src/interoperation/OmnichainMemecoinStakerUpgradeable.sol|Reentrancy in OmnichainMemecoinStakerUpgradeable.lzCompose(address,bytes32,bytes,address,bytes):"
     },
     {
-      "id": "af9a5d95ff90079d2e2cbfa3f9d3082d652019fb8ff0208441f309d8f223ab5f",
+      "id": "f04e677afc00cb434f8d028baddcebf2393aebe9325c3cc21ac0a973b9284504",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/interoperation/OmnichainMemecoinStaker.sol#L124-L159",
-      "summary": "Reentrancy in OmnichainMemecoinStaker.settlePendingCompose(address,bytes32,bytes):",
-      "key": "reentrancy-events|src/interoperation/OmnichainMemecoinStaker.sol|Reentrancy in OmnichainMemecoinStaker.settlePendingCompose(address,bytes32,bytes):"
+      "location": "src/interoperation/OmnichainMemecoinStakerUpgradeable.sol#L168-L202",
+      "summary": "Reentrancy in OmnichainMemecoinStakerUpgradeable.settlePendingCompose(address,bytes32,bytes):",
+      "key": "reentrancy-events|src/interoperation/OmnichainMemecoinStakerUpgradeable.sol|Reentrancy in OmnichainMemecoinStakerUpgradeable.settlePendingCompose(address,bytes32,bytes):"
     },
     {
-      "id": "384531eaec279badb9bafb426a739bef825b110f03f67a8cfca59a98c3fbf67e",
+      "id": "857d36cf78295cb5a1b04093dce598117f3115b80b5547c685dc349111cf6e1c",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L174-L206",
+      "location": "src/polend/POLSplitterUpgradeable.sol#L212-L244",
       "summary": "Reentrancy in POLSplitterUpgradeable.initializeVerse(uint256,address,address,address,string,string):",
       "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.initializeVerse(uint256,address,address,address,string,string):"
     },
     {
-      "id": "ae9b13c3c1957f2be6a418b8b33cb29a759674f05e59ed40e963ff97eaa6c0e1",
+      "id": "279e70aa4f6c03b20e4c58dd426531910b65e03460e4c75b41f5f3cf172e5a8c",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L242-L280",
+      "location": "src/polend/POLSplitterUpgradeable.sol#L280-L318",
       "summary": "Reentrancy in POLSplitterUpgradeable.settle(uint256):",
       "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.settle(uint256):"
     },
@@ -941,7 +941,25 @@
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|Reentrancy in POLendUpgradeable.preRedeemPTFee(uint256,uint256,address):"
     },
     {
-      "id": "ed94e311dfc82002dbccb395c50a6012f79ea48244ef7cf78be23a1102a7f652",
+      "id": "3ccff008ab4f252ef8c067e84d3b5c8aa64cf89cb26665c912d2ce2b21741c41",
+      "check": "reentrancy-events",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L529-L585",
+      "summary": "Reentrancy in MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address):",
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|Reentrancy in MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address):"
+    },
+    {
+      "id": "08f62b0f6975c03265a3e16024524b29825dcfd85c387a55b26b929f871f85f8",
+      "check": "reentrancy-events",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L601-L632",
+      "summary": "Reentrancy in MemeverseUniswapHookUpgradeable._removeLiquidityCore(IMemeverseUniswapHook.RemoveLiquidityCoreParams):",
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|Reentrancy in MemeverseUniswapHookUpgradeable._removeLiquidityCore(IMemeverseUniswapHook.RemoveLiquidityCoreParams):"
+    },
+    {
+      "id": "7228e4956ce467b1fd2022bb4625d2553b3b0c8bb6b7e999ec8500179596491b",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
@@ -1004,16 +1022,16 @@
       "key": "reentrancy-events|src/token/Memecoin.sol|Reentrancy in Memecoin.initialize(string,string,address,address):"
     },
     {
-      "id": "7eed33d7794f9e36748cea702f2dff586dfe3b16c94c3df9e0f7023526e42f81",
+      "id": "c2d9da1c02117fb61a665d93e1f23c916a981da71150c7d3ed6bbe97677bb666",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L293-L321",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L292-L320",
       "summary": "Reentrancy in MemeverseLaunchImpl.changeStage(uint256):",
       "key": "reentrancy-events|src/verse/MemeverseLaunchImpl.sol|Reentrancy in MemeverseLaunchImpl.changeStage(uint256):"
     },
     {
-      "id": "0295e70f47c884c60124707973019e554b559286b79cad3604c48a7eb4b190e6",
+      "id": "ff629da57b7ab7f16176ef13cc63a02693372748e7c8c5c7c2e5f77134e82b1b",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
@@ -1022,11 +1040,11 @@
       "key": "reentrancy-events|src/verse/MemeverseLaunchImpl.sol|Reentrancy in MemeverseLaunchImpl.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool):"
     },
     {
-      "id": "80d5236a0d21d5928a538d141788e5e6d1449db92f3f39bd1d99092d1d437029",
+      "id": "ade427f949e4bf6397b9aacbea9d091b618516d521521b7d7d3060fcc0394029",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L796-L801",
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L745-L750",
       "summary": "Reentrancy in MemeverseLauncherUpgradeable.removeGasDust(address):",
       "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|Reentrancy in MemeverseLauncherUpgradeable.removeGasDust(address):"
     },
@@ -1040,7 +1058,7 @@
       "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address):"
     },
     {
-      "id": "fdaa577b2bac09e785ec435594b9a6fe4a823498c318ecac2ef47771ea1d2f09",
+      "id": "bd069f5e24ec11c32b9f0bcc64c81aee315f3e02d7dc5495c56ea8341cbbc9f0",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
@@ -1112,7 +1130,7 @@
       "key": "reentrancy-events|src/verse/MemeverseSettlementImpl.sol|Reentrancy in MemeverseSettlementImpl.refundPreorder(uint256):"
     },
     {
-      "id": "e4d22c307cd8d0a3e75cf9b0f3d10cc31519d4ce225d997d5b95ee122be83762",
+      "id": "e27fde7b964cf0f5aef3df4705074ee15fdd0ac438acbfd6b1d0eab00ee80d57",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
@@ -1121,7 +1139,7 @@
       "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|Reentrancy in YieldDispatcherUpgradeable.distributeSameChain(address,address,IMemeverseOFTEnum.TokenType,uint256):"
     },
     {
-      "id": "649a08185f5970cdf1ed2a60c8520fb74b43b482aa5347306b1ba061bb608e60",
+      "id": "56ee0d804994f2e61d266af994d5791ab38f86854c0ff9b0c955b1b36e237489",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
@@ -1130,11 +1148,11 @@
       "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|Reentrancy in YieldDispatcherUpgradeable.lzCompose(address,bytes32,bytes,address,bytes):"
     },
     {
-      "id": "31e72f11da2b9690a523438e7800fd6fcf5be3239ca1a6690b5a3684b4ecbb3f",
+      "id": "724b1cae73c1d37a128160c91f70fce5c9bbbb87ff8c2759ecc638e8c35351a0",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/YieldDispatcherUpgradeable.sol#L188-L215",
+      "location": "src/verse/YieldDispatcherUpgradeable.sol#L188-L214",
       "summary": "Reentrancy in YieldDispatcherUpgradeable.settlePendingCompose(address,bytes32,bytes):",
       "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|Reentrancy in YieldDispatcherUpgradeable.settlePendingCompose(address,bytes32,bytes):"
     },
@@ -1148,22 +1166,22 @@
       "key": "reentrancy-events|src/verse/deployment/MemeverseProxyDeployer.sol|Reentrancy in MemeverseProxyDeployer.deployGovernorAndIncentivizer(string,address,address,address,address,uint256,uint256):"
     },
     {
-      "id": "1973e3e9fa1a129a9d1007de83cfcf0ddc443b288d7affa36355cd9a6bd20a87",
+      "id": "9874a5daed1075adff50cf59a36e44cabeafdd868aa6ba46cdc6fc394b8eab3a",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenter.sol#L115-L157",
-      "summary": "Reentrancy in MemeverseRegistrationCenter.registration(IMemeverseRegistrationCenter.RegistrationParam):",
-      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenter.sol|Reentrancy in MemeverseRegistrationCenter.registration(IMemeverseRegistrationCenter.RegistrationParam):"
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L172-L214",
+      "summary": "Reentrancy in MemeverseRegistrationCenterUpgradeable.registration(IMemeverseRegistrationCenter.RegistrationParam):",
+      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|Reentrancy in MemeverseRegistrationCenterUpgradeable.registration(IMemeverseRegistrationCenter.RegistrationParam):"
     },
     {
-      "id": "aef101d16a1578a9da90c274073edfe73b647fac7d698589612cef0b66a43da3",
+      "id": "fa96129cb1f08f8d84d5f173fe97be5b76a3b72977ba15aceefdfcffc6aa0852",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenter.sol#L162-L167",
-      "summary": "Reentrancy in MemeverseRegistrationCenter.removeGasDust(address):",
-      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenter.sol|Reentrancy in MemeverseRegistrationCenter.removeGasDust(address):"
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L219-L224",
+      "summary": "Reentrancy in MemeverseRegistrationCenterUpgradeable.removeGasDust(address):",
+      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|Reentrancy in MemeverseRegistrationCenterUpgradeable.removeGasDust(address):"
     },
     {
       "id": "9bc1c0083a38e20e4708bb7e2b43d099a780b1b4f9e9ec60294f1143d2f1629c",
@@ -1184,61 +1202,34 @@
       "key": "reentrancy-no-eth|src/common/omnichain/oft/OutrunOFTCoreInit.sol|Reentrancy in OutrunOFTCoreInit.__OutrunOFTCore_init(address):"
     },
     {
-      "id": "79ff44ed9fb1cefaf97cf8326b55e2f0dbe571d3467fd08d9a88b9336288fd2c",
+      "id": "4b14139eca20491fba198ecf621bd8a4a5abbeaa287af90cc4a3c33c35d34afc",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L508-L537",
+      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L438-L467",
       "summary": "Reentrancy in GovernanceCycleIncentivizerUpgradeable.claimReward():",
       "key": "reentrancy-no-eth|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|Reentrancy in GovernanceCycleIncentivizerUpgradeable.claimReward():"
     },
     {
-      "id": "4a0a76d4825af8ad917ecc811ccb7bb3547b04aa9f3a67d109212311c9cebd56",
+      "id": "e0e4fb17ce5de8c4f69470f31976879f0cd4881e374b07a21da6c7f50dcc31aa",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L174-L206",
+      "location": "src/polend/POLSplitterUpgradeable.sol#L212-L244",
       "summary": "Reentrancy in POLSplitterUpgradeable.initializeVerse(uint256,address,address,address,string,string):",
       "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.initializeVerse(uint256,address,address,address,string,string):"
     },
     {
-      "id": "1526c1436fae096b5f5f9b9f944017219bc876da82cd6cb98e4fdbcdb32ddc62",
+      "id": "04f94c3f402987a2ac0f711d77a36f80b50702d0b1f6f1e00c930655b33a69b8",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L315-L325",
-      "summary": "Reentrancy in POLSplitterUpgradeable.preRedeemPTFee(uint256,uint256):",
-      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.preRedeemPTFee(uint256,uint256):"
-    },
-    {
-      "id": "1e3a655d68de613dcd3d1d70444a1d3ed3c084cd7f7266f8053baaeb74bd9766",
-      "check": "reentrancy-no-eth",
-      "impact": "Medium",
-      "confidence": "Medium",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L327-L347",
-      "summary": "Reentrancy in POLSplitterUpgradeable.redeemPT(uint256,uint256,address):",
-      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.redeemPT(uint256,uint256,address):"
-    },
-    {
-      "id": "f614f2dff4d56b0b53ffdce993e4586e3cd7203fa908b440742fd95894664dd4",
-      "check": "reentrancy-no-eth",
-      "impact": "Medium",
-      "confidence": "Medium",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L349-L380",
-      "summary": "Reentrancy in POLSplitterUpgradeable.redeemYT(uint256,uint256,address):",
-      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.redeemYT(uint256,uint256,address):"
-    },
-    {
-      "id": "ee78ea19632f61df302c6732c38e103e9cce868dd01a6469e10753d95b940f17",
-      "check": "reentrancy-no-eth",
-      "impact": "Medium",
-      "confidence": "Medium",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L242-L280",
+      "location": "src/polend/POLSplitterUpgradeable.sol#L280-L318",
       "summary": "Reentrancy in POLSplitterUpgradeable.settle(uint256):",
       "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|Reentrancy in POLSplitterUpgradeable.settle(uint256):"
     },
     {
-      "id": "b2dc1311aa4f70d1fcc3b85d55d08cf6d9407af8bb919a82586a12385e1762bb",
+      "id": "c129af371f4c3f404f88d773a6a3d50e5670daeca27de0cca26ea18bf8268403",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
@@ -1247,7 +1238,7 @@
       "key": "reentrancy-no-eth|src/polend/POLendUpgradeable.sol|Reentrancy in POLendUpgradeable.executeGlobalSettlement(uint256):"
     },
     {
-      "id": "87ee491948b1aa509c7ee46f783650c9a9d4747f89c5fa36c3542f301b4f4958",
+      "id": "e1a076b4785398ea6a32b7e0003c7157b27908507c0b497c6399d3245f343da2",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
@@ -1256,20 +1247,20 @@
       "key": "reentrancy-no-eth|src/polend/POLendUpgradeable.sol|Reentrancy in POLendUpgradeable.preRedeemPTFee(uint256,uint256,address):"
     },
     {
-      "id": "b8c7658c87a4cc3ad35698d1b055b8fe1d4cea8485c62eda6cb635060afca67c",
+      "id": "02e008acc928c66d25a9f04e041c4ff52ba2f10344830ed854be81820df2a240",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L532-L588",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L529-L585",
       "summary": "Reentrancy in MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address):",
       "key": "reentrancy-no-eth|src/swap/MemeverseUniswapHookUpgradeable.sol|Reentrancy in MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address):"
     },
     {
-      "id": "76aa1ae50508128eaa028ffbf5a23fc3f021734a5fdfb8702ba5be92f0911ab9",
+      "id": "b1678c25f3636663e3b4e4ad5f785d692709b5ab09eb95f871d47cb69d618e12",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L604-L635",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L601-L632",
       "summary": "Reentrancy in MemeverseUniswapHookUpgradeable._removeLiquidityCore(IMemeverseUniswapHook.RemoveLiquidityCoreParams):",
       "key": "reentrancy-no-eth|src/swap/MemeverseUniswapHookUpgradeable.sol|Reentrancy in MemeverseUniswapHookUpgradeable._removeLiquidityCore(IMemeverseUniswapHook.RemoveLiquidityCoreParams):"
     },
@@ -1310,16 +1301,16 @@
       "key": "reentrancy-no-eth|src/token/Memecoin.sol|Reentrancy in Memecoin.initialize(string,string,address,address):"
     },
     {
-      "id": "c9e73e238d885021fc2cb95c8a2646d5eb4bf94dd48029e4d650126080c0bf7d",
+      "id": "b1740ceb4ad407213bd48d106b4eab004a531ed97573073ce1047dfde5d06ded",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L358-L382",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L357-L381",
       "summary": "Reentrancy in MemeverseLaunchImpl._deployAndSetupMemeverse(uint256,IMemeverseLauncher.Memeverse,address,uint256,address,address):",
       "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|Reentrancy in MemeverseLaunchImpl._deployAndSetupMemeverse(uint256,IMemeverseLauncher.Memeverse,address,uint256,address,address):"
     },
     {
-      "id": "58248e634e3577ccd212ebe881374d42d5c5c3dfbed9fbab2f611e28abfbe6c7",
+      "id": "bc326f821758396f7ccbb5f199ca5b1ba948ba34a9954a0cc6684817e479b11a",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
@@ -1328,7 +1319,7 @@
       "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|Reentrancy in MemeverseLaunchImpl.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool):"
     },
     {
-      "id": "28ce67f1a8f091316c53c153d13fa988d0dd6c1e23da6edf985a56a8bc2403bf",
+      "id": "c48a3b5ba68b99c725a7e9d4e122b4d896f2f906737a4c9783b4921555c1697e",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
@@ -1346,7 +1337,7 @@
       "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256):"
     },
     {
-      "id": "4fc70f4bd92cd87b4e58f6c3ed91f0fa671660efd19686e2f926771fd236faa4",
+      "id": "ba5d6745a7f99a98bc626793669853cb3ce5ecfba2231b9ece6ce9f069212d8b",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
@@ -1404,7 +1395,7 @@
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L706",
+      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L636",
       "summary": "GovernanceCycleIncentivizerUpgradeable._computeSyncedTreasuryBalance(address).currentCycleId shadows:",
       "key": "shadowing-local|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|GovernanceCycleIncentivizerUpgradeable._computeSyncedTreasuryBalance(address).currentCycleId shadows:"
     },
@@ -1422,7 +1413,7 @@
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L413",
+      "location": "src/polend/POLSplitterUpgradeable.sol#L451",
       "summary": "POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo).launcher shadows:",
       "key": "shadowing-local|src/polend/POLSplitterUpgradeable.sol|POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo).launcher shadows:"
     },
@@ -1431,7 +1422,7 @@
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/polend/POLendUpgradeable.sol#L863",
+      "location": "src/polend/POLendUpgradeable.sol#L862",
       "summary": "POLendUpgradeable._burnSettledPol(uint256,uint256).launcher shadows:",
       "key": "shadowing-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable._burnSettledPol(uint256,uint256).launcher shadows:"
     },
@@ -1440,7 +1431,7 @@
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/polend/POLendUpgradeable.sol#L820",
+      "location": "src/polend/POLendUpgradeable.sol#L819",
       "summary": "POLendUpgradeable._debtCap(uint256,address).launcher shadows:",
       "key": "shadowing-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable._debtCap(uint256,address).launcher shadows:"
     },
@@ -1470,6 +1461,15 @@
       "location": "src/polend/POLendUpgradeable.sol#L276",
       "summary": "POLendUpgradeable.leveragedGenesisWithCredit(uint256,uint256).launcher shadows:",
       "key": "shadowing-local|src/polend/POLendUpgradeable.sol|POLendUpgradeable.leveragedGenesisWithCredit(uint256,uint256).launcher shadows:"
+    },
+    {
+      "id": "92c64326015b19262e332f4d6e9f7255dab3ee6ab416256e917799f142b5973e",
+      "check": "shadowing-local",
+      "impact": "Low",
+      "confidence": "High",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L1005",
+      "summary": "MemeverseUniswapHookUpgradeable.setPoolInitializer(address).initializer shadows:",
+      "key": "shadowing-local|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable.setPoolInitializer(address).initializer shadows:"
     },
     {
       "id": "1784d2f3612944a1d4799c1c88475a971f8e9a430501ddecd59a74f0c4b0d755",
@@ -1571,11 +1571,29 @@
       "key": "shadowing-local|src/verse/interfaces/IYieldDispatcher.sol|IYieldDispatcher.setProtocolTreasury(address).protocolTreasury shadows:"
     },
     {
-      "id": "e69d8bbea76cbbf118a0ad06636e50465570b06d1d97d021f02e763d82b5a324",
+      "id": "c850cfed68a3b37ad1724987eb8790859e256678bc3b5201d617e9ac94ca80f1",
       "check": "shadowing-local",
       "impact": "Low",
       "confidence": "High",
-      "location": "src/yield/interfaces/IMemecoinYieldVault.sol#L106",
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L259",
+      "summary": "MemeverseRegistrationCenterUpgradeable._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam).registerGasLimit shadows:",
+      "key": "shadowing-local|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam).registerGasLimit shadows:"
+    },
+    {
+      "id": "6370c362b3a2458c4e99327c1984d7b64d26489c647dea575eeae66ec51c075b",
+      "check": "shadowing-local",
+      "impact": "Low",
+      "confidence": "High",
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L290",
+      "summary": "MemeverseRegistrationCenterUpgradeable._registerOptions(uint128).registerGasLimit shadows:",
+      "key": "shadowing-local|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable._registerOptions(uint128).registerGasLimit shadows:"
+    },
+    {
+      "id": "4c995ce6694070a1ab822517cb5a0fa40930676b899b9b533bf6e86950381456",
+      "check": "shadowing-local",
+      "impact": "Low",
+      "confidence": "High",
+      "location": "src/yield/interfaces/IMemecoinYieldVault.sol#L104",
       "summary": "IMemecoinYieldVault.initialize(string,string,address,uint256,uint256).asset shadows:",
       "key": "shadowing-local|src/yield/interfaces/IMemecoinYieldVault.sol|IMemecoinYieldVault.initialize(string,string,address,uint256,uint256).asset shadows:"
     },
@@ -1598,65 +1616,65 @@
       "key": "timestamp|src/common/token/extensions/governance/OutrunVotesInit.sol|OutrunVotesInit.delegateBySig(address,uint256,uint256,uint8,bytes32,bytes32) uses timestamp for comparisons"
     },
     {
-      "id": "1282494e9a81ad47a8886bdb29f76d383402c95f20e936cf73ab66ef8acaadcd",
+      "id": "91eaf0a00b5731ab6b90c231249be479a1bd518b63bb2d0ac747ac431db3cafb",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L428-L502",
+      "location": "src/governance/GovernanceCycleIncentivizerUpgradeable.sol#L358-L432",
       "summary": "GovernanceCycleIncentivizerUpgradeable.finalizeCurrentCycle() uses timestamp for comparisons",
       "key": "timestamp|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|GovernanceCycleIncentivizerUpgradeable.finalizeCurrentCycle() uses timestamp for comparisons"
     },
     {
-      "id": "1b2e9c426a5d8d46e3dea7aa31a72f70a5d5682e0da457ea84228c9eb2c4e559",
+      "id": "bb9836e00380ef476bcaef600e0315888c5581362acc668948a98a12764c7e35",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L332-L389",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L326-L383",
       "summary": "MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) uses timestamp for comparisons",
       "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) uses timestamp for comparisons"
     },
     {
-      "id": "eeab944b9521afedad2e8acabe08a7718a434cf7d49e6f050bd950800c047aa5",
+      "id": "9876b2fa7d2273fe0c0171006eb661c07ce8da626d967aa4f45c1d030d8a0011",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L320-L326",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L314-L320",
       "summary": "MemecoinDaoGovernorUpgradeable.disburseReward(address,address,uint256) uses timestamp for comparisons",
       "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable.disburseReward(address,address,uint256) uses timestamp for comparisons"
     },
     {
-      "id": "0b0bd3ae6d2615ed1d280f829ceab7bed03e89ffa5fc223b776a0c1185dad60b",
+      "id": "40e75303206f122404726d5bdd9cda8c9636455ca0db4965f1c3ea02a13f2aa7",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L213-L233",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L207-L227",
       "summary": "MemecoinDaoGovernorUpgradeable.propose(address[],uint256[],bytes[],string) uses timestamp for comparisons",
       "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable.propose(address[],uint256[],bytes[],string) uses timestamp for comparisons"
     },
     {
-      "id": "908226535e06e302eaf153632b3a960c23627c3de01e07c5485f47d4d88be056",
+      "id": "360f39f3e62112fb22c9d852a5d189aeddc866e424c45aa145f9b1a3f7bcf377",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L290-L296",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L284-L290",
       "summary": "MemecoinDaoGovernorUpgradeable.recordTreasuryTokenRegistration(address) uses timestamp for comparisons",
       "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable.recordTreasuryTokenRegistration(address) uses timestamp for comparisons"
     },
     {
-      "id": "1564142a200e67453bbf5d3b4af134bdf8d496b40bb68912e3e9c83fa024f7b5",
+      "id": "8797d860f77862e867cebb7fec24d1a9341dc00d99b4fc13de7bc93c0792aea1",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L326-L356",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L325-L355",
       "summary": "MemeverseLaunchImpl._handleGenesisStage(uint256,uint256,IMemeverseLauncher.Memeverse) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl._handleGenesisStage(uint256,uint256,IMemeverseLauncher.Memeverse) uses timestamp for comparisons"
     },
     {
-      "id": "340a9a7a4cd77d7ad60719f2185cd0fa14130bf7d87db885d74fdb1161d6a230",
+      "id": "6f1d92ab73ebc0f0f91d9a962c463d5395c3d056acf89e03277464ed0f689bb4",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L293-L321",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L292-L320",
       "summary": "MemeverseLaunchImpl.changeStage(uint256) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl.changeStage(uint256) uses timestamp for comparisons"
     },
@@ -1787,65 +1805,92 @@
       "key": "timestamp|src/verse/registration/MemeverseRegistrarAtLocal.sol|MemeverseRegistrarAtLocal.quoteRegister(IMemeverseRegistrationCenter.RegistrationParam,uint128) uses timestamp for comparisons"
     },
     {
-      "id": "611b876fc3c82e79b25a2ff24cc3bcda1b69ad599e175bad84d8466f40dbbb9b",
+      "id": "4b278470891af82c3f1598aa9a5a420971da466c8fe691a30b80f0698aa8dcc0",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenter.sol#L60-L64",
-      "summary": "MemeverseRegistrationCenter.previewRegistration(string) uses timestamp for comparisons",
-      "key": "timestamp|src/verse/registration/MemeverseRegistrationCenter.sol|MemeverseRegistrationCenter.previewRegistration(string) uses timestamp for comparisons"
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L320-L336",
+      "summary": "MemeverseRegistrationCenterUpgradeable._lzReceive(Origin,bytes32,bytes,address,bytes) uses timestamp for comparisons",
+      "key": "timestamp|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable._lzReceive(Origin,bytes32,bytes,address,bytes) uses timestamp for comparisons"
     },
     {
-      "id": "bfdafc914b3436fabaf232890e3eb5b4dc930b61683a7da7302984063019de01",
+      "id": "9eeeeff28ddff280d925cdb3c85a83cb90f90891c0cf45ae104863132e5571ad",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenter.sol#L115-L157",
-      "summary": "MemeverseRegistrationCenter.registration(IMemeverseRegistrationCenter.RegistrationParam) uses timestamp for comparisons",
-      "key": "timestamp|src/verse/registration/MemeverseRegistrationCenter.sol|MemeverseRegistrationCenter.registration(IMemeverseRegistrationCenter.RegistrationParam) uses timestamp for comparisons"
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L298-L315",
+      "summary": "MemeverseRegistrationCenterUpgradeable._registrationParamValidation(IMemeverseRegistrationCenter.RegistrationParam) uses timestamp for comparisons",
+      "key": "timestamp|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable._registrationParamValidation(IMemeverseRegistrationCenter.RegistrationParam) uses timestamp for comparisons"
     },
     {
-      "id": "8499c9cd8c690213407c6c91054826500ff2076433942b60b3548f8f6fdc9081",
+      "id": "453f2fad914e01017a3cb6b1ee0abdd4d74f22836f138233c3e740a718d424bc",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/yield/MemecoinYieldVault.sol#L502-L511",
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L113-L117",
+      "summary": "MemeverseRegistrationCenterUpgradeable.previewRegistration(string) uses timestamp for comparisons",
+      "key": "timestamp|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable.previewRegistration(string) uses timestamp for comparisons"
+    },
+    {
+      "id": "ad45de8311f4631304c299d87c5e966e0ef5dbcfa3c695244897b829081fa989",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L126-L166",
+      "summary": "MemeverseRegistrationCenterUpgradeable.quoteSend(uint32[],bytes) uses timestamp for comparisons",
+      "key": "timestamp|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable.quoteSend(uint32[],bytes) uses timestamp for comparisons"
+    },
+    {
+      "id": "c98511af4b148a11199c22f913da05fa2bf0f4183b8eda4dfe2e1c1712ee0ed9",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L172-L214",
+      "summary": "MemeverseRegistrationCenterUpgradeable.registration(IMemeverseRegistrationCenter.RegistrationParam) uses timestamp for comparisons",
+      "key": "timestamp|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable.registration(IMemeverseRegistrationCenter.RegistrationParam) uses timestamp for comparisons"
+    },
+    {
+      "id": "36b318963c2922b11fa7e3e368fe314741080beb956fabe42057b4b5f78d0a8a",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/yield/MemecoinYieldVault.sol#L489-L498",
       "summary": "MemecoinYieldVault._claimableShares(address) uses timestamp for comparisons",
       "key": "timestamp|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault._claimableShares(address) uses timestamp for comparisons"
     },
     {
-      "id": "376cdfff76d311b246724c7b1d3f1f5e09814f221f5ba56e0dc2e447fedd0b25",
+      "id": "a0fce50010f20deafaf2ed1d29acd249eda5c629a7099525cfca66e4037bb157",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/yield/MemecoinYieldVault.sol#L147-L159",
+      "location": "src/yield/MemecoinYieldVault.sol#L134-L146",
       "summary": "MemecoinYieldVault.maxWithdraw(address) uses timestamp for comparisons",
       "key": "timestamp|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault.maxWithdraw(address) uses timestamp for comparisons"
     },
     {
-      "id": "ebd368867e122278da9a5a9a85606cd4b1e32796fabf6b8c6fede93ace1594ba",
+      "id": "4d238be6a78a8e5955229b22cf39701dbc6270ef59089fe4473e4f1f3c0f1b69",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/yield/MemecoinYieldVault.sol#L482-L491",
+      "location": "src/yield/MemecoinYieldVault.sol#L469-L478",
       "summary": "MemecoinYieldVault.pendingRedeemRequest(address) uses timestamp for comparisons",
       "key": "timestamp|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault.pendingRedeemRequest(address) uses timestamp for comparisons"
     },
     {
-      "id": "f4947519302d67856de19c626d2526055377df1d2d2c734f98aada1e533b832b",
+      "id": "d1432a9e5eec4cf2aad4491b2db0e84258b9b80ff28f1746f09293eaf4cb3c2a",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/yield/MemecoinYieldVault.sol#L341-L405",
+      "location": "src/yield/MemecoinYieldVault.sol#L328-L392",
       "summary": "MemecoinYieldVault.redeem(uint256,address,address) uses timestamp for comparisons",
       "key": "timestamp|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault.redeem(uint256,address,address) uses timestamp for comparisons"
     },
     {
-      "id": "44564af3e3a668377c05ea6a7a37b4bb377ca556acea97b4ae5f061140066342",
+      "id": "6adfe6ad10ab2f6c7889c0d31a0e3a3219d6a2b7efa823c385068d882775c698",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/yield/MemecoinYieldVault.sol#L417-L477",
+      "location": "src/yield/MemecoinYieldVault.sol#L404-L464",
       "summary": "MemecoinYieldVault.withdraw(uint256,address,address) uses timestamp for comparisons",
       "key": "timestamp|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault.withdraw(uint256,address,address) uses timestamp for comparisons"
     },
@@ -1854,7 +1899,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/interoperation/MemeverseOmnichainInteroperation.sol#L112",
+      "location": "src/interoperation/MemeverseOmnichainInteroperation.sol#L108",
       "summary": "MemeverseOmnichainInteroperation.memecoinStaking(address,address,uint256).sendParam is a local variable never initialized",
       "key": "uninitialized-local|src/interoperation/MemeverseOmnichainInteroperation.sol|MemeverseOmnichainInteroperation.memecoinStaking(address,address,uint256).sendParam is a local variable never initialized"
     },
@@ -1890,7 +1935,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseSwapRouter.sol#L827",
+      "location": "src/swap/MemeverseSwapRouter.sol#L726",
       "summary": "MemeverseSwapRouter._addLiquidityViaHookCore(Currency,Currency,uint256,uint256,address).params is a local variable never initialized",
       "key": "uninitialized-local|src/swap/MemeverseSwapRouter.sol|MemeverseSwapRouter._addLiquidityViaHookCore(Currency,Currency,uint256,uint256,address).params is a local variable never initialized"
     },
@@ -1899,7 +1944,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseSwapRouter.sol#L776",
+      "location": "src/swap/MemeverseSwapRouter.sol#L675",
       "summary": "MemeverseSwapRouter._removeLiquidityViaHook(Currency,Currency,uint128).params is a local variable never initialized",
       "key": "uninitialized-local|src/swap/MemeverseSwapRouter.sol|MemeverseSwapRouter._removeLiquidityViaHook(Currency,Currency,uint128).params is a local variable never initialized"
     },
@@ -1908,7 +1953,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L1105",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L1091",
       "summary": "MemeverseUniswapHookUpgradeable.setFacet(bytes32,address).old is a local variable never initialized",
       "key": "uninitialized-local|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable.setFacet(bytes32,address).old is a local variable never initialized"
     },
@@ -1917,7 +1962,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/SettlementFacet.sol#L271",
+      "location": "src/swap/SettlementFacet.sol#L266",
       "summary": "SettlementFacet.settlementUnlockCallback(ISettlementFacet.SettlementCallbackData).protocolFeeOutputAmount is a local variable never initialized",
       "key": "uninitialized-local|src/swap/SettlementFacet.sol|SettlementFacet.settlementUnlockCallback(ISettlementFacet.SettlementCallbackData).protocolFeeOutputAmount is a local variable never initialized"
     },
@@ -1998,7 +2043,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/yield/MemecoinYieldVault.sol#L149",
+      "location": "src/yield/MemecoinYieldVault.sol#L136",
       "summary": "MemecoinYieldVault.maxWithdraw(address).total is a local variable never initialized",
       "key": "uninitialized-local|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault.maxWithdraw(address).total is a local variable never initialized"
     },
@@ -2007,7 +2052,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/yield/MemecoinYieldVault.sol#L347",
+      "location": "src/yield/MemecoinYieldVault.sol#L334",
       "summary": "MemecoinYieldVault.redeem(uint256,address,address).totalPayout is a local variable never initialized",
       "key": "uninitialized-local|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault.redeem(uint256,address,address).totalPayout is a local variable never initialized"
     },
@@ -2016,7 +2061,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/yield/MemecoinYieldVault.sol#L423",
+      "location": "src/yield/MemecoinYieldVault.sol#L410",
       "summary": "MemecoinYieldVault.withdraw(uint256,address,address).totalShares is a local variable never initialized",
       "key": "uninitialized-local|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault.withdraw(uint256,address,address).totalShares is a local variable never initialized"
     },
@@ -2057,92 +2102,92 @@
       "key": "unused-return|src/common/token/extensions/governance/OutrunVotesInit.sol|OutrunVotesInit._writeTotalAssetCheckpoint(uint256) ignores return value by $._totalAssetsCheckpoint.push(clock(),SafeCast.toUint208(totalAssets))"
     },
     {
-      "id": "22570a45327e3cd1b3cf62454435eba37e1e0cdaca196540e2d6299f9eaf5509",
+      "id": "0fa0340df320536c1301295eb9de853eab5ae04378c76b7165a693cc6d45c3d1",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L332-L389",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L326-L383",
       "summary": "MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) ignores return value by (None,None,None,treasuryTokens,None) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData()",
       "key": "unused-return|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) ignores return value by (None,None,None,treasuryTokens,None) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData()"
     },
     {
-      "id": "b1c5061b83e8ee3d62330785fc0442a6dcd99821a7811adae88b069de6230b99",
+      "id": "f44914efa6930a7d92693e720c1cc1ed91f8f8d67d21e0e05e81b3572df2c674",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/interoperation/MemeverseOmnichainInteroperation.sol#L166-L169",
+      "location": "src/interoperation/MemeverseOmnichainInteroperation.sol#L155-L158",
       "summary": "MemeverseOmnichainInteroperation._requireNonZeroRemoteDelivery(address,SendParam) ignores return value by (None,None,receipt) = IOFT(memecoin).quoteOFT(sendParam)",
       "key": "unused-return|src/interoperation/MemeverseOmnichainInteroperation.sol|MemeverseOmnichainInteroperation._requireNonZeroRemoteDelivery(address,SendParam) ignores return value by (None,None,receipt) = IOFT(memecoin).quoteOFT(sendParam)"
     },
     {
-      "id": "2653ebbcda5683a553b5a8b8661e96292f938d88aeff26471475e963b4b54c20",
+      "id": "14e1aa8c5c0eb1f9bdf868e3c5d239ce4fda510c386c0db941cc42f225fd0da6",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/interoperation/MemeverseOmnichainInteroperation.sol#L104-L154",
+      "location": "src/interoperation/MemeverseOmnichainInteroperation.sol#L100-L145",
       "summary": "MemeverseOmnichainInteroperation.memecoinStaking(address,address,uint256) ignores return value by IMemecoinYieldVault(yieldVault).deposit(amount,receiver)",
       "key": "unused-return|src/interoperation/MemeverseOmnichainInteroperation.sol|MemeverseOmnichainInteroperation.memecoinStaking(address,address,uint256) ignores return value by IMemecoinYieldVault(yieldVault).deposit(amount,receiver)"
     },
     {
-      "id": "a39345e2b19551ba33f3e1b068dc268ab3dcfdc28707db77d0c3f7f3ab106ee8",
+      "id": "f490f538b60b0556978d1747b57d5089d76c1cc1d73ced1ed4da1f2360e23dad",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLSplitterUpgradeable.sol#L406-L422",
+      "location": "src/polend/POLSplitterUpgradeable.sol#L444-L460",
       "summary": "POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)",
       "key": "unused-return|src/polend/POLSplitterUpgradeable.sol|POLSplitterUpgradeable._settlePOLCollateral(uint256,IPOLSplitter.SplitInfo) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)"
     },
     {
-      "id": "68413b441079a3dbcc0eebd619b366d72b512c6f136893a1c8ded6fa2e41dc01",
+      "id": "55db693aa7cf6b3fb269480af41cb79d36a60ab3b4566e38a89663372dd438e3",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/polend/POLendUpgradeable.sol#L854-L872",
+      "location": "src/polend/POLendUpgradeable.sol#L853-L871",
       "summary": "POLendUpgradeable._burnSettledPol(uint256,uint256) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)",
       "key": "unused-return|src/polend/POLendUpgradeable.sol|POLendUpgradeable._burnSettledPol(uint256,uint256) ignores return value by IMemeverseLauncher(launcher).redeemMemecoinLiquidity(verseId,polAmount,true)"
     },
     {
-      "id": "8756742cf0fbed1dfad7c39c79ee4d90be76395c165c18cc018b611594cc6b18",
+      "id": "7ea4cfb59ba2cf5cd361574ca42add4a65199dea460ddb9fe7488c67e6c69bed",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseSwapRouter.sol#L928-L937",
+      "location": "src/swap/MemeverseSwapRouter.sol#L827-L836",
       "summary": "MemeverseSwapRouter._quoteExactLiquidityAmounts(Currency,Currency,uint128) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)",
       "key": "unused-return|src/swap/MemeverseSwapRouter.sol|MemeverseSwapRouter._quoteExactLiquidityAmounts(Currency,Currency,uint128) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)"
     },
     {
-      "id": "2aeb9fb0ee6971d9f043dd4cee65950c69a0801275b7b31591cb037cc8fd7d88",
+      "id": "0329eec63c72aa9120a0a74ef177129f4e8fe13339f260453affc7c63501e9a6",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseSwapRouter.sol#L920-L926",
+      "location": "src/swap/MemeverseSwapRouter.sol#L819-L825",
       "summary": "MemeverseSwapRouter._sortedCurrencies(address,address) ignores return value by MemeversePoolKeyLib.sortedCurrencies(tokenA,tokenB)",
       "key": "unused-return|src/swap/MemeverseSwapRouter.sol|MemeverseSwapRouter._sortedCurrencies(address,address) ignores return value by MemeversePoolKeyLib.sortedCurrencies(tokenA,tokenB)"
     },
     {
-      "id": "6417acb34f6ce28f6196a3b67589d6d5212deca75313359e971b4dc70eb94c25",
+      "id": "edf8ffaa65f46a0c2bd8fa9d7680c908854307ab9b20521f5dc1a7bf98ba775a",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseSwapRouter.sol#L497-L535",
+      "location": "src/swap/MemeverseSwapRouter.sol#L396-L434",
       "summary": "MemeverseSwapRouter.createPoolAndAddLiquidity(address,address,uint256,uint256,uint160,address,uint256) ignores return value by poolManager.initialize(preparedKey,startPrice)",
       "key": "unused-return|src/swap/MemeverseSwapRouter.sol|MemeverseSwapRouter.createPoolAndAddLiquidity(address,address,uint256,uint256,uint160,address,uint256) ignores return value by poolManager.initialize(preparedKey,startPrice)"
     },
     {
-      "id": "953d97740f580d5c832a00c6a87fc200557757edc8dd1dbf8bcdc849b8d21247",
+      "id": "b0af186ba986d8216b81302dec0be2aec75bc8a0e1738c53212418ca598f2249",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseSwapRouter.sol#L131-L139",
+      "location": "src/swap/MemeverseSwapRouter.sol#L121-L129",
       "summary": "MemeverseSwapRouter.previewClaimableFees(address,address,address) ignores return value by hookLens.claimableFees(hook,key,owner)",
       "key": "unused-return|src/swap/MemeverseSwapRouter.sol|MemeverseSwapRouter.previewClaimableFees(address,address,address) ignores return value by hookLens.claimableFees(hook,key,owner)"
     },
     {
-      "id": "2d2f073afffa5a7d30c750d125c3c6734ac3f58aef3c61ac81ab65c0eb1f7cfd",
+      "id": "b7386912d22a1321cd837212ecac5184dbf58713e363a19be6131dff7b7ff499",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseSwapRouter.sol#L159-L194",
+      "location": "src/swap/MemeverseSwapRouter.sol#L141-L176",
       "summary": "MemeverseSwapRouter.quoteAmountsForLiquidity(address,address,uint128) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(key.toId())",
       "key": "unused-return|src/swap/MemeverseSwapRouter.sol|MemeverseSwapRouter.quoteAmountsForLiquidity(address,address,uint128) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(key.toId())"
     },
@@ -2156,29 +2201,29 @@
       "key": "unused-return|src/swap/MemeverseUniswapHookLens.sol|MemeverseUniswapHookLens.quoteSwap(IMemeverseUniswapHook,PoolKey,SwapParams,address) ignores return value by (preSqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)"
     },
     {
-      "id": "88a8519e88a6e7d08e16898f104cd94fe30e7f4f859fd5f1c5c4125a6ff2d6f5",
+      "id": "10167da77664e7840ead3b805f72aec30652d4c635fa1025587503a8cd45e1ac",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L532-L588",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L529-L585",
       "summary": "MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (liquidity,None,None) = LiquidityQuote.quote(sqrtPriceX96,params.amount0Desired,params.amount1Desired)",
       "key": "unused-return|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (liquidity,None,None) = LiquidityQuote.quote(sqrtPriceX96,params.amount0Desired,params.amount1Desired)"
     },
     {
-      "id": "c15e6146d917a34becdaee4304621f2caabc429d67c94a9a9d6573130c933255",
+      "id": "4be846c97a0688ed33e01d9d71acc92910f572a659690f0ff48f98faf237d123",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L532-L588",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L529-L585",
       "summary": "MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)",
       "key": "unused-return|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable._addLiquidityCore(IMemeverseUniswapHook.AddLiquidityCoreParams,address) ignores return value by (sqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)"
     },
     {
-      "id": "6075722fde166e62d15406fd677ad99807d4695603e1a54a342ce51060072614",
+      "id": "f9a83f94400f275593dbfcd3f6e6658bde30ebccd3459f5df8df030efff8a633",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L700-L731",
+      "location": "src/swap/MemeverseUniswapHookUpgradeable.sol#L697-L728",
       "summary": "MemeverseUniswapHookUpgradeable.unlockCallback(bytes) ignores return value by (delta,None) = poolManager.modifyLiquidity(data.key,data.params,bytes())",
       "key": "unused-return|src/swap/MemeverseUniswapHookUpgradeable.sol|MemeverseUniswapHookUpgradeable.unlockCallback(bytes) ignores return value by (delta,None) = poolManager.modifyLiquidity(data.key,data.params,bytes())"
     },
@@ -2192,20 +2237,20 @@
       "key": "unused-return|src/swap/SettlementFacet.sol|SettlementFacet.executeSettlementLogic(IMemeverseUniswapHook.PreorderSettlementParams) ignores return value by (entrySqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)"
     },
     {
-      "id": "072cb7ce37fa7d046a6868cbd96c7a9e2d8c95171ac2dd50bfa4408fb3172397",
+      "id": "43f49c43aaa7923a9ba9f9fa425e82970d0e04fcfe20a553b48e0c2cb6c80ab1",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/SettlementFacet.sol#L226-L313",
+      "location": "src/swap/SettlementFacet.sol#L226-L308",
       "summary": "SettlementFacet.settlementUnlockCallback(ISettlementFacet.SettlementCallbackData) ignores return value by (postSwapSqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)",
       "key": "unused-return|src/swap/SettlementFacet.sol|SettlementFacet.settlementUnlockCallback(ISettlementFacet.SettlementCallbackData) ignores return value by (postSwapSqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)"
     },
     {
-      "id": "1f5ae5c6769558e75e0d945382a13b64c71bfe0b24d75f7ed6063d1ea90d9d77",
+      "id": "3656882caae7f3351199be674ab7db6a9daa279aaabb7ab99c1098a749bf2012",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/swap/SettlementFacet.sol#L226-L313",
+      "location": "src/swap/SettlementFacet.sol#L226-L308",
       "summary": "SettlementFacet.settlementUnlockCallback(ISettlementFacet.SettlementCallbackData) ignores return value by (preSwapSqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)",
       "key": "unused-return|src/swap/SettlementFacet.sol|SettlementFacet.settlementUnlockCallback(ISettlementFacet.SettlementCallbackData) ignores return value by (preSwapSqrtPriceX96,None,None,None) = poolManager.getSlot0(poolId)"
     },
@@ -2264,65 +2309,65 @@
       "key": "unused-return|src/verse/MemeverseFeePreviewReader.sol|MemeverseFeePreviewReader._splitExecutorReward(uint256,uint256) ignores return value by MemeverseLauncherLib.splitExecutorReward(uAssetFee,executorRewardRate)"
     },
     {
-      "id": "8c68552a8f52ed618288f1b41820dd72fb32fa354f3cafe3ae60ced863a23fe1",
+      "id": "14f7c1ca3cc2af65bca77ecea0e08487245aac3c607787de04345307df6978f0",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L358-L382",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L357-L381",
       "summary": "MemeverseLaunchImpl._deployAndSetupMemeverse(uint256,IMemeverseLauncher.Memeverse,address,uint256,address,address) ignores return value by IPOLSplitter(_polSplitter).initializeVerse(verseId,pol,memecoin,uAsset,name,symbol)",
       "key": "unused-return|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl._deployAndSetupMemeverse(uint256,IMemeverseLauncher.Memeverse,address,uint256,address,address) ignores return value by IPOLSplitter(_polSplitter).initializeVerse(verseId,pol,memecoin,uAsset,name,symbol)"
     },
     {
-      "id": "b4d88e897ce0f8b65cde117d28a5094b8877c31526eec2002a28592d18b88c32",
+      "id": "ba59a06a23f4df821bf9429ca06d417dc7166fad34944e1cf64c5ec9a23699a0",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L422-L448",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L420-L446",
       "summary": "MemeverseLaunchImpl._deployLiquidity(uint256,address,address,address,uint256,address,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLiquidityImpl.deployBootstrapLiquidity.selector,verseId,uAsset,memecoin,pol,totalLeveragedDebt,_polend,_polSplitter))",
       "key": "unused-return|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl._deployLiquidity(uint256,address,address,address,uint256,address,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLiquidityImpl.deployBootstrapLiquidity.selector,verseId,uAsset,memecoin,pol,totalLeveragedDebt,_polend,_polSplitter))"
     },
     {
-      "id": "ab7b7625ad8da9297377b8e56766d4b022869005cfc02ecab2a3af936ef9e9ec",
+      "id": "1f7e298245a0c761a16bc127fd73f92fa6ff9fd6ebfe3583c4fd4256a1d001a7",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLaunchImpl.sol#L293-L321",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L292-L320",
       "summary": "MemeverseLaunchImpl.changeStage(uint256) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseSettlementImpl.unlockFromLocked.selector,verseId,memeverseLauncherStorage.polSplitter,memeverseLauncherStorage.memeverseUniswapHook))",
       "key": "unused-return|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl.changeStage(uint256) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseSettlementImpl.unlockFromLocked.selector,verseId,memeverseLauncherStorage.polSplitter,memeverseLauncherStorage.memeverseUniswapHook))"
     },
     {
-      "id": "97d08830af7372240282a622e587edea3bd09ed0ae5b8ff41ea0426117fc8aa4",
+      "id": "8c9b86ad92f3fb20933a1b14a0d5ccea4779f8ccd3baa394636eedf8a9263e12",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L373-L387",
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L333-L347",
       "summary": "MemeverseLauncherUpgradeable.genesis(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesis.selector,verseId,amountInUAsset,user))",
       "key": "unused-return|src/verse/MemeverseLauncherUpgradeable.sol|MemeverseLauncherUpgradeable.genesis(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesis.selector,verseId,amountInUAsset,user))"
     },
     {
-      "id": "03ce4f85e613c76003f8f3544a85e6caa7e727f20618ef499a9a76870efecf6c",
+      "id": "4536d6fd0129ba075ecc56b87ef99ad0c7e3546cc6d0082bf4a71d744275e8d2",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L422-L435",
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L382-L395",
       "summary": "MemeverseLauncherUpgradeable.genesisAndPreorder(uint256,uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesisAndPreorder.selector,verseId,genesisAmount,preorderAmount,user))",
       "key": "unused-return|src/verse/MemeverseLauncherUpgradeable.sol|MemeverseLauncherUpgradeable.genesisAndPreorder(uint256,uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.genesisAndPreorder.selector,verseId,genesisAmount,preorderAmount,user))"
     },
     {
-      "id": "2bf08f00cd89d9210c0b2866c0b825f0c0693276dce0da9a5dd1ca03939aaa51",
+      "id": "ce0c7b9d3cb7864b3857f1b11183da52e3f8d5f4132503faa50baef33ad4199b",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L396-L409",
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L356-L369",
       "summary": "MemeverseLauncherUpgradeable.preorder(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.preorder.selector,verseId,amountInUAsset,user))",
       "key": "unused-return|src/verse/MemeverseLauncherUpgradeable.sol|MemeverseLauncherUpgradeable.preorder(uint256,uint256,address) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.preorder.selector,verseId,amountInUAsset,user))"
     },
     {
-      "id": "cc96f7a1663f54f0aaa564fb97456f380420292dd239a5e0d3d127edf748127f",
+      "id": "ca2d704edd87a812162cc6fc3cc0bac55f0a64929cdd1eb58a6efbef84fae787",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L760-L789",
+      "location": "src/verse/MemeverseLauncherUpgradeable.sol#L709-L738",
       "summary": "MemeverseLauncherUpgradeable.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.registerMemeverse.selector,name,symbol,uniqueId,endTime,unlockTime,omnichainIds,uAsset,flashGenesis))",
       "key": "unused-return|src/verse/MemeverseLauncherUpgradeable.sol|MemeverseLauncherUpgradeable.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.registerMemeverse.selector,name,symbol,uniqueId,endTime,unlockTime,omnichainIds,uAsset,flashGenesis))"
     },
@@ -2426,13 +2471,13 @@
       "key": "unused-return|src/verse/registration/MemeverseRegistrarAtLocal.sol|MemeverseRegistrarAtLocal.quoteRegister(IMemeverseRegistrationCenter.RegistrationParam,uint128) ignores return value by (lzFee,None,None) = IMemeverseRegistrationCenter(registrationCenter).quoteSend(omnichainIds,abi.encode(memeverseParam))"
     },
     {
-      "id": "86ffadb450284cc2bd05a00d3f433f2e3d7a8080a1d123c445846eef776c9f3a",
+      "id": "dbe0a75c965a4270614251dae98ff9ae510341568a3a4d32dd8f8d5a3e9bdcb9",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenter.sol#L194-L217",
-      "summary": "MemeverseRegistrationCenter._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) ignores return value by address(this).functionCallWithValue(functionSignature,fee)",
-      "key": "unused-return|src/verse/registration/MemeverseRegistrationCenter.sol|MemeverseRegistrationCenter._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) ignores return value by address(this).functionCallWithValue(functionSignature,fee)"
+      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L251-L282",
+      "summary": "MemeverseRegistrationCenterUpgradeable._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) ignores return value by address(this).functionCallWithValue(functionSignature,fee)",
+      "key": "unused-return|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) ignores return value by address(this).functionCallWithValue(functionSignature,fee)"
     },
     {
       "id": "2e3779a9d8064d5173f5c98a6d4b7add134407711d3e9876700f3de2c95ead17",

@@ -65,5 +65,8 @@ exclude_lints = [
     "screaming-snake-case-const", "unaliased-plain-import", "asm-keccak256", "pascal-case-struct", "named-struct-fields",
     "unsafe-cheatcode", "block-timestamp"
 ]
+# Tests intentionally use raw unchecked `transfer`/`transferFrom` (expectRevert probes, fixture moves).
+# erc20-unchecked-transfer stays enforced for src/; tests remain linted by solhint-test.config.js via the gate.
+ignore = ["test/**/*.sol"]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

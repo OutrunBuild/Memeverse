@@ -313,7 +313,6 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuardTransient, I
         view
         returns (address pt, address yt, address pol)
     {
-        // slither-disable-next-line timestamp
         if (block.timestamp > deadline) revert ExpiredPastDeadline();
         if (recipient == address(0) || recipient == address(this)) revert InvalidRecipient(recipient);
         if (ytAmount == 0 || ytAmount > INT128_MAX_VALUE) revert AmountOutOfRange(ytAmount);

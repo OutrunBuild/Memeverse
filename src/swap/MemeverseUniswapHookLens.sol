@@ -71,7 +71,6 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
         OrdinarySwapMath.FeeSplit memory feeSplit = OrdinarySwapMath.deriveFeeSplit(feeQuote.feeBps);
         OrdinarySwapMath.SettlementPlan memory settlementPlan =
             OrdinarySwapMath.deriveSettlementPlan(params.amountSpecified, protocolFeeOnInput, feeSplit);
-        // slither-disable-next-line uninitialized-local // coreGrossOutput assigned L76; coreInput assigned in both branches L78 and L82; postSqrtPriceX96 is never read by deriveFinalSettlement (OrdinarySwapMath.sol).
         OrdinarySwapMath.CurveResult memory finalCurve;
         finalCurve.coreGrossOutput = feeQuote.estimatedGrossOutputAmount;
         if (params.amountSpecified < 0) {

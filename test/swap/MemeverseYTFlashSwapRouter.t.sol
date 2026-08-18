@@ -11,7 +11,7 @@ import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswap
 import {IPOLSplitter} from "../../src/polend/interfaces/IPOLSplitter.sol";
 import {IMemeverseYTFlashSwapRouter} from "../../src/swap/interfaces/IMemeverseYTFlashSwapRouter.sol";
 import {MemeverseYTFlashSwapRouter} from "../../src/swap/MemeverseYTFlashSwapRouter.sol";
-import {ReentrancyGuard} from "../../src/common/access/ReentrancyGuard.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {OutrunSafeERC20} from "../../src/common/token/OutrunSafeERC20.sol";
 import {
     MockYTManager,
@@ -1453,7 +1453,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
             )
         );
         vm.prank(account);
-        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
+        vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
         router.swapPOLForExactYT(VERSE_ID, BUY_Y, BUY_Y - BUY_R, BUY_PRICE_LIMIT, recipient, block.timestamp, referrer);
         pol.clearReenter();
 
@@ -1469,7 +1469,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
             )
         );
         vm.prank(account);
-        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
+        vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
         router.swapExactYTForPOL(
             VERSE_ID, SELL_Y, SELL_Y - SELL_Q, SELL_PRICE_LIMIT, recipient, block.timestamp, referrer
         );
@@ -1498,7 +1498,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         uint256 accountPolBefore = pol.balanceOf(account);
         uint256 accountAllowanceBefore = pol.allowance(account, address(router));
         vm.prank(account);
-        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
+        vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
         router.swapPOLForExactYT(VERSE_ID, BUY_Y, BUY_Y - BUY_R, BUY_PRICE_LIMIT, recipient, block.timestamp, referrer);
         // Atomic rollback: no take-minted POL persists on the router, payer balance/allowance restored, split never committed.
         assertEq(pol.balanceOf(address(router)), routerPolBefore);
@@ -1522,7 +1522,7 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         uint256 accountYtBefore = yt.balanceOf(account);
         uint256 accountYtAllowanceBefore = yt.allowance(account, address(router));
         vm.prank(account);
-        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
+        vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
         router.swapExactYTForPOL(
             VERSE_ID, SELL_Y, SELL_Y - SELL_Q, SELL_PRICE_LIMIT, recipient, block.timestamp, referrer
         );

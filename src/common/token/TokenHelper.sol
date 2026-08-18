@@ -2,12 +2,11 @@
 pragma solidity ^0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {OutrunSafeERC20} from "./OutrunSafeERC20.sol";
 
-import {ReentrancyGuard} from "../access/ReentrancyGuard.sol";
-
-abstract contract TokenHelper is ReentrancyGuard {
+abstract contract TokenHelper is ReentrancyGuardTransient {
     using OutrunSafeERC20 for IERC20;
 
     address internal constant NATIVE = address(0);
@@ -35,12 +34,12 @@ abstract contract TokenHelper is ReentrancyGuard {
     /// @notice Single exit point for all outbound token transfers.
     /// @dev `nonReentrant` here is the centralized reentrancy defense for contracts using TokenHelper.
     ///      Entry-point functions in these contracts intentionally omit `nonReentrant` to avoid double-locking
-    ///      with the boolean-based ReentrancyGuard: a transient `bool` flag (not a counter) cannot be acquired
-    ///      twice in the same transaction, so a caller-level `nonReentrant` would set `locked = true` for the
-    ///      whole outer call and make every nested `_transferOut` revert with `ReentrancyGuardReentrantCall`.
-    ///      Note the flag is released when `_transferOut` returns (`_nonReentrantAfter` resets it), so the
-    ///      inter-call window between two `_transferOut`s is NOT covered by this lock — defense across that
-    ///      gap relies on the caller's own CEI ordering, not on this modifier.
+    ///      with ReentrancyGuardTransient: its transient `bool` lock (not a counter) cannot be acquired twice
+    ///      in the same transaction, so a caller-level `nonReentrant` would hold the lock for the whole outer
+    ///      call and make every nested `_transferOut` revert with `ReentrancyGuardReentrantCall`.
+    ///      Note the lock is released when `_transferOut` returns, so the inter-call window between two
+    ///      `_transferOut`s is NOT covered by this lock — defense across that gap relies on the caller's own
+    ///      CEI ordering, not on this modifier.
     function _transferOut(address token, address to, uint256 amount) internal nonReentrant {
         if (amount == 0) return;
         if (token == NATIVE) {

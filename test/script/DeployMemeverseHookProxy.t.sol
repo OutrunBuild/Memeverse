@@ -9,7 +9,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "@uniswap/v4-periphery/src/base/ImmutableState.sol";
 
 import {DeployMemeverseHookProxy} from "../../script/DeployMemeverseHookProxy.s.sol";
-import {IOutrunDeployer} from "../../script/IOutrunDeployer.sol";
+import {IOutrunDeployer} from "../../script/deployment/interfaces/IOutrunDeployer.sol";
 import {OutrunDeployer} from "../../script/deployment/OutrunDeployer.sol";
 import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {FakeDeploymentHook} from "../mocks/swap/FakeDeploymentHook.sol";

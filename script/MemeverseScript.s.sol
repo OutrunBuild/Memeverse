@@ -12,7 +12,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 import "./BaseScript.s.sol";
 import {Memecoin} from "../src/token/Memecoin.sol";
-import {IOutrunDeployer} from "./IOutrunDeployer.sol";
+import {IOutrunDeployer} from "./deployment/interfaces/IOutrunDeployer.sol";
 import {MemePol} from "../src/token/MemePol.sol";
 import {MemecoinYieldVault} from "../src/yield/MemecoinYieldVault.sol";
 import {MemeverseProxyDeployer} from "../src/verse/deployment/MemeverseProxyDeployer.sol";

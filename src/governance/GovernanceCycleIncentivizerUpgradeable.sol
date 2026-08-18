@@ -6,7 +6,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
 import {IGovernanceCycleIncentivizer} from "./interfaces/IGovernanceCycleIncentivizer.sol";
 import {IMemecoinDaoGovernor} from "./interfaces/IMemecoinDaoGovernor.sol";
 
@@ -20,8 +19,6 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
     Initializable,
     UUPSUpgradeable
 {
-    using OutrunSafeERC20 for IERC20;
-
     uint256 public constant BPS_BASE = 10000;
     uint256 public constant CYCLE_DURATION = 90 days;
     uint256 public constant MAX_TOKENS_LIMIT = 50;

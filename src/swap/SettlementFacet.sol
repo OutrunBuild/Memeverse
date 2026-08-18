@@ -118,8 +118,9 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
         );
 
         (uint256 lpFeeBps, uint256 protocolFeeBps) = FeeMath.splitFeeBps(PREORDER_SETTLEMENT_FEE_BPS);
-        (uint256 lpFeeInputAmount, uint256 protocolFeeInputAmount) =
-            _exactInputFeeAmounts(grossInputAmount, lpFeeBps, protocolFeeBps, ctx.protocolFeeOnInput);
+        uint256 lpFeeInputAmount = FeeMath.feeOnAmount(grossInputAmount, lpFeeBps);
+        uint256 protocolFeeInputAmount =
+            ctx.protocolFeeOnInput ? FeeMath.feeOnAmount(grossInputAmount, protocolFeeBps) : 0;
         uint256 netInputAmount = grossInputAmount - lpFeeInputAmount - protocolFeeInputAmount;
         // Defense-in-depth backstop: under the fixed 100 bps settlement fee, the 65/35 split and the
         // exact-input guarantee (grossInputAmount >= 1) make netInputAmount mathematically >= 1, so this
@@ -255,10 +256,10 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
         // `address(this)` is the hook, which holds the net input pulled in executeSettlementLogic, so
         // `CurrencySettler.settle` transfers from the hook's own ERC20 balance into the PoolManager.
         if (amount0 < 0) {
-            data.key.currency0.settle(poolManager, address(this), uint256((-amount0).toUint128()), false);
+            data.key.currency0.settle(poolManager, address(this), uint256((-amount0).toUint128()));
         }
         if (amount1 < 0) {
-            data.key.currency1.settle(poolManager, address(this), uint256((-amount1).toUint128()), false);
+            data.key.currency1.settle(poolManager, address(this), uint256((-amount1).toUint128()));
         }
 
         // Output-side protocol fee: when the protocol fee is on the output currency, deduct it from the

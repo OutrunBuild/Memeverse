@@ -19,8 +19,8 @@ import {
 contract CurrencySettlerHarness {
     using CurrencySettler for Currency;
 
-    function settle(Currency currency, IPoolManager manager, address payer, uint256 amount, bool burn) external {
-        currency.settle(manager, payer, amount, burn);
+    function settle(Currency currency, IPoolManager manager, address payer, uint256 amount) external {
+        currency.settle(manager, payer, amount);
     }
 
     /// @dev Exposes transferWithGuard for unit testing (CI-010).
@@ -46,7 +46,7 @@ contract CurrencySettlerTest is Test {
                 CurrencySettler.ERC20TransferFromFailed.selector, address(this), address(manager), 1 ether
             )
         );
-        harness.settle(Currency.wrap(address(token)), IPoolManager(address(manager)), address(this), 1 ether, false);
+        harness.settle(Currency.wrap(address(token)), IPoolManager(address(manager)), address(this), 1 ether);
     }
 
     function testSettleRevertsWithERC20TransferFailed() external {
@@ -54,7 +54,7 @@ contract CurrencySettlerTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(CurrencySettler.ERC20TransferFailed.selector, address(manager), 1 ether));
         vm.prank(address(harness));
-        harness.settle(Currency.wrap(address(token)), IPoolManager(address(manager)), address(harness), 1 ether, false);
+        harness.settle(Currency.wrap(address(token)), IPoolManager(address(manager)), address(harness), 1 ether);
     }
 
     /// @dev Zero-amount is a no-op: no external call, no revert (CI-010 guard).

@@ -41,7 +41,7 @@ swap 栈是显式例外：
 
 ## 4. Reentrancy 语义
 
-`ReentrancyGuard` 使用 transient lock 作为统一重入保护基础。
+统一重入保护基础是 OpenZeppelin 的 `ReentrancyGuardTransient`（`ReentrancyGuardTransient.sol`），仍使用 transient lock。
 
 在当前仓库里，它的重要含义不是“所有函数都防重入”，而是：
 

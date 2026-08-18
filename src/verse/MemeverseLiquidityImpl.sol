@@ -452,24 +452,17 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             })
             );
 
-        uint256 settledMemecoin = _deltaAmountForToken(delta, memecoin, poolKey);
+        uint256 settledMemecoin = _positiveDeltaAmount(
+            delta, memecoin, Currency.unwrap(poolKey.currency0), Currency.unwrap(poolKey.currency1)
+        );
         // Later vesting claims split this aggregate fill pro rata by each user's preorder funds and anchor to this timestamp.
         preorderState.settledMemecoin = settledMemecoin;
         preorderState.settlementTimestamp = uint40(block.timestamp);
     }
 
-    function _deltaAmountForToken(BalanceDelta delta, address token, PoolKey memory poolKey)
-        internal
-        pure
-        returns (uint256 amount)
-    {
-        return
-            _positiveDeltaAmount(delta, token, Currency.unwrap(poolKey.currency0), Currency.unwrap(poolKey.currency1));
-    }
-
     /// @dev Core: return the positive leg of `delta` for `token`, given the pool's ordered token0/token1.
-    ///      Both `_deltaAmountForToken` (from PoolKey) and `_positiveDeltaAmountForToken` (from raw addresses)
-    ///      funnel through here so the positive-delta extraction has one source of truth.
+    ///      Both `_settlePreorder` (via PoolKey currencies) and `_positiveDeltaAmountForToken` (via raw
+    ///      addresses) funnel through here so the positive-delta extraction has one source of truth.
     function _positiveDeltaAmount(BalanceDelta delta, address token, address token0, address token1)
         internal
         pure
@@ -516,40 +509,10 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         _transferIn(memecoin, msg.sender, amountInMemecoinDesired);
         _safeApprove(uAsset, swapRouter, amountInUAssetDesired);
         _safeApprove(memecoin, swapRouter, amountInMemecoinDesired);
-        (amountInUAsset, amountInMemecoin, amountOut) = _executeMintPOLTokenLiquidity(
-            uAsset,
-            memecoin,
-            amountInUAssetDesired,
-            amountInMemecoinDesired,
-            amountInUAssetMin,
-            amountInMemecoinMin,
-            amountOutDesired,
-            deadline,
-            swapRouter
-        );
-
-        // Mint POL 1:1 with the main-pool LP just added: amountOut is the LP the router minted, and redeem
-        // later burns POL for the same LP amount (see redeemMemecoinLiquidity). Do not scale this mint
-        // (no fee/rounding) — POL supply must stay equal to the launcher's main-pool LP.
-        IPol(pol).mint(msg.sender, amountOut);
-        _refundMintPOLTokenInputs(
-            uAsset, memecoin, amountInUAssetDesired, amountInMemecoinDesired, amountInUAsset, amountInMemecoin
-        );
-    }
-
-    function _executeMintPOLTokenLiquidity(
-        address uAsset,
-        address memecoin,
-        uint256 amountInUAssetDesired,
-        uint256 amountInMemecoinDesired,
-        uint256 amountInUAssetMin,
-        uint256 amountInMemecoinMin,
-        uint256 amountOutDesired,
-        uint256 deadline,
-        address swapRouter
-    ) internal returns (uint256 amountInUAsset, uint256 amountInMemecoin, uint256 amountOut) {
+        // Two liquidity modes: `amountOutDesired == 0` spends up to the provided budgets (auto mode);
+        // a non-zero target first quotes the exact token amounts, then adds with the quote as the budget.
         if (amountOutDesired == 0) {
-            return _mintPOLTokenWithAutoLiquidity(
+            (amountInUAsset, amountInMemecoin, amountOut) = _mintPOLTokenWithAutoLiquidity(
                 uAsset,
                 memecoin,
                 amountInUAssetDesired,
@@ -559,10 +522,18 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
                 deadline,
                 swapRouter
             );
+        } else {
+            (amountInUAsset, amountInMemecoin, amountOut) = _mintPOLTokenWithExactLiquidity(
+                uAsset, memecoin, amountInUAssetDesired, amountInMemecoinDesired, amountOutDesired, deadline, swapRouter
+            );
         }
 
-        return _mintPOLTokenWithExactLiquidity(
-            uAsset, memecoin, amountInUAssetDesired, amountInMemecoinDesired, amountOutDesired, deadline, swapRouter
+        // Mint POL 1:1 with the main-pool LP just added: amountOut is the LP the router minted, and redeem
+        // later burns POL for the same LP amount (see redeemMemecoinLiquidity). Do not scale this mint
+        // (no fee/rounding) — POL supply must stay equal to the launcher's main-pool LP.
+        IPol(pol).mint(msg.sender, amountOut);
+        _refundMintPOLTokenInputs(
+            uAsset, memecoin, amountInUAssetDesired, amountInMemecoinDesired, amountInUAsset, amountInMemecoin
         );
     }
 
@@ -820,16 +791,6 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
     ) internal returns (BalanceDelta delta) {
         if (liquidity == 0) return delta;
 
-        return _removeAuxiliaryLiquidity(swapRouter, currency0, currency1, liquidity, recipient);
-    }
-
-    function _removeAuxiliaryLiquidity(
-        address swapRouter,
-        Currency currency0,
-        Currency currency1,
-        uint128 liquidity,
-        address recipient
-    ) internal returns (BalanceDelta delta) {
         return IMemeverseSwapRouter(swapRouter)
             .removeLiquidity(currency0, currency1, liquidity, 0, 0, recipient, block.timestamp);
     }

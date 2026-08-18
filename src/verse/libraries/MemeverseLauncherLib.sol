@@ -69,7 +69,7 @@ library MemeverseLauncherLib {
 
     /// @notice Order two collected pair-fee amounts so the returned tuple matches `(tokenA, tokenB)`
     ///         regardless of pool token0/token1 ordering.
-    /// @dev Shared by `MemeverseSettlementImpl._mapPairFees` and `MemeverseFeePreviewReader._mapPairFees`
+    /// @dev Shared by `MemeverseSettlementImpl._claimPairFees` and `MemeverseFeePreviewReader._mapPairFees`
     ///      so the two callers cannot drift.
     /// @param tokenA First token in the caller-facing pair.
     /// @param tokenB Second token in the caller-facing pair.
@@ -119,10 +119,10 @@ library MemeverseLauncherLib {
     }
 
     /// @notice Split a main-pool uAsset fee into the executor reward and governor share using ratio basis `BPS_BASE`.
-    /// @dev Shared by `MemeverseSettlementImpl._splitExecutorReward` and
-    ///      `MemeverseFeePreviewReader._splitExecutorReward`; the wrappers only differ in how they read
-    ///      `executorRewardRate` (storage vs. proxy getter). Uses `FullMath.mulDiv` so the multiplication
-    ///      cannot overflow before the divide.
+    /// @dev Shared by `MemeverseSettlementImpl.collectAndDistributeFees` (runtime settlement, reads
+    ///      `executorRewardRate` from storage) and `MemeverseFeePreviewReader._splitExecutorReward`
+    ///      (proxy getter); the callers only differ in how they read `executorRewardRate`.
+    ///      Uses `FullMath.mulDiv` so the multiplication cannot overflow before the divide.
     /// @param uAssetFee Total uAsset fee collected from the main pool.
     /// @param executorRewardRate Basis-points rate (denominator `BPS_BASE`) of `uAssetFee` paid to the executor.
     /// @return govFee Remaining share routed to governance.
@@ -155,7 +155,7 @@ library MemeverseLauncherLib {
     }
 
     /// @notice Build the LayerZero OFT `SendParam` for a fee-distribution send and quote its messaging fee.
-    /// @dev Shared by `MemeverseSettlementImpl._buildSendParamAndMessagingFee` and
+    /// @dev Shared by `MemeverseSettlementImpl._sendRedeemedFeesCrossChain` and
     ///      `MemeverseFeePreviewReader._buildSendParamAndMessagingFee` so the two callers cannot drift on the
     ///      SendParam structure (dstEid / `to` = yieldDispatcher / composeMsg / extraOptions). Both callers
     ///      already pass every input as a parameter, so the body is identical and inlines without storage reads.

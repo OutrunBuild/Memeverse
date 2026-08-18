@@ -2,12 +2,10 @@
 pragma solidity ^0.8.35;
 
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCallback} from "@uniswap/v4-periphery/src/base/SafeCallback.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
@@ -111,10 +109,10 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         view
         override
         differentTokens(tokenA, tokenB)
+        erc20Pair(Currency.wrap(tokenA), Currency.wrap(tokenB))
         returns (PoolKey memory key)
     {
-        (Currency currency0, Currency currency1,) = _sortedCurrencies(tokenA, tokenB);
-        key = _hookPoolKey(currency0, currency1);
+        key = MemeversePoolKeyLib.hookPoolKey(tokenA, tokenB, address(hook));
     }
 
     /// @inheritdoc IMemeverseSwapRouter
@@ -143,10 +141,11 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         view
         override
         differentTokens(tokenA, tokenB)
+        erc20Pair(Currency.wrap(tokenA), Currency.wrap(tokenB))
         returns (uint256 amountARequired, uint256 amountBRequired)
     {
-        (Currency currency0, Currency currency1, bool tokenAIsCurrency0) = _sortedCurrencies(tokenA, tokenB);
-        PoolKey memory key = _hookPoolKey(currency0, currency1);
+        (,, bool tokenAIsCurrency0) = MemeversePoolKeyLib.sortedCurrencies(tokenA, tokenB);
+        PoolKey memory key = MemeversePoolKeyLib.hookPoolKey(tokenA, tokenB, address(hook));
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
         (uint256 amount0Required, uint256 amount1Required) = LiquidityAmounts.getAmountsForLiquidity(
             sqrtPriceX96, LiquidityQuote.MIN_SQRT_PRICE_X96, LiquidityQuote.MAX_SQRT_PRICE_X96, liquidityDesired
@@ -183,7 +182,8 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         differentTokens(tokenA, tokenB)
         returns (uint256 amountARequired, uint256 amountBRequired)
     {
-        (Currency currency0, Currency currency1, bool tokenAIsCurrency0) = _sortedCurrencies(tokenA, tokenB);
+        (Currency currency0, Currency currency1, bool tokenAIsCurrency0) =
+            MemeversePoolKeyLib.sortedCurrencies(tokenA, tokenB);
         (uint256 amount0Required, uint256 amount1Required) =
             _quoteExactLiquidityAmounts(currency0, currency1, liquidityDesired);
         return tokenAIsCurrency0 ? (amount0Required, amount1Required) : (amount1Required, amount0Required);
@@ -414,9 +414,12 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         PoolKey memory preparedKey;
         (amount0Desired, amount1Desired, preparedKey) =
             _prepareCreatePoolAndAddLiquidityExecution(tokenA, tokenB, amountADesired, amountBDesired, deadline);
-        _pullAndApproveAddLiquidityBudgets(
-            preparedKey.currency0, preparedKey.currency1, amount0Desired, amount1Desired, msg.sender
-        );
+        // Pull then approve each budget leg in pool order (currency0 fully before currency1) so the hook
+        // can spend the pulled budgets the moment the bootstrap add-liquidity runs.
+        _pullCurrency(preparedKey.currency0, msg.sender, amount0Desired);
+        _ensureHookApproval(preparedKey.currency0, amount0Desired);
+        _pullCurrency(preparedKey.currency1, msg.sender, amount1Desired);
+        _ensureHookApproval(preparedKey.currency1, amount1Desired);
         hook.authorizePoolInitialization(preparedKey, startPrice);
         poolManager.initialize(preparedKey, startPrice);
         // Bootstrap first liquidity: no lower-bound slippage check (min amounts = 0); only the
@@ -442,16 +445,16 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         int128 amount1 = delta.amount1();
 
         if (amount0 < 0) {
-            data.key.currency0.settle(poolManager, address(this), uint256((-amount0).toUint128()), false);
+            data.key.currency0.settle(poolManager, address(this), uint256((-amount0).toUint128()));
         }
         if (amount1 < 0) {
-            data.key.currency1.settle(poolManager, address(this), uint256((-amount1).toUint128()), false);
+            data.key.currency1.settle(poolManager, address(this), uint256((-amount1).toUint128()));
         }
         if (amount0 > 0) {
-            data.key.currency0.take(poolManager, data.recipient, uint256(amount0.toUint128()), false);
+            data.key.currency0.take(poolManager, data.recipient, uint256(amount0.toUint128()));
         }
         if (amount1 > 0) {
-            data.key.currency1.take(poolManager, data.recipient, uint256(amount1.toUint128()), false);
+            data.key.currency1.take(poolManager, data.recipient, uint256(amount1.toUint128()));
         }
 
         return abi.encode(delta);
@@ -592,11 +595,6 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         }
     }
 
-    function _prepareCurrencyBudget(Currency currency, address from, uint256 amount) internal {
-        _pullCurrency(currency, from, amount);
-        _ensureHookApproval(currency, amount);
-    }
-
     function _resolveAddLiquidityExecutionContext(Currency currency0, Currency currency1, uint256 deadline)
         internal
         view
@@ -657,7 +655,11 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         (uint256 amount0Floor, uint256 amount1Floor) =
             _normalizePairAmounts(currency0, currency1, amount0Min, amount1Min);
 
-        delta = _removeLiquidityViaHook(key.currency0, key.currency1, liquidity);
+        delta = hook.removeLiquidityCore(
+            IMemeverseUniswapHook.RemoveLiquidityCoreParams({
+                currency0: key.currency0, currency1: key.currency1, liquidity: liquidity, recipient: address(this)
+            })
+        );
 
         (uint256 amount0Out, uint256 amount1Out) = _receivedLiquidityAmounts(delta);
         if (amount0Out < amount0Floor || amount1Out < amount1Floor) {
@@ -666,18 +668,6 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
 
         key.currency0.transferWithGuard(to, amount0Out);
         key.currency1.transferWithGuard(to, amount1Out);
-    }
-
-    function _removeLiquidityViaHook(Currency currency0, Currency currency1, uint128 liquidity)
-        internal
-        returns (BalanceDelta delta)
-    {
-        IMemeverseUniswapHook.RemoveLiquidityCoreParams memory params;
-        params.currency0 = currency0;
-        params.currency1 = currency1;
-        params.liquidity = liquidity;
-        params.recipient = address(this);
-        delta = hook.removeLiquidityCore(params);
     }
 
     function _prepareCreatePoolAndAddLiquidityExecution(
@@ -691,12 +681,13 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         view
         beforeDeadline(deadline)
         differentTokens(tokenA, tokenB)
+        erc20Pair(Currency.wrap(tokenA), Currency.wrap(tokenB))
         returns (uint256 amount0Desired, uint256 amount1Desired, PoolKey memory poolKey)
     {
-        (Currency currency0, Currency currency1, bool tokenAIsCurrency0) = _sortedCurrencies(tokenA, tokenB);
+        (,, bool tokenAIsCurrency0) = MemeversePoolKeyLib.sortedCurrencies(tokenA, tokenB);
         (amount0Desired, amount1Desired) =
             tokenAIsCurrency0 ? (amountADesired, amountBDesired) : (amountBDesired, amountADesired);
-        poolKey = _hookPoolKey(currency0, currency1);
+        poolKey = MemeversePoolKeyLib.hookPoolKey(tokenA, tokenB, address(hook));
     }
 
     function _addLiquidityViaHook(
@@ -709,38 +700,19 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         address payer
     ) internal returns (uint128 liquidity, uint256 amount0Used, uint256 amount1Used) {
         BalanceDelta delta;
-        (liquidity, delta) = _addLiquidityViaHookCore(key.currency0, key.currency1, amount0Desired, amount1Desired, to);
+        (liquidity, delta) = hook.addLiquidityCore(
+            IMemeverseUniswapHook.AddLiquidityCoreParams({
+                currency0: key.currency0,
+                currency1: key.currency1,
+                amount0Desired: amount0Desired,
+                amount1Desired: amount1Desired,
+                to: to
+            })
+        );
 
         (amount0Used, amount1Used) = _handleAddLiquiditySettlement(
             key.currency0, key.currency1, delta, amount0Desired, amount1Desired, amount0Min, amount1Min, payer
         );
-    }
-
-    function _addLiquidityViaHookCore(
-        Currency currency0,
-        Currency currency1,
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        address to
-    ) internal returns (uint128 liquidity, BalanceDelta delta) {
-        IMemeverseUniswapHook.AddLiquidityCoreParams memory params;
-        params.currency0 = currency0;
-        params.currency1 = currency1;
-        params.amount0Desired = amount0Desired;
-        params.amount1Desired = amount1Desired;
-        params.to = to;
-        (liquidity, delta) = hook.addLiquidityCore(params);
-    }
-
-    function _pullAndApproveAddLiquidityBudgets(
-        Currency currency0,
-        Currency currency1,
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        address payer
-    ) internal {
-        _prepareCurrencyBudget(currency0, payer, amount0Desired);
-        _prepareCurrencyBudget(currency1, payer, amount1Desired);
     }
 
     function _approvePreparedAddLiquidityBudgets(
@@ -816,20 +788,14 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         }
     }
 
-    function _sortedCurrencies(address tokenA, address tokenB)
-        internal
-        pure
-        returns (Currency currency0, Currency currency1, bool tokenAIsCurrency0)
-    {
-        return MemeversePoolKeyLib.sortedCurrencies(tokenA, tokenB);
-    }
-
     function _quoteExactLiquidityAmounts(Currency currency0, Currency currency1, uint128 liquidityDesired)
         internal
         view
+        erc20Pair(currency0, currency1)
         returns (uint256 amount0Required, uint256 amount1Required)
     {
-        PoolKey memory key = _hookPoolKey(currency0, currency1);
+        PoolKey memory key =
+            MemeversePoolKeyLib.hookPoolKey(Currency.unwrap(currency0), Currency.unwrap(currency1), address(hook));
         PoolId poolId = key.toId();
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         return _exactLiquidityAmountsAtPrice(sqrtPriceX96, liquidityDesired);
@@ -856,26 +822,13 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         }
     }
 
-    function _hookPoolKey(Currency currency0, Currency currency1)
+    function _canonicalHookPoolKey(Currency currency0, Currency currency1)
         internal
         view
         erc20Pair(currency0, currency1)
         returns (PoolKey memory)
     {
-        return PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
-            tickSpacing: MemeversePoolKeyLib.DEFAULT_TICK_SPACING,
-            hooks: IHooks(address(hook))
-        });
-    }
-
-    function _canonicalHookPoolKey(Currency currency0, Currency currency1) internal view returns (PoolKey memory) {
-        if (Currency.unwrap(currency0) < Currency.unwrap(currency1)) {
-            return _hookPoolKey(currency0, currency1);
-        }
-        return _hookPoolKey(currency1, currency0);
+        return MemeversePoolKeyLib.hookPoolKey(Currency.unwrap(currency0), Currency.unwrap(currency1), address(hook));
     }
 
     function _normalizePairAmounts(Currency currencyA, Currency currencyB, uint256 amountA, uint256 amountB)

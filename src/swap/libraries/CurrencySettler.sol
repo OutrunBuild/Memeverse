@@ -15,40 +15,34 @@ library CurrencySettler {
     error ERC20TransferFailed(address manager, uint256 amount);
     error ZeroAddress();
 
-    /// @notice Settles an amount owed to the PoolManager.
+    /// @notice Settles an amount owed to the PoolManager via an ERC20 transfer (Memeverse pools are ERC20-only).
     /// @param currency The currency being settled.
     /// @param manager The pool manager receiving settlement.
     /// @param payer The address paying the amount.
     /// @param amount The amount to settle.
-    /// @param burn If true, burns ERC-6909 balance instead of transferring ERC20/native.
-    function settle(Currency currency, IPoolManager manager, address payer, uint256 amount, bool burn) internal {
-        if (burn) {
-            manager.burn(payer, currency.toId(), amount);
+    function settle(Currency currency, IPoolManager manager, address payer, uint256 amount) internal {
+        manager.sync(currency);
+        if (payer != address(this)) {
+            require(
+                IERC20Minimal(Currency.unwrap(currency)).transferFrom(payer, address(manager), amount),
+                ERC20TransferFromFailed(payer, address(manager), amount)
+            );
         } else {
-            manager.sync(currency);
-            if (payer != address(this)) {
-                require(
-                    IERC20Minimal(Currency.unwrap(currency)).transferFrom(payer, address(manager), amount),
-                    ERC20TransferFromFailed(payer, address(manager), amount)
-                );
-            } else {
-                require(
-                    IERC20Minimal(Currency.unwrap(currency)).transfer(address(manager), amount),
-                    ERC20TransferFailed(address(manager), amount)
-                );
-            }
-            manager.settle();
+            require(
+                IERC20Minimal(Currency.unwrap(currency)).transfer(address(manager), amount),
+                ERC20TransferFailed(address(manager), amount)
+            );
         }
+        manager.settle();
     }
 
-    /// @notice Takes an amount owed from the PoolManager.
+    /// @notice Takes an amount owed from the PoolManager (transfers out the underlying ERC20 currency).
     /// @param currency The currency being taken.
     /// @param manager The pool manager paying out.
     /// @param recipient The address receiving the payout.
     /// @param amount The amount to receive.
-    /// @param claims If true, mints ERC-6909 claim tokens instead of transferring out underlying currency.
-    function take(Currency currency, IPoolManager manager, address recipient, uint256 amount, bool claims) internal {
-        claims ? manager.mint(recipient, currency.toId(), amount) : manager.take(currency, recipient, amount);
+    function take(Currency currency, IPoolManager manager, address recipient, uint256 amount) internal {
+        manager.take(currency, recipient, amount);
     }
 
     /// @notice Transfers ERC20 `currency` to `to`, reverting on zero-address recipient or transfer failure.

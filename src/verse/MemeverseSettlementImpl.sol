@@ -257,7 +257,8 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         }
         if (fees.polFee != 0) IPol(verse.pol).burn(address(this), fees.polFee);
 
-        (govFee, executorReward) = _splitExecutorReward(fees.uAssetFee);
+        (govFee, executorReward) =
+            MemeverseLauncherLib.splitExecutorReward(fees.uAssetFee, memeverseLauncherStorage.executorRewardRate);
         // Anyone can execute fee redemption; only the uAsset-side fee is split with the caller as an execution incentive.
         if (executorReward != 0) _transferOut(verse.uAsset, rewardReceiver, executorReward);
 
@@ -423,7 +424,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         SendParam memory sendUAssetParam;
         MessagingFee memory govMessagingFee;
         if (govFee != 0) {
-            (sendUAssetParam, govMessagingFee) = _buildSendParamAndMessagingFee(
+            (sendUAssetParam, govMessagingFee) = MemeverseLauncherLib.buildSendParamAndMessagingFee(
                 govEndpointId,
                 govFee,
                 verse.uAsset,
@@ -437,7 +438,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         SendParam memory sendMemecoinParam;
         MessagingFee memory memecoinMessagingFee;
         if (memecoinFee != 0) {
-            (sendMemecoinParam, memecoinMessagingFee) = _buildSendParamAndMessagingFee(
+            (sendMemecoinParam, memecoinMessagingFee) = MemeverseLauncherLib.buildSendParamAndMessagingFee(
                 govEndpointId,
                 memecoinFee,
                 verse.memecoin,
@@ -475,26 +476,6 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
     function _requireNonZeroDelivery(address token, SendParam memory sendParam) internal view {
         (,, OFTReceipt memory receipt) = IOFT(token).quoteOFT(sendParam);
         require(receipt.amountReceivedLD != 0, ICrossChainSendErrors.DustAmount());
-    }
-
-    // Shared via MemeverseLauncherLib.splitExecutorReward; the reader uses the same lib helper.
-    function _splitExecutorReward(uint256 uAssetFee) internal view returns (uint256 govFee, uint256 executorReward) {
-        return MemeverseLauncherLib.splitExecutorReward(uAssetFee, memeverseLauncherStorage.executorRewardRate);
-    }
-
-    // Shared via MemeverseLauncherLib.buildSendParamAndMessagingFee; the reader uses the same lib helper.
-    function _buildSendParamAndMessagingFee(
-        uint32 govEndpointId,
-        uint256 amount,
-        address token,
-        address receiver,
-        IMemeverseOFTEnum.TokenType tokenType,
-        bytes memory yieldDispatcherOptions,
-        address yieldDispatcher
-    ) internal view returns (SendParam memory sendParam, MessagingFee memory messagingFee) {
-        return MemeverseLauncherLib.buildSendParamAndMessagingFee(
-                govEndpointId, amount, token, receiver, tokenType, yieldDispatcherOptions, yieldDispatcher
-            );
     }
 
     function _captureLockedAuxiliaryFees(
@@ -580,15 +561,6 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         PoolKey memory key = MemeversePoolKeyLib.hookPoolKey(tokenA, tokenB, _hook);
         (uint256 fee0, uint256 fee1) = IMemeverseUniswapHook(_hook)
             .claimFeesCore(IMemeverseUniswapHook.ClaimFeesCoreParams({key: key, recipient: address(this)}));
-        return _mapPairFees(tokenA, tokenB, fee0, fee1);
-    }
-
-    // Shared via MemeverseLauncherLib.mapPairFees; the reader uses the same lib helper.
-    function _mapPairFees(address tokenA, address tokenB, uint256 fee0, uint256 fee1)
-        internal
-        pure
-        returns (uint256 tokenAFee, uint256 tokenBFee)
-    {
         return MemeverseLauncherLib.mapPairFees(tokenA, tokenB, fee0, fee1);
     }
 

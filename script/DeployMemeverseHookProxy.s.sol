@@ -8,7 +8,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "@uniswap/v4-periphery/src/base/ImmutableState.sol";
 
 import {BaseScript} from "./BaseScript.s.sol";
-import {IOutrunDeployer} from "./IOutrunDeployer.sol";
+import {IOutrunDeployer} from "./deployment/interfaces/IOutrunDeployer.sol";
 import {MemeverseUniswapHookUpgradeable} from "../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {SwapFacet} from "../src/swap/SwapFacet.sol";
 import {DynamicFeeFacet} from "../src/swap/DynamicFeeFacet.sol";

@@ -872,13 +872,14 @@ cast send $CREDIT_ADDR "setPeer(uint32,bytes32)" $REMOTE_EID \
 - 部署链必须支持 **Cancun 硬分叉（EIP-1153 transient storage）** 或更新版本（Prague）。`[代码已证]`
 - 编译目标：`foundry.toml` 中 `evm_version = "prague"`，`pragma solidity ^0.8.35`。编译器对 `transient` 关键字生成 `tload`/`tstore` 操作码，部署到 pre-Cancun 链上将导致所有涉及 `nonReentrant` 修饰符的函数直接 `invalid opcode` 回退。`[代码已证]`
 - 受影响合约及使用点：
-  - `ReentrancyGuard.nonReentrant`（`src/common/access/ReentrancyGuard.sol`：`bool private transient locked`）
+  - `ReentrancyGuardTransient.nonReentrant`（`ReentrancyGuardTransient.sol`：ERC-7201 namespaced transient boolean slot）
   - `TokenHelper._transferOut`（`src/common/token/TokenHelper.sol::_transferOut`）
   - `MemeverseLauncherUpgradeable` 继承 `TokenHelper`（`src/verse/MemeverseLauncherUpgradeable.sol`）
-  - `POLendUpgradeable` 直接继承 `ReentrancyGuard`（`src/polend/POLendUpgradeable.sol`）
-  - `POLSplitterUpgradeable` 直接继承 `ReentrancyGuard`（`src/polend/POLSplitterUpgradeable.sol`）
-  - `MemeverseUniswapHookUpgradeable` 直接继承 `ReentrancyGuard`（`src/swap/MemeverseUniswapHookUpgradeable.sol`）
-- 行业对齐：OpenZeppelin v5.5+ 的 `ReentrancyGuardTransient` 同样声明 "This variant only works on networks where EIP-1153 is available"，v6.0 将把 transient 实现作为唯一 `ReentrancyGuard` 实现。本项目的自研 `ReentrancyGuard` 与 OZ 方向一致。`[代码已证]`
+  - `POLendUpgradeable` 直接继承 `ReentrancyGuardTransient`（`src/polend/POLendUpgradeable.sol`）
+  - `POLSplitterUpgradeable` 直接继承 `ReentrancyGuardTransient`（`src/polend/POLSplitterUpgradeable.sol`）
+  - `MemeverseUniswapHookUpgradeable` 直接继承 `ReentrancyGuardTransient`（`src/swap/MemeverseUniswapHookUpgradeable.sol`）
+  - `MemeverseYTFlashSwapRouter` 直接继承 `ReentrancyGuardTransient`（`src/swap/MemeverseYTFlashSwapRouter.sol`，`swapPOLForExactYT` / `swapExactYTForPOL` 入口 `nonReentrant`）
+- 行业对齐：项目现已直接采用 OpenZeppelin v5.5+ 的 `ReentrancyGuardTransient`（`ReentrancyGuardTransient.sol`）作为统一重入保护，自研 `ReentrancyGuard` 已移除；OZ 同样声明 "This variant only works on networks where EIP-1153 is available"。`[代码已证]`
 - `[未知]` 不在此文档范围内的目标链 Cancun 支持状态，需由部署方在部署前确认。
 
 ## 7. 确定性边界

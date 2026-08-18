@@ -813,7 +813,6 @@
         "enforcement": "residual-risk",
         "id": "common-foundations",
         "paths": [
-          "src/common/access/ReentrancyGuard.sol",
           "src/common/interfaces/IBurnable.sol",
           "src/common/omnichain/oapp/OutrunOAppPreCrimeSimulatorInit.sol",
           "src/common/token/TokenHelper.sol"

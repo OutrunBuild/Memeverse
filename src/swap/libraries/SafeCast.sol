@@ -10,14 +10,6 @@ library SafeCast {
 
     error SafeCastOverflow();
 
-    /// @notice Cast a uint256 to a uint160, revert on overflow
-    /// @param x The uint256 to be downcasted
-    /// @return y The downcasted integer, now type uint160
-    function toUint160(uint256 x) internal pure returns (uint160 y) {
-        y = uint160(x);
-        if (y != x) SafeCastOverflow.selector.revertWith();
-    }
-
     /// @notice Cast a uint256 to a uint128, revert on overflow
     /// @param x The uint256 to be downcasted
     /// @return y The downcasted integer, now type uint128
@@ -32,14 +24,6 @@ library SafeCast {
     function toUint128(int128 x) internal pure returns (uint128 y) {
         if (x < 0) SafeCastOverflow.selector.revertWith();
         y = uint128(x);
-    }
-
-    /// @notice Cast a int256 to a int128, revert on overflow or underflow
-    /// @param x The int256 to be downcasted
-    /// @return y The downcasted integer, now type int128
-    function toInt128(int256 x) internal pure returns (int128 y) {
-        y = int128(x);
-        if (y != x) SafeCastOverflow.selector.revertWith();
     }
 
     /// @notice Cast a uint256 to a int256, revert on overflow

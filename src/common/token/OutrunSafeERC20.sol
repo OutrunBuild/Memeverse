@@ -18,7 +18,7 @@ library OutrunSafeERC20 {
      * non-reverting calls are assumed to be successful.
      */
     function safeTransfer(IERC20 token, address to, uint256 value) internal {
-        if (!_safeTransfer(token, to, value, true)) {
+        if (!_safeTransfer(token, to, value)) {
             revert SafeERC20FailedOperation(address(token));
         }
     }
@@ -28,7 +28,7 @@ library OutrunSafeERC20 {
      * calling contract. If `token` returns no value, non-reverting calls are assumed to be successful.
      */
     function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal {
-        if (!_safeTransferFrom(token, from, to, value, true)) {
+        if (!_safeTransferFrom(token, from, to, value)) {
             revert SafeERC20FailedOperation(address(token));
         }
     }
@@ -50,7 +50,7 @@ library OutrunSafeERC20 {
      * @dev Imitates a Solidity `token.transfer(to, value)` call, relaxing the requirement on the return value: the
      * return value is optional (but if data is returned, it must not be false).
      */
-    function _safeTransfer(IERC20 token, address to, uint256 value, bool bubble) private returns (bool success) {
+    function _safeTransfer(IERC20 token, address to, uint256 value) private returns (bool success) {
         bytes4 selector = IERC20.transfer.selector;
 
         assembly ("memory-safe") {
@@ -62,8 +62,8 @@ library OutrunSafeERC20 {
             // if call success and return is true, all is good.
             // otherwise (not success or return is not true), we need to perform further checks
             if iszero(and(success, eq(mload(0x00), 1))) {
-                // if the call was a failure and bubble is enabled, bubble the error
-                if and(iszero(success), bubble) {
+                // if the call was a failure, bubble the error
+                if iszero(success) {
                     returndatacopy(fmp, 0, returndatasize())
                     revert(fmp, returndatasize())
                 }
@@ -80,10 +80,7 @@ library OutrunSafeERC20 {
      * @dev Imitates a Solidity `token.transferFrom(from, to, value)` call, relaxing the requirement on the return
      * value: the return value is optional (but if data is returned, it must not be false).
      */
-    function _safeTransferFrom(IERC20 token, address from, address to, uint256 value, bool bubble)
-        private
-        returns (bool success)
-    {
+    function _safeTransferFrom(IERC20 token, address from, address to, uint256 value) private returns (bool success) {
         bytes4 selector = IERC20.transferFrom.selector;
 
         assembly ("memory-safe") {
@@ -96,8 +93,8 @@ library OutrunSafeERC20 {
             // if call success and return is true, all is good.
             // otherwise (not success or return is not true), we need to perform further checks
             if iszero(and(success, eq(mload(0x00), 1))) {
-                // if the call was a failure and bubble is enabled, bubble the error
-                if and(iszero(success), bubble) {
+                // if the call was a failure, bubble the error
+                if iszero(success) {
                     returndatacopy(fmp, 0, returndatasize())
                     revert(fmp, returndatasize())
                 }

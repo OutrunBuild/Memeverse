@@ -5,15 +5,11 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 /// @notice Minimal PoolManager stand-in exposing only the surface CurrencySettler may call.
 contract MockPoolManager {
-    function burn(address, uint256, uint256) external {}
-
     function settle() external payable {}
 
     function sync(Currency) external {}
 
     function take(Currency, address, uint256) external {}
-
-    function mint(address, uint256, uint256) external {}
 }
 
 /// @notice Token whose transferFrom always fails, used to assert revert bubbling.

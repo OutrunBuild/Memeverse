@@ -7,9 +7,9 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
-import {ReentrancyGuard} from "../common/access/ReentrancyGuard.sol";
 import {IPOLend} from "./interfaces/IPOLend.sol";
 import {IPOLSplitter} from "./interfaces/IPOLSplitter.sol";
 import {IUniversalAssets} from "./interfaces/IUniversalAssets.sol";
@@ -27,7 +27,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
     OutrunOwnableUpgradeable,
     UUPSUpgradeable,
     PausableUpgradeable,
-    ReentrancyGuard,
+    ReentrancyGuardTransient,
     IPOLend
 {
     using OutrunSafeERC20 for IERC20;

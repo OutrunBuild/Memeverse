@@ -19,7 +19,7 @@ import {MemeverseLauncherLib} from "./libraries/MemeverseLauncherLib.sol";
 
 /**
  * @title MemeverseLauncherUpgradeable
- * @dev Reentrancy strategy: this contract inherits `ReentrancyGuard` via `TokenHelper` and applies
+ * @dev Reentrancy strategy: this contract inherits `ReentrancyGuardTransient` via `TokenHelper` and applies
  *      `nonReentrant` on `_transferOut` — the single exit point for all outbound token transfers.
  *      Public entry-point functions intentionally omit `nonReentrant` to avoid double-locking with
  *      the boolean-based guard. The exception is `changeStage`, which omits it because the
@@ -85,36 +85,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         require(preorderCapRatio_ <= BPS_BASE, FeeRateOverFlow());
         require(executorRewardRate_ < BPS_BASE, FeeRateOverFlow());
 
-        _storeInitializedConfig(
-            localLzEndpoint_,
-            memeverseRegistrar_,
-            memeverseProxyDeployer_,
-            yieldDispatcher_,
-            lzEndpointRegistry_,
-            polend_,
-            polSplitter_,
-            executorRewardRate_,
-            oftReceiveGasLimit_,
-            yieldDispatcherGasLimit_,
-            preorderCapRatio_,
-            preorderVestingDuration_
-        );
-    }
-
-    function _storeInitializedConfig(
-        address localLzEndpoint_,
-        address memeverseRegistrar_,
-        address memeverseProxyDeployer_,
-        address yieldDispatcher_,
-        address lzEndpointRegistry_,
-        address polend_,
-        address polSplitter_,
-        uint256 executorRewardRate_,
-        uint128 oftReceiveGasLimit_,
-        uint128 yieldDispatcherGasLimit_,
-        uint256 preorderCapRatio_,
-        uint256 preorderVestingDuration_
-    ) internal {
         memeverseLauncherStorage.localLzEndpoint = localLzEndpoint_;
         memeverseLauncherStorage.memeverseRegistrar = memeverseRegistrar_;
         memeverseLauncherStorage.memeverseProxyDeployer = memeverseProxyDeployer_;

@@ -85,7 +85,7 @@
 
 - 约束：Router 构造的池 key 固定 `LPFeeLibrary.DYNAMIC_FEE_FLAG` 与 `tickSpacing=200`；Hook 初始化也要求同样约束。`[代码已证]`
 - 价值：防止同一对资产被错误路由到非预期费率池。
-- 主要锚点：`src/swap/MemeverseSwapRouter.sol::_hookPoolKey`，`src/swap/SwapFacet.sol::beforeInitializeLogic`
+- 主要锚点：`src/swap/libraries/MemeversePoolKeyLib.sol::hookPoolKey`，`src/swap/SwapFacet.sol::beforeInitializeLogic`
 
 ### INV-09 代币增发权限集中在 Launcher
 

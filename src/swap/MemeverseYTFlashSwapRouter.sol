@@ -6,8 +6,8 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SafeCallback} from "@uniswap/v4-periphery/src/base/SafeCallback.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
-import {ReentrancyGuard} from "../common/access/ReentrancyGuard.sol";
 import {IMemeverseLauncher} from "../verse/interfaces/IMemeverseLauncher.sol";
 import {IPOLSplitter} from "../polend/interfaces/IPOLSplitter.sol";
 import {IMemeverseUniswapHook} from "./interfaces/IMemeverseUniswapHook.sol";
@@ -27,7 +27,7 @@ import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
 ///      replayed, tampered, or double callbacks revert before settlement. The buy settlement body executes the real
 ///      POL -> YT fund flow and the sell settlement body executes the real exact YT -> POL flash merge fund flow, each
 ///      in a single `PoolManager.unlock`.
-contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverseYTFlashSwapRouter {
+contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuardTransient, IMemeverseYTFlashSwapRouter {
     using CurrencySettler for Currency;
     using OutrunSafeERC20 for IERC20;
 
@@ -220,7 +220,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         if (r == 0 || r >= c.ytAmount) revert InvalidBuyCost(r, c.ytAmount);
         uint256 cost = c.ytAmount - r;
         if (cost > c.polLimit) revert MaxPOLInExceeded(cost, c.polLimit);
-        Currency.wrap(c.pol).take(poolManager, address(this), r, false);
+        Currency.wrap(c.pol).take(poolManager, address(this), r);
         // slither-disable-next-line arbitrary-send-erc20
         IERC20(c.pol).safeTransferFrom(c.payer, address(this), cost);
         _approveExactly(IERC20(c.pol), address(splitter), c.ytAmount);
@@ -230,7 +230,7 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         if (ptMinted != c.ytAmount || ytMinted != c.ytAmount) {
             revert SplitResultMismatch(ptMinted, ytMinted, c.ytAmount);
         }
-        Currency.wrap(c.pt).settle(poolManager, address(this), c.ytAmount, false);
+        Currency.wrap(c.pt).settle(poolManager, address(this), c.ytAmount);
         IERC20(c.yt).safeTransfer(c.recipient, c.ytAmount);
         return abi.encode(cost);
     }
@@ -295,12 +295,12 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuard, IMemeverse
         // `polOut >= minPOLOut` must be enforced before any take, payer pull, or merge so a failing sell
         // never moves funds.
         if (out < c.polLimit) revert MinPOLOutNotMet(out, c.polLimit);
-        Currency.wrap(c.pt).take(poolManager, address(this), c.ytAmount, false);
+        Currency.wrap(c.pt).take(poolManager, address(this), c.ytAmount);
         // slither-disable-next-line arbitrary-send-erc20
         IERC20(c.yt).safeTransferFrom(c.payer, address(this), c.ytAmount);
         uint256 merged = splitter.merge(c.verseId, c.ytAmount);
         if (merged != c.ytAmount) revert MergeResultMismatch(merged, c.ytAmount);
-        Currency.wrap(c.pol).settle(poolManager, address(this), q, false);
+        Currency.wrap(c.pol).settle(poolManager, address(this), q);
         IERC20(c.pol).safeTransfer(c.recipient, out);
         return abi.encode(out);
     }

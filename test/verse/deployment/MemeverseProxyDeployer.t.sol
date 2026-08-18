@@ -8,7 +8,7 @@ import {CREATE3} from "solmate/utils/CREATE3.sol";
 
 import {MemeverseProxyDeployer} from "../../../src/verse/deployment/MemeverseProxyDeployer.sol";
 import {IMemeverseProxyDeployer} from "../../../src/verse/interfaces/IMemeverseProxyDeployer.sol";
-import {IOutrunDeployer} from "../../../script/IOutrunDeployer.sol";
+import {IOutrunDeployer} from "../../../script/deployment/interfaces/IOutrunDeployer.sol";
 import {MemeverseScript} from "../../../script/MemeverseScript.s.sol";
 import {MemeverseUniswapHookLens} from "../../../src/swap/MemeverseUniswapHookLens.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";

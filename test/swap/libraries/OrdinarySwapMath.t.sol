@@ -328,7 +328,11 @@ contract OrdinarySwapMathTest is Test {
             knownProtocolInputFee: 0
         });
         OrdinarySwapMath.revertIfFinalTargetIsNotExecutable(
-            -int256(internalCapacity.inputCapacity), exactInputAtInternal, internalCapacity
+            ACTIVE_LIQUIDITY,
+            SQRT_PRICE_1_1,
+            -int256(internalCapacity.inputCapacity),
+            exactInputAtInternal,
+            internalCapacity
         );
 
         OrdinarySwapMath.CapacityResult memory endpointCapacity =
@@ -341,7 +345,11 @@ contract OrdinarySwapMathTest is Test {
         });
         vm.expectRevert(OrdinarySwapMath.FinalTargetNotExecutable.selector);
         this.exposedRevertIfFinalTargetIsNotExecutable(
-            -int256(endpointCapacity.inputCapacity), exactInputAtEndpoint, endpointCapacity
+            ACTIVE_LIQUIDITY,
+            SQRT_PRICE_1_1,
+            -int256(endpointCapacity.inputCapacity),
+            exactInputAtEndpoint,
+            endpointCapacity
         );
 
         OrdinarySwapMath.SettlementPlan memory exactOutputAtEndpoint = OrdinarySwapMath.SettlementPlan({
@@ -352,7 +360,11 @@ contract OrdinarySwapMathTest is Test {
         });
         vm.expectRevert(OrdinarySwapMath.FinalTargetNotExecutable.selector);
         this.exposedRevertIfFinalTargetIsNotExecutable(
-            int256(endpointCapacity.outputCapacity), exactOutputAtEndpoint, endpointCapacity
+            ACTIVE_LIQUIDITY,
+            SQRT_PRICE_1_1,
+            int256(endpointCapacity.outputCapacity),
+            exactOutputAtEndpoint,
+            endpointCapacity
         );
     }
 
@@ -560,11 +572,15 @@ contract OrdinarySwapMathTest is Test {
     }
 
     function exposedRevertIfFinalTargetIsNotExecutable(
+        uint128 activeLiquidity,
+        uint160 preSqrtPriceX96,
         int256 amountSpecified,
         OrdinarySwapMath.SettlementPlan memory settlementPlan,
         OrdinarySwapMath.CapacityResult memory capacityResult
     ) external pure {
-        OrdinarySwapMath.revertIfFinalTargetIsNotExecutable(amountSpecified, settlementPlan, capacityResult);
+        OrdinarySwapMath.revertIfFinalTargetIsNotExecutable(
+            activeLiquidity, preSqrtPriceX96, amountSpecified, settlementPlan, capacityResult
+        );
     }
 
     function exposedCalculateFinalQuoteCurve(

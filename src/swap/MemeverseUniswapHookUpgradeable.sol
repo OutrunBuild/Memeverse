@@ -4,9 +4,9 @@ pragma solidity ^0.8.35;
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {IPoolManager, SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -24,7 +24,6 @@ import {LiquidityQuote} from "./libraries/LiquidityQuote.sol";
 import {MemeversePoolKeyLib} from "./libraries/MemeversePoolKeyLib.sol";
 import {MemeverseTransientState} from "./libraries/MemeverseTransientState.sol";
 import {UniswapLP} from "./tokens/UniswapLP.sol";
-import {ReentrancyGuard} from "../common/access/ReentrancyGuard.sol";
 import {IDynamicFeeFacet} from "./interfaces/IDynamicFeeFacet.sol";
 import {ISwapFacet} from "./interfaces/ISwapFacet.sol";
 import {ISettlementFacet} from "./interfaces/ISettlementFacet.sol";
@@ -65,7 +64,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     IMemeverseUniswapHook,
     IUnlockCallback,
     ImmutableState,
-    ReentrancyGuard,
+    ReentrancyGuardTransient,
     Initializable,
     OutrunOwnableUpgradeable,
     UUPSUpgradeable
@@ -73,7 +72,6 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     using CurrencySettler for Currency;
     using StateLibrary for IPoolManager;
     using SafeCast for uint256;
-    using SafeCast for int256;
     using SafeCast for int128;
 
     /// @notice Role discriminator for the swap callback facet (`beforeSwap` / `afterSwap` /
@@ -549,7 +547,14 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         returns (uint128 liquidity, BalanceDelta addedDelta)
     {
         if (params.to == address(0)) revert ZeroAddress();
-        PoolKey memory key = _poolKey(params.currency0, params.currency1);
+        SwapGuardMath.revertIfNativeCurrencyUnsupported(params.currency0, params.currency1);
+        // Out-of-order currencies must not be silently re-sorted into the canonical pool (this core API
+        // trusts the caller's ordering): previously the unsorted key mapped to a nonexistent poolId that
+        // reverted `PoolNotInitialized` below, so keep failing closed with the same error here.
+        if (Currency.unwrap(params.currency0) > Currency.unwrap(params.currency1)) revert PoolNotInitialized();
+        PoolKey memory key = MemeversePoolKeyLib.hookPoolKey(
+            Currency.unwrap(params.currency0), Currency.unwrap(params.currency1), address(this)
+        );
         PoolId poolId = key.toId();
 
         // Hold the per-pool swap-lifecycle lock across the snapshot -> settle -> mint window: a callback
@@ -618,7 +623,14 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
 
     function _removeLiquidityCore(RemoveLiquidityCoreParams memory params) internal returns (BalanceDelta delta) {
         if (params.recipient == address(0)) revert ZeroAddress();
-        PoolKey memory key = _poolKey(params.currency0, params.currency1);
+        SwapGuardMath.revertIfNativeCurrencyUnsupported(params.currency0, params.currency1);
+        // Out-of-order currencies must not be silently re-sorted into the canonical pool (this core API
+        // trusts the caller's ordering): previously the unsorted key mapped to a nonexistent poolId that
+        // reverted `PoolNotInitialized` on the getLiquidity check below, so keep failing closed here.
+        if (Currency.unwrap(params.currency0) > Currency.unwrap(params.currency1)) revert PoolNotInitialized();
+        PoolKey memory key = MemeversePoolKeyLib.hookPoolKey(
+            Currency.unwrap(params.currency0), Currency.unwrap(params.currency1), address(this)
+        );
         PoolId poolId = key.toId();
         if (poolManager.getLiquidity(poolId) == 0) revert PoolNotInitialized();
 
@@ -752,8 +764,8 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
         uint128 amount0 = (-delta.amount0()).toUint128();
         uint128 amount1 = (-delta.amount1()).toUint128();
-        if (amount0 > 0) key.currency0.settle(poolManager, sender, amount0, false);
-        if (amount1 > 0) key.currency1.settle(poolManager, sender, amount1, false);
+        if (amount0 > 0) key.currency0.settle(poolManager, sender, amount0);
+        if (amount1 > 0) key.currency1.settle(poolManager, sender, amount1);
     }
 
     function _takeDeltas(address recipient, PoolKey memory key, BalanceDelta delta) internal {
@@ -791,21 +803,6 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         if (fee0Amount > 0 || fee1Amount > 0) {
             emit FeesClaimed(poolId, feeOwner, key.currency0, key.currency1, fee0Amount, fee1Amount);
         }
-    }
-
-    function _poolKey(Currency currency0, Currency currency1)
-        internal
-        view
-        erc20Pair(currency0, currency1)
-        returns (PoolKey memory key)
-    {
-        key = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
-            tickSpacing: MemeversePoolKeyLib.DEFAULT_TICK_SPACING,
-            hooks: IHooks(address(this))
-        });
     }
 
     function _poolIdForTokens(address tokenA, address tokenB)

@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 
 import {MemeverseScript} from "../../script/MemeverseScript.s.sol";
-import {IOutrunDeployer} from "../../script/IOutrunDeployer.sol";
+import {IOutrunDeployer} from "../../script/deployment/interfaces/IOutrunDeployer.sol";
 import {OutrunDeployer} from "../../script/deployment/OutrunDeployer.sol";
 import {YieldDispatcherUpgradeable} from "../../src/verse/YieldDispatcherUpgradeable.sol";
 import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";

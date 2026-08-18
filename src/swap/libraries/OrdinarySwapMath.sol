@@ -182,7 +182,10 @@ library OrdinarySwapMath {
         );
     }
 
+    /// @dev Replays the fee-free final step against the direction-specific capacity stop before v4 narrows its delta.
     function revertIfFinalTargetIsNotExecutable(
+        uint128 activeLiquidity,
+        uint160 preSqrtPriceX96,
         int256 amountSpecified,
         SettlementPlan memory settlementPlan,
         CapacityResult memory capacityResult
@@ -193,26 +196,15 @@ library OrdinarySwapMath {
         if (target > capacity || (capacityResult.stopsAtFullRangeEndpoint && target == capacity)) {
             revert FinalTargetNotExecutable();
         }
-    }
-
-    /// @dev Replays the fee-free final step against the direction-specific capacity stop before v4 narrows its delta.
-    function revertIfFinalTargetIsNotExecutable(
-        uint128 activeLiquidity,
-        uint160 preSqrtPriceX96,
-        int256 amountSpecified,
-        SettlementPlan memory settlementPlan,
-        CapacityResult memory capacityResult
-    ) internal pure {
-        revertIfFinalTargetIsNotExecutable(amountSpecified, settlementPlan, capacityResult);
-        if (amountSpecified == 0 || !capacityResult.stopsAtFullRangeEndpoint) return;
+        if (!capacityResult.stopsAtFullRangeEndpoint) return;
 
         uint256 finalTarget = amountSpecified < 0 ? settlementPlan.coreInputTarget : settlementPlan.coreOutputTarget;
         int256 amountRemaining = amountSpecified < 0 ? -int256(finalTarget) : int256(finalTarget);
         (uint160 postSqrtPriceX96,,,) = SwapMath.computeSwapStep(
             preSqrtPriceX96, capacityResult.effectiveSqrtPriceStopX96, activeLiquidity, amountRemaining, 0
         );
-        // Line 188 already established capacityResult.stopsAtFullRangeEndpoint == true on this path,
-        // so only the post-swap price check remains.
+        // The target/capacity gate above already established capacityResult.stopsAtFullRangeEndpoint == true
+        // on this path, so only the post-swap price check remains.
         if (postSqrtPriceX96 == capacityResult.effectiveSqrtPriceStopX96) {
             revert FinalTargetNotExecutable();
         }

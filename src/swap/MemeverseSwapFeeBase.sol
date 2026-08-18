@@ -98,15 +98,4 @@ abstract contract MemeverseSwapFeeBase is FacetGuard {
             _isProtocolFeeCurrencySupported(ctx.currencyIn) || !_isProtocolFeeCurrencySupported(ctx.currencyOut);
         ctx.inputIsCurrency0 = zeroForOne;
     }
-
-    /// @dev Computes the exact-input LP and input-side protocol fees for fixed/preorder `SettlementFacet`.
-    function _exactInputFeeAmounts(
-        uint256 grossAmount,
-        uint256 lpFeeBps,
-        uint256 protocolFeeBps,
-        bool protocolFeeOnInput
-    ) internal pure returns (uint256 lpFeeInputAmount, uint256 protocolFeeInputAmount) {
-        lpFeeInputAmount = FeeMath.feeOnAmount(grossAmount, lpFeeBps);
-        protocolFeeInputAmount = protocolFeeOnInput ? FeeMath.feeOnAmount(grossAmount, protocolFeeBps) : 0;
-    }
 }

@@ -11,7 +11,7 @@ import {IOmnichainMemecoinStaker} from "../../src/interoperation/interfaces/IOmn
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
 import {IMemecoinYieldVault} from "../../src/yield/interfaces/IMemecoinYieldVault.sol";
 import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
-import {ReentrancyGuard} from "../../src/common/access/ReentrancyGuard.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
 import {OmnichainMemecoinStakerUpgradeableV2} from "../mocks/upgrade/OmnichainMemecoinStakerUpgradeableV2.sol";
 import {
@@ -1241,7 +1241,7 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
         // The outer settle enters `_transferOut` (lock acquired), the malicious token reenters `settlePendingCompose`,
         // which reaches its own `_transferOut` while the lock is still held -> ReentrancyGuardReentrantCall.
         vm.prank(address(attackerToken));
-        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
+        vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
         staker.settlePendingCompose(address(attackerToken), outerGuid, outerMessage);
 
         // Neither guid was resolved (the whole outer call reverted, rolling back the Released write).

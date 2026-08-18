@@ -636,8 +636,9 @@ contract MemecoinYieldVaultTest is Test {
     /// @dev Pins the documented class claim (see the reAccumulateYields comment): a recovery caller
     ///      who mistakes the dispatcher for an EOA/empty contract gets EMPTY revert data, not any named error —
     ///      the sibling of the dirty-high-bits class above. `ComposeSettlementFailed` is only reachable when the
-    ///      dispatcher HAS code and returns a zero amount. vm.expectRevert(bytes("")) is exact for empty revert
-    ///      data in this Foundry version (a named error fails the expectation), so the form is load-bearing.
+    ///      dispatcher HAS code and returns a zero amount. The assertion accepts only the two serializations of
+    ///      that empty revert observable in this Foundry version — raw empty data, and the RevertDiagnostic
+    ///      rewrite forge applies when traces are enabled (-vvv+) — so a named error still fails the test.
     function testReAccumulateYieldsNoCodeDispatcherRevertsOpaque() external {
         MockComposeAsset composeAsset = new MockComposeAsset();
         (MemecoinYieldVault composeVault,,) = _deployComposeVaultWithDispatcher(address(composeAsset));
@@ -648,8 +649,23 @@ contract MemecoinYieldVaultTest is Test {
         // The vault gates pass (message is well-formed), then the high-level call to the code-less address
         // succeeds with empty returndata and the strict decode of the uint256 return reverts with EMPTY revert
         // data — pinning that this class does NOT revert ComposeSettlementFailed (or any named error).
-        vm.expectRevert(bytes(""));
-        composeVault.reAccumulateYields(address(0xE0A), guid, message);
+        // forge 1.7.1's RevertDiagnostic inspector rewrites that empty revert into the bare string
+        // "call to non-contract address <addr>" — emitted as abi.encode(string), WITHOUT an Error(string)
+        // selector — whenever traces are enabled (-vvv and above), so accept both representations of the
+        // same on-chain empty revert; any named error still fails the assert.
+        address noCodeDispatcher = address(0xE0A);
+        try composeVault.reAccumulateYields(noCodeDispatcher, guid, message) {
+            revert("expected revert");
+        } catch (bytes memory reason) {
+            assertTrue(
+                reason.length == 0
+                    || keccak256(reason)
+                        == keccak256(
+                            abi.encode(string.concat("call to non-contract address ", vm.toString(noCodeDispatcher)))
+                        ),
+                "unexpected revert reason"
+            );
+        }
     }
 
     /// @notice A zero-amount 120-byte frame reverts `ZeroInput` before the tuple-shape guard runs.

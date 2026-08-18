@@ -184,8 +184,11 @@ abstract contract RealisticSwapIntegrationBase is Test, HookStorageHelper {
         treasury = makeAddr("treasury");
         alice = vm.addr(ALICE_PK);
 
-        token0 = new MockERC20("Token0", "TK0", 18);
-        token1 = new MockERC20("Token1", "TK1", 18);
+        MockERC20 tokenA = new MockERC20("Token0", "TK0", 18);
+        MockERC20 tokenB = new MockERC20("Token1", "TK1", 18);
+        // `token0` and `token1` mean Uniswap currency order here, not deployment order.
+        // Proxy deployment changes can move token addresses, so sort once before building the PoolKey.
+        (token0, token1) = address(tokenA) < address(tokenB) ? (tokenA, tokenB) : (tokenB, tokenA);
         token0.mint(address(this), 1_000_000 ether);
         token1.mint(address(this), 1_000_000 ether);
         token0.mint(alice, 1_000_000 ether);

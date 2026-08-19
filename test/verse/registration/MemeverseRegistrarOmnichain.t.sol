@@ -13,6 +13,7 @@ import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOApp
 import {OAppReceiver} from "@layerzerolabs/oapp-evm/contracts/oapp/OAppReceiver.sol";
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 
+import {MemeverseRegistrarAbstract} from "../../../src/verse/registration/MemeverseRegistrarAbstract.sol";
 import {MemeverseRegistrarOmnichain} from "../../../src/verse/registration/MemeverseRegistrarOmnichain.sol";
 import {IMemeverseRegistrar} from "../../../src/verse/interfaces/IMemeverseRegistrar.sol";
 import {IMemeverseRegistrarOmnichain} from "../../../src/verse/interfaces/IMemeverseRegistrarOmnichain.sol";
@@ -307,6 +308,15 @@ contract MemeverseRegistrarOmnichainTest is Test {
             abi.encodeWithSelector(IOAppCore.OnlyPeer.selector, CENTER_EID, bytes32(uint256(uint160(OTHER))))
         );
         registrar.lzReceive(origin, bytes32("guid"), abi.encode(param), address(0), "");
+    }
+
+    /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
+    /// @dev The error is declared on the shared `MemeverseRegistrarAbstract` base, hence the
+    ///      base-qualified selector.
+    function testRenounceOwnershipIsDisabled() external {
+        vm.prank(OWNER);
+        vm.expectRevert(MemeverseRegistrarAbstract.OwnershipRenounceDisabled.selector);
+        registrar.renounceOwnership();
     }
 
     function _registrationParam() internal view returns (IMemeverseRegistrationCenter.RegistrationParam memory param) {

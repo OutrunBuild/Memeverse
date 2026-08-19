@@ -31,6 +31,10 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
     /// @notice Amount already claimed by each user; non-zero guards double claims.
     mapping(address => uint256) public claimed;
 
+    /// @notice Reverts when ownership renunciation is attempted.
+    /// @dev Repo invariant: ownership is never renounceable.
+    error OwnershipRenounceDisabled();
+
     /// @notice Constructs a plain GenesisCredit OFT instance.
     /// @dev The home-chain eid is immutable so a deployment cannot be repurposed to mint on a
     ///      foreign chain. ERC-20 metadata and the LayerZero endpoint/delegate are forwarded to
@@ -105,6 +109,14 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
     function burn(uint256 amount) external override {
         require(amount != 0, ZeroInput());
         _burn(msg.sender, amount);
+    }
+
+    /// @notice Ownership renunciation is permanently disabled.
+    /// @dev The OZ `Ownable` base (inherited through the OFT stack) exposes `renounceOwnership`;
+    ///      this override makes it always revert, keeping the repo-wide never-renounceable
+    ///      ownership invariant.
+    function renounceOwnership() public override {
+        revert OwnershipRenounceDisabled();
     }
 
     /// @dev Bridges IGenesisCredit.paused() to OZ Pausable's getter. Both an interface branch and

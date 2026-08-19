@@ -190,4 +190,11 @@ contract GenesisCreditFactoryTest is Test {
         GenesisCredit otherCredit = GenesisCredit(otherDeployed);
         assertEq(otherCredit.balanceOf(alice), 0, "sibling instance must be isolated");
     }
+
+    /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
+    /// @dev The test contract itself is the factory owner (see setUp), so no prank is needed.
+    function testRenounceOwnershipIsDisabled() public {
+        vm.expectRevert(GenesisCreditFactory.OwnershipRenounceDisabled.selector);
+        factory.renounceOwnership();
+    }
 }

@@ -11,6 +11,10 @@ import {ILzEndpointRegistry} from "./interfaces/ILzEndpointRegistry.sol";
 contract LzEndpointRegistry is ILzEndpointRegistry, Ownable {
     mapping(uint32 chainId => uint32) public lzEndpointIdOfChain;
 
+    /// @notice Reverts when ownership renunciation is attempted.
+    /// @dev Repo invariant: ownership is never renounceable.
+    error OwnershipRenounceDisabled();
+
     constructor(address _owner) Ownable(_owner) {}
 
     /// @notice Batch-updates chain-to-endpoint mappings.
@@ -44,5 +48,12 @@ contract LzEndpointRegistry is ILzEndpointRegistry, Ownable {
         }
 
         emit SetLzEndpointIds(pairs);
+    }
+
+    /// @notice Ownership renunciation is permanently disabled.
+    /// @dev The OZ `Ownable` base exposes `renounceOwnership`; this override makes it always revert,
+    ///      keeping the repo-wide never-renounceable ownership invariant.
+    function renounceOwnership() public override {
+        revert OwnershipRenounceDisabled();
     }
 }

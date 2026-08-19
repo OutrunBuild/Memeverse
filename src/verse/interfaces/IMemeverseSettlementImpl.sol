@@ -32,7 +32,8 @@ interface IMemeverseSettlementImpl {
     ///      is the original caller (fee recipient) and `address(this)` is the launcher proxy.
     /// @param verseId Memeverse id.
     /// @return uAssetAmount The claimed uAsset fee amount.
-    /// @return ptAmount The claimed PT fee amount (zero when redeemed to uAsset in place).
+    /// @return ptAmount The PT fee amount: transferred PT, or zero when redeemed to uAsset in place;
+    ///      on the settled zero-backing dust path it reports the still-pending PT entitlement.
     function claimNormalFees(uint256 verseId) external returns (uint256 uAssetAmount, uint256 ptAmount);
 
     /// @notice Claim the caller's currently vested unlocked preorder memecoin.

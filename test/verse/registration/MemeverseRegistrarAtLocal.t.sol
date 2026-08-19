@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
+import {MemeverseRegistrarAbstract} from "../../../src/verse/registration/MemeverseRegistrarAbstract.sol";
 import {MemeverseRegistrarAtLocal} from "../../../src/verse/registration/MemeverseRegistrarAtLocal.sol";
 import {IMemeverseRegistrar} from "../../../src/verse/interfaces/IMemeverseRegistrar.sol";
 import {IMemeverseRegistrarAtLocal} from "../../../src/verse/interfaces/IMemeverseRegistrarAtLocal.sol";
@@ -305,6 +306,15 @@ contract MemeverseRegistrarAtLocalTest is Test {
         assertEq(registrationCenter.lastRegistrationValue(), 1.25 ether);
         assertEq(registrationCenter.lastRegistrationUAsset(), param.uAsset);
         assertEq(registrationCenter.lastRegistrationFlashGenesis(), param.flashGenesis);
+    }
+
+    /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
+    /// @dev The error is declared on the shared `MemeverseRegistrarAbstract` base, hence the
+    ///      base-qualified selector.
+    function testRenounceOwnershipIsDisabled() external {
+        vm.prank(OWNER);
+        vm.expectRevert(MemeverseRegistrarAbstract.OwnershipRenounceDisabled.selector);
+        registrar.renounceOwnership();
     }
 
     function _registrationParam() internal view returns (IMemeverseRegistrationCenter.RegistrationParam memory param) {

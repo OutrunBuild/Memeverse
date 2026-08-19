@@ -323,6 +323,13 @@ contract MemeverseOmnichainInteroperationTest is Test {
         assertEq(memecoin.balanceOf(address(interoperation)), 0);
     }
 
+    /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
+    function testRenounceOwnershipIsDisabled() external {
+        vm.prank(OWNER);
+        vm.expectRevert(MemeverseOmnichainInteroperation.OwnershipRenounceDisabled.selector);
+        interoperation.renounceOwnership();
+    }
+
     function _setLocalVerse(address yieldVaultAddress) internal {
         launcher.setMemeverse(address(memecoin), _verse(uint32(block.chainid), yieldVaultAddress));
     }

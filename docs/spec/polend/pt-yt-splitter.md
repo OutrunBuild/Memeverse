@@ -65,7 +65,7 @@ previewPTToUAsset(verseId, ptAmount) = Math.mulDiv(ptAmount, ptBackingNumerator,
 
 所有 `preRedeemPTFee`、`redeemPT`、`redeemYT` 的 PT reserve、settle 时预兑付 backing burn、`POLendUpgradeable.executeGlobalSettlement` 回收 PT settlement 都必须使用该转换后的 `uAsset` 数量，不得直接把 `ptAmount` 当作 `uAsset` 数量。
 
-`mintPOLToken` 在 `Locked` 后使用 exact-liquidity minting。fixed PT backing ratio 由启动时记录的 `ptBackingNumerator / ptBackingDenominator` 定义；报价后的实际执行必须 mint 出请求的 LP/POL 数量，否则整笔 mint fail closed。额外 backing 不得改写该 PT/YT 经济关系。
+`mintPOLToken` 在 `Locked` 后使用 exact-liquidity minting。fixed PT backing ratio 由启动时记录的 `ptBackingNumerator / ptBackingDenominator` 定义；报价后的实际执行必须 mint 出请求的 LP/POL 数量，否则整笔 mint fail closed（exact 模式，`amountOutDesired != 0` 时适用；`amountOutDesired == 0` 的自动模式不设该 fail-close）。额外 backing 不得改写该 PT/YT 经济关系。
 
 ### 1.1 PT/YT 克隆模板与换代（setTokenImplementations）
 

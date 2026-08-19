@@ -141,7 +141,8 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
      *      (fee recipient). The trust boundary is the configured POLSplitterUpgradeable.
      * @param verseId Memeverse id.
      * @return uAssetAmount The claimed uAsset fee amount.
-     * @return ptAmount The claimed PT fee amount (zero when redeemed to uAsset in place).
+     * @return ptAmount The PT fee amount: transferred PT, or zero when redeemed to uAsset in place;
+     *      on the settled zero-backing dust path it reports the still-pending PT entitlement.
      */
     function claimNormalFees(uint256 verseId)
         external
@@ -182,11 +183,10 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
                     uAssetAmount += IPOLSplitter(_polSplitter).redeemPT(verseId, pendingPTAmount, msg.sender);
                     ptAmount = 0;
                 } else {
-                    // Dust rounding makes the PT redeemable for zero uAsset.
-                    // Reset ptAmount so the event reflects no actual transfer.
-                    // claimedPTFee is intentionally left untouched so the entitlement
-                    // stays pending and self-heals as future fee accrual grows accPTFee.
-                    ptAmount = 0;
+                    // Dust rounding makes the PT redeemable for zero uAsset: no PT transfer or redeem
+                    // occurred this call, so ptAmount keeps reporting the still-pending entitlement.
+                    // claimedPTFee is intentionally left untouched so the entitlement self-heals as
+                    // future fee accrual grows accPTFee.
                 }
             } else {
                 userClaim.claimedPTFee = entitledPT;

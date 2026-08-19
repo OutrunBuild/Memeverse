@@ -115,4 +115,11 @@ contract LzEndpointRegistryTest is Test {
         registry.setLzEndpointIds(second);
         assertEq(registry.lzEndpointIdOfChain(1), 202);
     }
+
+    /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
+    function testRenounceOwnershipIsDisabled() external {
+        vm.prank(OWNER);
+        vm.expectRevert(LzEndpointRegistry.OwnershipRenounceDisabled.selector);
+        registry.renounceOwnership();
+    }
 }

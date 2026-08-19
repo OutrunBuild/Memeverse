@@ -608,6 +608,13 @@ contract MemeverseProxyDeployerTest is Test {
         deployer.setUpgradeSupermajorityRatio(7000);
         assertEq(deployer.upgradeSupermajorityRatio(), 7000);
     }
+
+    /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
+    function testRenounceOwnershipIsDisabled() external {
+        vm.prank(OWNER);
+        vm.expectRevert(MemeverseProxyDeployer.OwnershipRenounceDisabled.selector);
+        deployer.renounceOwnership();
+    }
 }
 
 contract MemeverseScriptLauncherDeploymentTest is Test {

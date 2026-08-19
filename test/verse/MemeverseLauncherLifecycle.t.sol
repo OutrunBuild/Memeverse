@@ -1597,17 +1597,38 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         pt.mint(address(launcher), 5);
 
         vm.expectEmit(true, true, false, true, address(launcher));
-        emit ClaimNormalFees(verseId, ALICE, 2 ether, 0);
+        emit ClaimNormalFees(verseId, ALICE, 2 ether, 1);
 
         vm.prank(ALICE);
         (uint256 uAssetAmount, uint256 ptAmount) = launcher.claimNormalFees(verseId);
 
         assertEq(splitter.redeemPTCallCount(), 0, "zero backing pt not redeemed");
         assertEq(uAssetAmount, 2 ether, "uAsset still claimable");
-        assertEq(ptAmount, 0, "pt dust not reported in return");
+        assertEq(ptAmount, 1, "pt dust reported as still-pending entitlement");
         assertEq(uAsset.balanceOf(ALICE), 2 ether, "alice uAsset");
         (, uint256 claimedPTFee) = _concrete().userNormalFeeClaims(verseId, ALICE);
         assertEq(claimedPTFee, 0, "pt entitlement stays pending for self-heal");
+
+        // Self-heal retry: grow accPTFee so the still-pending entitlement becomes redeemable, and
+        // restore 1:1 PT backing so the preview is non-zero. entitledPT = mulDiv(505, 24e18, 120e18) = 101.
+        setNormalFeeStateForTest(launcherProxy, verseId, 10 ether, 505);
+        splitter.setPreviewPTToUAssetRatio(1, 1);
+        pt.mint(address(launcher), 101);
+        uint256 expectedRedeemedPT = FullMath.mulDiv(505, 24 ether, 120 ether);
+
+        vm.expectEmit(true, true, false, true, address(launcher));
+        emit ClaimNormalFees(verseId, ALICE, expectedRedeemedPT, 0);
+
+        vm.prank(ALICE);
+        (uAssetAmount, ptAmount) = launcher.claimNormalFees(verseId);
+
+        assertEq(splitter.redeemPTCallCount(), 1, "single redeemPT across both claims");
+        assertEq(splitter.lastRedeemPTAmount(), expectedRedeemedPT, "redeemed the pending pt");
+        assertEq(uAssetAmount, expectedRedeemedPT, "uAsset from in-place redeem");
+        assertEq(ptAmount, 0, "pt redeemed in place");
+        assertEq(uAsset.balanceOf(ALICE), 2 ether + expectedRedeemedPT, "alice uAsset after retry");
+        (, uint256 claimedPTFeeAfter) = _concrete().userNormalFeeClaims(verseId, ALICE);
+        assertEq(claimedPTFeeAfter, expectedRedeemedPT, "claimed pt fee advanced to new entitlement");
     }
 
     function testClaimNormalFees_HandlesMaxUint128FeeShareWithoutOverflow() external {

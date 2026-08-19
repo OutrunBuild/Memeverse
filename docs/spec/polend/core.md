@@ -426,7 +426,7 @@ else:
 - `initialize / setLeveragedDebtFactor`：`leveragedDebtFactor > uint128.max * 1e18`
 - `setMaxSettlementDustReserve`：下调上限低于当前已存 reserve（`state.reserve > maxReserve`）
 - `POLendUpgradeable.sol::initialize / POLendUpgradeable.sol::setDefaultInterestRate`：`interestRate > 1e18`（利率上限）
-- `POLendUpgradeable.sol::initialize / POLendUpgradeable.sol::setDefaultInterestRate / POLendUpgradeable.sol::setLeveragedDebtFactor`：`leveragedDebtFactor < minDebtFactor`（`POLendUpgradeable.sol::_validateLeverageConfig` 守卫，即 `factor · rate < 1e36`；`registerLendMarket` 处调用同为防御性守卫，正常流程不可触发）
+- `POLendUpgradeable.sol::initialize / POLendUpgradeable.sol::setDefaultInterestRate / POLendUpgradeable.sol::setLeveragedDebtFactor`：`leveragedDebtFactor < minDebtFactor`（`factor == 0` 时先被 `ZeroInput` 拒绝——与 `setMaxSettlementDustReserve` 零值同约定，见 ZeroInput 清单）（`POLendUpgradeable.sol::_validateLeverageConfig` 守卫，即 `factor · rate < 1e36`；`registerLendMarket` 处调用同为防御性守卫，正常流程不可触发）
 - `POLendUpgradeable.sol::leveragedGenesis / POLendUpgradeable.sol::leveragedGenesisWithCredit`：`actualNormalFunds > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`
 - `POLendUpgradeable.sol::leveragedGenesis / POLendUpgradeable.sol::leveragedGenesisWithCredit`：聚合上限 `previewTotalDebt > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds`
 
@@ -447,10 +447,18 @@ else:
 - `getUserLeveragedDebt`：market 未注册；`user == address(0)` 时 `ZeroInput`
 - `getTotalDebtByUAsset`：`uAsset == address(0)` 时 `ZeroInput`
 
+`POLendUpgradeable` 侧 `ZeroInput` 使用场景：
+
+- `POLendUpgradeable.sol::setLeveragedDebtFactor`：`leveragedDebtFactor == 0`（先于 `InvalidConfig` 分支执行）
+- `POLendUpgradeable.sol::setDefaultInterestRate`：`newRate == 0`（POLendUpgradeable.sol:143）
+- `POLendUpgradeable.sol::setMaxSettlementDustReserve`：`uAsset == 0 || maxReserve == 0`（POLendUpgradeable.sol:173）
+- `POLendUpgradeable.sol::preRedeemPTFee`：`ptAmount == 0 || mintTo == address(0)`（POLendUpgradeable.sol:506）
+- `POLendUpgradeable.sol::burnPreRedeemBacking`：`amount == 0`（POLendUpgradeable.sol:523）
+
 `POLSplitterUpgradeable` 侧 `InvalidState` 等价错误：
 
 - `recordPTBackingRatio`：verse 未 initialize（`InvalidClaim`）、已 settled（`AlreadySettled`）、存在 split 产生的未合并回零 collateral（`totalPOLCollateral != 0` → `InvalidClaim`）或 ratio 已记录（`InvalidClaim`）
-- `split / previewPTToUAsset / preRedeemPTFee / redeemPT / redeemYT`：ratio 未记录
+- `split / preRedeemPTFee / redeemPT / redeemYT`（及 `ptAmount > 0` 的 `previewPTToUAsset`）：ratio 未记录；`previewPTToUAsset` 在 `ptAmount == 0` 时短路返回 0、不触 ratio 门（与下行 `previewRedeemYTUAsset` 的短路先例同构）
 - `POLSplitterUpgradeable.sol::previewRedeemYTUAsset`：settle 前恒返回 0、不触 ratio；settle 后 ratio 未记录 → `InvalidClaim`
 - `AlreadyUnlocked`：split/merge 时 verse 已 Unlocked 或 settle 已完成
 - `NotUnlocked`：settle 时 verse 尚未 Unlocked

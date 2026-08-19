@@ -33,6 +33,10 @@ contract GenesisCreditFactory is IGenesisCreditFactory, Ownable {
     /// @notice Registry of already-deployed credit tokens keyed by uAsset; address(0) means not deployed.
     mapping(address => address) private registry;
 
+    /// @notice Reverts when ownership renunciation is attempted.
+    /// @dev Repo invariant: ownership is never renounceable.
+    error OwnershipRenounceDisabled();
+
     /// @notice Construct the factory, baking the LayerZero endpoint, home-chain eid, and owner
     ///         into immutable state that every deployed credit token inherits.
     /// @param lzEndpoint_ LayerZero endpoint address forwarded to every credit constructor.
@@ -92,5 +96,12 @@ contract GenesisCreditFactory is IGenesisCreditFactory, Ownable {
     /// @inheritdoc IGenesisCreditFactory
     function creditOf(address uAsset) external view override returns (address credit) {
         return registry[uAsset];
+    }
+
+    /// @notice Ownership renunciation is permanently disabled.
+    /// @dev The OZ `Ownable` base exposes `renounceOwnership`; this override makes it always revert,
+    ///      keeping the repo-wide never-renounceable ownership invariant.
+    function renounceOwnership() public override {
+        revert OwnershipRenounceDisabled();
     }
 }

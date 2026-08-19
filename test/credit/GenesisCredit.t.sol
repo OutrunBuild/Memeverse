@@ -573,6 +573,13 @@ contract GenesisCreditTest is Test {
         assertEq(credit.owner(), DELEGATE);
     }
 
+    /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
+    function testRenounceOwnershipIsDisabled() external {
+        vm.prank(DELEGATE);
+        vm.expectRevert(GenesisCredit.OwnershipRenounceDisabled.selector);
+        credit.renounceOwnership();
+    }
+
     /// @dev Builds a single-leaf merkle tree matching GenesisCredit's double-hashed leaf.
     function _buildMerkle(address user, uint256 amount) internal pure returns (bytes32 root, bytes32[] memory proof) {
         root = _leaf(user, amount);

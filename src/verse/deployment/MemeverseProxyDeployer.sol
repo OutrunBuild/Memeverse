@@ -58,6 +58,10 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     /// would be paralyzed.
     error InvalidMinQuorumNumerator();
 
+    /// @notice Reverts when ownership renunciation is attempted.
+    /// @dev Repo invariant: ownership is never renounceable.
+    error OwnershipRenounceDisabled();
+
     modifier onlyMemeverseLauncher() {
         require(msg.sender == memeverseLauncher, PermissionDenied());
         _;
@@ -277,5 +281,12 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         upgradeSupermajorityRatio = _upgradeSupermajorityRatio;
 
         emit SetUpgradeSupermajorityRatio(_upgradeSupermajorityRatio);
+    }
+
+    /// @notice Ownership renunciation is permanently disabled.
+    /// @dev The OZ `Ownable` base exposes `renounceOwnership`; this override makes it always revert,
+    ///      keeping the repo-wide never-renounceable ownership invariant.
+    function renounceOwnership() public override {
+        revert OwnershipRenounceDisabled();
     }
 }

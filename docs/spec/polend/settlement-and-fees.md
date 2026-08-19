@@ -307,8 +307,8 @@ POLendUpgradeable.preRedeemPTFee(verseId, ptAmount, mintTo)
 ```text
 POLendUpgradeable.preRedeemPTFee
 -> uAssetBacking = Splitter.preRedeemPTFee(verseId, ptAmount)
--> POLendUpgradeable mint uAssetBacking uAsset 到 mintTo
 -> globalDebtByUAsset[market.uAsset] += uAssetBacking
+-> POLendUpgradeable mint uAssetBacking uAsset 到 mintTo
 -> emit PreRedeemPTFee(verseId, market.uAsset, ptAmount, uAssetBacking, mintTo)
 ```
 

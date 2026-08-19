@@ -101,7 +101,6 @@ POL raw、PT raw、YT raw 与主池 LP raw 保持 1:1 raw-unit identity；PT 兑
 
 当达到最小募资要求时，verse 进入 `Locked`，并发生一组强副作用：
 
-- 部署 memecoin / POL
 - 按治理链位置决定是否部署或预测 `yieldVault / governor / incentivizer`
 - 按 POLendUpgradeable 四池模型创建 `memecoin/uAsset` 主池与 `POL/uAsset`、`PT/uAsset`、`PT/POL` 三个辅助池
 - 若存在 preorder，则执行 preorder settlement
@@ -134,7 +133,7 @@ POL raw、PT raw、YT raw 与主池 LP raw 保持 1:1 raw-unit identity；PT 兑
 - 普通用户领取历史辅助池 normal fee 时，`claimNormalFees` 使用 full-precision `mulDiv` 计算 entitlement，避免 `accUAssetFee` 或 `accPTFee` 较大时因中间乘法溢出导致可表示账本无法领取。
 - 普通 PT fee 在 `settled=false` 时直接按份额转出 `PT`；在 `settled=true` 时改为按 `previewPTToUAsset` 确认 backing 后走 `redeemPT -> uAsset`。若该 backing 为零，则本次不标记为已领，留待后续重试。
 
-`Locked` 后 `mintPOLToken` 使用 exact-liquidity minting，启动时记录的固定 PT backing ratio 是 PT/YT 经济真源；若报价后的实际执行无法 mint 出请求的 LP/POL 数量，则 mint 失败并整体回退。额外 backing 不得改写该经济关系。
+`Locked` 后 `mintPOLToken` 使用 exact-liquidity minting，启动时记录的固定 PT backing ratio 是 PT/YT 经济真源；若报价后的实际执行无法 mint 出请求的 LP/POL 数量，则 mint 失败并整体回退（该 fail-close 仅适用于 exact 模式，即 `amountOutDesired != 0` 时；`amountOutDesired == 0` 的预算/自动模式不设该约束）。额外 backing 不得改写该经济关系。
 
 ### 6.3 启动期保护
 
@@ -177,7 +176,7 @@ V2 当前已实现的启动保护是：
 
 ### 7.2 保护窗口内应允许什么
 
-- `redeemMemecoinLiquidity(verseId, amountInPOL)` / `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap)`：burn `amountInPOL` 后令 `amountInLP = amountInPOL`；烧毁由 launcher 代理凭 allowance 代执行，调用前须先把 launcher 代理 approve 为 POL spender（额度 ≥ `amountInPOL`），否则回退 `ERC20InsufficientAllowance`；`unwrap=false` 转出 `memecoin/uAsset` LP token，`unwrap=true` 移除 LP 并发送底层 `memecoin` 与 `uAsset`
+- `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap)`：burn `amountInPOL` 后令 `amountInLP = amountInPOL`；烧毁由 launcher 代理凭 allowance 代执行，调用前须先把 launcher 代理 approve 为 POL spender（额度 ≥ `amountInPOL`），否则回退 `ERC20InsufficientAllowance`；`unwrap=false` 转出 `memecoin/uAsset` LP token，`unwrap=true` 移除 LP 并发送底层 `memecoin` 与 `uAsset`
 - `redeemAuxiliaryLiquidity`
 - `POLSplitterUpgradeable.redeemPT / redeemYT`
 - POLendUpgradeable leveraged residual claims

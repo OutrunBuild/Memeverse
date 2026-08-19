@@ -109,9 +109,9 @@
 
 | 合约 / artifact | Proxy salt label | Implementation / helper salt label | Canonical address |
 | --- | --- | --- | --- |
-| `MemeverseLauncherUpgradeable` | `MemeverseLauncherUpgradeable` | `MemeverseLauncherImplementation` | `getDeployed(deployCaller, launcherSalt)` 返回的 Launcher proxy |
-| `POLendUpgradeable` | `POLendUpgradeable` | `POLendImplementation` | `getDeployed(deployCaller, polendSalt)` 返回的 `POLendUpgradeable` proxy |
-| `POLSplitterUpgradeable` | `POLSplitterUpgradeable` | `POLSplitterImplementation` | `getDeployed(deployCaller, polSplitterSalt)` 返回的 `POLSplitterUpgradeable` proxy |
+| `MemeverseLauncherUpgradeable` | `MemeverseLauncher` | `MemeverseLauncherImplementation` | `getDeployed(deployCaller, launcherSalt)` 返回的 Launcher proxy |
+| `POLendUpgradeable` | `POLend` | `POLendImplementation` | `getDeployed(deployCaller, polendSalt)` 返回的 `POLendUpgradeable` proxy |
+| `POLSplitterUpgradeable` | `POLSplitter` | `POLSplitterImplementation` | `getDeployed(deployCaller, polSplitterSalt)` 返回的 `POLSplitterUpgradeable` proxy |
 | `lpTokenImplementation` | N/A | `MemeverseUniswapLPTokenImplementation` | `DeploymentResult.lpTokenImplementation` |
 | `SwapFacet` | N/A | `MemeverseSwapFacet` | `DeploymentResult.swapFacet` |
 | `DynamicFeeFacet` | N/A | `MemeverseDynamicFeeFacet` | `DeploymentResult.dynamicFeeFacet` |

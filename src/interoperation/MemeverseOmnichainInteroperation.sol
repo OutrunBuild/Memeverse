@@ -30,6 +30,10 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     uint128 public oftReceiveGasLimit;
     uint128 public omnichainStakingGasLimit;
 
+    /// @notice Reverts when ownership renunciation is attempted.
+    /// @dev Repo invariant: ownership is never renounceable.
+    error OwnershipRenounceDisabled();
+
     /**
      * @dev Constructor
      * @param _owner - The owner of the contract
@@ -206,5 +210,12 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
             composeMsg: abi.encode(receiver, yieldVault),
             oftCmd: abi.encode()
         });
+    }
+
+    /// @notice Ownership renunciation is permanently disabled.
+    /// @dev The OZ `Ownable` base exposes `renounceOwnership`; this override makes it always revert,
+    ///      keeping the repo-wide never-renounceable ownership invariant.
+    function renounceOwnership() public override {
+        revert OwnershipRenounceDisabled();
     }
 }

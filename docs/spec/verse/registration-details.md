@@ -52,7 +52,7 @@ center 当前负责检查：
 
 当前 V2 的权威时间来源是注册中心写入值（`endTime` / `unlockTime`）：
 
-- center 不重算，以 registrar 传入值为准；本地报价读取中心 `DAY`，中心写入为最终来源，并写入固定 `unlockTime = endTime + FIXED_LOCKUP_DURATION`。权威语义完整约束见 [docs/spec/invariants.md](../invariants.md) INV-11；`DAY` / `FIXED_LOCKUP_DURATION` 数值与配置面见 [docs/spec/verse/config-matrix.md §3](config-matrix.md)。
+- launcher 不自行重算 endTime/unlockTime，以注册中心写入值为准（center 由 `durationDays` 派生 `endTime`/`unlockTime` 并写入，registrar 向 center 上送的 `RegistrationParam` 不含时间字段（时间由 center 派生后经 `MemeverseParam` 下发 launcher））；本地报价读取中心 `DAY`，中心写入为最终来源，并写入固定 `unlockTime = endTime + FIXED_LOCKUP_DURATION`。权威语义完整约束见 [docs/spec/invariants.md](../invariants.md) INV-11；`DAY` / `FIXED_LOCKUP_DURATION` 数值与配置面见 [docs/spec/verse/config-matrix.md §3](config-matrix.md)。
 
 ## 7. 本链注册路径
 
@@ -115,6 +115,7 @@ center 现为 UUPS（`ERC1967Proxy`）部署，registrar 不再是构造期固�
 - spoke/source omnichain registrar -> hub：source 链 LayerZero send 使用 `refundAddress = user/caller`，source 侧超额 native fee 可退回 caller。
 - local registrar -> center：`msg.value` 必须等于转发给 center 的 `value` 参数；该转发预算可以高于 center quote。
 - hub/center -> other spokes fan-out：center 要求 `msg.value >= totalFee`；每个 outbound send 使用对应目标链的 `fee`；LayerZero `refundAddress` 是 center 自身；剩余或退回 native 作为 center gas dust 留在 center。
+- spoke 侧 `registerAtCenter(param, value)` 的 `value`：经 `addExecutorLzReceiveOption(gasLimit, value)` 编码为 executor native drop，成为 center 链 `lzReceive` 的 `msg.value`，即 hub 侧 fan-out 费用预算（center 要求 `msg.value >= totalFee` 的资金来源）。集成方须按 center quote 为 `value` 足额预算；`value` 过低时 source 交易成功而 center 侧注册失败滞留。
 
 center gas dust 不可由用户认领，只能由 owner 通过 `removeGasDust(receiver)` 清理。
 

@@ -257,7 +257,8 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     /// @dev Concrete fee accounting is launcher-defined.
     /// @param verseId Verse id to inspect.
     /// @return uAssetAmount Claimed uAsset amount.
-    /// @return ptAmount Claimed PT amount.
+    /// @return ptAmount PT fee amount: transferred PT, or zero when redeemed to uAsset in place; on the
+    ///      settled zero-backing dust path it reports the still-pending PT entitlement.
     function claimNormalFees(uint256 verseId) external returns (uint256 uAssetAmount, uint256 ptAmount);
 
     /// @notice Redeems the caller's post-settlement auxiliary liquidity share.
@@ -565,6 +566,9 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
 
     event ClaimNormalYT(uint256 indexed verseId, address indexed receiver, uint256 claimedAmount);
 
+    /// @dev `ptAmount` is branch-dependent: transferred PT (unsettled), zero after an in-place redeem
+    ///      (settled with backing), or the still-pending entitlement that repeats on dust retries
+    ///      (settled zero-backing, no transfer).
     event ClaimNormalFees(uint256 indexed verseId, address indexed receiver, uint256 uAssetAmount, uint256 ptAmount);
 
     event RedeemAndDistributeFees(

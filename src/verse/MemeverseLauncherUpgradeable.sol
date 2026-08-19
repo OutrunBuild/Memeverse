@@ -448,7 +448,8 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
      *      to prevent double-claim; the trust boundary is the configured POLSplitterUpgradeable.
      * @param verseId Memeverse id.
      * @return uAssetAmount The claimed uAsset fee amount.
-     * @return ptAmount The claimed PT fee amount.
+     * @return ptAmount The PT fee amount: transferred PT, or zero when redeemed to uAsset in place;
+     *      on the settled zero-backing dust path it reports the still-pending PT entitlement.
      */
     function claimNormalFees(uint256 verseId)
         external

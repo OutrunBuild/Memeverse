@@ -100,7 +100,6 @@
 
 ### 4.3 Unlocked 后退出
 
-- `redeemMemecoinLiquidity(verseId, amountInPOL)` 等价于 `unwrap=false`。
 - `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap)`：先 burn `amountInPOL`，再令 `amountInLP = amountInPOL`。
   - 烧毁由 launcher 代理凭 allowance 代执行：调用前须先把 launcher 代理 approve 为 POL spender（额度 ≥ `amountInPOL`），否则回退 `ERC20InsufficientAllowance`。
   - `unwrap=false`：按 `amountInLP` 转出 `memecoin/uAsset` LP token。

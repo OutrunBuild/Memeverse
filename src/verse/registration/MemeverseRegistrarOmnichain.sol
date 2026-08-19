@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 import {OApp, Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import {MessagingFee} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {MemeverseRegistrarAbstract} from "./MemeverseRegistrarAbstract.sol";
 import {IMemeverseRegistrationCenter} from "../interfaces/IMemeverseRegistrar.sol";
@@ -49,6 +50,14 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
             localRegistrationGasLimit: _localRegistrationGasLimit,
             omnichainRegistrationGasLimit: _omnichainRegistrationGasLimit
         });
+    }
+
+    /// @notice Ownership renunciation is permanently disabled.
+    /// @dev Shared-`Ownable` diamond: `MemeverseRegistrarAbstract` and the OApp stack both inherit
+    ///      the same OZ `Ownable`, so the leaf must disambiguate and re-pin the abstract's
+    ///      always-revert override, keeping the repo-wide never-renounceable ownership invariant.
+    function renounceOwnership() public override(Ownable, MemeverseRegistrarAbstract) {
+        revert OwnershipRenounceDisabled();
     }
 
     /// @notice Quotes the LayerZero fee for sending a registration request to the center chain.

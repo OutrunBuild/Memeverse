@@ -2577,6 +2577,15 @@
       "location": "src/verse/YieldDispatcherUpgradeable.sol#L39",
       "summary": "YieldDispatcherUpgradeable.TOKEN_TYPE_OFFSET is never used in YieldDispatcherUpgradeable",
       "key": "unused-state|src/verse/YieldDispatcherUpgradeable.sol|YieldDispatcherUpgradeable.TOKEN_TYPE_OFFSET is never used in YieldDispatcherUpgradeable"
+    },
+    {
+      "id": "ba53a0ae5d357a35abd2886617e8fed3f190f8138a9e7caffe9e2dc65eb7834b",
+      "check": "msg-value-in-nonpayable",
+      "impact": "High",
+      "confidence": "High",
+      "location": "src/common/token/TokenHelper.sol#L25-L28",
+      "summary": "TokenHelper._transferIn(address,address,uint256) uses msg.value but is not reachable from any payable function",
+      "key": "msg-value-in-nonpayable|src/common/token/TokenHelper.sol|TokenHelper._transferIn(address,address,uint256) uses msg.value but is not reachable from any payable function"
     }
   ]
 }

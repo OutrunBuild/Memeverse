@@ -98,14 +98,9 @@ jobs:
         run: npm ci
 
       - name: Install Slither
-        run: python3 -m pip install slither-analyzer==0.11.5 jsonschema pyyaml
-
-      - name: Patch slither for Solidity 0.8.35 ERC-7201 support
-        # slither 0.11.5/0.11.6 cannot parse solc 0.8.35's erc7201() baseSlotExpression
-        # and crashes while formatting its own VariableNotFound error, exiting 1 silently
-        # under the gate's redirected invocation. Ported from OutStakeV2 (84c7e0b), which
-        # carried the same patch since 5e52e88 before a harness sync dropped it there.
-        run: python3 script/harness/patch-slither.py
+        # 0.11.6 natively parses solc 0.8.35's erc7201() baseSlotExpression
+        # (upstream #3015), so the former post-install patch step is gone.
+        run: python3 -m pip install slither-analyzer==0.11.6 jsonschema pyyaml
 
       - name: Show Forge version
         run: forge --version

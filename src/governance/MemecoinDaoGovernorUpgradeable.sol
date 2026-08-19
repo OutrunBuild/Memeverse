@@ -323,6 +323,7 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     ///      a one-operation execution. The registered token list and this Governor's balances are snapshotted before
     ///      operations run. Afterward, only tokens with `pre > 0` and `post < pre` are checked: `spent = pre - post`
     ///      and `limit = pre * maxTreasurySpendRatio / 10000`.
+    // slither-disable-next-line dead-code
     function _executeOperations(
         uint256 proposalId,
         address[] memory targets,
@@ -382,6 +383,7 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         memecoinDaoGovernorStorage._executionOperationCount = 0;
     }
 
+    // slither-disable-next-line dead-code
     function _propose(
         address[] memory targets,
         uint256[] memory values,

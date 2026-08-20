@@ -52,10 +52,16 @@ abstract contract TokenHelper is ReentrancyGuardTransient {
 
     /// @notice Sets allowance for `to` on `token` using a low-level approve call.
     /// @dev Some tokens require resetting allowance to zero before updating to a new value.
+    ///      Empty returndata is only trusted when the token has code (mirrors OutrunSafeERC20
+    ///      _safeTransfer/_safeTransferFrom extcodesize guard). A CALL to an EOA succeeds with
+    ///      empty data and would otherwise be a false-positive approve.
     function _safeApprove(address token, address to, uint256 value) internal {
         // solhint-disable-next-line avoid-low-level-calls
         (bool success, bytes memory data) = token.call(abi.encodeWithSelector(IERC20.approve.selector, to, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), SafeApproveFailed(token, to, value));
+        require(
+            success && (data.length == 0 ? token.code.length > 0 : abi.decode(data, (bool))),
+            SafeApproveFailed(token, to, value)
+        );
     }
 
     function _safeApproveInf(address token, address to) internal {

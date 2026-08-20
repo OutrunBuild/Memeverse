@@ -21,6 +21,8 @@ contract LzEndpointRegistry is ILzEndpointRegistry, Ownable {
     /// @dev Reverts with `InvalidEndpointIdPair` if any pair has `chainId == 0`
     ///      or `endpointId == 0`, and with `DuplicateChainIdInBatch` if a chainId
     ///      repeats within the batch; otherwise stores and emits all pairs.
+    ///      Gas note: duplicate check is O(n²) within the batch; keep single batch ≤ 50
+    ///      (10 is typical) and split larger updates across transactions.
     /// @param pairs List of `(chainId, endpointId)` pairs to store.
     function setLzEndpointIds(LzEndpointIdPair[] calldata pairs) external override onlyOwner {
         uint256 pairsLength = pairs.length;

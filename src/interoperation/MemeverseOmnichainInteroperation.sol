@@ -121,7 +121,7 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         if (!isRemote) {
             if (msg.value != 0) revert InvalidLzFee(0, msg.value);
             require(yieldVault.code.length != 0, EmptyYieldVault());
-            _safeApproveInf(memecoin, yieldVault);
+            _safeApprove(memecoin, yieldVault, amount);
             IMemecoinYieldVault(yieldVault).deposit(amount, receiver);
             return;
         }

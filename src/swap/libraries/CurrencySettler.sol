@@ -10,6 +10,16 @@ import {IERC20} from "../../common/token/OutrunERC20Init.sol";
 /// @title CurrencySettler
 /// @notice Production helper for settling and taking PoolManager deltas.
 /// @dev Mirrors the standard Uniswap v4 settle/take behavior without depending on upstream test utilities.
+/// @dev Pool currency hard ERC20 spec — single source of truth for the whole repo (M-1 / H-2):
+///      - ERC20-only: no native currency; `Currency.isAddressZero()` is unsupported and reverts.
+///      - Strict bool: `transfer` / `transferFrom` / `approve` must return `bool` and return `true` on success;
+///        missing returndata (old USDT), `false`, or revert are all treated as failure.
+///        `settle` stays `IERC20Minimal` strict by design (mirrors official v4 `test/utils/CurrencySettler.sol`);
+///        `transferWithGuard` and `MemeverseSwapRouter._pullCurrency` use `OutrunSafeERC20` tolerant
+///        handling for missing bool as user-side convenience — the strict vs tolerant split is intentional.
+///      - Passive exact transfer: no fee-on-transfer, no rebasing, no blacklist, no transfer callback/hook.
+///      - Tokens not meeting this spec are unsupported as pool currencies; wrap or replace before use.
+///      - This header is the canonical spec; other consumers must not restate the requirements.
 library CurrencySettler {
     error ERC20TransferFromFailed(address payer, address manager, uint256 amount);
     error ERC20TransferFailed(address manager, uint256 amount);

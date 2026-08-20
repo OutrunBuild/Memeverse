@@ -8,7 +8,6 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCallback} from "@uniswap/v4-periphery/src/base/SafeCallback.sol";
-import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -508,9 +507,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
 
     function _pullCurrency(Currency currency, address from, uint256 amount) internal {
         if (amount == 0) return;
-        if (!IERC20Minimal(Currency.unwrap(currency)).transferFrom(from, address(this), amount)) {
-            revert IMemeverseUniswapHook.ERC20TransferFailed();
-        }
+        IERC20(Currency.unwrap(currency)).safeTransferFrom(from, address(this), amount);
     }
 
     function _prepareSwapPermit2Input(
@@ -750,10 +747,8 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
     function _ensureHookApproval(Currency currency, uint256 amount) internal {
         if (amount == 0) return;
         address token = Currency.unwrap(currency);
-        if (IERC20Minimal(token).allowance(address(this), address(hook)) < amount) {
-            if (!IERC20Minimal(token).approve(address(hook), type(uint256).max)) {
-                revert ERC20ApproveFailed();
-            }
+        if (IERC20(token).allowance(address(this), address(hook)) < amount) {
+            IERC20(token).safeApprove(address(hook), type(uint256).max);
         }
     }
 

@@ -348,6 +348,14 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
     ///      (this setter only manages whitelist membership). A callback-capable `uAsset` would
     ///      conditionally enable the LP per-share accounting reentrancy window (F-020) at
     ///      `MemeverseUniswapHookUpgradeable.sol::_addLiquidityCore`.
+    ///      Hard requirements enforced by the swap and settlement layers (router is `OutrunSafeERC20`-tolerant for missing `bool`, settlement `CurrencySettler` remains strict `IERC20Minimal` due to PoolManager):
+    ///      - `transfer` / `transferFrom` / `approve` must return `bool` per EIP-20 (no missing return, e.g. legacy USDT);
+    ///      - no fee-on-transfer (actual received amount must equal requested `amount`);
+    ///      - non-rebasing / non-elastic supply (balance must not change outside transfers);
+    ///      - no blacklist / pausable freeze (must not revert for the router, hook, PoolManager or treasury addresses);
+    ///      - `approve` must accept `type(uint256).max` and allow overwriting a non-zero allowance without first zeroing
+    ///        (compatible with UNI/COMP and USDT approval semantics). Tokens violating any of the above will brick
+    ///        bootstrap, swap, LP and preorder-settlement flows (fail-closed) and are outside the supported scope.
     /// @param uAsset Fundraising token address to update.
     /// @param isSupported Whether the token should be accepted for future registrations.
     function setSupportedUAsset(address uAsset, bool isSupported) external override onlyOwner {

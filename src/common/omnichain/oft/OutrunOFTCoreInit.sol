@@ -344,10 +344,15 @@ abstract contract OutrunOFTCoreInit is
     /**
      * @dev Internal function to remove dust from the given local decimal amount.
      * @param _amountLD The amount in local decimals.
-     * @return amountLD The amount after removing dust.
+     * @return amountLD The amount after removing dust (rounded down to `decimalConversionRate` multiple).
      *
      * @dev Prevents the loss of dust when moving amounts between chains with different decimals.
      * @dev eg. uint(123) with a conversion rate of 100 becomes uint(100).
+     * @dev Dust boundary: if `_amountLD < decimalConversionRate` (e.g. < 1e12 for 18-decimal token with 6 shared decimals)
+     *      this truncates to 0. A direct `IOFT::send` with such amount delivers 0 on the remote and still pays the full
+     *      LayerZero fee with no automatic refund; integrators must pre-check `amountLD >= decimalConversionRate` or
+     *      `quoteOFT(amountLD).amountReceivedLD != 0`. The `MemeverseOmnichainInteroperation` staking path pre-checks
+     *      this via `DustAmount()` and refunds non-zero remainders, but the generic OFT path does not.
      */
     function _removeDust(uint256 _amountLD) internal view virtual returns (uint256 amountLD) {
         // forge-lint: disable-next-line(divide-before-multiply)
@@ -367,6 +372,8 @@ abstract contract OutrunOFTCoreInit is
      * @dev Internal function to convert an amount from local decimals into shared decimals.
      * @param _amountLD The amount in local decimals.
      * @return amountSD The amount in shared decimals.
+     * @dev Reverts with `AmountSDOverflowed` if `amountLD / decimalConversionRate > type(uint64).max`.
+     * @dev See `_removeDust` dust boundary: amounts below `decimalConversionRate` convert to 0 SD.
      */
     function _toSD(uint256 _amountLD) internal view virtual returns (uint64 amountSD) {
         uint256 amountSD256 = _amountLD / decimalConversionRate;

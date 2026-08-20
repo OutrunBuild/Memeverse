@@ -140,14 +140,17 @@ contract OmnichainMemecoinStakerUpgradeable layout at erc7201("outrun.storage.Om
             _transferOut(memecoin, receiver, amount);
         } else {
             // Otherwise complete the happy path locally by staking the bridged memecoin into the target vault for the receiver.
-            // Bind the delivered token to the vault's underlying asset: a forged (fake token, real vault) pairing
-            // must revert here, before any approval or deposit moves funds, or the real vault's pull would drain
-            // real memecoin from this contract's custody. `asset()` is the vault's own underlying asset.
+            // Layer 1 — token↔vault binding: rejects a forged (fake token, real vault) pairing. This check only
+            // covers that direction; a fake vault that reports `asset() == memecoin` with the real memecoin passes
+            // here. Must revert before any approval or deposit, or the real vault's pull would drain real memecoin
+            // from this contract's custody. `asset()` is the vault's own underlying asset. Fake-vault defense is
+            // the exact-amount approval and zeroing below (Layer 2).
             require(IMemecoinYieldVault(yieldVault).asset() == memecoin, TokenVaultMismatch());
-            // Exact-amount approval: the yieldVault address is decoded from a forgeable compose message, so it is not
-            // trustworthy. An unlimited approval would expose the staker's entire custody balance (including other
-            // users' stranded compose funds) to any contract named in a forged message; the exact amount caps a
-            // malicious vault's pull to the bridged amount.
+            // Layer 2 — exact-amount approval: the yieldVault address is decoded from a forgeable compose message,
+            // so it is not trustworthy. An unlimited approval would expose the staker's entire custody balance
+            // (including other users' stranded compose funds) to any contract named in a forged message; the exact
+            // amount caps a malicious (fake) vault's pull to the bridged amount — the primary defense against a
+            // fake vault that passes Layer 1.
             _safeApprove(memecoin, yieldVault, amount);
             uint256 shares = IMemecoinYieldVault(yieldVault).deposit(amount, receiver);
             // A non-zero deposit that returns 0 shares (a vault variant not reverting like the real vault does)
@@ -155,9 +158,10 @@ contract OmnichainMemecoinStakerUpgradeable layout at erc7201("outrun.storage.Om
             // Revert instead so the CEI write rolls back and the beneficiary can still settle; zero-amount deposits
             // return 0 by the interface contract and are exempt (zero-amount convergence).
             require(amount == 0 || shares != 0, IMemecoinYieldVault.ZeroSharesDeposit());
-            // Zero any residual allowance: a vault that pulls less than the approved amount would otherwise keep a
-            // live allowance over the staker's custody balance (which includes other users' stranded funds) and
-            // could drain it later. The revert path needs no cleanup — the whole call rolls back.
+            // Layer 2 cleanup — zero any residual allowance: a (fake) vault that pulls less than the approved
+            // amount would otherwise keep a live allowance over the staker's custody balance (which includes other
+            // users' stranded funds) and could drain it later. The revert path needs no cleanup — the whole call
+            // rolls back.
             _safeApprove(memecoin, yieldVault, 0);
         }
 

@@ -43,7 +43,12 @@ library OutrunSafeERC20 {
             bytes memory data
             // solhint-disable-next-line avoid-low-level-calls
         ) = address(token).call(abi.encodeWithSelector(IERC20.approve.selector, spender, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), SafeERC20FailedOperation(address(token)));
+        // Empty returndata is only trusted when the token has code (mirrors _safeTransfer/_safeTransferFrom
+        // extcodesize guard). A CALL to an EOA succeeds with empty data and would otherwise be a false-positive.
+        require(
+            success && (data.length == 0 ? address(token).code.length > 0 : abi.decode(data, (bool))),
+            SafeERC20FailedOperation(address(token))
+        );
     }
 
     /**

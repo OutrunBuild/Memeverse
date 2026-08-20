@@ -6,6 +6,11 @@ import {OutrunOFTInit} from "../common/omnichain/oft/OutrunOFTInit.sol";
 
 /**
  * @title Omnichain Memecoin Proof Of Liquidity(POL) Token
+ * @notice OFT `sharedDecimals` is 6; `decimalConversionRate` is `1e12` for 18-decimal supply. Direct `IOFT::send`
+ *         truncates `amountLD` via `_removeDust` to a multiple of `decimalConversionRate`; `amountLD < 1e12`
+ *         delivers 0 on the remote and still pays the LayerZero fee. Integrators must pre-check
+ *         `amountLD >= 1e12` (or `quoteOFT(...).amountReceivedLD != 0`). The `MemeverseOmnichainInteroperation`
+ *         staking path enforces this via `DustAmount()` and refunds dust remainders, but the generic OFT path does not.
  */
 contract MemePol is IPol, OutrunOFTInit {
     address public memecoin;

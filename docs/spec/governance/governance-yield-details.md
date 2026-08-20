@@ -139,7 +139,8 @@ V2 当前没有即时赎回 underlying，而是：
 
 关键约束：
 
-- 每个地址最多 `MAX_REDEEM_REQUESTS`
+- 每个地址最多 `MAX_REDEEM_REQUESTS`（`MemecoinYieldVault.sol::MAX_REDEEM_REQUESTS` = 5，含已到期未领取条目；满队列时需先 `redeem`/`withdraw` 领取释放才能再 `requestRedeem`；到期不自动移除，条目仅在被完全消费后经 swap-pop 移除。该 5 条上限为 `MemecoinYieldVault.sol::maxWithdraw`/`_claimableShares`/claim 扫描的 gas 有界性而设（当前 5 × 双 SLOAD），放宽需重估）
+- 治理投票权：`requestRedeem` 时立即 `MemecoinYieldVault.sol::_requestWithdraw`（`_burn` → `totalAssets -= lockedAssets` → `MemecoinYieldVault.sol::_writeTotalAssetCheckpoint`），该仓位的 `getVotes`/`getPastVotes`（资产计价 via `MemecoinYieldVault.sol::_convertVotes` / `MemecoinYieldVault.sol::_convertPastVotes` over `OutrunVotesInit.sol::_totalAssetsCheckpoint`）在请求时刻即降至烧后检查点，`REDEEM_DELAY` 窗口内快照为零且 `redeem`/`withdraw` 不回补（快照已固定），等价于提前一天退出治理；合约锚点 `MemecoinYieldVault.sol::requestRedeem` / `MemecoinYieldVault.sol::_requestWithdraw` / `OutrunVotesInit.sol::getPastVotes`，排期侧应避免在巨鲸赎回窗口内取快照（提案发起时序摩擦，见 `MemecoinYieldVault.sol::requestRedeem`）
 - 请求时即锁定本次 underlying 数量
 - 实际转账在执行时完成
 - `requestRedeem` 仅允许自我赎回：`controller == msg.sender && owner == msg.sender`，否则 revert `NotSelfRedemption()`。禁止第三方代排队的理由：`MAX_REDEEM_REQUESTS` 按 owner 计数，若允许任意 `msg.sender` 向任意 owner 排队，攻击者可用 5 wei dust 填满受害者的 5 个队列槽位，使受害者自己的赎回请求 revert `MaxRedeemRequestsReached()`；而 `redeem` / `withdraw` claim 时只消费成熟条目（`block.timestamp >= requestTime + REDEEM_DELAY`），该锁定持续 `REDEEM_DELAY` 并可每日重填，构成低成本可持续的退出封锁
@@ -173,7 +174,7 @@ V2 当前没有即时赎回 underlying，而是：
 
 vault 采用**类 ERC-7540 的异步 claim 模式**（非逐字实现 EIP-7540）：
 
-1. `requestRedeem`（request）：烧份额 + 锁定本次 underlying assets + 入队（沿用 §6 延迟队列与 `MemecoinYieldVault.sol::MAX_REDEEM_REQUESTS` / 单笔 `uint192` 上限）。（EIP-7540 允许 `requestRedeem` 时立即烧份额或锁存；本 vault 选立即烧，故 share `totalSupply` 在 request 时即降、票权立即移除——这也是偏离 #1 claim 自赎回的前提，本身不构成对 EIP-7540 的偏离。）
+1. `requestRedeem`（request）：烧份额 + 锁定本次 underlying assets + 入队（沿用 §6 延迟队列与 `MemecoinYieldVault.sol::MAX_REDEEM_REQUESTS` / 单笔 `uint192` 上限）。（EIP-7540 允许 `requestRedeem` 时立即烧份额或锁存；本 vault 选立即烧，故 share `totalSupply` 在 request 时即降、票权立即移除——这也是偏离 #1 claim 自赎回的前提，本身不构成对 EIP-7540 的偏离。） 窗口期内 `getVotes`/`getPastVotes` 为零且 `redeem`/`withdraw` 不回补，等价于提前一天退出治理（排期摩擦见 `MemecoinYieldVault.sol::requestRedeem`）。
 2. 等待 `MemecoinYieldVault.sol::REDEEM_DELAY`（`1 days`）成熟。
 3. `redeem` / `withdraw`（claim）：从成熟队列把 request 时锁定的 assets 转给 receiver。
 
@@ -189,6 +190,7 @@ vault 采用**类 ERC-7540 的异步 claim 模式**（非逐字实现 EIP-7540�
 4. **vault 形态说明（同步 deposit + 异步 redeem claim）**：`deposit` / `mint` 即时（类 ERC-4626），`redeem` / `withdraw` 是 claim（类 ERC-7540 async-redeem 形态）。这是 vault 的混合形态说明，并非对 EIP-7540 的偏离（EIP-7540 允许 async-redeem-only）；本 vault 不声称 IERC-7540 合规的真正原因是偏离 #1 / #2 / #3（claim 自赎回、preview revert、不声明 `supportsInterface`），而非此处形态本身。
 5. **不引入 requestId 概念**：本 vault 采用单一时间延迟模型（统一 `MemecoinYieldVault.sol::REDEEM_DELAY`），无批次 / epoch 区分，故**不使用 requestId 概念**。`requestRedeem` 按当前汇率算出并锁定本次 underlying（已落地，`MemecoinYieldVault.sol::_convertToAssets` + `_requestWithdraw`），已把该锁定的 `lockedAssets` 返给调用方（前端可直接据此显示锁定值）。claim 模式已把 `pendingRedeemRequest` / `claimableRedeemRequest` 改为单参 `(controller)`（去掉 requestId 参数，按账户聚合查询）；**但不**经 `supportsInterface` 声称实现 IERC-7540（见偏离 #3）——这些 view 仅为 claim 流程的可观测性而设，集成方按账户（controller）查询 pending / claimable，不构成接口合规声明。相应地，`InvalidRequestId` 错误已随 requestId 参数移除而删除。
 6. **claim 语义**：`redeem` / `withdraw` 从成熟队列（`requestTime + REDEEM_DELAY <= block.timestamp`）按队列扫描序转出 request 时锁定的 assets（swap-pop 压缩使部分领取后剩余条目顺序不保证 FIFO）；未成熟或 claimable 不足则 revert（对应 ERC-4626「MUST revert if cannot be withdrawn」）。实际赎回另受 `MemecoinYieldVault.sol::MAX_REDEEM_REQUESTS`（每账户队列 5 笔上限）与单笔 `uint192` 上限约束，故 §6.1 的 `maxRedeem` / `maxWithdraw` 返回精确可 claim 总额（已成熟 shares / 已成熟 lockedAssets 求和），而非 `balanceOf` 推导；集成方据此可知成熟可 claim 量。
+7. **零额 `deposit`/`mint` 不 emit `Deposit`**：`deposit(0)` / `mint(0)` 静默 `return 0`，不进入 `MemecoinYieldVault.sol::_deposit`，不触发 `emit Deposit`，不对 `MemecoinYieldVault.sol::totalAssets` 及 `OutrunVotesInit.sol::_totalAssetsCheckpoint` 产生写入。构成对 EIP-4626 `deposit` / `mint` “MUST emit Deposit” 的窄偏离；`previewDeposit(0) == 0 == deposit(0)` / `previewMint(0) == 0 == mint(0)` round-trip 保持，协议账务一致性不受影响（零额无状态变化），索引器若以 `Deposit` 事件为唯一数据源则零额不可见。与 Solmate 零额 revert（`ZeroShares`）、OZ 零额 0/0 事件并列为三选一显式取舍，本 vault 取静默返回以避免冗余 `safeTransferFrom`/`_mint`/checkpoint 写入（锚 `MemecoinYieldVault.sol::deposit` / `MemecoinYieldVault.sol::mint` / `MemecoinYieldVault.sol::_deposit`，行为自 `MemecoinYieldVault.sol::deposit` L249-250 注释钉定）。
 
 综上，本 vault 提供 deposit 侧（同步，类 ERC-4626）+ redeem 侧（异步 claim，类 ERC-7540）的混合模型；redeem 侧不提供标准 ERC-4626 即时赎回语义，而是 request → 延迟 → claim 的异步流。
 
@@ -365,6 +367,16 @@ Governance reward path 的权限边界（`MemecoinDaoGovernorUpgradeable.sol::se
 ## 10. 当前实现提醒
 
 Governor 托管资产、Incentivizer 维护账本的 custody/ledger 分层是本文件的固定边界，定义见 §7。reward 不是在 fee 到达时立即逐用户发放，而是先进入 treasury ledger，再在 finalize 后转成 reward ledger，最后由用户 claim（周期语义见 §6、§8）。若后续引入更多治理金融化能力，必须继续尊重该边界。
+
+### 10.1 治理执行无 Timelock 的风险接受 `[代码已证]`
+
+当前 `MemecoinDaoGovernorUpgradeable` 未混入任何 `GovernorTimelock*` 扩展（继承面 `MemecoinDaoGovernorUpgradeable.sol:40-46` 仅 `GovernorSettings/CountingFractional/Storage/Votes/VotesQuorumFraction`），`GovernorUpgradeable.sol:233-235` `proposalNeedsQueuing` 恒 `false`，`GovernorUpgradeable.sol:373-391` `queue` 未实现（`GovernorQueueNotImplemented`），`MemecoinDaoGovernorUpgradeable.sol:237-248` `execute` 直接 `super.execute` → `MemecoinDaoGovernorUpgradeable.sol:327-370` `_executeOperations` 同步 `call` 执行 `[代码已证]`。语义为 `votingDelay(1 days)+votingPeriod(1 weeks)`（`MemeverseProxyDeployer.sol::deployGovernorAndIncentivizer`）结束后提案处于 `Succeeded` 即被任何地址 `execute`，无 `Queued` 队列期与 timelock 延迟，投票期结束即终局，持币人没有"通过后、执行前"的额外退出窗口（`docs/operations.md:294` 同步记载"当前 Governor 没有 Timelock extension，OZ base `queue` 没有实现"）`[代码已证]`。
+
+- **升级面已加固**：`MemecoinDaoGovernorUpgradeable.sol:410` `_authorizeUpgrade` 仅 `onlyGovernance`；任意 `target == address(this)` 或 `target == incentivizer` 的提案需满足 `upgradeSupermajorityRatio` 超多数（`MemecoinDaoGovernorUpgradeable.sol:344-360`），incentivizer 纳入判定理由为被换实现可经 `GovernanceCycleIncentivizerUpgradeable.sol::claimReward` → `MemecoinDaoGovernorUpgradeable.sol:314-325` `disburseReward`（`incentivizer-only`）绕过单次 `maxTreasurySpendRatio` 限额 `[代码已证]`。
+- **剩余即时执行面**：除上述升级路径外，治理可经提案执行任意第三方 `targets/calldatas`（`relay`/外部合约调用）——此即预期治理能力，非旁路；单次注册 `ERC20` 类 treasury 支出仍受 `_executeOperations` 内 `preBalances → super._executeOperations →  spent = pre - post ≤ pre * maxTreasurySpendRatio / 10000` 约束（`MemecoinDaoGovernorUpgradeable.sol:366-384`），但 `ETH` 与未注册 `ERC20` 不在该 cap 覆盖内（见 G-01）`[代码已证]`。
+- **持币人退出**：无 timelock 场景下，退出须在 `votingPeriod` 内完成。对 `MemecoinYieldVault` 持仓者，`requestRedeem` 在请求时刻即 `MemecoinYieldVault.sol::_requestWithdraw`（`_burn` → `totalAssets -= lockedAssets` → `_writeTotalAssetCheckpoint`，`getVotes/getPastVotes` 资产计价经 `OutrunVotesInit.sol::_totalAssetsCheckpoint`）使票权降至烧后检查点且 `REDEEM_DELAY(1 days)` 窗口内不回补，等价提前一天退出治理（见 §6、`MemecoinYieldVault.sol::requestRedeem`）；排期侧应避免巨鲸赎回窗口内取快照。
+
+本节为模板级设计决策的风险接受，非代码缺陷，当前不要求合约改动，记录于此以避免后续审计重复提出。后续若在 memecoin 治理模板中提供可选 `GovernorTimelockControlUpgradeable` 混入，应经 `MemeverseProxyDeployer` bootstrap 参数化（`TimelockController` 地址 + `minDelay`），并评估：资产托管将从 `Governor` 迁至 `Timelock`（`GovernorTimelockControl` 要求 `timelock` 持有资产与权限），`_executor` 覆盖、`proposalNeedsQueuing = true`、`state/queue/execute/cancel` 时序、`_timelockIds` 存储与 `ERC7201` 布局、以及部署时序原子性（`Create2` 同盐 `governor/incentivizer` 初始化序）均需同步更新，属于未来可选架构分支而非本次变更。
 
 ## 11. 相关真源与证据
 

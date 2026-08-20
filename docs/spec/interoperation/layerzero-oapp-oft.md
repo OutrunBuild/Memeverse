@@ -77,6 +77,16 @@
 
 `[代码已证]`
 
+### 3.4 OFT 精度与 dust 边界（通用，含第三方直接 `IOFT::send`）
+
+- `OutrunOFTCoreInit.sol::sharedDecimals` 固定 6；18 位 `Memecoin`/`MemePol` 的 `OutrunOFTCoreInit.sol::decimalConversionRate = 10**(18-6) = 1e12`（见 `OutrunOFTCoreInit.sol::decimalConversionRate`）。
+- `OutrunOFTCoreInit.sol::_removeDust` 按 `(_amountLD / rate) * rate` 截断，`OutrunOFTCoreInit.sol::_toSD` 在 `amountSD > type(uint64).max` 时 revert `AmountSDOverflowed`。`OutrunOFTCoreInit.sol::quoteOFT`/`OutrunOFTCoreInit.sol::quoteSend`/`OutrunOFTCoreInit.sol::send` 均经 `OutrunOFTCoreInit.sol::_debitView` 复用该截断。
+- 亚尘 `<rate` 在 OFT 层截断为 0：直接 `IOFT::send` 会以 `amountSentLD=0`/`amountSD=0` 上链，目标链零 mint、费不退；`MemeverseOmnichainInteroperation.sol::memecoinStaking` 与 `MemeverseSettlementImpl.sol::_sendRedeemedFeesCrossChain` 已分别用 `MemeverseOmnichainInteroperation.sol::_requireNonZeroRemoteDelivery`/`ICrossChainSendErrors::DustAmount` 在源链前置拒绝，第三方直接 `send` 需自检 `amountLD >= rate`（`OutrunOFTCoreInit.sol::quoteOFT` 返回 `amountReceivedLD == 0` 即零截断，可作判定）。
+- 非整数倍余数尘位在直接 `send` 中永久丢失；托管 staking 路径同 tx 退回该余数（见 `docs/spec/interoperation/interoperation-details.md:4.5-4.6`），通用 OFT 路径无此退款。
+- `to == address(0)` 的 `OutrunOFTInit.sol::_credit` → `address(0xdead)` 重定向为 LayerZero 官方行为（`lib/devtools/packages/oft-evm/contracts/OFT.sol::_credit` 同款），跨链目标为零的资金入死址可视为销毁，见 `docs/spec/events.md`。
+
+`[代码已证]`
+
 ## 4. 安全与执行约束
 
 - compose 回调授权：

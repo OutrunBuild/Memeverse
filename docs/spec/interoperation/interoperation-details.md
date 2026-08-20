@@ -69,7 +69,7 @@
 - `msg.value` 必须为 0
 - 若 `yieldVault.code.length == 0`，交易直接回滚；本链 staking 不使用缺失 vault 的 fallback transfer
 - vault 存在时，直接调用 vault `deposit(amount, receiver)`，不经过 LayerZero
-- 本链分支对 verse vault 授无限额度（`MemeverseOmnichainInteroperation.sol::memecoinStaking` 本地分支 `_safeApproveInf(memecoin, yieldVault)`）——vault `deposit` 经 `transferFrom` 拉款的授权机制；与目标链 staker 的精确授权纪律相反（staker `lzCompose` 仅授精确 `amount`，不授无限额度，见 [layerzero-oapp-oft.md](layerzero-oapp-oft.md)）
+- 本链分支对 verse vault 仅授精确额度（`MemeverseOmnichainInteroperation.sol::memecoinStaking` 本地分支 `_safeApprove(memecoin, yieldVault, amount)`）——vault `deposit` 经 `transferFrom` 拉款的授权机制；与目标链 staker 的精确授权纪律一致（staker `lzCompose` 仅授精确 `amount`，见 [layerzero-oapp-oft.md](layerzero-oapp-oft.md)）
 
 ### 4.2 异链治理
 
@@ -105,6 +105,16 @@
 异链 staking 的 OFT 发送把 `amountLD` 截断为 `decimalConversionRate` 的整数倍：源链实际烧毁额 = `amountSentLD`，目的链到账/质押额 = `amountReceivedLD`（默认实现两者相等，fee-taking OFT 例外及退款机制见 §4.2）。
 
 `OmnichainMemecoinStaking` 事件仅在异链分支 emit，字段语义：`amount` 为用户原始输入额；`amountSentLD` 为源链实际烧毁/质押额（截断后）；`remainder` 为同交易退款额。索引器/对账方核对「质押 + 退款」完整性直接使用 `amountSentLD + remainder == amount`，无需再依赖 OFT 的 `OFTSent` 事件或自行复算 rate。本链分支（§4.1）不 emit 本事件、不发生截断/退款。
+
+### 4.6 通用 OFT dust 边界（第三方直接 `Memecoin`/`MemePol` `IOFT::send`）
+
+本节为 §4.5 的通用化补充：`OutrunOFTCoreInit.sol::sharedDecimals` 固定 6、`OutrunOFTCoreInit.sol::decimalConversionRate` 在 18 位 memecoin/MemePol 下为 `1e12`，`OutrunOFTCoreInit.sol::_removeDust`/`OutrunOFTCoreInit.sol::_toSD`/`OutrunOFTCoreInit.sol::_debitView`/`OutrunOFTCoreInit.sol::send` 的截断语义对**所有** OFT 路径生效，不限于 `MemeverseOmnichainInteroperation.sol::memecoinStaking`。
+
+- 亚尘（`amountLD < decimalConversionRate`，18 位下 `<1e12`）：`OutrunOFTCoreInit.sol::_removeDust` 截断为 0，`OutrunOFTCoreInit.sol::send` 中 `OutrunOFTInit.sol::_debit` 仅 `burn 0`、编码 `amountSD=0`，目标链 `OutrunOFTCoreInit.sol::_toLD` 兑回 0、`OutrunOFTInit.sol::_credit` mint 0，零到账但已付全额 `MessagingFee.nativeFee`，LayerZero 无自动退款。托管路径由 `MemeverseOmnichainInteroperation.sol::_requireNonZeroRemoteDelivery` 在 `MemeverseOmnichainInteroperation.sol::memecoinStaking` 的 `_transferIn` 前以 `DustAmount()` 前置拒绝；直接 `IOFT::send` 无此守卫，调用方需自检。
+- 非整数倍（`amountLD >= rate` 但 `amountLD % rate != 0`）：源链仅烧 `amountSentLD = OutrunOFTCoreInit.sol::_removeDust(amountLD)`，`amountLD - amountSentLD` 的尘位在 OFT 层永久截断丢失。托管路径在同 tx 经 `MemeverseOmnichainInteroperation.sol::memecoinStaking` 退回该余数；直接 `send` 无退款，尘位损失由调用方承担。
+- 集成要求：第三方/SDK/前端在构造 `SendParam.amountLD` 前校验 `amountLD >= OutrunOFTCoreInit.sol::decimalConversionRate` 且建议校验 `amountLD % OutrunOFTCoreInit.sol::decimalConversionRate == 0` 或向用户明示尘位损失；`OutrunOFTCoreInit.sol::quoteOFT`/`OutrunOFTCoreInit.sol::quoteSend` 的 `amountReceivedLD == 0` 可作零截断预检的精确判定，与 `MemeverseOmnichainInteroperation.sol::_requireNonZeroRemoteDelivery` 同款。
+
+> 本边界继承自 LayerZero OFT 官方共享精度设计（`lib/devtools/packages/oft-evm/contracts/OFTCore.sol::_removeDust` 同款），非本仓新增限制；上游 `OFT.sol::_credit` 对 `to == address(0)` 的 `0xdead` 重定向亦同理见 `OutrunOFTInit.sol::_credit`。
 
 ## 5. 为什么要求 exact fee
 

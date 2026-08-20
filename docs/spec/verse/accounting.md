@@ -100,10 +100,10 @@
 
 ### 4.3 Unlocked 后退出
 
-- `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap)`：先 burn `amountInPOL`，再令 `amountInLP = amountInPOL`。
+- `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap, amount0Min, amount1Min, deadline)`：先 burn `amountInPOL`，再令 `amountInLP = amountInPOL`。`MemeverseLiquidityImpl.sol::redeemMemecoinLiquidity` 实现。
   - 烧毁由 launcher 代理凭 allowance 代执行：调用前须先把 launcher 代理 approve 为 POL spender（额度 ≥ `amountInPOL`），否则回退 `ERC20InsufficientAllowance`。
-  - `unwrap=false`：按 `amountInLP` 转出 `memecoin/uAsset` LP token。
-  - `unwrap=true`：按 `amountInLP` 移除 `memecoin/uAsset` LP，并发送底层 `memecoin` 与 `uAsset`。
+  - `unwrap=false`：按 `amountInLP` 转出 `memecoin/uAsset` LP token，`amount0Min`/`amount1Min`/`deadline` 忽略。
+  - `unwrap=true`：按 `amountInLP` 经 `MemeverseSwapRouter.sol::removeLiquidity` 移除 `memecoin/uAsset` LP，并发送底层 `memecoin` 与 `uAsset`；`amount0Min`/`amount1Min`/`deadline` 透传至 router 做滑点保护（零值表示无保护，调用方应按容忍度设置），不满足时回退 `TooMuchSlippage` 或 `ExpiredPastDeadline`。
 - 该路径是 `Unlocked` 退出路径；解锁后保护窗口内仍允许执行，但不是公开 swap。
 - `redeemAuxiliaryLiquidity`：普通用户在 `Unlocked` 后一次性领取三个辅助池普通份额 LP token，份额基准为 `userGenesisFund / totalNormalFunds`。
 - 该路径还负责分发 bootstrap residual 的 normal share：`normalResidualPOL` 与 `normalResidualPT` 按同一 `userGenesisFund / totalNormalFunds` 比例分给普通用户。

@@ -18,7 +18,7 @@
 | --- | --- | --- | --- |
 | `Registration(uint256 indexed uniqueId, RegistrationParam param)` | `MemeverseRegistrationCenterUpgradeable` | 中心链注册成功后 | 跟踪 symbol 占用与参数快照 |
 | `RegisterMemeverse(verseId,verse)` | `MemeverseLauncherUpgradeable` | launcher 完成新 verse 写入 | 建立 verse 主索引 |
-| `Genesis(verseId,user,...)` | `MemeverseLauncherUpgradeable` | Genesis 入金成功 | 跟踪募资累计 |
+| `Genesis(verseId,payer,user,amount)` | `MemeverseLauncherUpgradeable` | Genesis 入金成功 | 跟踪募资累计；区分 payer 与 user 覆盖 relayer 场景（`Genesis.payer` 为 `msg.sender`/资金来源，`Genesis.depositer` 为积分对象，与 `Preorder` 双字段对称） |
 | `Preorder(verseId,caller,user,amountInUAsset)` | `MemeverseLauncherUpgradeable` | Preorder 入金成功 | preorder 资金流入与累计索引；区分 caller 与 user 覆盖 relayer 场景 |
 | `ChangeStage(verseId,currentStage)` | `MemeverseLauncherUpgradeable` | `changeStage` 每次成功执行 | 生命周期状态索引 |
 | `Refund(verseId,receiver,amount)` | `MemeverseLauncherUpgradeable` | Genesis 退款成功 | 退款账本 |
@@ -35,7 +35,7 @@
 
 除标注为目标事件规格的条目外，以上均为 `[代码已证]`。
 
-**`genesisAndPreorder(...)` 合并入口事件**：该原子入口依次 emit `Genesis(verseId, user, genesisAmount)` 与 `Preorder(verseId, caller, user, preorderAmount)` 各一次，字段结构分别与单次 `genesis` / `preorder` 调用完全一致（`Preorder.caller` 仍为 `msg.sender`/payer），不新增事件。语义与容量校验见 [docs/spec/polend/genesis.md §2](polend/genesis.md)。
+**`genesisAndPreorder(...)` 合并入口事件**：该原子入口依次 emit `Genesis(verseId, payer, user, genesisAmount)` 与 `Preorder(verseId, caller, user, preorderAmount)` 各一次，字段结构分别与单次 `genesis` / `preorder` 调用完全一致（`Genesis.payer`/`Preorder.caller` 均为 `msg.sender`/payer），不新增事件。语义与容量校验见 [docs/spec/polend/genesis.md §2](polend/genesis.md)。
 
 ### 2.2 POLendUpgradeable / POLSplitterUpgradeable 目标事件面
 

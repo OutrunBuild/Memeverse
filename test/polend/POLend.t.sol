@@ -101,7 +101,11 @@ contract MockLauncherForPOLend {
         return (polSettlementAmounts[verseId], ptSettlementAmounts[verseId], uAssetSettlementAmounts[verseId]);
     }
 
-    function redeemMemecoinLiquidity(uint256, uint256, bool) external pure returns (uint256) {
+    function redeemMemecoinLiquidity(uint256, uint256, bool, uint256, uint256, uint256)
+        external
+        pure
+        returns (uint256)
+    {
         revert("unused");
     }
 }

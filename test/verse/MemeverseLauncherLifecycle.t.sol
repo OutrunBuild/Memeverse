@@ -2153,7 +2153,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         _setUnlockedVerse(verseId);
 
         vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
-        launcher.redeemMemecoinLiquidity(verseId, 0, false);
+        launcher.redeemMemecoinLiquidity(verseId, 0, false, 0, 0, block.timestamp);
     }
 
     /// @notice Verifies memecoin LP redemption rejects non-unlocked verses.
@@ -2163,7 +2163,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         _setLockedVerse(verseId);
 
         vm.expectRevert(IMemeverseLauncher.NotUnlockedStage.selector);
-        launcher.redeemMemecoinLiquidity(verseId, 1 ether, false);
+        launcher.redeemMemecoinLiquidity(verseId, 1 ether, false, 0, 0, block.timestamp);
     }
 
     /// @notice Verifies memecoin LP redemption burns POL and transfers pair LP shares.
@@ -2180,7 +2180,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         liquidProof.mint(ALICE, 10 ether);
 
         vm.prank(ALICE);
-        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, false);
+        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, false, 0, 0, block.timestamp);
 
         assertEq(amountInLP, 4 ether, "lp amount");
         assertEq(liquidProof.burnedAmount(), 4 ether, "burned pol");
@@ -2202,7 +2202,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         liquidProof.mint(ALICE, 10 ether);
 
         vm.prank(ALICE);
-        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, true);
+        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, true, 0, 0, block.timestamp);
 
         uint256 expectedMemecoinAmount = address(memecoin) < address(uAsset) ? 3 ether : 5 ether;
         uint256 expectedUAssetAmount = address(memecoin) < address(uAsset) ? 5 ether : 3 ether;
@@ -2225,8 +2225,8 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         liquidProof.mint(ALICE, 10 ether);
 
         vm.startPrank(ALICE);
-        launcher.redeemMemecoinLiquidity(verseId, 4 ether, true);
-        launcher.redeemMemecoinLiquidity(verseId, 2 ether, true);
+        launcher.redeemMemecoinLiquidity(verseId, 4 ether, true, 0, 0, block.timestamp);
+        launcher.redeemMemecoinLiquidity(verseId, 2 ether, true, 0, 0, block.timestamp);
         vm.stopPrank();
 
         assertEq(
@@ -2249,7 +2249,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         _concrete().pause();
 
         vm.prank(address(splitter));
-        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, true);
+        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, true, 0, 0, block.timestamp);
 
         assertEq(amountInLP, 4 ether, "lp amount");
         assertEq(liquidProof.burnedAmount(), 4 ether, "burned pol");
@@ -2265,7 +2265,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         _concrete().pause();
 
         vm.prank(ALICE);
-        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, false);
+        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, false, 0, 0, block.timestamp);
 
         assertEq(amountInLP, 4 ether, "lp amount");
         assertEq(liquidProof.burnedAmount(), 4 ether, "burned pol");
@@ -2287,7 +2287,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         liquidProof.mint(ALICE, 10 ether);
 
         vm.prank(ALICE);
-        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, false);
+        uint256 amountInLP = launcher.redeemMemecoinLiquidity(verseId, 4 ether, false, 0, 0, block.timestamp);
 
         assertEq(amountInLP, 4 ether, "lp amount");
         assertEq(memecoinLp.balanceOf(ALICE), 4 ether, "alice memecoin lp");
@@ -2305,7 +2305,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
 
         vm.prank(ALICE);
         vm.expectRevert(IMemeverseLauncher.InsufficientLPBalance.selector);
-        launcher.redeemMemecoinLiquidity(verseId, 4 ether, false);
+        launcher.redeemMemecoinLiquidity(verseId, 4 ether, false, 0, 0, block.timestamp);
     }
 
     /// @notice Verifies auxiliary liquidity redemption rejects non-unlocked verses.
@@ -2508,7 +2508,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         launcher.redeemAndDistributeFees(invalidVerseId, REWARD_RECEIVER);
 
         vm.expectRevert(IMemeverseLauncher.InvalidVerseId.selector);
-        launcher.redeemMemecoinLiquidity(invalidVerseId, 1 ether, false);
+        launcher.redeemMemecoinLiquidity(invalidVerseId, 1 ether, false, 0, 0, block.timestamp);
 
         vm.expectRevert(IMemeverseLauncher.InvalidVerseId.selector);
         launcher.redeemAuxiliaryLiquidity(invalidVerseId);

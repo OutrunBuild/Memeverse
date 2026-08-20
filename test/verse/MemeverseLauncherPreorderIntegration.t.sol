@@ -155,8 +155,8 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
     ///      accounting and emits `Genesis` then `Preorder` exactly once.
     function testGenesisAndPreorder_SettlesThroughRealLauncherRouterHookPath() external {
         // Genesis then Preorder, emitted in order by the two helpers under the single call.
-        vm.expectEmit(true, true, false, true);
-        emit IMemeverseLauncher.Genesis(1, ALICE, 10 ether);
+        vm.expectEmit(true, true, true, true);
+        emit IMemeverseLauncher.Genesis(1, ALICE, ALICE, 10 ether);
         vm.expectEmit(true, true, true, true);
         emit IMemeverseLauncher.Preorder(1, ALICE, ALICE, 1 ether);
         vm.prank(ALICE);

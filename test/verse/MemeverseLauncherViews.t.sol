@@ -235,7 +235,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         signatures[33] = "previewPreorderCapacity(uint256)";
         signatures[34] = "redeemAndDistributeFees(uint256,address)";
         signatures[35] = "redeemAuxiliaryLiquidity(uint256)";
-        signatures[36] = "redeemMemecoinLiquidity(uint256,uint256,bool)";
+        signatures[36] = "redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256)";
         signatures[37] = "refund(uint256)";
         signatures[38] = "refundPreorder(uint256)";
         signatures[39] = "registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool)";

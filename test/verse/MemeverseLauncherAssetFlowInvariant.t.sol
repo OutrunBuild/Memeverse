@@ -59,7 +59,7 @@ contract AssetFlowHandler is Test {
 
         uint256 amount = bound(amountSeed, 1, polBalance);
         vm.prank(actor);
-        try launcher.redeemMemecoinLiquidity(VERSE_ID, amount, false) {} catch {}
+        try launcher.redeemMemecoinLiquidity(VERSE_ID, amount, false, 0, 0, block.timestamp) {} catch {}
     }
 
     /// @notice Test helper for touchBalances.

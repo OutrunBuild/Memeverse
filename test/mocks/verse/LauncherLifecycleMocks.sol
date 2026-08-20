@@ -998,7 +998,7 @@ contract RedeemMemecoinLiquidityReenterer {
     function redeemDuringSettlement(IMemeverseLauncher launcher, uint256 verseId, uint256 amountInPOL) external {
         reentryAttempted = true;
         delete lastRevertData;
-        try launcher.redeemMemecoinLiquidity(verseId, amountInPOL, false) returns (uint256) {
+        try launcher.redeemMemecoinLiquidity(verseId, amountInPOL, false, 0, 0, block.timestamp) returns (uint256) {
             reentrySucceeded = true;
         } catch (bytes memory reason) {
             lastRevertData = reason;

@@ -80,7 +80,10 @@ contract MockLauncher {
         return polendAddress;
     }
 
-    function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool) external returns (uint256 amountInLP) {
+    function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool, uint256, uint256, uint256)
+        external
+        returns (uint256 amountInLP)
+    {
         require(MockPOL(polTokens[verseId]).transferFrom(msg.sender, address(this), amountInPOL), "transfer failed");
 
         RedemptionSeed memory seed = redemptionSeeds[verseId];

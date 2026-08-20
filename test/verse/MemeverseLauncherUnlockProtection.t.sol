@@ -501,7 +501,8 @@ contract SplitterMemecoinRedeemDuringSettle {
 
     function settle(uint256 verseId) external returns (uint256 settlementUAsset, uint256 settlementMemecoin) {
         redeemAttempted = true;
-        try IMemeverseLauncher(msg.sender).redeemMemecoinLiquidity(verseId, amountInPOL, false) returns (
+        try IMemeverseLauncher(msg.sender)
+            .redeemMemecoinLiquidity(verseId, amountInPOL, false, 0, 0, block.timestamp) returns (
             uint256 amountInLP
         ) {
             redeemSucceeded = true;
@@ -528,7 +529,8 @@ contract POLendMemecoinRedeemDuringSettlement {
 
     function executeGlobalSettlement(uint256 verseId) external {
         redeemAttempted = true;
-        try IMemeverseLauncher(msg.sender).redeemMemecoinLiquidity(verseId, amountInPOL, false) returns (
+        try IMemeverseLauncher(msg.sender)
+            .redeemMemecoinLiquidity(verseId, amountInPOL, false, 0, 0, block.timestamp) returns (
             uint256 amountInLP
         ) {
             redeemSucceeded = true;

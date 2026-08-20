@@ -1446,7 +1446,11 @@ contract FakeLauncher {
         uint256,
         /* verseId */
         uint256 amountInPOL,
-        bool /* unwrap */
+        bool,
+        /* unwrap */
+        uint256,
+        uint256,
+        uint256
     )
         external
         returns (uint256)

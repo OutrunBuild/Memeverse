@@ -144,7 +144,10 @@ contract IntegrationLauncher {
     /// @dev POLendUpgradeable approved `polAmount` of POL to this launcher. Consume it and send the
     ///      pre-configured uAsset + memecoin redemption back to the caller (POLendUpgradeable). The amounts
     ///      transferred become the `_burnSettledPol` deltas POLendUpgradeable measures via balance diffs.
-    function redeemMemecoinLiquidity(uint256 verseId, uint256 polAmount, bool) external returns (uint256) {
+    function redeemMemecoinLiquidity(uint256 verseId, uint256 polAmount, bool, uint256, uint256, uint256)
+        external
+        returns (uint256)
+    {
         require(_pol.transferFrom(msg.sender, address(this), polAmount), "POL transferFrom failed");
         RedeemOutput memory out = _redeemOutputs[verseId];
         if (out.uAsset != 0) {

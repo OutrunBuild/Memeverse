@@ -93,13 +93,17 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         vaultImplementation = _vaultImplementation;
         governorImplementation = _governorImplementation;
         incentivizerImplementation = _incentivizerImplementation;
+        require(_quorumNumerator != 0, ZeroInput());
         quorumNumerator = _quorumNumerator;
         // Constructor and setter enforce the same range: >0 and <=100. See InvalidMinQuorumNumerator.
         require(_minQuorumNumerator != 0, ZeroInput());
         require(_minQuorumNumerator <= 100, InvalidMinQuorumNumerator());
         minQuorumNumerator = _minQuorumNumerator;
+        require(_bootstrapPeriod != 0, ZeroInput());
         bootstrapPeriod = _bootstrapPeriod;
+        require(_maxTreasurySpendRatio != 0, ZeroInput());
         maxTreasurySpendRatio = _maxTreasurySpendRatio;
+        require(_upgradeSupermajorityRatio != 0, ZeroInput());
         upgradeSupermajorityRatio = _upgradeSupermajorityRatio;
     }
 

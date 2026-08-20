@@ -589,12 +589,15 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     ///      the caller's own asset — pausing this path would trap liquidity holders in an emergency. Protocol
     ///      pathways (polSplitter / polend) also rely on this remaining unpaused for settlement. The burn itself
     ///      is executed by this proxy on the caller's behalf via the POL allowance, not by the caller directly.
+    ///      Deprecated: the 3-arg overload keeps zero-slippage unwrap which is sandwichable. New callers must use
+    ///      the 6-arg overload with slippage protection; this overload now reverts on `unwrap==true`.
     function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool unwrap)
         external
         override
         versIdValidate(verseId)
         returns (uint256 amountInLP)
     {
+        require(!unwrap, SlippageProtectionRequired());
         Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
         require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
 
@@ -605,7 +608,48 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         amountInLP = abi.decode(
             impl.functionDelegateCall(
                 abi.encodeWithSelector(
-                    IMemeverseLiquidityImpl.redeemMemecoinLiquidity.selector, verseId, amountInPOL, unwrap
+                    bytes4(keccak256("redeemMemecoinLiquidity(uint256,uint256,bool)")), verseId, amountInPOL, unwrap
+                )
+            ),
+            (uint256)
+        );
+    }
+
+    /// @notice Redeems launcher-managed memecoin-side LP using POL, optionally unwrapping into underlying
+    ///         with slippage protection. Approve this launcher proxy as a POL spender first.
+    /// @dev Intentionally omits `whenNotPaused` for the same reason as the 3-arg overload. When `unwrap` is true,
+    ///      `amount0Min`/`amount1Min`/`deadline` protect the underlying `removeLiquidity` against sandwich price movement.
+    /// @param verseId Memeverse id.
+    /// @param amountInPOL POL amount to burn.
+    /// @param unwrap Whether to unwrap LP into underlying assets.
+    /// @param amount0Min Minimum currency0 output when unwrapping (ignored when unwrap is false).
+    /// @param amount1Min Minimum currency1 output when unwrapping.
+    /// @param deadline Latest timestamp for the unwrap removal.
+    function redeemMemecoinLiquidity(
+        uint256 verseId,
+        uint256 amountInPOL,
+        bool unwrap,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        uint256 deadline
+    ) external override versIdValidate(verseId) returns (uint256 amountInLP) {
+        Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
+        require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
+
+        // Delegatecall sibling: it burns the caller's POL, transfers/removes LP, AND emits
+        // RedeemMemecoinLiquidity. Facade emits nothing to avoid a double-emit under delegatecall.
+        address impl = memeverseLauncherStorage.liquidityImpl;
+        require(impl != address(0), LiquidityImplNotSet());
+        amountInLP = abi.decode(
+            impl.functionDelegateCall(
+                abi.encodeWithSelector(
+                    bytes4(keccak256("redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256)")),
+                    verseId,
+                    amountInPOL,
+                    unwrap,
+                    amount0Min,
+                    amount1Min,
+                    deadline
                 )
             ),
             (uint256)

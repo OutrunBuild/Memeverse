@@ -68,6 +68,7 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         uint256 _maxTreasurySpendRatio,
         uint256 _upgradeSupermajorityRatio
     ) internal onlyInitializing {
+        require(_governanceCycleIncentivizer != address(0), ZeroInput());
         require(
             _maxTreasurySpendRatio > 0 && _maxTreasurySpendRatio <= 10000 && _upgradeSupermajorityRatio > 0
                 && _upgradeSupermajorityRatio <= 10000,
@@ -95,7 +96,7 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
      * @param _proposalThreshold Minimum voting power required to propose.
      * @param _quorumNumerator Fractional quorum numerator for governance decisions.
      * @param _governanceCycleIncentivizer Address of the incentivizer that tracks cycle rewards.
-     * @param _minQuorum Absolute minimum quorum floor based on total supply.
+     * @param _minQuorum Absolute minimum quorum floor frozen at deploy-time (memecoin.totalSupply() * minQuorumNumerator / 100) and enforced via Math.max(super.quorum(timepoint), _minQuorum); not diluted by the fractional quorum.
      * @param _bootstrapPeriod Delay after deployment before proposals are accepted.
      * @param _maxTreasurySpendRatio Maximum treasury spend per execution, in basis points (10000 = 100%).
      * @param _upgradeSupermajorityRatio Required for-votes ratio for proposals targeting the Governor or its incentivizer, in basis points (10000 = 100%).

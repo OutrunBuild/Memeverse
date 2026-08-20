@@ -12,8 +12,8 @@ import {GenesisCredit} from "./GenesisCredit.sol";
  * @title GenesisCreditFactory
  * @notice Owner-gated factory that deploys GenesisCredit tokens via CREATE3.
  * @dev Each credit token is keyed by its `uAsset`: the CREATE3 salt is `keccak256(abi.encode(uAsset))`
- *      and the factory self-inlines solmate `CREATE3.deploy`, so the CREATE3 namespace is the
- *      factory's own address (the deployer is `address(this)`). Each credit address is therefore
+ *      and the factory delegates to solmate's `CREATE3` library (deployer = `address(this)`), so the CREATE3 namespace is the
+ *      factory's own address. Each credit address is therefore
  *      `CREATE3.getDeployed(factory, keccak256(uAsset))` and is fully determined by the factory
  *      address plus `uAsset`. Because GenesisCredit is a plain (non-initializable) OFT, the full
  *      contract bytecode is deployed in one CREATE3 call and its constructor runs in-line; no

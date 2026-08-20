@@ -103,6 +103,18 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
         emit ProtocolTreasuryChanged(prev, _protocolTreasury);
     }
 
+    /// @notice Sweeps native gas dust (e.g. LayerZero compose nativeDrop) to the receiver.
+    /// @dev Owner-only utility to recover ETH stranded via payable `lzCompose` (third-party OFT direct sends
+    ///      with a non-zero compose `value` or future option misconfiguration). Mirrors
+    ///      `MemeverseLauncherUpgradeable.removeGasDust` and `MemeverseRegistrationCenterUpgradeable.removeGasDust`
+    ///      using the shared `TokenHelper._transferOut(NATIVE)` path.
+    /// @param receiver Recipient of the swept dust.
+    function removeGasDust(address receiver) external override onlyOwner {
+        uint256 dust = address(this).balance;
+        _transferOut(NATIVE, receiver, dust);
+        emit RemoveGasDust(receiver, dust);
+    }
+
     function localEndpoint() external view returns (address) {
         return yieldDispatcherStorage.localEndpoint;
     }

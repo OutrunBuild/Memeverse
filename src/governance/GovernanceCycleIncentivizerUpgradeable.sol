@@ -41,6 +41,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
         internal
         onlyInitializing
     {
+        require(governor != address(0), ZeroInput());
         governanceCycleIncentivizerStorage._currentCycleId = 1;
         governanceCycleIncentivizerStorage._rewardRatio = 2500; // 25% default treasury->reward split (BPS_BASE = 10000)
         uint128 startTime = uint128(block.timestamp);

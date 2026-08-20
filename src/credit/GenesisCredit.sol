@@ -58,8 +58,13 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
     }
 
     /// @notice Sets the merkle root used to verify claims.
-    /// @dev Owner-only (OAppCore Ownable); expected to be set after deployment once the airdrop
-    ///      tree is finalized.
+    /// @dev Owner-only (OAppCore Ownable); callable infinitely with no on-chain timelock,
+    ///      review window, or finalization flag. Expected to be set after deployment once the
+    ///      airdrop tree is finalized; unclaimed allocations can be overwritten by a later
+    ///      root while already-claimed entries stay blocked by `claimed` (never cleared by
+    ///      `setMerkleRoot`). Use an off-chain multisig/timelock for the owner and monitor
+    ///      `MerkleRootSet` for unexpected rotations — chain emits only this event with no
+    ///      old-value field.
     /// @param newMerkleRoot Root of the (user, amount) allocation tree.
     function setMerkleRoot(bytes32 newMerkleRoot) external override onlyOwner {
         merkleRoot = newMerkleRoot;
@@ -84,9 +89,12 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
 
     /// @notice Merkle airdrop claim. Only callable on the home chain.
     /// @dev Order matters: chain gate -> amount -> double-claim -> proof. Total supply is not
-    ///      capped locally; it is bounded upstream by the POLendUpgradeable debt cap + aggregate
-    ///      `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` that governs how much credit-minted debt may enter
-    ///      a verse. Each user may claim at most once (`claimed` guard).
+    ///      capped locally; `POLendUpgradeable`'s `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` +
+    ///      `_debtCap` only bounds how much credit-minted *debt* may enter a verse via
+    ///      `leveragedGenesisWithCredit` (excess credit is rejected for debt entry, not for
+    ///      circulation). Minted credit remains a normal ERC20/OFT token and stays
+    ///      transferable/bridgeable even when debt caps are hit. Each user may claim at
+    ///      most once (`claimed` guard, never cleared by `setMerkleRoot`).
     /// @param amount Allocation amount for msg.sender.
     /// @param merkleProof Merkle proof for (msg.sender, amount) leaf.
     function claim(uint256 amount, bytes32[] calldata merkleProof) external override {

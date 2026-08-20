@@ -201,7 +201,7 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
 
         _transferIn(verse.uAsset, msg.sender, amountInUAsset);
 
-        emit IMemeverseLauncher.Genesis(verseId, user, amountInUAsset);
+        emit IMemeverseLauncher.Genesis(verseId, msg.sender, user, amountInUAsset);
     }
 
     /**

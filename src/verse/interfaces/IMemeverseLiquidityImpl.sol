@@ -52,6 +52,29 @@ interface IMemeverseLiquidityImpl {
         external
         returns (uint256 amountInLP);
 
+    /// @notice Redeems launcher-managed memecoin-side LP using POL, optionally unwrapping into underlying
+    ///         with slippage protection.
+    ///         Approve the launcher proxy as a POL spender first. When `unwrap` is true, `amount0Min`/`amount1Min`
+    ///         and `deadline` enforce slippage protection on the underlying `removeLiquidity` (zero means no
+    ///         protection — callers should set them to their minimum acceptable outputs). When `unwrap` is false
+    ///         the slippage params are ignored.
+    /// @dev Invoked via delegatecall by the facade's slippage-protected `redeemMemecoinLiquidity`. See the
+    ///      3-arg overload for delegatecall semantics.
+    /// @param verseId Memeverse id.
+    /// @param amountInPOL POL amount to burn (1:1 with LP).
+    /// @param unwrap Whether to unwrap LP into underlying assets.
+    /// @param amount0Min Minimum currency0 output when unwrapping (sorted order at router).
+    /// @param amount1Min Minimum currency1 output when unwrapping.
+    /// @param deadline Latest timestamp for the unwrap removal (passed to router).
+    function redeemMemecoinLiquidity(
+        uint256 verseId,
+        uint256 amountInPOL,
+        bool unwrap,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        uint256 deadline
+    ) external returns (uint256 amountInLP);
+
     /// @notice Redeems the caller's post-settlement auxiliary-liquidity share.
     /// @dev Invoked via delegatecall by the facade's `redeemAuxiliaryLiquidity`. Under delegatecall `msg.sender`
     ///      is the original caller (LP and residual-claim recipient).

@@ -17,7 +17,7 @@ interface IMemecoinDaoGovernor {
      * @param _proposalThreshold Minimum votes required to create proposals.
      * @param _quorumNumerator Quorum numerator used by governor quorum math.
      * @param _governanceCycleIncentivizer Incentivizer contract address paired to this governor.
-     * @param _minQuorum Absolute minimum quorum floor based on total supply.
+     * @param _minQuorum Absolute minimum quorum floor frozen at deploy-time (memecoin.totalSupply() * minQuorumNumerator / 100) and enforced via Math.max(super.quorum(timepoint), _minQuorum); not diluted by the fractional quorum.
      * @param _bootstrapPeriod Delay after deployment before proposals are accepted.
      * @param _maxTreasurySpendRatio Maximum treasury spend per execution, in basis points (10000 = 100%).
      * @param _upgradeSupermajorityRatio Required for-votes ratio for proposals targeting the Governor or its incentivizer, in basis points (10000 = 100%).
@@ -101,4 +101,5 @@ interface IMemecoinDaoGovernor {
     error RegistrationMustBeStandalone();
     error NestedExecution();
     error UpgradeSupermajorityRequired(uint256 forVotes, uint256 totalVotes, uint256 requiredRatio);
+    error ZeroInput();
 }

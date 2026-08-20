@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 /// @title IGenesisCreditFactory
 /// @notice Interface for the factory that deploys GenesisCredit instances via CREATE3.
 /// @dev Each (uAsset -> credit) pair maps to a deterministic CREATE3 address derived from
-///      `keccak256(abi.encode(uAsset))` where the factory self-inlines CREATE3; the namespace is
+///      `keccak256(abi.encode(uAsset))` where the factory delegates to solmate's `CREATE3` library (deployer = factory itself); the namespace is
 ///      the factory's own address. The factory deploys the full GenesisCredit contract (not a clone):
 ///      GenesisCredit is a plain (non-initializable) OFT, so its constructor runs once at CREATE3
 ///      deployment and the instance is immediately usable with no separate initialize step.
@@ -38,7 +38,7 @@ interface IGenesisCreditFactory {
     /// @dev Reverts with `AlreadyDeployed()` if a credit already exists for `uAsset`,
     ///      `ZeroUAsset()` when `uAsset` is the zero address, and `ZeroDelegate()` when `delegate`
     ///      is the zero address. Deployment is deterministic CREATE3
-    ///      where the factory self-inlines CREATE3 (deployer = factory itself), so the resulting
+    ///      where the factory delegates to solmate's `CREATE3` library (deployer = factory itself), so the resulting
     ///      address matches `predictCredit(uAsset)`. The GenesisCredit constructor runs in-line;
     ///      no initialize step.
     /// @param uAsset Underlying asset key identifying the credit token.

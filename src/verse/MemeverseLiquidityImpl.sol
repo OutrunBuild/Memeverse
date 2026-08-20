@@ -80,7 +80,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 mainPoolMemecoinBudget =
             mainPoolUAssetBudget * memeverseLauncherStorage.fundMetaDatas[uAsset].fundBasedAmount;
         _safeApprove(memecoin, swapRouter, mainPoolMemecoinBudget);
-        _safeApproveInf(uAsset, hookAddress);
+        // hook uAsset allowance is now handled per-settlement in _settlePreorder with exact amount (see G-09).
 
         (uint256 mainPoolUAssetUsed, uint256 polUAssetUsed, uint256 ptUAssetUsed, uint256 burnedMemecoin) = _createBootstrapPools(
             verseId,
@@ -100,6 +100,10 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 totalSpent = mainPoolUAssetUsed + polUAssetUsed + ptUAssetUsed;
         uint256 unusedBootstrapUAsset = totalSpent < totalGenesisFunds ? totalGenesisFunds - totalSpent : 0;
         _handleBootstrapResiduals(verseId, uAsset, memecoin, unusedBootstrapUAsset, burnedMemecoin, _polend);
+
+        // G-09 tail revocation: clear residual router allowances after bootstrap (uAsset cross-verse, memecoin per-verse).
+        if (uAsset != NATIVE) _safeApprove(uAsset, swapRouter, 0);
+        if (memecoin != NATIVE) _safeApprove(memecoin, swapRouter, 0);
     }
 
     function _createBootstrapPools(
@@ -217,6 +221,9 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             polUsedForPolUAsset,
             totalLeveragedDebt
         );
+
+        // G-09: clear residual pol->router allowance after auxiliary pools (pol is per-verse, hygiene).
+        if (pol != NATIVE) _safeApprove(pol, swapRouter, 0);
     }
 
     function _bootstrapPOLPool(
@@ -262,8 +269,9 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 polUsedForPolUAsset,
         uint256 totalLeveragedDebt
     ) internal returns (uint256 ptUAssetUsed) {
-        _safeApproveInf(pol, _polSplitter);
-        (uint256 totalPT,) = IPOLSplitter(_polSplitter).split(verseId, plan.normalPolToSplit + plan.leveragedPolToSplit);
+        uint256 totalToSplit = plan.normalPolToSplit + plan.leveragedPolToSplit;
+        if (pol != NATIVE && totalToSplit != 0) _safeApprove(pol, _polSplitter, totalToSplit);
+        (uint256 totalPT,) = IPOLSplitter(_polSplitter).split(verseId, totalToSplit);
         _safeApprove(pt, swapRouter, totalPT);
         // Split the minted PT asymmetrically: ~1/3 pairs with uAsset to expose a PT/uAsset price,
         // ~2/3 pairs with POL to deepen the PT/POL swap leg used by YT flash swaps.
@@ -278,6 +286,10 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         );
         (ptUsedForPtPol, polUsedForPtPol) =
             _createPTPOLAuxiliaryPool(verseId, pol, pt, swapRouter, ptForPtPol, plan.polForPtPol);
+
+        // G-09: clear per-verse pol->splitter and pt->router allowances after PT pools.
+        if (pol != NATIVE) _safeApprove(pol, _polSplitter, 0);
+        if (pt != NATIVE) _safeApprove(pt, swapRouter, 0);
 
         memeverseLauncherStorage.totalNormalClaimableYT[verseId] = plan.normalPolToSplit;
         _recordPTBootstrapResiduals(
@@ -362,6 +374,8 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             treasuryExcess = unusedBootstrapUAsset - credited;
             _safeApprove(uAsset, _polend, unusedBootstrapUAsset);
             IPOLend(_polend).fundSettlementDustReserve(uAsset, unusedBootstrapUAsset);
+            // G-09: clear exact polend allowance after funding (normally consumed, revoke for hygiene).
+            if (uAsset != NATIVE) _safeApprove(uAsset, _polend, 0);
         }
         // Emit only when something actually happened: unused uAsset routed, or memecoin burned.
         if (unusedBootstrapUAsset != 0 || burnedMemecoin != 0) {
@@ -440,6 +454,8 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         // is enforced cross-file via ExactInputPartialFill (SettlementFacet.sol::settlementUnlockCallback) — this
         // MIN/MAX is the v4 tick-range safety bound, not a slippage intent.
         uint160 sqrtPriceLimitX96 = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+        // G-09: use exact allowance for hook settlement (was _safeApproveInf). totalFunds is known.
+        if (uAsset != NATIVE) _safeApprove(uAsset, hookAddress, totalFunds);
         // Settlement goes through the hook's dedicated preorder-settlement path so preorder accounting stays isolated from public swap flow.
         BalanceDelta delta = IMemeverseUniswapHook(hookAddress)
             .executePreorderSettlement(
@@ -451,6 +467,8 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
                 recipient: address(this)
             })
             );
+        // G-09: clear exact hook allowance after settlement (no-op if reverted).
+        if (uAsset != NATIVE) _safeApprove(uAsset, hookAddress, 0);
 
         uint256 settledMemecoin = _positiveDeltaAmount(
             delta, memecoin, Currency.unwrap(poolKey.currency0), Currency.unwrap(poolKey.currency1)
@@ -681,9 +699,9 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         returns (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount)
     {
         IMemeverseLauncher.AuxiliaryLiquidity storage liq = memeverseLauncherStorage.auxiliaryLiquidities[verseId];
-        polUAssetLpAmount = liq.polUAssetLpAmount * userFund / normalFunds;
-        ptUAssetLpAmount = liq.ptUAssetLpAmount * userFund / normalFunds;
-        ptPolLpAmount = liq.ptPolLpAmount * userFund / normalFunds;
+        polUAssetLpAmount = FullMath.mulDiv(liq.polUAssetLpAmount, userFund, normalFunds);
+        ptUAssetLpAmount = FullMath.mulDiv(liq.ptUAssetLpAmount, userFund, normalFunds);
+        ptPolLpAmount = FullMath.mulDiv(liq.ptPolLpAmount, userFund, normalFunds);
     }
 
     function _transferRedeemedAuxiliaryLiquidity(
@@ -761,6 +779,16 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         }
     }
 
+    /**
+     * @dev 杠杆侧辅助流动性移除 — 刻意 0,0 零滑点 (Accepted Risk, 非缺陷):
+     * 活性>精度取舍。结算为协议内部路径无用户 amountMin 可传; 解锁5步原子
+     * _capture→stage=Unlocked→settle→executeGlobalSettlement(0,0)→write resumeTime【INV-07A】
+     * 中 remove 发生在 resumeTime 写入前, 同交易内 quote 已被前一笔公开swap污染,
+     * 紧下限(95%)使推价可 grief 致 TooMuchSlippage 持续回滚 Locked→Unlocked(DOS)。
+     * 以 0 保证解锁活性, 推价缺口由 settlementDustReserve 有界兜底【INV-13】,
+     * 后腿 24h publicSwapResumeTime 阻断消除原子三明治, 单腿推价仅 grief 无利可图。
+     * 监控 GlobalSettlementExecuted.totalRecoveredUAsset vs debt 即可, 不声明缺陷。
+     */
     function _removeLeveragedAuxiliaryLiquidity(
         address pol,
         address uAsset,
@@ -772,27 +800,36 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint128 ptPolLp
     ) internal returns (BalanceDelta polUAssetDelta, BalanceDelta ptUAssetDelta, BalanceDelta ptPolDelta) {
         // Rounded-down zero LP shares must not call router removal; default deltas remain zero.
+        // Internal settlement intentionally uses 0,0 — see function NatSpec above.
         polUAssetDelta = _removeAuxiliaryLiquidityIfNonZero(
-            Currency.wrap(pol), Currency.wrap(uAsset), polUAssetLp, swapRouter, polend_
+            Currency.wrap(pol), Currency.wrap(uAsset), polUAssetLp, swapRouter, polend_, 0, 0, block.timestamp
         );
         ptUAssetDelta = _removeAuxiliaryLiquidityIfNonZero(
-            Currency.wrap(pt), Currency.wrap(uAsset), ptUAssetLp, swapRouter, polend_
+            Currency.wrap(pt), Currency.wrap(uAsset), ptUAssetLp, swapRouter, polend_, 0, 0, block.timestamp
         );
-        ptPolDelta =
-            _removeAuxiliaryLiquidityIfNonZero(Currency.wrap(pt), Currency.wrap(pol), ptPolLp, swapRouter, polend_);
+        ptPolDelta = _removeAuxiliaryLiquidityIfNonZero(
+            Currency.wrap(pt), Currency.wrap(pol), ptPolLp, swapRouter, polend_, 0, 0, block.timestamp
+        );
     }
 
+    /**
+     * @dev 移除辅助流动性辅助 — 杠杆结算路径固定传 0,0; Route 侧 TooMuchSlippage 校验被有意绕过以保活性, 见 _removeLeveragedAuxiliaryLiquidity NatSpec。
+     * @param amount0Min/amount1Min 杠杆结算固定 0; 普通路径由调用方按需传入。
+     */
     function _removeAuxiliaryLiquidityIfNonZero(
         Currency currency0,
         Currency currency1,
         uint128 liquidity,
         address swapRouter,
-        address recipient
+        address recipient,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        uint256 deadline
     ) internal returns (BalanceDelta delta) {
         if (liquidity == 0) return delta;
 
         return IMemeverseSwapRouter(swapRouter)
-            .removeLiquidity(currency0, currency1, liquidity, 0, 0, recipient, block.timestamp);
+            .removeLiquidity(currency0, currency1, liquidity, amount0Min, amount1Min, recipient, deadline);
     }
 
     function _consumeLeveragedAuxiliaryClaims(uint256 verseId, uint256 totalLeveragedDebt, uint256 totalFunds)
@@ -828,12 +865,57 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
      *      The POL burn is executed by the launcher proxy on the caller's behalf: callers must first approve the
      *      launcher proxy as a POL spender for at least `amountInPOL`, or POL's `_spendAllowance` reverts with
      *      `ERC20InsufficientAllowance`.
+     *      Deprecated: the 3-arg overload keeps zero-slippage unwrap which is sandwichable after the protection
+     *      window. New callers must use the 6-arg overload with `amount0Min`/`amount1Min`/`deadline`.
+     *      This overload now reverts on `unwrap==true` to force migration to the slippage-protected path.
      */
     function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool unwrap)
         external
         onlyDelegatecall
         returns (uint256 amountInLP)
     {
+        // Force unwrap callers to use the slippage-protected 6-arg overload.
+        // The zero-slippage path is kept only for `unwrap==false` (LP transfer) which is not price-sensitive.
+        require(!unwrap, IMemeverseLauncher.SlippageProtectionRequired());
+
+        IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
+        require(amountInPOL != 0, IMemeverseLauncher.ZeroInput());
+
+        require(verse.currentStage == IMemeverseLauncher.Stage.Unlocked, IMemeverseLauncher.NotUnlockedStage());
+
+        IPol(verse.pol).burn(msg.sender, amountInPOL);
+
+        amountInLP = amountInPOL;
+        address swapRouter = memeverseLauncherStorage.memeverseSwapRouter;
+        address lpToken = _pairLpToken(verse.memecoin, verse.uAsset, swapRouter);
+        require(IERC20(lpToken).balanceOf(address(this)) >= amountInLP, IMemeverseLauncher.InsufficientLPBalance());
+        _transferOut(lpToken, msg.sender, amountInLP);
+        emit IMemeverseLauncher.RedeemMemecoinLiquidity(verseId, msg.sender, amountInLP);
+    }
+
+    /**
+     * @notice Redeems launcher-managed memecoin-side LP using POL, optionally unwrapping the LP into underlying
+     *         assets through the verse router with slippage protection.
+     * @dev Invoked via delegatecall by the facade's slippage-protected `redeemMemecoinLiquidity`. The facade keeps the outer
+     *      `versIdValidate` + `Stage.Unlocked` guards (and intentionally omits `whenNotPaused`); this sibling owns
+     *      the input-non-zero check, POL burn, LP balance check, and unwrap/transfer. Under delegatecall `msg.sender`
+     *      is the original caller (POL burner, LP/refund recipient). When `unwrap` is true, `amount0Min`/`amount1Min`/`deadline`
+     *      are forwarded to the router for slippage protection; when `unwrap` is false they are ignored.
+     * @param verseId Memeverse id.
+     * @param amountInPOL POL amount to burn (1:1 with LP).
+     * @param unwrap Whether to unwrap LP into underlying assets.
+     * @param amount0Min Minimum currency0 output when unwrapping.
+     * @param amount1Min Minimum currency1 output when unwrapping.
+     * @param deadline Latest timestamp for the unwrap removal.
+     */
+    function redeemMemecoinLiquidity(
+        uint256 verseId,
+        uint256 amountInPOL,
+        bool unwrap,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        uint256 deadline
+    ) external onlyDelegatecall returns (uint256 amountInLP) {
         IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
         require(amountInPOL != 0, IMemeverseLauncher.ZeroInput());
 
@@ -850,7 +932,14 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         } else {
             _safeApprove(lpToken, swapRouter, amountInLP);
             _removeAuxiliaryLiquidityIfNonZero(
-                Currency.wrap(verse.memecoin), Currency.wrap(verse.uAsset), uint128(amountInLP), swapRouter, msg.sender
+                Currency.wrap(verse.memecoin),
+                Currency.wrap(verse.uAsset),
+                uint128(amountInLP),
+                swapRouter,
+                msg.sender,
+                amount0Min,
+                amount1Min,
+                deadline
             );
         }
         emit IMemeverseLauncher.RedeemMemecoinLiquidity(verseId, msg.sender, amountInLP);

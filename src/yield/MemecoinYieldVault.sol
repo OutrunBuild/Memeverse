@@ -288,7 +288,19 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     ///      asset amount is computed once via the floor conversion and stops participating in future yield;
     ///      it is paid out later by `redeem`/`withdraw` once `REDEEM_DELAY` elapses. Each controller owns a
     ///      single FIFO self-claim queue, so the vault uses one shared time-delay model instead of
-    ///      per-request ids.
+    ///      per-request ids. Entries remain until fully claimed (swap-pop on `entry.shares == 0`), so
+    ///      matured entries still occupy `MAX_REDEEM_REQUESTS` slots until `redeem`/`withdraw` frees them;
+    ///      when the queue already holds 5 entries - even if all are matured - a new `requestRedeem`
+    ///      reverts `MaxRedeemRequestsReached` and the caller must first claim. The 5-entry bound keeps
+    ///      `maxWithdraw`/`_claimableShares`/claim loops gas-bounded (5 x double SLOAD); relaxing it
+    ///      requires re-estimating those bounds. Governance: shares are burned at request time via
+    ///      `_requestWithdraw` (`_burn` → `totalAssets -= lockedAssets` → `_writeTotalAssetCheckpoint`),
+    ///      so the owner's `getVotes`/`getPastVotes` (asset-denominated via `_convertVotes` /
+    ///      `_convertPastVotes` over `OutrunVotesInit.sol::_totalAssetsCheckpoint`) drop to the post-burn
+    ///      checkpoint immediately and remain zero for that position throughout `REDEEM_DELAY`; a proposal
+    ///      snapshot taken in that window records zero voting power and a later `redeem`/`withdraw` does
+    ///      not restore it — requesting is exiting governance one day early (see
+    ///      `MemecoinYieldVault.sol::_requestWithdraw` / `OutrunVotesInit.sol::getPastVotes`).
     /// @param shares Amount of vault shares to burn into the redemption queue.
     /// @param controller Account that will later claim (must be `msg.sender`).
     /// @param owner Account whose queue is debited (must be `msg.sender`).
@@ -319,6 +331,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     /// @notice Claims `shares` worth of matured redemption requests, paying out their locked assets.
     /// @dev FIFO claim over `owner`'s queue. `owner` must equal `msg.sender`: shares were already burned at
     ///      requestRedeem time, so there is no allowance path and a third-party `owner` would steal assets.
+    ///      Governance: voting power was already removed at `requestRedeem` time; `redeem` transfers only the
+    ///      locked assets and does not mint shares or restore `getVotes`/`getPastVotes` — a snapshot taken
+    ///      during `REDEEM_DELAY` remains zero even after claim (see `MemecoinYieldVault.sol::requestRedeem`).
     ///      The whole bounded queue is scanned (no early break on an immature entry) because swap-pop
     ///      compaction can reorder entries; MAX_REDEEM_REQUESTS keeps the loop gas-bounded.
     /// @param shares Amount of previously burned shares to claim payouts for.
@@ -393,9 +408,17 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
 
     /// @notice Claims exactly `assets` from matured redemption requests.
     /// @dev Assets-first FIFO claim. For each matured entry it solves the share count whose floor payout
-    ///      does not exceed the asset target, then decrements shares/lockedAssets in lockstep. Floor loss
-    ///      means an exact target is often unreachable; the call then reverts InsufficientClaimableRedeem
-    ///      (EIP-4626 "MUST revert if all assets cannot be withdrawn"). Same self-claim guard and scan as
+    ///      does not exceed the asset target (`takeShares = ceil((takeAssets+1)*S/L)-1`, payout
+    ///      `floor(takeShares*L/S) <= takeAssets`), then decrements shares/lockedAssets in lockstep.
+    ///      Floor loss means an exact target is often unreachable; the call then reverts
+    ///      `InsufficientClaimableRedeem` (EIP-4626 "MUST revert if all assets cannot be withdrawn").
+    ///      Granularity per entry is `floor(L/S)` (>=1 while `lockedAssets >= shares`); when
+    ///      `takeAssets + 1 <= L/S` the entry yields 0 shares and is skipped, so a tiny `assets`
+    ///      against a high-rate entry (e.g. 1 wei when `L >> S` after yield) reverts — callers
+    ///      should use `redeem(shares)` to claim by shares for full drainage. Governance: voting power
+    ///      was already removed at `requestRedeem` time; `withdraw` transfers only the locked assets and
+    ///      does not restore voting power — a snapshot taken during `REDEEM_DELAY` remains zero even after
+    ///      claim (see `MemecoinYieldVault.sol::requestRedeem`). Same self-claim guard and scan as
     ///      `redeem`.
     /// @param assets Exact amount of locked assets to pay out.
     /// @param receiver Recipient of the unlocked assets.
@@ -498,9 +521,13 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @dev Burns `shares`, deducts `lockedAssets` from totalAssets (so the queued amount stops earning
-    ///      yield immediately), writes the asset checkpoint, and enqueues the packed entry. Caller-side
-    ///      checks (self-redemption, non-zero shares, uint192 cap) live in `requestRedeem`; the cap is
-    ///      re-checked here as defense-in-depth.
+    ///      yield immediately), writes the asset checkpoint, and enqueues the packed entry. Governance:
+    ///      `_burn` immediately clears raw votes via `OutrunERC20VotesInit::_update` →
+    ///      `OutrunVotesInit::_transferVotingUnits` and `_writeTotalAssetCheckpoint` advances the asset
+    ///      checkpoint, so `getVotes`/`getPastVotes` for that position are zero throughout `REDEEM_DELAY`
+    ///      and a later `redeem`/`withdraw` does not restore them. Caller-side checks (self-redemption,
+    ///      non-zero shares, uint192 cap) live in `requestRedeem`; the cap is re-checked here as
+    ///      defense-in-depth.
     function _requestWithdraw(address owner, uint256 lockedAssets, uint256 shares) internal {
         uint256 requestCount = redeemRequestQueues[owner].length;
         require(requestCount < MAX_REDEEM_REQUESTS, MaxRedeemRequestsReached());

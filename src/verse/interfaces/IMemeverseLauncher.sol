@@ -362,6 +362,26 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         external
         returns (uint256 amountInLP);
 
+    /// @notice Redeems memecoin-side LP using POL, optionally unwrapping with slippage protection.
+    /// @dev When `unwrap` is false, transfers LP shares and ignores slippage params. When true, removes
+    ///      liquidity through the router and forwards the underlying; `amount0Min`/`amount1Min`/`deadline`
+    ///      enforce slippage protection (zero means no protection — callers should set mins).
+    /// @param verseId The memeverse id.
+    /// @param amountInPOL The POL amount to redeem.
+    /// @param unwrap Whether to remove liquidity into underlying assets instead of transferring LP shares.
+    /// @param amount0Min Minimum currency0 output when unwrapping.
+    /// @param amount1Min Minimum currency1 output when unwrapping.
+    /// @param deadline Latest timestamp for the unwrap removal.
+    /// @return amountInLP The redeemed memecoin LP amount.
+    function redeemMemecoinLiquidity(
+        uint256 verseId,
+        uint256 amountInPOL,
+        bool unwrap,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        uint256 deadline
+    ) external returns (uint256 amountInLP);
+
     /// @notice Mints POL against supplied uAsset and memecoin liquidity.
     /// @dev Uses the verse's router configuration to source the exact liquidity requirements.
     /// @param verseId The memeverse id.
@@ -533,6 +553,8 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
 
     error InsufficientLPBalance();
 
+    error SlippageProtectionRequired();
+
     error NotReachedLockedStage();
 
     error StillInGenesisStage(uint256 endTime);
@@ -556,7 +578,7 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     /// @dev Reverted when the owner has not configured the liquidity sibling the facade delegatecalls into.
     error LiquidityImplNotSet();
 
-    event Genesis(uint256 indexed verseId, address indexed depositer, uint256 amount);
+    event Genesis(uint256 indexed verseId, address indexed payer, address indexed depositer, uint256 amount);
 
     event ChangeStage(uint256 indexed verseId, Stage currentStage);
 

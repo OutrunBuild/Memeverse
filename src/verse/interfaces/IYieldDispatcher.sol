@@ -50,6 +50,8 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     /// @param newTreasury The treasury address after the rotation.
     event ProtocolTreasuryChanged(address indexed oldTreasury, address indexed newTreasury);
 
+    event RemoveGasDust(address indexed receiver, uint256 dust);
+
     /// @dev Shared compose errors (`NotDelivered` / `AlreadyExecuted` / `InvalidProof` /
     ///      `MalformedComposeMsg`) and the `ComposeRejected` event are declared once in `IComposeState`,
     ///      inherited by both composer interfaces.
@@ -94,6 +96,12 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     /// @dev Only callable by the owner. The treasury is intended to be the same address across all chains.
     /// @param protocolTreasury The new protocol treasury address.
     function setProtocolTreasury(address protocolTreasury) external;
+
+    /// @notice Sweeps native gas dust (e.g. LayerZero compose nativeDrop) to the receiver.
+    /// @dev Owner-only counterpart to `MemeverseLauncherUpgradeable.removeGasDust` and
+    ///      `MemeverseRegistrationCenterUpgradeable.removeGasDust`; transfers the full native balance.
+    /// @param receiver Recipient of the swept dust.
+    function removeGasDust(address receiver) external;
 
     /// @notice The local LayerZero endpoint allowed to call `lzCompose`.
     function localEndpoint() external view returns (address);

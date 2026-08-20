@@ -864,7 +864,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
 
         IERC20(pol).safeApprove(launcher_, polAmount);
-        IMemeverseLauncher(launcher_).redeemMemecoinLiquidity(verseId, polAmount, true);
+        IMemeverseLauncher(launcher_).redeemMemecoinLiquidity(verseId, polAmount, true, 0, 0, block.timestamp);
 
         uAssetAmount = IERC20(marketUAsset).balanceOf(address(this)) - beforeUAsset;
         memecoinAmount = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;

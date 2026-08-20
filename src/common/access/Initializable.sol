@@ -2,7 +2,21 @@
 pragma solidity ^0.8.35;
 
 /**
- * @dev This contract is just for minimal proxy
+ * @dev Minimal-proxy (EIP-1167 clone) initializer — uses ERC-7201 slot `outrun.storage.Initializable`.
+ *
+ * Dual Initializable invariant: this contract and
+ * `openzeppelin-contracts-upgradeable/proxy/utils/Initializable.sol` (OZ)
+ * (exposed via `OutrunOwnableUpgradeable`) live in different ERC-7201 slots
+ * (`outrun.storage.Initializable` vs `openzeppelin.storage.Initializable`) and are
+ * mutually unaware. A single contract MUST NOT inherit both families — e.g.
+ * mixing `OutrunERC20Init` / `OutrunOFTInit` / `OutrunOAppCoreInit` /
+ * `OutrunOwnableInit` (this family) with `OutrunOwnableUpgradeable`
+ * (OZ family) — would require explicit `override` of `initializer` /
+ * `onlyInitializing` / `_checkInitializing` to compile and could then expose two
+ * `initialize*` entries each guarded by a different lock, silently allowing
+ * double initialization. If the same function were guarded by both modifiers it
+ * would loudly revert, but separate entries would not. Keep the families
+ * strictly segregated. Enforced by `script/harness/check-no-dual-initializable.sh`.
  */
 abstract contract Initializable {
     error NotInitializing();

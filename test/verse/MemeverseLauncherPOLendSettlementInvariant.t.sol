@@ -128,7 +128,9 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
 
         vm.warp(block.timestamp + 1 days + 1);
         assertEq(uint256(launcher.changeStage(VERSE_ID)), uint256(IMemeverseLauncher.Stage.Locked), "genesis locked");
-        assertEq(pol.allowance(address(launcher), address(splitter)), type(uint256).max, "splitter allowance inf");
+        // G-09 exact approvals: the launcher grants the splitter only the exact split amount, the splitter
+        // consumes it via transferFrom, and the tail revoke leaves the allowance at zero (no infinite grant).
+        assertEq(pol.allowance(address(launcher), address(splitter)), 0, "splitter allowance revoked");
         (uint256 ptBackingNumerator, uint256 ptBackingDenominator) = splitter.ptBackingRatios(VERSE_ID);
         assertEq(ptBackingNumerator, (NORMAL_FUNDS + LEVERAGED_DEBT) * 7 / 10, "pt backing numerator");
         assertEq(ptBackingDenominator, MAIN_LIQUIDITY, "pt backing denominator");
@@ -198,7 +200,8 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
 
         vm.warp(block.timestamp + 1 days + 1);
         assertEq(uint256(launcher.changeStage(VERSE_ID)), uint256(IMemeverseLauncher.Stage.Locked), "genesis locked");
-        assertEq(pol.allowance(address(launcher), address(splitter)), type(uint256).max, "splitter allowance inf");
+        // G-09 exact approvals: exact split-amount grant consumed by the splitter, tail-revoked to zero.
+        assertEq(pol.allowance(address(launcher), address(splitter)), 0, "splitter allowance revoked");
 
         (address pt,,,,,,,,,,) = splitter.splitInfos(VERSE_ID);
         router.setPairOutputPerLp(address(pol), address(uAsset), 0.02 ether, 0.04 ether);

@@ -23,6 +23,7 @@ import {SwapFeeMath} from "../../src/swap/libraries/SwapFeeMath.sol";
 import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
+import {OutrunSafeERC20} from "../../src/common/token/OutrunSafeERC20.sol";
 import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
 import {IMemeverseUniswapHookLens} from "../../src/swap/interfaces/IMemeverseUniswapHookLens.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
@@ -1919,12 +1920,12 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         );
     }
 
-    /// @notice Verifies the router aborts with the dedicated `ERC20ApproveFailed` error when an input token's
-    ///         approve toward the hook returns false.
+    /// @notice Verifies the router aborts with `OutrunSafeERC20`'s `SafeERC20FailedOperation(token)` when an
+    ///         input token's approve toward the hook returns false.
     /// @dev The approval guard lives on the liquidity budget path (`_pullCurrency` then `_ensureHookApproval`),
-    ///      so the test walks that entrypoint: the caller-budget pull succeeds (transferFrom), then the router's
-    ///      router->hook approve is refused and the call reverts. A failed pull would surface
-    ///      `ERC20TransferFailed` instead, so the exact error proves the approve branch is the failing step.
+    ///      both unified under OutrunSafeERC20. `setApproveOk(false)` refuses only approve calls, so the
+    ///      caller-budget pull (transferFrom) still succeeds; the revert therefore proves the router->hook
+    ///      approve branch is the failing step.
     function testAddLiquidityReverts_WhenHookApprovalFails() external {
         YTMockERC20 approveFailToken = new YTMockERC20("ApproveFail", "AF");
         bool failIsCurrency0 = address(approveFailToken) < address(token1);
@@ -1940,7 +1941,9 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         _initializePoolDirect(approveFailKey, SQRT_PRICE_1_1);
         seedActiveLiquiditySharesForTest(address(hook), approveFailKey.toId(), address(this), 1e18);
 
-        vm.expectRevert(IMemeverseSwapRouter.ERC20ApproveFailed.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(OutrunSafeERC20.SafeERC20FailedOperation.selector, address(approveFailToken))
+        );
         router.addLiquidity(currency0, currency1, 100 ether, 100 ether, 0, 0, address(this), block.timestamp);
     }
 

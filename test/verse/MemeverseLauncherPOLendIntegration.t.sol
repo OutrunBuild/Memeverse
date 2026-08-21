@@ -470,6 +470,15 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         polend.setTotalLeveragedDebt(VERSE_ID, 1000 ether);
         setAuxiliaryLiquiditiesForTest(launcherProxy, VERSE_ID, 100 ether, 50 ether, 80 ether);
 
+        // Settlement grants the router exact per-pair LP allowances, so each fabricated pair needs a
+        // registered LP token; an unregistered pair would resolve to address(0) and revert SafeApproveFailed.
+        MockERC20 testPolUAssetLp = new MockERC20("T-POL-UASSET-LP", "T-POL-UASSET-LP", 18);
+        MockERC20 testPtUAssetLp = new MockERC20("T-PT-UASSET-LP", "T-PT-UASSET-LP", 18);
+        MockERC20 testPtPolLp = new MockERC20("T-PT-POL-LP", "T-PT-POL-LP", 18);
+        router.setLpToken(testPol, testUAsset, address(testPolUAssetLp));
+        router.setLpToken(testPt, testUAsset, address(testPtUAssetLp));
+        router.setLpToken(testPt, testPol, address(testPtPolLp));
+
         router.setRemoveLiquidityResult(testPol, testUAsset, 30 ether, 15 ether);
         router.setRemoveLiquidityResult(testPt, testUAsset, 12 ether, 6 ether);
         router.setRemoveLiquidityResult(testPt, testPol, 20 ether, 10 ether);

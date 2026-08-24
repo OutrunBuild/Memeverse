@@ -60,6 +60,20 @@ interface IOmnichainMemecoinStaker is IComposeState, ILayerZeroComposer {
     ///      receiver never reaches this error: it passes the shape check and falls through to `NotBeneficiary`, whose
     ///      `msg.sender == address(0)` test is permanently unsatisfiable.
 
+    /// @notice Sweeps native gas dust (e.g. LayerZero compose nativeDrop) to the receiver.
+    /// @dev Owner-only counterpart to `MemeverseLauncherUpgradeable.removeGasDust` and
+    ///      `MemeverseRegistrationCenterUpgradeable.removeGasDust` and
+    ///      `YieldDispatcherUpgradeable.removeGasDust`; transfers the full native balance.
+    /// @param receiver Recipient of the swept dust.
+    event RemoveGasDust(address indexed receiver, uint256 dust);
+
+    /// @notice Sweeps native gas dust (e.g. LayerZero compose nativeDrop) to the receiver.
+    /// @dev Owner-only counterpart to `MemeverseLauncherUpgradeable.removeGasDust` and
+    ///      `MemeverseRegistrationCenterUpgradeable.removeGasDust` and
+    ///      `YieldDispatcherUpgradeable.removeGasDust`; transfers the full native balance.
+    /// @param receiver Recipient of the swept dust.
+    function removeGasDust(address receiver) external;
+
     /// @notice Settles a stuck staking compose payload to the beneficiary encoded in `message` when `lzCompose` never ran.
     /// @dev Only the beneficiary (`msg.sender ==` the receiver read from `message`) may call, which blocks a third
     ///      party from front-running the settle before `lzCompose` runs; the beneficiary is bound to `message` via the

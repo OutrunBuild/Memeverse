@@ -17,8 +17,8 @@ import {IOmnichainMemecoinStaker} from "./interfaces/IOmnichainMemecoinStaker.so
  *      accepts Memecoin and stakes to the yield vault. UUPS form of the former constructor-deployed
  *      OmnichainMemecoinStaker: identical business logic and storage semantics behind an ERC1967Proxy,
  *      so the custody of stranded bridged memecoin survives implementation repair at a stable address.
- *      The owner holds upgrade authorization only — `lzCompose` / `settlePendingCompose` carry zero
- *      owner permissions, and there is no pause or rescue path.
+ *      The owner holds upgrade authorization and gas-dust recovery (`removeGasDust`) — `lzCompose`
+ *      / `settlePendingCompose` carry zero owner permissions, and there is no pause or token rescue path.
  */
 contract OmnichainMemecoinStakerUpgradeable layout at erc7201("outrun.storage.OmnichainMemecoinStaker")
     is
@@ -78,6 +78,18 @@ contract OmnichainMemecoinStakerUpgradeable layout at erc7201("outrun.storage.Om
     /// @return Current ComposeState of the pair (None / Settled / Released).
     function composeStates(address memecoin, bytes32 guid) external view returns (ComposeState) {
         return omnichainMemecoinStakerStorage.composeStates[memecoin][guid];
+    }
+
+    /// @notice Sweeps native gas dust (e.g. LayerZero compose nativeDrop) to the receiver.
+    /// @dev Owner-only utility to recover ETH stranded via payable `lzCompose` (third-party OFT direct sends
+    ///      with a non-zero compose `value` or future option misconfiguration). Mirrors
+    ///      `YieldDispatcherUpgradeable.removeGasDust` and `MemeverseRegistrationCenterUpgradeable.removeGasDust`
+    ///      using the shared `TokenHelper._transferOut(NATIVE)` path.
+    /// @param receiver Recipient of the swept dust.
+    function removeGasDust(address receiver) external override onlyOwner {
+        uint256 dust = address(this).balance;
+        emit RemoveGasDust(receiver, dust);
+        _transferOut(NATIVE, receiver, dust);
     }
 
     /// @notice Finalizes a remote memecoin staking compose message.

@@ -10,6 +10,7 @@ import {OutrunERC20Init} from "../../common/token/OutrunERC20Init.sol";
 contract SplitterToken is OutrunERC20Init {
     error PermissionDenied();
     error ZeroAddress();
+    error ZeroInput();
 
     address public splitter;
 
@@ -24,11 +25,15 @@ contract SplitterToken is OutrunERC20Init {
         splitter = splitter_;
     }
 
+    /// @notice Mints PT/YT to `to`. Reverts on zero amount to align with Memecoin/MemePol/GenesisCredit ZeroInput semantics (F-0034 defense-in-depth; production splitter already guards zero).
     function mint(address to, uint256 amount) external onlySplitter {
+        if (amount == 0) revert ZeroInput();
         _mint(to, amount);
     }
 
+    /// @notice Burns PT/YT from `from`. Reverts on zero amount for cross-token consistency (F-0034).
     function burn(address from, uint256 amount) external onlySplitter {
+        if (amount == 0) revert ZeroInput();
         _burn(from, amount);
     }
 }

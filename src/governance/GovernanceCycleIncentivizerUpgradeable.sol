@@ -466,9 +466,10 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
 
     /**
      * @notice Accumulates voting power for a user in the active cycle.
-     * @dev Called by the governor after vote casting succeeds.
+     * @dev Called by the governor after vote casting succeeds. Each successful `castVote` across any proposal in the active cycle contributes its incremental weight here, including votes on proposals that later become `Defeated` or `Canceled`; no filtering or cross-proposal deduplication.
+     * Reward share therefore scales with voting volume (`userVotes`/`totalVotes` per cycle) rather than unique participation. Within one proposal the governor's fractional counting caps the sum by `getPastVotes` at the proposal snapshot, so accumulation never exceeds per-proposal voting power. Invariant `sum(userVotes) == totalVotes` holds (both incremented together), so `mulDiv(rewardBalance, userVotes, totalVotes)` remains conservation-safe.
      * @param user - The user address
-     * @param votes - The number of votes
+     * @param votes - The incremental vote weight just consumed (return value of `super._castVote`)
      */
     function accumCycleVotes(address user, uint256 votes) external override onlyGovernance {
         uint128 _currentCycleId = governanceCycleIncentivizerStorage._currentCycleId;

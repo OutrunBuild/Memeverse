@@ -395,6 +395,12 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         return super._propose(targets, values, calldatas, description, proposer);
     }
 
+    /**
+     * @dev Casts a vote and accumulates incremental weight into the active governance cycle.
+     * @notice Each successful `castVote` (including `castVoteWithReason`, `castVoteWithReasonAndParams` and `castVoteBySig` variants) forwards its newly consumed weight via `GovernanceCycleIncentivizerUpgradeable.sol::accumCycleVotes`.
+     * Accumulated `userVotes`/`totalVotes` scale with voting volume (count x weight) across all proposals in the cycle, including votes on proposals that later end as `Defeated` or `Canceled`; no cross-proposal deduplication is performed and `_cancel` does not roll back the ledger.
+     * Within a single proposal, `GovernorCountingFractionalUpgradeable.sol::_countVote` caps the sum of partial casts by `getPastVotes(account, proposalSnapshot)`, so no double-count beyond snapshot power; fractional `support=255` splits are bounded by remaining weight.
+     */
     function _castVote(uint256 proposalId, address account, uint8 support, string memory reason, bytes memory params)
         internal
         override

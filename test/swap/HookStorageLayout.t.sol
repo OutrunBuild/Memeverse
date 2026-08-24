@@ -2,7 +2,6 @@
 pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
-import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 
 /// @title HookStorageLayoutTest
@@ -18,7 +17,7 @@ import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 ///      `HookStorageHelper.HOOK_SLOT` direct `vm.load`/`vm.store` helpers.
 contract HookStorageLayoutTest is Test, HookStorageHelper {
     string internal constant EXPECTED_NAMESPACE = "outrun.storage.MemeverseUniswapHook";
-    string internal constant EXPECTED_LAYOUT = 'layout at erc7201("outrun.storage.MemeverseUniswapHook")';
+    string internal constant EXPECTED_LAYOUT = "layout at erc7201(\"outrun.storage.MemeverseUniswapHook\")";
 
     /// @notice The ERC-7201 slot for the namespace must equal the hardened constant used by all helpers.
     function test_ERC7201SlotDerivationMatchesConst() external pure {

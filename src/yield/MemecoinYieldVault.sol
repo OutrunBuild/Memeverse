@@ -180,13 +180,18 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         uint256 i = 0;
         while (i < len && remaining > 0) {
             if (block.timestamp < uint256(requestTimes[i]) + REDEEM_DELAY) {
-                unchecked { ++i; }
+                unchecked {
+                    ++i;
+                }
                 continue;
             }
             uint256 takeAssets = remaining < lockedAssets[i] ? remaining : uint256(lockedAssets[i]);
-            uint256 takeShares = Math.mulDiv(takeAssets + 1, shares[i], uint256(lockedAssets[i]), Math.Rounding.Ceil) - 1;
+            uint256 takeShares =
+                Math.mulDiv(takeAssets + 1, shares[i], uint256(lockedAssets[i]), Math.Rounding.Ceil) - 1;
             if (takeShares == 0) {
-                unchecked { ++i; }
+                unchecked {
+                    ++i;
+                }
                 continue;
             }
             uint256 payout = Math.mulDiv(takeShares, uint256(lockedAssets[i]), shares[i]);
@@ -201,7 +206,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
                 }
                 --len;
             } else {
-                unchecked { ++i; }
+                unchecked {
+                    ++i;
+                }
             }
         }
         return remaining == 0;

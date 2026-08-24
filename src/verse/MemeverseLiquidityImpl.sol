@@ -788,14 +788,15 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
     }
 
     /**
-     * @dev 杠杆侧辅助流动性移除 — 刻意 0,0 零滑点 (Accepted Risk, 非缺陷):
-     * 活性>精度取舍。结算为协议内部路径无用户 amountMin 可传; 解锁5步原子
-     * _capture→stage=Unlocked→settle→executeGlobalSettlement(0,0)→write resumeTime【INV-07A】
-     * 中 remove 发生在 resumeTime 写入前, 同交易内 quote 已被前一笔公开swap污染,
-     * 紧下限(95%)使推价可 grief 致 TooMuchSlippage 持续回滚 Locked→Unlocked(DOS)。
-     * 以 0 保证解锁活性, 推价缺口由 settlementDustReserve 有界兜底【INV-13】,
-     * 后腿 24h publicSwapResumeTime 阻断消除原子三明治, 单腿推价仅 grief 无利可图。
-     * 监控 GlobalSettlementExecuted.totalRecoveredUAsset vs debt 即可, 不声明缺陷。
+     * @dev Leveraged-side auxiliary liquidity removal — intentional 0,0 zero slippage (Accepted Risk, not a defect):
+     * Liveness over precision tradeoff. Settlement is an internal protocol path with no user-supplied amountMin;
+     * the 5-step atomic unlock _capture -> stage=Unlocked -> settle -> executeGlobalSettlement(0,0) -> write resumeTime [INV-07A]
+     * executes remove before resumeTime is written, while the in-transaction quote is already polluted by the
+     * preceding public swap. A tight lower bound (95%) would let price pushing grief the flow into
+     * persistent TooMuchSlippage reverts that roll back Locked->Unlocked (DOS).
+     * Using 0 guarantees unlock liveness; the price-push shortfall is bounded by settlementDustReserve [INV-13].
+     * The trailing 24h publicSwapResumeTime blocks atomic sandwich attacks; single-leg pushing is grief-only, not profitable.
+     * Monitor GlobalSettlementExecuted.totalRecoveredUAsset vs debt; no defect is declared.
      */
     function _removeLeveragedAuxiliaryLiquidity(
         address pol,
@@ -821,8 +822,9 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
     }
 
     /**
-     * @dev 移除辅助流动性辅助 — 杠杆结算路径固定传 0,0; Route 侧 TooMuchSlippage 校验被有意绕过以保活性, 见 _removeLeveragedAuxiliaryLiquidity NatSpec。
-     * @param amount0Min/amount1Min 杠杆结算固定 0; 普通路径由调用方按需传入。
+     * @dev Auxiliary liquidity removal helper — leveraged settlement path always passes 0,0; Route-side
+     * TooMuchSlippage checks are intentionally bypassed to preserve liveness, see _removeLeveragedAuxiliaryLiquidity NatSpec.
+     * @param amount0Min/amount1Min Fixed to 0 for leveraged settlement; caller-supplied for normal paths.
      */
     function _removeAuxiliaryLiquidityIfNonZero(
         Currency currency0,

@@ -111,8 +111,8 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
     /// @param receiver Recipient of the swept dust.
     function removeGasDust(address receiver) external override onlyOwner {
         uint256 dust = address(this).balance;
-        _transferOut(NATIVE, receiver, dust);
         emit RemoveGasDust(receiver, dust);
+        _transferOut(NATIVE, receiver, dust);
     }
 
     function localEndpoint() external view returns (address) {
@@ -138,6 +138,11 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
     ///      out-of-range TokenType) and a clean parseable payload naming this dispatcher as its own receiver
     ///      (`receiver == address(this)`) are consumed with `Settled` + `ComposeRejected` and no settlement —
     ///      shared convergence / hash-binding / self-harm rationale: see `IComposeState`'s @dev note (authoritative).
+    ///      F-0026 note: a parseable UASSET→governor frame whose `token` is not yet registered as a treasury
+    ///      token (`NonTreasuryToken` in `recordTreasuryIncome`) is intentionally NOT consumed; `_settle`
+    ///      reverts and the `Settled` write rolls back to `None`, pinning the endpoint for retry until governance
+    ///      `registerTreasuryToken` heals it (see `_settleToContract`). This preserves the healable-vs-never-settle
+    ///      distinction from `IComposeState`.
     ///      Local specifics: `_parseCompose` rejects a payload exactly when it can never decode (strict-ABI
     ///      mirror); the self-reference branch exists because `_settleToContract` would fail on this contract,
     ///      which implements neither `asset()` (the MEMECOIN binding probe) nor the settle callbacks and has no
@@ -324,6 +329,19 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
     ///      before the approve), mirroring the staker's deposit branch: a forged (fake token, real vault) frame is
     ///      intercepted before any fund movement. UASSET applies no binding: the governor pulls the payload-named
     ///      token, so no (token, receiver) mismatch class exists.
+    ///      F-0026 liveness boundary (VALID NON-SECURITY OBSERVATION, Low): UASSET→governor settlement
+    ///      reverts with `NonTreasuryToken` when `token` is not yet registered in
+    ///      `GovernanceCycleIncentivizerUpgradeable._treasuryTokens` (checked in `recordTreasuryIncome`).
+    ///      Both `lzCompose` (Settled) and `settlePendingCompose` (Released) share this `_settle` path and
+    ///      atomically roll back the `composeStates[token][guid]` mutex to `None` on revert; the endpoint queue
+    ///      remains pinned (retry) and dispatched funds stay escrowed in the dispatcher until governance heals
+    ///      via `registerTreasuryToken` (or `unregisterTreasuryToken` to free a `MAX_TOKENS_LIMIT=50` slot) and
+    ///      any party permissionlessly retries `settlePendingCompose`. This revert-and-retry is intentional:
+    ///      per `IComposeState`, only frames that can never settle (unparseable / self-reference) are consumed
+    ///      as `Settled+ComposeRejected`; a healable semantic-unregistered frame must stay retryable. Impact is
+    ///      per-(token,guid) self-harm only — the protocol fee path sends `verse.uAsset` which is pre-registered
+    ///      at deployment via `MemeverseProxyDeployer:initFundTokens`, and (token,guid) keying prevents a forged
+    ///      frame from blocking the legitimate pair.
     function _settleToContract(address token, address receiver, TokenType tokenType, uint256 amount) internal {
         if (tokenType == TokenType.MEMECOIN) {
             // Bind the delivered token to the vault's own underlying asset: a forged (fake token, real vault)

@@ -77,6 +77,10 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         _safeApprove(uAsset, swapRouter, totalGenesisFunds);
         // Compute the memecoin bootstrap budget once here and forward it; the main-pool helper used to re-derive
         // it via the same MUL on the (warm) fundBasedAmount slot, so computing once saves one redundant product.
+        // `fundBasedAmount` is memecoins per raw unit of `uAsset` (bakes decimals scale — see
+        // `MemeverseLauncherUpgradeable.sol:setFundMetaData` and `docs/spec/verse/config-matrix.md`);
+        // non-credit genesis intentionally supports arbitrary decimals, correct per-raw-unit calibration
+        // is operator responsibility.
         uint256 mainPoolMemecoinBudget =
             mainPoolUAssetBudget * memeverseLauncherStorage.fundMetaDatas[uAsset].fundBasedAmount;
         _safeApprove(memecoin, swapRouter, mainPoolMemecoinBudget);
@@ -167,6 +171,10 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             uint256 burnedMemecoin
         )
     {
+        // `InitialPriceCalculator` is intentionally pure and assumes 18-decimal-equivalent raw amounts
+        // (see its NatSpec "under the 18-decimal token assumption"). Price is derived from the raw
+        // `mainPoolMemecoinBudget` / `mainPoolUAssetBudget` ratio, so `fundBasedAmount` must already
+        // encode the uAsset's decimals scale to achieve the intended economic price.
         uint160 mainPoolStartPrice = InitialPriceCalculator.calculateInitialSqrtPriceX96(
             memecoin, uAsset, mainPoolMemecoinBudget, mainPoolUAssetBudget
         );
@@ -889,8 +897,8 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         address swapRouter = memeverseLauncherStorage.memeverseSwapRouter;
         address lpToken = _pairLpToken(verse.memecoin, verse.uAsset, swapRouter);
         require(IERC20(lpToken).balanceOf(address(this)) >= amountInLP, IMemeverseLauncher.InsufficientLPBalance());
-        _transferOut(lpToken, msg.sender, amountInLP);
         emit IMemeverseLauncher.RedeemMemecoinLiquidity(verseId, msg.sender, amountInLP);
+        _transferOut(lpToken, msg.sender, amountInLP);
     }
 
     /**
@@ -927,6 +935,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         address swapRouter = memeverseLauncherStorage.memeverseSwapRouter;
         address lpToken = _pairLpToken(verse.memecoin, verse.uAsset, swapRouter);
         require(IERC20(lpToken).balanceOf(address(this)) >= amountInLP, IMemeverseLauncher.InsufficientLPBalance());
+        emit IMemeverseLauncher.RedeemMemecoinLiquidity(verseId, msg.sender, amountInLP);
         if (!unwrap) {
             _transferOut(lpToken, msg.sender, amountInLP);
         } else {
@@ -942,7 +951,6 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
                 deadline
             );
         }
-        emit IMemeverseLauncher.RedeemMemecoinLiquidity(verseId, msg.sender, amountInLP);
     }
 
     function _pairLpToken(address tokenA, address tokenB, address swapRouter) internal view returns (address lpToken) {

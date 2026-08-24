@@ -759,9 +759,8 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
      */
     function removeGasDust(address receiver) external override onlyOwner {
         uint256 dust = address(this).balance;
-        _transferOut(NATIVE, receiver, dust);
-
         emit RemoveGasDust(receiver, dust);
+        _transferOut(NATIVE, receiver, dust);
     }
 
     /**
@@ -917,9 +916,26 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     /**
      * @notice Set fund metadata for a verse uAsset token.
      * @dev Only callable by the owner.
+     *      `fundBasedAmount` is denominated in memecoins per raw unit of `_uAsset` (not per whole token):
+     *      its value silently bakes the uAsset's `decimals()` scale. `_minTotalFund` is likewise
+     *      denominated in raw units at the uAsset's own decimals (see `docs/spec/polend/genesis.md:113`).
+     *      A 6-decimal stable and an 18-decimal token with the same economic target therefore require
+     *      `fundBasedAmount` values differing by 1e12. The four live consumers of this slot are
+     *      (1) bootstrap memecoin budget (`MemeverseLiquidityImpl.sol:80-81`), (2) genesis launch gate
+     *      (`MemeverseLaunchImpl.sol:332`), (3) yield-vault `virtualAssets` derivation
+     *      (`MemeverseLaunchImpl.sol:400-401`, `MemecoinYieldVault.initialize:56`), and (4) debt-cap
+     *      base (`MemeverseLauncherUpgradeable.sol:232`). Only the GenesisCredit path gates 18 decimals
+     *      (`GenesisCreditFactory.sol:68-69`, `POLendUpgradeable.sol:297-301`); non-credit `genesis` /
+     *      `leveragedGenesis` intentionally supports arbitrary decimals — correct calibration is an
+     *      operational requirement, not an on-chain invariant. Mis-calibration cannot steal funds
+     *      (budgets are spent within escrowed verse funds; residual handling burns excess, `ZeroVirtualAssets`
+     *      reverts deploy when `minTotalFund*fundBasedAmount*7/1000 == 0`), but will mis-size pools or
+     *      block launch. Operator checklist: read `IERC20Metadata(_uAsset).decimals()` off-chain, verify
+     *      `minTotalFund * fundBasedAmount >= 143` (so `virtualAssetsBuffer>0`), and cross-check the four
+     *      consumers before confirming.
      * @param _uAsset - Genesis fund type
-     * @param _minTotalFund - The minimum participation genesis fund corresponding to uAsset
-     * @param _fundBasedAmount - // The number of Memecoins minted per unit of Memecoin genesis fund
+     * @param _minTotalFund - The minimum participation genesis fund corresponding to uAsset (raw units)
+     * @param _fundBasedAmount - The number of Memecoins minted per raw unit of genesis fund (raw-unit ratio; see dev note)
      */
     function setFundMetaData(address _uAsset, uint256 _minTotalFund, uint256 _fundBasedAmount)
         external

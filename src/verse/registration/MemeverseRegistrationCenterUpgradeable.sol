@@ -218,9 +218,8 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
     /// @param receiver Address that receives the withdrawn dust.
     function removeGasDust(address receiver) external override onlyOwner {
         uint256 dust = address(this).balance;
-        _transferOut(NATIVE, receiver, dust);
-
         emit RemoveGasDust(receiver, dust);
+        _transferOut(NATIVE, receiver, dust);
     }
 
     /// @notice Forwards a LayerZero send through the center contract itself.

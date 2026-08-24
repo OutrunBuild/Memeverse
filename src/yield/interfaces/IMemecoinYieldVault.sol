@@ -65,9 +65,25 @@ interface IMemecoinYieldVault is IERC20 {
     /// @notice Maximum assets `owner` could withdraw right now.
     /// @dev Claim-mode semantics: returns the sum of `lockedAssets` across `owner`'s matured
     ///      (claimable) redemption-queue entries. Shares are burned at requestRedeem time, so this does
-    ///      NOT reflect `balanceOf`; an owner with un-requested shares reports 0 here.
+    ///      NOT reflect `balanceOf`; an owner with un-requested shares reports 0 here. This is the
+    ///      total claimable amount; due to per-entry floor granularity (`floor(lockedAssets/shares)`),
+    ///      not every `0 < assets <= maxWithdraw` is exactly withdrawable in a single `withdraw` call —
+    ///      `withdraw` is exact-or-revert and reverts `InsufficientClaimableRedeem` on unreachable
+    ///      partial targets (see `withdraw` NatSpec). Full-drain `withdraw(maxWithdraw(owner))` is
+    ///      always exact; for partial claims prefer `redeem(shares)` or pre-check with
+    ///      `isWithdrawReachable`.
     /// @return maxAssets Total claimable locked assets for `owner`.
     function maxWithdraw(address owner) external view returns (uint256 maxAssets);
+
+    /// @notice Checks whether `assets` can be withdrawn exactly in one `withdraw` call.
+    /// @dev View-only simulation of `withdraw`'s per-entry floor granularity
+    ///      (`takeShares = ceil((takeAssets+1)*S/L)-1`, `payout = floor(takeShares*L/S)`).
+    ///      Returns false instead of reverting, so frontends can pre-check partial targets.
+    ///      Full-drain `assets == maxWithdraw(owner)` always returns true when matured.
+    /// @param owner Account whose queue is checked.
+    /// @param assets Exact asset amount to test.
+    /// @return ok True if `withdraw(assets, receiver, owner)` would succeed exactly.
+    function isWithdrawReachable(address owner, uint256 assets) external view returns (bool ok);
 
     /// @notice Maximum shares `owner` could redeem right now.
     /// @dev Claim-mode semantics: returns the sum of `shares` across `owner`'s matured (claimable)

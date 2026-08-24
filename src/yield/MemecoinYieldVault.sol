@@ -128,7 +128,13 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
 
     /// @notice Maximum assets `owner` could withdraw right now.
     /// @dev Claim-mode semantics: sums `lockedAssets` across `owner`'s matured (claimable) queue entries.
-    ///      Shares are burned at requestRedeem time, so this does NOT reflect `balanceOf`.
+    ///      Shares are burned at requestRedeem time, so this does NOT reflect `balanceOf`. This is the
+    ///      total claimable amount; due to per-entry floor granularity (`floor(lockedAssets/shares)`),
+    ///      not every `0 < assets <= maxWithdraw` is exactly withdrawable in a single `withdraw` call —
+    ///      `withdraw` is exact-or-revert and reverts `InsufficientClaimableRedeem` on unreachable
+    ///      partial targets (see `withdraw` NatSpec). Full-drain `withdraw(maxWithdraw(owner))` is
+    ///      always exact; for partial claims prefer `redeem(shares)` or pre-check with
+    ///      `isWithdrawReachable`.
     /// @param owner Account whose claimable assets are queried.
     /// @return maxAssets Total claimable locked assets for `owner`.
     function maxWithdraw(address owner) external view override returns (uint256) {
@@ -143,6 +149,62 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
             }
         }
         return total;
+    }
+
+    /// @notice Checks whether `assets` can be withdrawn exactly in one `withdraw` call.
+    /// @dev View-only simulation of `withdraw`'s per-entry floor granularity
+    ///      (`takeShares = ceil((takeAssets+1)*S/L)-1`, `payout = floor(takeShares*L/S)`).
+    ///      Returns false instead of reverting, so frontends can pre-check partial targets.
+    ///      Full-drain `assets == maxWithdraw(owner)` always returns true when matured. The
+    ///      simulation mirrors `withdraw`'s FIFO scan with swap-pop compaction in memory, so the
+    ///      reachability result matches the state-changing call exactly.
+    /// @param owner Account whose queue is checked.
+    /// @param assets Exact asset amount to test.
+    /// @return ok True if `withdraw(assets, receiver, owner)` would succeed exactly.
+    function isWithdrawReachable(address owner, uint256 assets) external view override returns (bool ok) {
+        if (assets == 0) return false;
+        RedeemRequestEntry[] storage queue = redeemRequestQueues[owner];
+        uint256 len = queue.length;
+        if (len == 0) return false;
+        // Copy to memory to simulate swap-pop without mutating storage.
+        uint192[] memory lockedAssets = new uint192[](len);
+        uint256[] memory shares = new uint256[](len);
+        uint64[] memory requestTimes = new uint64[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            RedeemRequestEntry storage e = queue[i];
+            lockedAssets[i] = e.lockedAssets;
+            shares[i] = e.shares;
+            requestTimes[i] = e.requestTime;
+        }
+        uint256 remaining = assets;
+        uint256 i = 0;
+        while (i < len && remaining > 0) {
+            if (block.timestamp < uint256(requestTimes[i]) + REDEEM_DELAY) {
+                unchecked { ++i; }
+                continue;
+            }
+            uint256 takeAssets = remaining < lockedAssets[i] ? remaining : uint256(lockedAssets[i]);
+            uint256 takeShares = Math.mulDiv(takeAssets + 1, shares[i], uint256(lockedAssets[i]), Math.Rounding.Ceil) - 1;
+            if (takeShares == 0) {
+                unchecked { ++i; }
+                continue;
+            }
+            uint256 payout = Math.mulDiv(takeShares, uint256(lockedAssets[i]), shares[i]);
+            shares[i] -= takeShares;
+            lockedAssets[i] -= uint192(payout);
+            remaining -= payout;
+            if (shares[i] == 0) {
+                if (i != len - 1) {
+                    lockedAssets[i] = lockedAssets[len - 1];
+                    shares[i] = shares[len - 1];
+                    requestTimes[i] = requestTimes[len - 1];
+                }
+                --len;
+            } else {
+                unchecked { ++i; }
+            }
+        }
+        return remaining == 0;
     }
 
     /// @notice Maximum shares `owner` could redeem right now.

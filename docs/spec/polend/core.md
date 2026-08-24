@@ -81,7 +81,7 @@ POLendUpgradeable 定义产品语义、资金流、状态边界、结算规则�
 
 `POLendUpgradeable.protocolTreasury` 接收全部真付部分杠杆利息（realInterest = `totalLeveragedInterest - totalCreditInterest`）、Launcher over-capacity funding excess 以及其他明确归 treasury 的杠杆利息收入。该产品术语映射到当前实现 getter/storage `treasury()` / `treasury`，不要求 ABI 重命名。它不是 Memeverse DAO governor，不是 `yieldVault`，也不接收主池 fee 或辅助池 fee。
 
-`POLendUpgradeable` 维护按 `uAsset` 维度复用的全局 settlement dust reserve。该 reserve 只用于 `executeGlobalSettlement` 中补足有上限的整数舍入缺口，不是坏账兜底池，不参与用户残值分配；成功 settlement 后只扣减实际消耗量，未消耗余额继续留在全局池中。
+`POLendUpgradeable` 维护按 `uAsset` 维度复用的全局 settlement dust reserve。该 reserve 主要用于 `executeGlobalSettlement` 中补足有上限的整数舍入缺口（INV-07A Accepted Risk 下 `MemeverseLiquidityImpl._removeLeveragedAuxiliaryLiquidity` 固定 `0,0` 产生的有界价格缺口亦由该 reserve 有界覆盖，仍受 `maxReserve` 与 `deficit <= reserveBeforeSettlement` 约束），不是无界坏账兜底池，不参与用户残值分配；成功 settlement 后只扣减实际消耗量，未消耗余额继续留在全局池中。
 
 ### 4.3 POLSplitterUpgradeable
 

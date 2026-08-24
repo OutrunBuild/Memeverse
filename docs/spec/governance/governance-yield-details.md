@@ -157,7 +157,7 @@ V2 当前没有即时赎回 underlying，而是：
 - `convertToAssets(uint256 shares) → assets`：直接复用内部换算 `MemecoinYieldVault.sol::_convertToAssets`（floor + `virtualAssets` 缓冲，见 §4.1）。claim 模型下 `previewRedeem` 自身 revert（见 §6.2 偏离 #2），故 `convertToAssets` 不再以 `previewRedeem` 为基线。
 - `maxDeposit(address) → type(uint256).max`：无存款上限。
 - `maxMint(address) → type(uint256).max`。
-- `maxWithdraw(address owner)`：求和 `owner` 名下已成熟（`block.timestamp >= requestTime + REDEEM_DELAY`）队列条目的 `lockedAssets`（锚 `MemecoinYieldVault.sol::maxWithdraw`）。
+- `maxWithdraw(address owner)`：求和 `owner` 名下已成熟（`block.timestamp >= requestTime + REDEEM_DELAY`）队列条目的 `lockedAssets`（锚 `MemecoinYieldVault.sol::maxWithdraw`）。该 view 返回**总额**，因 `withdraw` 按逐条目 `floor(lockedAssets/shares)` 粒度以 exact-or-revert 结算（锚 `MemecoinYieldVault.sol::withdraw`），并非所有 `0 < assets <= maxWithdraw` 都能在单次 `withdraw` 中精确凑出，不可达时 revert `InsufficientClaimableRedeem`；全量 `withdraw(maxWithdraw(owner))` 恒精确，零散部分建议用 `redeem(shares)` 按份额提或先经 `MemecoinYieldVault.sol::isWithdrawReachable` 预检。
 - `maxRedeem(address owner)`：返回 `_claimableShares(owner)`（已成熟条目 shares 之和；锚 `MemecoinYieldVault.sol::maxRedeem`）。
 - `previewMint(uint256 shares) → assets`：**向上取整**（`Math.mulDiv` Ceil），满足 EIP-4626「no fewer than」约束（铸出指定份额所需资产不少于返回值）。
 - `previewWithdraw(uint256 assets) → shares`：**永久 revert**（`PreviewWithdrawNotSupported`）。claim 模型按 per-request 锁定率结算，无法由单一 assets 参数预览（见 §6.2 偏离 #2）。
@@ -333,6 +333,7 @@ Incentivizer 负责把 treasury ledger 的一部分，按周期转成 reward led
 - `rewardRatio` 在 `finalizeCurrentCycle()` 调用时刻取当前存储最新值，不是周期开始时的快照（周期结构不保存 per-cycle ratio）
 - 用户最终按“上一周期 userVotes / totalVotes”获取奖励
 - 票权归属：Governor 投票后经 `MemecoinDaoGovernorUpgradeable.sol::_castVote` 回调 `GovernanceCycleIncentivizerUpgradeable.sol::accumCycleVotes`，票权记入 cast 时刻的当前周期（`_currentCycleId`），与提案快照所在周期解耦；跨周期边界：当投票窗口（`votingDelay + votingPeriod`，生产配置 1 天 + 1 周）跨过周期边界且 `finalizeCurrentCycle()` 已推进周期时，同一提案的票会被拆分到两个周期，分别参与各自周期的 userVotes / totalVotes 奖励分配；边界未推进：`finalizeCurrentCycle()` 未被调用时周期不推进，超时后 cast 的票仍记入原周期
+- 累计口径：`GovernanceCycleIncentivizerUpgradeable.sol::accumCycleVotes` 按每笔成功 `castVote` 的增量权重累计（含最终为 `Defeated`/`Canceled` 的提案），不做跨提案去重；周期奖励份额因此按投票量（次数×权重）分配，同一提案内多次分步投票受 `GovernorCountingFractionalUpgradeable.sol::_countVote` 的 `remainingWeight` 限额约束不超快照权；`sum(userVotes)==totalVotes` 保证 `mulDiv` 守恒
 - `finalizeCurrentCycle()` 的核心语义是账本切换与结算，不要求把 token 从 `Governor` 转入 `Incentivizer`
 - 上一周期未领完的 `rewardBalances` 会在后续 `finalizeCurrentCycle()` 时回卷到 treasury ledger
 

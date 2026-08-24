@@ -172,13 +172,19 @@ verse 组件部署阶段（Launcher `Locked` → 部署治理组件）由 `Memev
 
 重点配置事件（均 `[代码已证]`）：
 
-- Launcher：`SetMemeverseSwapRouter`、`SetFundMetaData`、`SetExecutorRewardRate`、`SetPreorderConfig`、`SetGasLimits`、`SetLaunchImpl`、`SetSettlementImpl`、`SetLiquidityImpl`、`SetFeePreviewReader` 等
+- Launcher：`SetMemeverseSwapRouter`、`SetFundMetaData`、`SetExecutorRewardRate`、`SetPreorderConfig`、`SetGasLimits`、`SetLaunchImpl`、`SetSettlementImpl`、`SetLiquidityImpl`、`SetFeePreviewReader`、`SetMemeverseUniswapHook`、`SetMemeverseProxyDeployer`、`SetYieldDispatcher` 等
   - `SetLaunchImpl(address indexed launchImpl)`：launch sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setLaunchImpl(...)` 替换时均以新接线地址 `(launchImpl)` 单值触发。事件不携带旧值，旧值需通过历史日志或 `getLauncherContracts()` 快照对比获取。`[代码已证]`
   - `SetSettlementImpl(address indexed settlementImpl)`：settlement sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setSettlementImpl(...)` 替换时触发，单值不携带旧值。`[代码已证]`
   - `SetLiquidityImpl(address indexed liquidityImpl)`：liquidity sibling 实现指针替换事件，owner-level；脚本单角色模式部署期与 owner `setLiquidityImpl(...)` 替换时触发，单值不携带旧值。`[代码已证]`
   - `SetFeePreviewReader(address indexed feePreviewReader)`：fee-preview reader 地址替换事件，owner-level；脚本单角色模式部署期与 owner `setFeePreviewReader(...)` 替换时触发，单值不携带旧值。`[代码已证]`
+  - `SetMemeverseUniswapHook(address memeverseHook)`：hook 地址替换事件，owner-level；`MemeverseLauncherUpgradeable.sol::setMemeverseUniswapHook` 成功后触发，单值不携带旧值，write-once（`HookAlreadyConfigured` 守卫，已配置后恒 revert），零地址具名拒绝并校验与 `memeverseSwapRouter` 的结算接线一致性。`[代码已证]`
+  - `SetMemeverseProxyDeployer(address memeverseProxyDeployer)`：proxy deployer 地址替换事件，owner-level；`MemeverseLauncherUpgradeable.sol::setMemeverseProxyDeployer` 成功后触发，单值不携带旧值，零地址具名拒绝。`[代码已证]`
+  - `SetYieldDispatcher(address yieldDispatcher)`：yield dispatcher 地址替换事件，owner-level；`MemeverseLauncherUpgradeable.sol::setYieldDispatcher` 成功后触发，单值不携带旧值，零地址具名拒绝，跨链费用分发 `SendParam.to` 目标（源链值须与治理链实际地址一致，否则费用进黑洞无回收路径）。`[代码已证]`
 - RegistrationCenter：`SetSupportedUAsset`、`SetDurationDaysRange`、`SetRegisterGasLimit`、`SetMemeverseRegistrar`
   - `SetMemeverseRegistrar(address indexed oldRegistrar, address indexed newRegistrar)`：registrar 指针替换事件，owner-level；`MemeverseRegistrationCenterUpgradeable.sol::setMemeverseRegistrar` 成功后触发，携带旧值与新值（`newRegistrar` 零值被 setter 具名拒绝）。与 launcher 侧同名单参数事件 `SetMemeverseRegistrar(address memeverseRegistrar)`（`MemeverseLauncherUpgradeable.sol::setMemeverseRegistrar`）非同一事件：两签名参数数与 indexed 均不同、topic0 不同，按事件名键控的消费者须以发射合约或完整签名消歧。`[代码已证]`
+- Registrar：`SetRegistrationCenter`、`SetRegistrationGasLimit`
+  - `SetRegistrationCenter(address registrationCenter)`：local registrar 注册中心指针替换事件，owner-level；`MemeverseRegistrarAtLocal.sol::setRegistrationCenter` 成功后触发，单值不携带旧值，零地址具名拒绝。`[代码已证]`
+  - `SetRegistrationGasLimit(RegistrationGasLimit registrationGasLimit)`：omnichain registrar 气费调度替换事件，owner-level；`MemeverseRegistrarOmnichain.sol::setRegistrationGasLimit` 成功后触发，携带完整 `RegistrationGasLimit` 结构体（`baseRegistrationGasLimit`/`localRegistrationGasLimit`/`omnichainRegistrationGasLimit`）。`[代码已证]`
 - Hook（Router）：`TreasuryUpdated`、`ProtocolFeeCurrencySupportUpdated`、`LauncherUpdated`、`PoolInitializerUpdated`、`PoolInitializationAuthorized`、`DefaultLaunchFeeConfigUpdated`、`LPTokenImplementationUpdated`、`ReferrerRebateBpsUpdated`、`FacetUpdated`
   - `PoolInitializationAuthorized`：一次性授权消费事件，记录单次池初始化授权。
   - `LauncherUpdated`：hook `initialize` 时以 `(address(0), launcher_)` 触发一次（initializer write-once，运行期无 `setLauncher` 路径，见 [upgradeability.md §3.5](upgradeability.md) / [access-control.md §3](access-control.md)）。

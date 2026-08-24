@@ -52,8 +52,10 @@ contract HookStorageLayoutTest is Test, HookStorageHelper {
         string memory content = vm.readFile("src/swap/FacetGuard.sol");
         assertTrue(_contains(content, EXPECTED_NAMESPACE), "FacetGuard must reference namespace in NatSpec");
         assertTrue(_contains(content, "MUST declare `layout at erc7201"), "FacetGuard MUST NatSpec missing");
-        // Must not have a `layout at` declaration itself — otherwise its anchor would shadow at slot 0.
-        assertEq(_countOccurrences(content, "layout at erc7201"), 0, "FacetGuard must not declare layout");
+        // Must not have a code-level `layout at` declaration — otherwise its anchor would shadow at slot 0.
+        // Count comment-stripped occurrences: the NatSpec mandate asserted above legitimately mentions
+        // `layout at erc7201`, so a raw substring count could never reach zero.
+        assertEq(_countCodeOccurrences(content, "layout at erc7201"), 0, "FacetGuard must not declare layout");
     }
 
     /// @notice ERC-7201 slot derivation: keccak256(abi.encode(uint256(keccak256(abi.encode(bytes32(uint256(keccak256(bytes(ns)))-1))) & ~0xff))
@@ -68,11 +70,44 @@ contract HookStorageLayoutTest is Test, HookStorageHelper {
         return _countOccurrences(haystack, needle) > 0;
     }
 
-    function _countOccurrences(string memory haystack, string memory needle) internal pure returns (uint256 count) {
+    function _countOccurrences(string memory haystack, string memory needle) internal pure returns (uint256) {
+        return _countInRange(bytes(haystack), bytes(needle), 0, bytes(haystack).length);
+    }
+
+    /// @dev Counts needle occurrences outside comment lines, so NatSpec mentions of a code pattern
+    ///      are not mistaken for the pattern itself. A line is a comment when its first non-whitespace
+    ///      characters are `//`.
+    function _countCodeOccurrences(string memory haystack, string memory needle) internal pure returns (uint256 count) {
         bytes memory h = bytes(haystack);
-        bytes memory n = bytes(needle);
-        if (n.length == 0 || h.length < n.length) return 0;
-        for (uint256 i = 0; i <= h.length - n.length; ++i) {
+        uint256 lineStart = 0;
+        for (uint256 i = 0; i <= h.length; ++i) {
+            // End of input acts as the final line boundary.
+            if (i == h.length || h[i] == "\n") {
+                if (!_isCommentLine(h, lineStart, i)) {
+                    count += _countInRange(h, bytes(needle), lineStart, i);
+                }
+                lineStart = i + 1;
+            }
+        }
+    }
+
+    /// @dev True when h[start:end) begins (after whitespace) with `//`.
+    function _isCommentLine(bytes memory h, uint256 start, uint256 end) internal pure returns (bool) {
+        uint256 i = start;
+        while (i < end && (h[i] == " " || h[i] == "\t" || h[i] == "\r")) {
+            ++i;
+        }
+        return i + 1 < end && h[i] == "/" && h[i + 1] == "/";
+    }
+
+    /// @dev Non-overlapping substring count of n inside h[start:end).
+    function _countInRange(bytes memory h, bytes memory n, uint256 start, uint256 end)
+        internal
+        pure
+        returns (uint256 count)
+    {
+        if (n.length == 0 || end < start || end - start < n.length) return 0;
+        for (uint256 i = start; i + n.length <= end; ++i) {
             bool isMatch = true;
             for (uint256 j = 0; j < n.length; ++j) {
                 if (h[i + j] != n[j]) {

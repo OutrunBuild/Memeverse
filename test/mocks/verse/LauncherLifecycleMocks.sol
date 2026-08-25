@@ -714,7 +714,6 @@ contract MockSwapRouterWithBrokenPoolKey {
 
 contract MockLiquidProof is MockERC20 {
     uint256 public burnedAmount;
-    bytes32 public lastPoolId;
 
     constructor() MockERC20("POL", "POL", 18) {}
 
@@ -727,12 +726,6 @@ contract MockLiquidProof is MockERC20 {
         super.burn(from, value);
     }
 
-    /// @notice Stores the latest pool id configured by the launcher.
-    /// @dev Mirrors the launcher-only hook setup side effect for tests.
-    /// @param poolId Mock pool id.
-    function setPoolId(bytes32 poolId) external {
-        lastPoolId = poolId;
-    }
 }
 
 contract RefundCallbackToken is MockERC20 {

@@ -90,9 +90,9 @@
 
 ### INV-09 代币增发权限集中在 Launcher
 
-- 约束：`Memecoin.mint`、`MemePol.mint`、`MemePol.setPoolId` 仅 launcher 可调用。`[代码已证]`
+- 约束：`Memecoin.mint`、`MemePol.mint` 仅 launcher 可调用。`[代码已证]`
 - 价值：保证发行与 LP 凭证配置只通过 launcher 生命周期执行。
-- 主要锚点：`src/token/Memecoin.sol::mint`，`src/token/MemePol.sol::onlyMemeverseLauncher (modifier)`，`src/token/MemePol.sol::setPoolId`，`src/token/MemePol.sol::mint`
+- 主要锚点：`src/token/Memecoin.sol::mint`，`src/token/MemePol.sol::onlyMemeverseLauncher (modifier)`，`src/token/MemePol.sol::mint`
 
 ### INV-09A token burn 守恒与 OFT 公开 send
 

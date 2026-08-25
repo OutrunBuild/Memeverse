@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
-import {IPol, PoolId} from "./interfaces/IPol.sol";
+import {IPol} from "./interfaces/IPol.sol";
 import {OutrunOFTInit} from "../common/omnichain/oft/OutrunOFTInit.sol";
 
 /**
@@ -12,8 +12,6 @@ import {OutrunOFTInit} from "../common/omnichain/oft/OutrunOFTInit.sol";
 contract MemePol is IPol, OutrunOFTInit {
     address public memecoin;
     address public memeverseLauncher;
-
-    PoolId public poolId;
 
     modifier onlyMemeverseLauncher() {
         require(msg.sender == memeverseLauncher, PermissionDenied());
@@ -48,12 +46,6 @@ contract MemePol is IPol, OutrunOFTInit {
         require(memecoin_ != address(0) && memeverseLauncher_ != address(0), ZeroInput());
         memecoin = memecoin_;
         memeverseLauncher = memeverseLauncher_;
-    }
-
-    /// @inheritdoc IPol
-    function setPoolId(PoolId _poolId) external override onlyMemeverseLauncher {
-        emit PoolIdSet(poolId, _poolId);
-        poolId = _poolId;
     }
 
     /// @notice Mints POL to `account`.

@@ -35,7 +35,6 @@ contract MockMemecoinForPOLendIntegration is BurnableMockERC20Base {
 contract MockPolForPOLendIntegration is MockERC20 {
     address public memecoin;
     address public memeverseLauncher;
-    bytes32 public lastPoolId;
     uint256 public burnedAmount;
 
     constructor(address launcher_, address memecoin_) MockERC20("POL", "POL", 18) {
@@ -47,10 +46,6 @@ contract MockPolForPOLendIntegration is MockERC20 {
         _mint(to, amount);
     }
 
-    function setPoolId(bytes32 poolId) external {
-        require(msg.sender == memeverseLauncher, "not launcher");
-        lastPoolId = poolId;
-    }
 
     function burn(address from, uint256 amount) public override {
         burnedAmount += amount;

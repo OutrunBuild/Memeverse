@@ -3,7 +3,6 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 import {MemePol} from "../../src/token/MemePol.sol";
 import {IPol} from "../../src/token/interfaces/IPol.sol";
@@ -41,30 +40,12 @@ contract MemePolTest is Test {
         assertEq(endpoint.delegate(), DELEGATE);
     }
 
-    /// @notice Test only launcher can set pool id and mint.
-    function testOnlyLauncherCanSetPoolIdAndMint() external {
+    /// @notice Test only launcher can mint.
+    function testOnlyLauncherCanMint() external {
         memePol.initialize("POL-MEME", "POLM", MEMECOIN, LAUNCHER, DELEGATE);
-        PoolId poolId = PoolId.wrap(bytes32(uint256(1234)));
-
-        vm.expectRevert(IPol.PermissionDenied.selector);
-        memePol.setPoolId(poolId);
 
         vm.expectRevert(IPol.PermissionDenied.selector);
         memePol.mint(ALICE, 1 ether);
-
-        vm.prank(LAUNCHER);
-        vm.expectEmit(true, true, true, true);
-        emit IPol.PoolIdSet(PoolId.wrap(bytes32(0)), poolId);
-        memePol.setPoolId(poolId);
-        assertEq(PoolId.unwrap(memePol.poolId()), PoolId.unwrap(poolId));
-
-        // Launcher may reset: oldPoolId is the overwritten value.
-        PoolId secondPoolId = PoolId.wrap(bytes32(uint256(5678)));
-        vm.prank(LAUNCHER);
-        vm.expectEmit(true, true, true, true);
-        emit IPol.PoolIdSet(poolId, secondPoolId);
-        memePol.setPoolId(secondPoolId);
-        assertEq(PoolId.unwrap(memePol.poolId()), PoolId.unwrap(secondPoolId));
 
         vm.prank(LAUNCHER);
         memePol.mint(ALICE, 2 ether);
@@ -116,4 +97,18 @@ contract MemePolTest is Test {
         vm.expectRevert(IPol.ZeroInput.selector);
         memePol.burn(ALICE, 0);
     }
+
+    /// @notice Test setPoolId has been removed — low-level call must fail and no poolId getter exists.
+    function testSetPoolIdRemoved() external {
+        memePol.initialize("POL-MEME", "POLM", MEMECOIN, LAUNCHER, DELEGATE);
+        // No high-level setPoolId(poolId) exists; low-level call to the old selector must return success=false (function not found)
+        bytes4 oldSelector = bytes4(keccak256("setPoolId(bytes32)"));
+        (bool success,) = address(memePol).call(abi.encodeWithSelector(oldSelector, bytes32(uint256(1234))));
+        assertFalse(success, "setPoolId selector should not exist after deletion");
+        // poolId() getter also removed
+        bytes4 poolIdSelector = bytes4(keccak256("poolId()"));
+        (bool success2,) = address(memePol).call(abi.encodeWithSelector(poolIdSelector));
+        assertFalse(success2, "poolId getter should not exist after deletion");
+    }
+
 }

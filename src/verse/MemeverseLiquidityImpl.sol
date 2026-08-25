@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -131,7 +131,6 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             plan,
             mainPoolPOLRawAmount,
             mainPoolUAssetUsed,
-            poolKey.toId(),
             totalLeveragedDebt
         );
 
@@ -190,7 +189,6 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         IMemeverseLauncher.BootstrapPolPlan memory plan,
         uint256 mainPoolPOLRawAmount,
         uint256 mainPoolUAssetUsed,
-        PoolId poolId,
         uint256 totalLeveragedDebt
     ) internal returns (uint256 polUAssetUsed, uint256 ptUAssetUsed, address yt) {
         _safeApprove(pol, swapRouter, plan.polForPolUAsset + plan.polForPtPol);
@@ -198,7 +196,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 polUsedForPolUAsset;
         address pt;
         (polUAssetUsed, polUsedForPolUAsset, pt, yt) = _bootstrapPOLPool(
-            verseId, uAsset, pol, swapRouter, _polSplitter, plan, mainPoolPOLRawAmount, mainPoolUAssetUsed, poolId
+            verseId, uAsset, pol, swapRouter, _polSplitter, plan, mainPoolPOLRawAmount, mainPoolUAssetUsed
         );
 
         ptUAssetUsed = _bootstrapPTPools(
@@ -227,8 +225,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         address _polSplitter,
         IMemeverseLauncher.BootstrapPolPlan memory plan,
         uint256 mainPoolPOLRawAmount,
-        uint256 mainPoolUAssetUsed,
-        PoolId poolId
+        uint256 mainPoolUAssetUsed
     ) internal returns (uint256 polUAssetUsed, uint256 polUsedForPolUAsset, address pt, address yt) {
         // Protocol self-mint of the bootstrap POL supply (the POL raw amount backing the main pool): POL is
         // minted to this contract rather than a user to seed the POL/uAsset and PT auxiliary pools below,
@@ -236,8 +233,6 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         // amount, so this mints POL 1:1 with that LP — redeem later burns POL for the same LP amount
         // (see redeemMemecoinLiquidity); do not scale the mint (it must equal the LP added).
         IPol(pol).mint(address(this), mainPoolPOLRawAmount);
-        // Bind the Uniswap pool deployed during bootstrap as this POL token's canonical pool.
-        IPol(pol).setPoolId(poolId);
 
         (pt, yt) = IPOLSplitter(_polSplitter).getPTAndYT(verseId);
 

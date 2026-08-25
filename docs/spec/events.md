@@ -116,7 +116,6 @@
 | `Transfer(address indexed from, address indexed to, uint256 value)` | `Memecoin` / `MemePol`（经 `OutrunERC20Init._update`，`src/common/token/OutrunERC20Init.sol::_update`） | mint 为 `Transfer(0x0, account)`、burn 为 `Transfer(account, 0x0)`、转账为 `Transfer(from, to)` | token 供给变更的见证事件；mint/burn 由零地址方向标识。可按 from/to 直接 filter |
 | `OFTSent(bytes32 indexed guid, uint32 dstEid, address indexed fromAddress, uint256 amountSentLD, uint256 amountReceivedLD)` | `Memecoin` / `MemePol`（经 `OutrunOFTCoreInit.sol::send`） | 源端跨链发出成功 | 源端跨链转出流水；可按 `fromAddress` 直接 filter |
 | `OFTReceived(bytes32 indexed guid, uint32 srcEid, address indexed toAddress, uint256 amountReceivedLD)` | `Memecoin` / `MemePol`（经 `OutrunOFTCoreInit.sol::_lzReceive`） | 目的端到账成功 | 目的端跨链到账流水；可按 `toAddress` 直接 filter |
-| `PoolIdSet(PoolId indexed oldPoolId, PoolId indexed newPoolId)` | `MemePol`（经 `setPoolId`，`src/token/MemePol.sol::setPoolId`） | launcher 设置/重设 pool id 时 | POL 池关联变更可观测。`setPoolId` 无 one-shot guard 可重设，每次写入均 emit；`oldPoolId` 为被覆盖的旧值，首次设置时为 `bytes32(0)`；`newPoolId` 为新值 |
 
 以上均为 `[代码已证]`。
 

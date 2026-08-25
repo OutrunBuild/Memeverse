@@ -185,7 +185,6 @@ contract MockIntegrationMemecoin is BurnableMockERC20Base {
 contract MockIntegrationLiquidProof is MockERC20 {
     address public memeverseLauncher;
     address public memecoin;
-    bytes32 public poolId;
     mapping(uint32 eid => bytes32 peer) public peers;
 
     constructor() MockERC20("Mock POL", "MPOL", 18) {}
@@ -217,12 +216,6 @@ contract MockIntegrationLiquidProof is MockERC20 {
         peers[eid] = peer;
     }
 
-    /// @notice Test helper for setPoolId.
-    /// @param poolId_ See implementation.
-    function setPoolId(bytes32 poolId_) external {
-        require(msg.sender == memeverseLauncher, "not launcher");
-        poolId = poolId_;
-    }
 
     /// @notice Test helper for mint.
     /// @param account See implementation.

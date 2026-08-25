@@ -383,8 +383,6 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
         // mint POL for main pool backing
         vm.prank(proxy);
         IPol(pol).mint(proxy, mainPoolPOLRawAmount);
-        vm.prank(proxy);
-        IPol(pol).setPoolId(PoolIdLibrary.toId(poolKey));
 
         // get PT and YT addresses
         (address pt, address yt) = IPOLSplitter(polSplitterAddr).getPTAndYT(verseId);

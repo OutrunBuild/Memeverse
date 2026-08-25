@@ -11,7 +11,6 @@ interface IPol is IERC20 {
     /**
      * @notice Get the memeverse launcher.
      * @dev Launcher is the only authorized minter/burner coordinator for POL lifecycle actions.
-     * @return memeverseLauncher The address of the memeverse launcher.
      */
     function memeverseLauncher() external view returns (address);
 

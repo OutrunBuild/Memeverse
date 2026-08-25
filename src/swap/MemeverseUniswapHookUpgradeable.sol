@@ -155,8 +155,6 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         _memeverseUniswapHookStorage.swapFacet = swapFacet_;
         _memeverseUniswapHookStorage.dynamicFeeFacet = dynamicFeeFacet_;
         _memeverseUniswapHookStorage.settlementFacet = settlementFacet_;
-        // Launcher is write-once: bound here and never retargeted (no setLauncher), mirroring the
-        // launcher-side write-once hook binding so onlyLauncher flows can never be orphaned.
         _memeverseUniswapHookStorage.launcher = launcher_;
         // Emit initial facet bindings so indexers/subgraphs tracking FacetUpdated observe
         // deployment-time bindings. address(0) denotes the initial oldFacet value.
@@ -288,13 +286,8 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
 
     function _requireFacetPoolManager(address facet) internal view {
         if (facet.code.length == 0) revert FacetCodeNotReady(facet);
-        // ImmutableState exposes `poolManager` as a public immutable getter on each facet. The try/catch
-        // folds the unreadable-facet failures it can see (getter missing, probe reverts) into the named
-        // `FacetPoolManagerUnreadable` instead of a bare revert; a successful call whose return data cannot
-        // be ABI-decoded is NOT caught by Solidity try/catch semantics and bubbles up as the raw decode
-        // revert — the facet swap is rejected (fail-closed) either way. Caching the getter result in
-        // `facetPoolManager` reuses the same value for the mismatch revert instead of re-issuing the
-        // STATICCALL; mirrors `_authorizeUpgrade`.
+        // ImmutableState exposes `poolManager` as a public immutable getter on each facet; the try/catch
+        // probe and its decode-boundary rationale mirror `_authorizeUpgrade`.
         try ImmutableState(facet).poolManager() returns (IPoolManager facetPoolManager) {
             if (address(facetPoolManager) != address(poolManager)) {
                 revert FacetPoolManagerMismatch(facet, address(poolManager), address(facetPoolManager));
@@ -402,19 +395,13 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     // -----------------------------------------------------------------
 
     /// @notice PoolManager callback before a hook-managed pool is initialized.
-    /// @dev Thin entry: forwards the outer calldata to `swapFacet.beforeInitializeLogic` via
-    ///      `_forwardCalldataAndReturn` (selector swap + verbatim facet returndata). Valid because the
-    ///      inner `beforeInitializeLogic` signature mirrors this entry 1:1 and `onlyPoolManager` has no
-    ///      post-body cleanup.
+    /// @dev Thin entry: forwards calldata to `SwapFacet.beforeInitializeLogic` via `_forwardCalldataAndReturn`.
     function beforeInitialize(address, PoolKey calldata, uint160) external onlyPoolManager returns (bytes4) {
         _forwardCalldataAndReturn(_memeverseUniswapHookStorage.swapFacet, ISwapFacet.beforeInitializeLogic.selector);
     }
 
     /// @notice PoolManager callback before a hook-managed swap.
-    /// @dev Thin entry: forwards the outer calldata to `swapFacet.beforeSwapLogic` via
-    ///      `_forwardCalldataAndReturn` (selector swap + verbatim facet returndata). Valid because the
-    ///      inner `beforeSwapLogic` signature mirrors this entry 1:1 and `onlyPoolManager` has no
-    ///      post-body cleanup.
+    /// @dev Thin entry: forwards calldata to `SwapFacet.beforeSwapLogic` via `_forwardCalldataAndReturn`.
     function beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
         external
         onlyPoolManager
@@ -424,10 +411,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     }
 
     /// @notice PoolManager callback after a hook-managed swap.
-    /// @dev Thin entry: forwards the outer calldata to `swapFacet.afterSwapLogic` via
-    ///      `_forwardCalldataAndReturn` (selector swap + verbatim facet returndata). Valid because the
-    ///      inner `afterSwapLogic` signature mirrors this entry 1:1 and `onlyPoolManager` has no
-    ///      post-body cleanup.
+    /// @dev Thin entry: forwards calldata to `SwapFacet.afterSwapLogic` via `_forwardCalldataAndReturn`.
     function afterSwap(address, PoolKey calldata, SwapParams calldata, BalanceDelta, bytes calldata)
         external
         onlyPoolManager
@@ -437,10 +421,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     }
 
     /// @notice PoolManager callback before liquidity is added to a hook-managed pool.
-    /// @dev Thin entry: forwards the outer calldata to `swapFacet.beforeAddLiquidityLogic` via
-    ///      `_forwardCalldataAndReturn` (selector swap + verbatim facet returndata). Valid because the
-    ///      inner `beforeAddLiquidityLogic` signature mirrors this entry 1:1 and `onlyPoolManager` has no
-    ///      post-body cleanup.
+    /// @dev Thin entry: forwards calldata to `SwapFacet.beforeAddLiquidityLogic` via `_forwardCalldataAndReturn`.
     function beforeAddLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
         external
         onlyPoolManager
@@ -527,12 +508,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     // Liquidity management (implemented directly on the Router)
     // -----------------------------------------------------------------
 
-    /// @notice Add full-range liquidity while the caller funds the assets and receives LP shares at `params.to`.
-    /// @dev This is the low-level liquidity-add entrypoint intended for routers and other on-chain integrators.
-    /// It omits deadline and min-amount checks and returns the settled delta to the caller.
-    /// @param params The core liquidity-add parameters.
-    /// @return liquidity The LP liquidity minted by the operation.
-    /// @return delta The balance delta settled against the caller.
+    /// @inheritdoc IMemeverseUniswapHook
     function addLiquidityCore(AddLiquidityCoreParams calldata params)
         external
         override
@@ -612,11 +588,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         );
     }
 
-    /// @notice Removes full-range liquidity owned by the caller and sends the underlying assets to `params.recipient`.
-    /// @dev This is the low-level liquidity exit entrypoint intended for routers and other on-chain integrators.
-    /// It omits deadline and min-amount checks.
-    /// @param params The core liquidity-remove parameters.
-    /// @return delta The balance delta returned by the liquidity removal.
+    /// @inheritdoc IMemeverseUniswapHook
     function removeLiquidityCore(RemoveLiquidityCoreParams calldata params)
         external
         override
@@ -667,11 +639,8 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         );
     }
 
-    /// @notice Claims the caller's pending LP fees and sends them to the requested recipient.
+    /// @inheritdoc IMemeverseUniswapHook
     /// @dev Fee ownership is derived strictly from `msg.sender`; relayed or signature-based claims are unsupported.
-    /// @param params The core fee-claim parameters.
-    /// @return fee0Amount The claimed amount of currency0 fees.
-    /// @return fee1Amount The claimed amount of currency1 fees.
     function claimFeesCore(ClaimFeesCoreParams calldata params)
         external
         override
@@ -681,14 +650,12 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         return _claimFees(params.key, msg.sender, params.recipient);
     }
 
-    /// @notice Execute preorder settlement through a dedicated hook path.
+    /// @inheritdoc IMemeverseUniswapHook
     /// @dev Thin entry: forwards the outer calldata to `settlementFacet.executeSettlementLogic` via
     ///      `_forwardCalldata` (selector swap only, no abi re-encoding). Valid because the inner
     ///      `executeSettlementLogic` signature mirrors this entry 1:1. The launcher-only gate, reentrancy
     ///      guard, and ERC20-pair check live here (and consume `params`) so the facet body stays
     ///      single-purpose; they only inspect `params`/`msg.sender` and do not alter the forwarded calldata.
-    /// @param params Preorder settlement request.
-    /// @return delta Net settlement delta consumed by the launcher accounting path.
     function executePreorderSettlement(PreorderSettlementParams calldata params)
         external
         override
@@ -831,8 +798,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     /// @notice Updates the user fee accounting snapshot for a pool.
     /// @dev LP token transfers call this selector to keep per-share offsets current. Forwards the outer
     ///      calldata to `swapFacet.updateUserSnapshotLogic` via `_forwardCalldata` (selector swap only, no
-    ///      abi re-encoding) — valid because the inner signature mirrors this entry 1:1, so the accounting
-    ///      runs in this Router's storage. This void entry uses `_forwardCalldata` (drops facet returndata)
+    ///      abi re-encoding). This void entry uses `_forwardCalldata` (drops facet returndata)
     ///      rather than `_forwardCalldataAndReturn`: the facet is void so there is nothing to return, unlike
     ///      the 4 v4-callback thin entries which must pass non-empty tuples (`bytes4`/`BeforeSwapDelta`)
     ///      verbatim to the PoolManager. The choice is structural, not a gas optimization (pure Solidity also
@@ -846,14 +812,8 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     // Dynamic fee quote and fee-state reads
     // -----------------------------------------------------------------
 
-    /// @notice Quotes only the dynamic-fee portion of a public swap.
-    /// @dev UPGRADE INVARIANT: the Lens calls this selector with `STATICCALL`; hook proxy upgrades MUST
-    ///      preserve the signature. The function remains non-view because solc 0.8.35 rejects `view` +
-    ///      `delegatecall` (Error 8961). The Lens call is statically enforced because the EIP-214 context
-    ///      propagates through `delegatecall`. A direct ordinary CALL is read-only only while
-    ///      `IDynamicFeeFacet.quote` remains read-only; `eth_call` alone is not static-call enforcement.
-    ///
-    ///      Return path: `delegatecall` the facet and return its raw returndata verbatim (assembly `return`,
+    /// @inheritdoc IMemeverseUniswapHook
+    /// @dev Return path: `delegatecall` the facet and return its raw returndata verbatim (assembly `return`,
     ///      same EIP-2535 / OZ-Proxy forwarding pattern as `_forwardCalldataAndReturn`). This skips the
     ///      `abi.decode` → re-`encode` round-trip that a typed `return` would force. The round-trip is
     ///      redundant because `PreparedSwapFee` is fully static (11 words), so the facet's ABI encoding and
@@ -862,13 +822,6 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     ///      `_facetDelegatecall` + `abi.encodeCall` dispatch is kept (not swapped for
     ///      `_forwardCalldataAndReturn`) so a future signature drift between the 6-arg outer entry and the
     ///      single-struct inner entry fails at compile time instead of relying on layout coincidence.
-    /// @param poolId Pool being quoted.
-    /// @param params Swap parameters used for the quote.
-    /// @param trader Trader address used by the dynamic fee context.
-    /// @param preSqrtPriceX96 Pool price before the quoted swap.
-    /// @param liquidity Current pool liquidity.
-    /// @param protocolFeeOnInput Whether the protocol fee is charged from the input currency.
-    /// @return Prepared fee data returned by the dynamic fee facet.
     function quoteSwapFeeWithContext(
         PoolId poolId,
         SwapParams calldata params,
@@ -907,12 +860,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         }
     }
 
-    /// @notice Reads the per-pool dynamic fee state held in this hook's storage namespace.
-    /// @dev UPGRADE INVARIANT: the Lens calls this selector; hook proxy implementation upgrades MUST preserve
-    ///      this signature. Reads this hook's own ERC7201 storage (`dynamicFeeState[poolId]`) directly — no
-    ///      facet `delegatecall` — matching `addressBatchStateOf` and `pendingRebateOf`.
-    /// @param poolId Pool being queried.
-    /// @return state Current dynamic fee state.
+    /// @inheritdoc IMemeverseUniswapHook
     function dynamicFeeStateOf(PoolId poolId)
         external
         view
@@ -922,12 +870,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         return _memeverseUniswapHookStorage.dynamicFeeState[poolId];
     }
 
-    /// @notice Reads the per-trader, per-pool address batch state held in this hook's storage namespace.
-    /// @dev Reads shared hook storage directly without a facet delegatecall, matching `pendingRebateOf` and
-    ///      `dynamicFeeStateOf`.
-    /// @param trader Trader address whose batch state is read.
-    /// @param poolId Pool being queried.
-    /// @return state Current address batch state.
+    /// @inheritdoc IMemeverseUniswapHook
     function addressBatchStateOf(address trader, PoolId poolId)
         external
         view
@@ -941,14 +884,11 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     // Referral rebate claim (Router-direct; custody lives on the hook proxy)
     // -----------------------------------------------------------------
 
-    /// @notice Claims the caller's accrued referral rebate in `currency` and sends it to `recipient`.
+    /// @inheritdoc IMemeverseUniswapHook
     /// @dev Rebate custody lives on this hook proxy: `SwapFacet._collectProtocolFee` `take`s the rebate
     ///      into `address(this)` under delegatecall, and `pendingRebate` is recorded in this storage.
     ///      CEI: zero the pending balance before the external transfer so a malicious ERC20 recipient
     ///      cannot re-enter and double-claim. `nonReentrant` is belt-and-braces.
-    /// @param currency Rebate currency to claim.
-    /// @param recipient Recipient of the claimed rebate.
-    /// @return amount Claimed rebate amount sent to `recipient`.
     function claimRebate(Currency currency, address recipient) external override nonReentrant returns (uint256 amount) {
         if (recipient == address(0)) revert ZeroAddress();
         amount = _memeverseUniswapHookStorage.pendingRebate[msg.sender][currency];
@@ -973,11 +913,9 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
     // Admin setters
     // -----------------------------------------------------------------
 
-    /// @notice Updates the treasury address.
-    /// @dev Only callable by the owner. Zero address is rejected because protocol fees require a concrete recipient.
-    /// The configured treasury is expected to be a passive receiver and must not use fee receipts to trigger
-    /// reentrant swap or liquidity actions.
-    /// @param treasury_ The new treasury address.
+    /// @inheritdoc IMemeverseUniswapHook
+    /// @dev Only callable by the owner. The configured treasury is expected to be a passive receiver and must
+    ///      not use fee receipts to trigger reentrant swap or liquidity actions.
     function setTreasury(address treasury_) external override onlyOwner {
         if (treasury_ == address(0)) revert ZeroAddress();
 
@@ -986,17 +924,12 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         emit TreasuryUpdated(old, treasury_);
     }
 
-    /// @notice Sets the referral rebate rate (share of the total swap fee, in bps) on referral swaps.
-    /// @dev Writes the hook-owned `referrerRebateBps` storage field read by `SwapFacet._collectProtocolFee`.
-    ///      `bps` is the referrer's share of the *total* swap fee in bps (`rebate = totalFee * bps / 10_000`,
-    ///      equivalently `protocolFee * bps / FeeMath.PROTOCOL_FEE_SHARE_BPS` since the protocol share is 35%;
-    ///      default DEFAULT_REFERRAL_REBATE_BPS = 1000 → 10% of the total fee). Capped at
-    ///      `FeeMath.PROTOCOL_FEE_SHARE_BPS` so rebate ≤ protocol fee and the treasury subtraction
-    ///      (`protocolFee - rebate`) never underflows. ABI keeps the argument as `uint256` for caller
-    ///      compatibility; the storage field stays `uint24` so the cast is applied at the write boundary.
-    ///      The `uint24(bps)` cast is lossless because `bps <= PROTOCOL_FEE_SHARE_BPS`,
+    /// @inheritdoc IMemeverseUniswapHook
+    /// @dev Writes the hook-owned `referrerRebateBps` storage field read by `SwapFacet._collectProtocolFee`
+    ///      (default DEFAULT_REFERRAL_REBATE_BPS = 1000 → 10% of the total fee). ABI keeps the argument as
+    ///      `uint256` for caller compatibility; the storage field stays `uint24` so the cast is applied at
+    ///      the write boundary. The `uint24(bps)` cast is lossless because `bps <= PROTOCOL_FEE_SHARE_BPS`,
     ///      far below `type(uint24).max`.
-    /// @param bps New rebate rate in basis points.
     function setReferrerRebateBps(uint256 bps) external override onlyOwner {
         if (bps > FeeMath.PROTOCOL_FEE_SHARE_BPS) revert RebateExceedsProtocolShare();
         uint256 old = _memeverseUniswapHookStorage.referrerRebateBps;
@@ -1006,13 +939,8 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         emit ReferrerRebateBpsUpdated(old, newBps);
     }
 
-    /// @notice Registers or removes a protocol-fee token, which controls HOW the protocol fee is collected — not whether.
-    /// @dev A registered currency is collected in when it is a pool leg: if a pool contains a protocol-fee token the fee
-    ///      is taken in that token (input side preferred when both legs are registered); otherwise the fee is taken from
-    ///      the input leg. Registering or removing never disables the fee — it only changes which leg it is charged on
-    ///      (`protocolFeeOnInput = inputSupported || !outputSupported`).
-    /// @param currency The currency whose protocol-fee-token flag is being updated.
-    /// @param supported Whether `currency` should be collected in as the protocol fee when present in a pool leg.
+    /// @inheritdoc IMemeverseUniswapHook
+    /// @dev Leg resolution: `protocolFeeOnInput = inputSupported || !outputSupported`.
     function setProtocolFeeCurrency(Currency currency, bool supported) external override onlyOwner {
         // 1-arg per-currency protocol-fee-token flag; the 2-arg pool-pair native-currency check is `SwapGuardMath.revertIfNativeCurrencyUnsupported`.
         if (currency.isAddressZero()) revert NativeCurrencyUnsupported();
@@ -1042,10 +970,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         emit LPTokenImplementationUpdated(old, implementation_);
     }
 
-    /// @notice Authorizes the configured pool initializer to initialize one pool at one exact start price.
-    /// @dev The authorization is consumed in `beforeInitialize` (via `swapFacet.beforeInitializeLogic`).
-    /// @param key Pool key being authorized.
-    /// @param startPriceX96 Expected initial pool price.
+    /// @inheritdoc IMemeverseUniswapHook
     function authorizePoolInitialization(PoolKey calldata key, uint160 startPriceX96)
         external
         override

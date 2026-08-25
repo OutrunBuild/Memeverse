@@ -85,8 +85,6 @@ library OrdinarySwapMath {
         if (amountSpecified == 0) return settlementPlan;
 
         if (amountSpecified < 0) {
-            // Exact-input: fee charged on the known gross input. coreInputTarget rounds DOWN so the post-fee
-            // residual never exceeds what the user actually pays in; the kept difference fully funds the input fee.
             uint256 requestedGrossInput = _absoluteExactInput(amountSpecified);
             uint256 inputFeeBps = protocolFeeOnInput ? feeSplit.totalFeeBps : feeSplit.lpFeeBps;
             settlementPlan.coreInputTarget =
@@ -106,14 +104,10 @@ library OrdinarySwapMath {
         if (feeSplit.totalFeeBps == FeeMath.BPS_BASE) revert ExactOutputAtFullFee();
         uint256 requestedNetOutput = uint256(amountSpecified);
         if (protocolFeeOnInput) {
-            // Exact-output, fee-on-input: protocol fee is settled on the input side later, so v4 is asked for the
-            // user's net output verbatim — no rounding needed.
             settlementPlan.coreOutputTarget = requestedNetOutput;
             return settlementPlan;
         }
 
-        // Exact-output, fee-on-output: v4 must over-deliver so the output-side fee has room. coreOutputTarget
-        // rounds UP on the lp-survival ratio so the requested net output is always reachable after the fee.
         uint256 lpSurvivalBps = FeeMath.BPS_BASE - feeSplit.lpFeeBps;
         uint256 totalSurvivalBps = FeeMath.BPS_BASE - feeSplit.totalFeeBps;
         uint256 largestRepresentableRequest =

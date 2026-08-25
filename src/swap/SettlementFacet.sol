@@ -32,13 +32,10 @@ import {MemeverseSwapFeeBase} from "./MemeverseSwapFeeBase.sol";
 ///         dispatches into after decoding the explicit settlement payload kind.
 ///
 ///      Both functions execute in the Router's (hook proxy) storage context via delegatecall, so
-///      `address(this) == hook` and all reads/writes land in the shared hook namespace. `onlyViaRouter`
-///      reverts on a direct CALL: under a direct CALL `address(this)` is the facet's own address, which
-///      equals the facet's immutable `__self`, so the guard trips (under delegatecall `address(this)` is
-///      the hook proxy, ≠ `__self`).
+///      `address(this) == hook` and all reads/writes land in the shared hook namespace; direct calls are
+///      rejected by `FacetGuard.onlyViaRouter` (guard rationale lives there).
 ///
-///      Storage layout FROZEN — shared ERC-7201 namespace; field order fixed, append-only.
-///      See `IMemeverseHookStorage.MemeverseUniswapHookStorage` for the slot-derivation rationale.
+///      Storage layout frozen — see `IMemeverseHookStorage` (authoritative source).
 ///
 ///      The settlement swap is a hook self-call into PoolManager, so Uniswap v4 skips its beforeSwap and
 ///      afterSwap callbacks. Callback-token reentrant swaps originate from the token contract, so they retain
@@ -63,7 +60,6 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     /// @param poolManager_ PoolManager shared with the hook (bound as immutable implementation bytecode state).
-    ///      Trailing underscore resolves the clash with the inherited `ImmutableState.poolManager` immutable.
     constructor(IPoolManager poolManager_) ImmutableState(poolManager_) {
         if (address(poolManager_) == address(0)) revert ZeroAddress();
     }
@@ -207,8 +203,8 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
         }
 
         // Release the lock acquired before the Phase 1 transferFrom; the full settlement window
-        // (transferFrom + unlock swap/settle/take + Phase 3 _updateAfterSwap) is now closed. Transient storage
-        // auto-clears on revert, so any revert path leaves no stale lock.
+        // (transferFrom + unlock swap/settle/take + Phase 3 _updateAfterSwap) is now closed (revert-path
+        // transient auto-clear semantics: see `MemeverseTransientState`).
         MemeverseTransientState.releaseSwapLifecycleLock(poolId);
     }
 

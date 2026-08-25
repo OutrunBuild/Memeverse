@@ -23,8 +23,7 @@ import {IMemeverseUniswapHook, PoolId} from "../interfaces/IMemeverseUniswapHook
 ///      - callers that custody LP (vaults, restaking, lending, farming) must treat `transfer` as an
 ///        untrusted external call: apply checks-effects-interactions / `nonReentrant` and do not
 ///        assume it is cheap or non-reverting.
-///      `mint`/`burn` (`from == address(0)` / `to == address(0)`) do not trigger the callback; the
-///      hook-side liquidity paths crystallize via `_updateUserSnapshotViaFacet` before mint/burn.
+///      `mint`/`burn` (`from == address(0)` / `to == address(0)`) do not trigger the callback.
 ///      Self-transfer (`from == to != address(0)`) crystallizes once (idempotent via SwapFacet
 ///      zero-growth fast path). Upgrade invariant: `updateUserSnapshot` must remain low-gas and
 ///      snapshot-only (no permission writes); hook upgrades must preserve it or liveness of all LP
@@ -70,9 +69,9 @@ contract UniswapLP is Owned, OutrunERC20PermitInit {
     }
 
     /// @notice Mints LP tokens to `account`.
-    /// @dev Restricted to the hook owner, which is the hook contract that manages the pool. Minting routes
-    ///      `from == address(0)` through `_update`, so no snapshot callback fires; the hook-side liquidity
-    ///      paths crystallize fee snapshots themselves via `_updateUserSnapshotViaFacet` before minting.
+    /// @dev Minting routes `from == address(0)` through `_update`, so no snapshot callback fires; the
+    ///      hook-side liquidity paths crystallize fee snapshots themselves via `_updateUserSnapshotViaFacet`
+    ///      before minting.
     /// @param account Recipient of the LP tokens.
     /// @param amount Amount of LP tokens to mint.
     function mint(address account, uint256 amount) external onlyOwner {
@@ -80,8 +79,7 @@ contract UniswapLP is Owned, OutrunERC20PermitInit {
     }
 
     /// @notice Burns LP tokens from `account`.
-    /// @dev Restricted to the hook owner, which is the hook contract that manages the pool. Burning routes
-    ///      `to == address(0)` through `_update`, so no snapshot callback fires.
+    /// @dev Burning routes `to == address(0)` through `_update`, so no snapshot callback fires.
     /// @param account Account whose LP tokens are burned.
     /// @param amount Amount of LP tokens to burn.
     function burn(address account, uint256 amount) external onlyOwner {
@@ -102,9 +100,7 @@ contract UniswapLP is Owned, OutrunERC20PermitInit {
     ///      The hook calls precede `super._update` so `updateUserSnapshot` reads the pre-mutation balance
     ///      baseline. Self-transfer (from == to) crystallizes once: `updateUserSnapshot` is idempotent per
     ///      address within one transaction (SwapFacet zero-growth fast path).
-    ///      External-call properties for integrators: each transfer pays for 1-2 hook calls; hook revert
-    ///      reverts the transfer (fail-closed); treat `transfer`/`transferFrom` as an untrusted external
-    ///      call and apply CEI / `nonReentrant` in vaults/restaking/lending that custody LP.
+    ///      External-call properties for integrators: see the contract-level integration note.
     /// @param from Account the tokens leave (zero for mint).
     /// @param to Account the tokens arrive at (zero for burn).
     /// @param amount Amount of tokens moved.

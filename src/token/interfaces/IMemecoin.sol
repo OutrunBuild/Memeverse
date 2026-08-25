@@ -10,7 +10,6 @@ interface IMemecoin is IERC20 {
     /**
      * @notice Get the memeverse launcher.
      * @dev Launcher is the privileged controller for issuance and lifecycle operations.
-     * @return memeverseLauncher The address of the memeverse launcher.
      */
     function memeverseLauncher() external view returns (address);
 

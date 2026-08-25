@@ -43,8 +43,7 @@ import {MemeverseSwapFeeBase} from "./MemeverseSwapFeeBase.sol";
 ///      address, which equals the facet's immutable `__self`, so the guard trips (under delegatecall
 ///      `address(this)` is the hook proxy, ≠ `__self`).
 ///
-///      Storage layout FROZEN — shared ERC-7201 namespace; field order fixed, append-only.
-///      See `IMemeverseHookStorage.MemeverseUniswapHookStorage` for the slot-derivation rationale.
+///      Storage layout frozen — see `IMemeverseHookStorage` (authoritative source).
 ///
 ///      Settlement swaps are initiated by the hook itself, so Uniswap v4 skips their beforeSwap and afterSwap
 ///      callbacks. Public swaps and callback-token reentrant swaps have non-hook callers and run this facet's
@@ -83,9 +82,8 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     // -----------------------------------------------------------------
 
     /// @inheritdoc ISwapFacet
-    /// @dev Uniswap v4 invokes this callback only for swaps whose caller differs from the hook. Hook-initiated
-    ///      settlement swaps skip both swap callbacks in PoolManager, while public and callback-token reentrant
-    ///      swaps reach this function and use the normal public-fee path.
+    /// @dev Only swaps whose caller differs from the hook reach this callback (see the contract-level dev note
+    ///      on v4 skipping hook self-call swap callbacks).
     function beforeSwapLogic(address, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         external
         override
@@ -159,9 +157,8 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     }
 
     /// @inheritdoc ISwapFacet
-    /// @dev Settlement self-calls never reach this callback because Uniswap v4 skips both swap callbacks when
-    ///      `msg.sender == address(key.hooks)`. Every invocation here therefore consumes a context created by
-    ///      the matching `beforeSwapLogic` call.
+    /// @dev Every invocation consumes a context created by the matching `beforeSwapLogic` call; settlement
+    ///      self-calls never reach this callback (see the contract-level dev note).
     function afterSwapLogic(
         address,
         PoolKey calldata key,
@@ -350,8 +347,8 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
     // -----------------------------------------------------------------
 
     /// @dev Exact-input fees known before the core swap keep the existing LP/rebate merged-take optimization.
-    // reentrancy-no-eth: poolManager.take (L368) does not invoke a v4 hook callback (PoolManager._accountDelta + transfer only); reachable only inside the per-pool acquireSwapLifecycleLock window (acquired at beforeSwapLogic L108), so a reentrant same-pool swap reverts SwapLifecycleReentrant. Effects (_accrueLpFee/_settleProtocolFee) precede the take (strict CEI).
-    // reentrancy-events: same window — within _settleProtocolFee, ReferralRebateAccrued is emitted before the _takeToTreasury take, while ProtocolFeeCollected is emitted after it (it needs the treasury_ return value). The take does not invoke a v4 hook callback and runs inside the per-pool acquireSwapLifecycleLock window, so the event-after-external-call ordering poses no reentrancy risk.
+    // reentrancy-no-eth: poolManager.take (L368) does not invoke a v4 hook callback (see _settleProtocolFee @dev); reachable only inside the per-pool acquireSwapLifecycleLock window (acquired at beforeSwapLogic L108), so a reentrant same-pool swap reverts SwapLifecycleReentrant. Effects (_accrueLpFee/_settleProtocolFee) precede the take (strict CEI).
+    // reentrancy-events: same window — within _settleProtocolFee, ReferralRebateAccrued is emitted before the _takeToTreasury take, while ProtocolFeeCollected is emitted after it (it needs the treasury_ return value). The take runs inside the per-pool acquireSwapLifecycleLock window, so the event-after-external-call ordering poses no reentrancy risk.
     // Two stacked next-line directives are NOT honored by slither (only the last one before the line
     // applies), so both detectors are suppressed in a single comma-separated directive below.
     // slither-disable-next-line reentrancy-no-eth,reentrancy-events
@@ -394,19 +391,15 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         uint256 rebate
     ) internal {
         uint256 toTreasury = protocolFeeAmount - rebate;
-        // Effect: record the rebate ledger before any external interaction (strict CEI). The treasury take
-        // below calls `PoolManager.take`, which executes the fee currency's ERC20 `transfer` code; recording
-        // the ledger first means a reentrant call during that transfer cannot observe a stale rebate balance
-        // for this swap's referrer. The rebate take (interaction) is the caller's responsibility:
-        // `_collectProtocolFee` takes it inline; the beforeSwap merge path folds it into the LP-fee take.
+        // Effect: record the rebate ledger before any external interaction (strict CEI) so a reentrant call
+        // during the treasury take cannot observe a stale rebate balance for this swap's referrer.
         if (rebate > 0) {
             _memeverseUniswapHookStorage.pendingRebate[referrer][feeCurrency] += rebate;
             emit IMemeverseUniswapHook.ReferralRebateAccrued(referrer, feeCurrency, rebate);
         }
-        // Interaction: treasury take. `PoolManager.take` does not invoke a v4 hook callback, but its ERC20
-        // transfer still executes currency token code; standard ERC20 fee currencies and atomic rollback bound
-        // that interaction. Always emit ProtocolFeeCollected for indexer continuity (toTreasury may be 0 when
-        // rebateBps == PROTOCOL_FEE_SHARE_BPS). _takeToTreasury with amount 0 is a no-op take.
+        // Interaction: treasury take (reentrancy bounds: see the @dev above). Always emit ProtocolFeeCollected
+        // for indexer continuity (toTreasury may be 0 when rebateBps == PROTOCOL_FEE_SHARE_BPS).
+        // _takeToTreasury with amount 0 is a no-op take.
         address treasury_ = _takeToTreasury(feeCurrency, toTreasury);
         emit IMemeverseUniswapHook.ProtocolFeeCollected(poolId, feeCurrency, treasury_, toTreasury, block.number);
     }
@@ -427,13 +420,9 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         uint256 rebate = _computeRebate(protocolFeeAmount, referrer);
         _settleProtocolFee(poolId, feeCurrency, protocolFeeAmount, referrer, rebate);
         if (rebate > 0) {
-            // Separate rebate take (afterSwap path + beforeSwap edge). The beforeSwap main path merges
-            // this take with the LP-fee take instead (same currency, same recipient address(this)). Rebate
-            // custody on the hook proxy: v4 records `take` deltas on msg.sender (the hook under
-            // delegatecall), so the take is settled by the hook's beforeSwap specifiedDelta credit that
-            // already reserved the full protocol fee. The ledger is written before this caller-side take.
-            // `PoolManager.take` does not invoke a v4 hook callback, though its ERC20 transfer executes the
-            // currency's token code; standard ERC20 fee currencies and atomic rollback bound that interaction.
+            // Separate rebate take (afterSwap path + beforeSwap edge); the beforeSwap main path merges this
+            // take with the LP-fee take instead (same currency, same recipient address(this)) — see the @dev
+            // above for the hook-custody settlement rationale.
             poolManager.take(feeCurrency, address(this), rebate);
         }
     }

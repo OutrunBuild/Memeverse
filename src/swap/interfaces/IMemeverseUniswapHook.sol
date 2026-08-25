@@ -190,15 +190,12 @@ interface IMemeverseUniswapHook is IImmutableState {
     function poolInitializer() external view returns (address);
 
     /// @notice Returns the SwapFacet address bound to this hook.
-    /// @return Swap facet pointer.
     function swapFacet() external view returns (address);
 
     /// @notice Returns the DynamicFeeFacet address bound to this hook.
-    /// @return Dynamic fee facet pointer.
     function dynamicFeeFacet() external view returns (address);
 
     /// @notice Returns the SettlementFacet address bound to this hook.
-    /// @return Settlement facet pointer.
     function settlementFacet() external view returns (address);
 
     /// @notice Updates the router authorized to initialize hook-managed pools.
@@ -334,22 +331,16 @@ interface IMemeverseUniswapHook is IImmutableState {
     // Events
     // ==========================
 
-    /// @notice Emitted when the treasury address is updated.
     event TreasuryUpdated(address oldTreasury, address newTreasury);
 
-    /// @notice Emitted when a currency's protocol-fee support flag is updated.
     event ProtocolFeeCurrencySupportUpdated(Currency indexed currency, bool supported);
 
-    /// @notice Emitted when the launcher binding is updated.
     event LauncherUpdated(address oldLauncher, address newLauncher);
 
-    /// @notice Emitted when the pool initializer router is updated.
     event PoolInitializerUpdated(address oldInitializer, address newInitializer);
 
-    /// @notice Emitted when a one-time pool initialization authorization is written.
     event PoolInitializationAuthorized(PoolId indexed poolId, uint160 startPriceX96);
 
-    /// @notice Emitted when the default launch fee configuration is updated.
     event DefaultLaunchFeeConfigUpdated(
         uint24 oldStartFeeBps,
         uint24 oldMinFeeBps,
@@ -359,29 +350,22 @@ interface IMemeverseUniswapHook is IImmutableState {
         uint32 newDecayDurationSeconds
     );
 
-    /// @notice Emitted when the public swap resume time is updated for a pool.
     event PublicSwapResumeTimeUpdated(PoolId indexed poolId, uint40 oldResumeTime, uint40 newResumeTime);
 
-    /// @notice Emitted when the referral rebate rate is updated.
     event ReferrerRebateBpsUpdated(uint256 oldBps, uint256 newBps);
 
-    /// @notice Emitted when a referral rebate accrues to a referrer during a swap.
     event ReferralRebateAccrued(address indexed referrer, Currency indexed currency, uint256 amount);
 
-    /// @notice Emitted when a referrer claims accrued rebate.
     event ReferralRebateClaimed(
         address indexed referrer, address indexed recipient, Currency indexed currency, uint256 amount
     );
 
-    /// @notice Emitted when a facet pointer is replaced.
     event FacetUpdated(bytes32 indexed role, address oldFacet, address newFacet);
 
-    /// @notice Emitted when a pool is initialized
     event PoolInitialized(
         PoolId indexed poolId, address indexed liquidityToken, Currency indexed currency0, Currency currency1
     );
 
-    /// @notice Emitted when protocol fees are collected.
     /// @dev `amount` is the portion received by `treasury`. When a swap carries a referrer, the rebate
     ///      carved out of the protocol fee is emitted separately as `ReferralRebateAccrued` on the hook
     ///      (via `SwapFacet._collectProtocolFee`),
@@ -391,12 +375,10 @@ interface IMemeverseUniswapHook is IImmutableState {
         PoolId indexed poolId, Currency indexed currency, address indexed treasury, uint256 amount, uint256 blockNumber
     );
 
-    /// @notice Emitted when LP fees are collected
     event LPFeeCollected(
         PoolId indexed poolId, Currency indexed currency, uint256 amount, uint256 feePerShare, uint256 blockNumber
     );
 
-    /// @notice Emitted when liquidity is added to a pool
     event LiquidityAdded(
         PoolId indexed poolId,
         address indexed provider,
@@ -406,12 +388,10 @@ interface IMemeverseUniswapHook is IImmutableState {
         uint256 amount1
     );
 
-    /// @notice Emitted when liquidity is removed from a pool
     event LiquidityRemoved(
         PoolId indexed poolId, address indexed provider, uint128 liquidity, uint256 amount0, uint256 amount1
     );
 
-    /// @notice Emitted when a user claims their LP fees
     event FeesClaimed(
         PoolId indexed poolId,
         address indexed user,
@@ -421,25 +401,19 @@ interface IMemeverseUniswapHook is IImmutableState {
         uint256 fee1Amount
     );
 
-    /// @notice Reverts when a pool has not been initialized by the hook.
     error PoolNotInitialized();
 
-    /// @notice Reverts when the pool tickSpacing is not the expected default.
     error TickSpacingNotDefault();
 
-    /// @notice Reverts when the pool fee configuration is not set to dynamic fee.
     error FeeMustBeDynamic();
 
-    /// @notice Reverts when a supplied PoolKey points at a different hook address.
     error HookAddressMismatch();
 
     /// @notice Reverts when pool liquidity exists but no tracked LP shares can earn fees.
     error NoActiveLiquidityShares();
 
-    /// @notice Reverts when a restricted hook-only function is called by an external sender.
     error SenderMustBeHook();
 
-    /// @notice Reverts when `deadline` is in the past.
     error ExpiredPastDeadline();
 
     /// @notice Reverts when actual amounts are worse than user-provided minimums.
@@ -454,13 +428,10 @@ interface IMemeverseUniswapHook is IImmutableState {
     /// @notice Reverts when a preorder settlement's self-computed protocol fee disagrees with the settlement result.
     error PreorderSettlementFeeMismatch();
 
-    /// @notice Reverts when an unlock callback payload uses an unsupported discriminator.
     error InvalidUnlockCallbackKind(uint256 rawKind);
 
-    /// @notice Reverts when a zero address is supplied where a non-zero address is required.
     error ZeroAddress();
 
-    /// @notice Reverts when a hook-managed pool or protocol config uses native currency.
     error NativeCurrencyUnsupported();
 
     /// @notice Reverts when a launch fee configuration value is zero, or when a preorder
@@ -470,16 +441,12 @@ interface IMemeverseUniswapHook is IImmutableState {
     /// @notice Reverts when a launch fee config field exceeds BPS_BASE or when minFee > startFee.
     error InvalidLaunchFeeConfig();
 
-    /// @notice Reverts when the caller is not authorized.
     error Unauthorized();
 
-    /// @notice Reverts when the pool initializer router is not authorized.
     error UnauthorizedPoolInitializer();
 
-    /// @notice Reverts when a pool initialization has not been pre-authorized.
     error UnauthorizedPoolInitialization();
 
-    /// @notice Reverts when a pool initialization authorization is already active.
     error PoolInitializationAlreadyAuthorized();
 
     /// @notice Reverts when pool initialization uses a different price than authorized.
@@ -503,15 +470,11 @@ interface IMemeverseUniswapHook is IImmutableState {
     /// @notice Reverts when an ERC20 transfer returns false.
     error ERC20TransferFailed();
 
-    /// @notice Reverts when the LP token implementation address has no deployed code.
     error LPTokenImplementationCodeNotReady(address implementation);
 
-    /// @notice Reverts when a configured rebate rate exceeds the protocol fee share.
     error RebateExceedsProtocolShare();
 
-    /// @notice Reverts when a facet address has no deployed code.
     error FacetCodeNotReady(address facet);
-    /// @notice Reverts when a facet is bound to a different PoolManager than this hook.
     error FacetPoolManagerMismatch(address facet, address hookPoolManager, address facetPoolManager);
     /// @notice Reverts when a facet's immutable PoolManager getter cannot be read.
     /// @dev The facet has code but the `ImmutableState.poolManager()` probe reverts or the getter is
@@ -521,7 +484,6 @@ interface IMemeverseUniswapHook is IImmutableState {
     ///      rejected (fail-closed) either way.
     error FacetPoolManagerUnreadable(address facet);
 
-    /// @notice Reverts when a UUPS upgrade target's immutable PoolManager differs from this hook's.
     /// @dev Operational guardrail, not a security boundary — see `_authorizeUpgrade` dev comment.
     error UpgradePoolManagerMismatch(address expected, address actual);
     /// @notice Reverts when a UUPS upgrade target's immutable PoolManager getter cannot be read.
@@ -531,14 +493,12 @@ interface IMemeverseUniswapHook is IImmutableState {
     ///      outside Solidity try/catch semantics and bubbles up as the raw decode revert; the upgrade is
     ///      rejected (fail-closed) either way.
     error UpgradePoolManagerUnreadable(address newImplementation);
-    /// @notice Reverts when a UUPS upgrade target address has no deployed code.
     /// @dev Mirrors the `code.length` pre-check used by `_requireFacetPoolManager` so a no-code
     ///      target fails with a named, locatable error instead of an opaque ABI-decode revert.
     error UpgradeTargetCodeNotReady(address target);
     /// @notice Reverts when `setFacet` receives a role discriminator other than the three known roles.
     error UnknownFacetRole(bytes32 role);
 
-    /// @dev Reverts when a call targets a selector with no matching external function on this hook.
     error UnsupportedSelector(bytes4 selector);
 
     // -----------------------------------------------------------------

@@ -6,11 +6,8 @@ import {OutrunOFTInit} from "../common/omnichain/oft/OutrunOFTInit.sol";
 
 /**
  * @title Omnichain Memecoin Proof Of Liquidity(POL) Token
- * @notice OFT `sharedDecimals` is 6; `decimalConversionRate` is `1e12` for 18-decimal supply. Direct `IOFT::send`
- *         truncates `amountLD` via `_removeDust` to a multiple of `decimalConversionRate`; `amountLD < 1e12`
- *         delivers 0 on the remote and still pays the LayerZero fee. Integrators must pre-check
- *         `amountLD >= 1e12` (or `quoteOFT(...).amountReceivedLD != 0`). The `MemeverseOmnichainInteroperation`
- *         staking path enforces this via `DustAmount()` and refunds dust remainders, but the generic OFT path does not.
+ * @notice Same OFT dust caveat as `Memecoin` (`sharedDecimals` 6 / `decimalConversionRate` 1e12); see the
+ *         full integrator pre-check requirements in the `Memecoin` header note.
  */
 contract MemePol is IPol, OutrunOFTInit {
     address public memecoin;
@@ -53,10 +50,7 @@ contract MemePol is IPol, OutrunOFTInit {
         memeverseLauncher = memeverseLauncher_;
     }
 
-    /// @notice Records the Uniswap pool managed by this POL token.
-    /// @dev Only the launcher may set the pool id after liquidity deployment. Not one-shot: the
-    ///      launcher may overwrite the value, and every write emits `PoolIdSet`.
-    /// @param _poolId Pool identifier associated with POL liquidity.
+    /// @inheritdoc IPol
     function setPoolId(PoolId _poolId) external override onlyMemeverseLauncher {
         emit PoolIdSet(poolId, _poolId);
         poolId = _poolId;

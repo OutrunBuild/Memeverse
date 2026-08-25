@@ -15,11 +15,10 @@ import {SafeCast} from "./libraries/SafeCast.sol";
 /// @title DynamicFeeFacet
 /// @notice Diamond facet holding the Memeverse dynamic swap fee logic.
 /// @dev This facet is the delegatecall target for dynamic-fee quoting and realized swap state updates.
-///      It executes inside the Router (the hook proxy) storage context via delegatecall, so it MUST be
-///      routed through the Router and never called directly — `DirectFacetCallForbidden` enforces that.
+///      It executes inside the Router (the hook proxy) storage context via delegatecall and must never be
+///      called directly — see `FacetGuard.onlyViaRouter` (guard rationale lives there).
 ///
-///      Storage layout FROZEN — shared ERC-7201 namespace; field order fixed, append-only.
-///      See `IMemeverseHookStorage.MemeverseUniswapHookStorage` for the slot-derivation rationale.
+///      Storage layout frozen — see `IMemeverseHookStorage` (authoritative source).
 ///
 ///      State is keyed directly by `PoolId` (and `trader` / `referrer`) in the Router's shared storage;
 ///      the Router is the single trusted dispatcher. The pure/view algorithm bodies (EWVWAP, volatility,
@@ -40,7 +39,6 @@ contract DynamicFeeFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     /// @param poolManager_ PoolManager shared with the hook (bound as immutable implementation bytecode state).
-    ///      Trailing underscore resolves the clash with the inherited `ImmutableState.poolManager` immutable.
     constructor(IPoolManager poolManager_) ImmutableState(poolManager_) {
         if (address(poolManager_) == address(0)) revert ZeroAddress();
     }

@@ -486,7 +486,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         uint256 totalPTFee,
         bool preserveNormalShare
     ) internal view returns (uint256 govUAssetFee, uint256 govPTFee, uint256 totalLeveragedDebt) {
-        // GR-001: short-circuit before the SLOAD + external getTotalLeveragedDebt fetch on the
+        // Short-circuit before the SLOAD + external getTotalLeveragedDebt fetch on the
         // Unlocked-stage path (preserveNormalShare == false), where redeemAndDistributeFees is
         // repeatedly callable. Mirrors the lib helper's own first-line guard; restoring pre-refactor gas.
         // totalLeveragedDebt is left at its default 0 here: only the Locked-capture path consumes it,
@@ -529,7 +529,7 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
         // totalLeveragedDebt is captured here (read once inside _captureLockedAuxiliaryFees) and reused below
         // for the executeGlobalSettlement gate, instead of a second identical getTotalLeveragedDebt STATICCALL.
         // Safe because the intervening `settle` never writes the two slots getTotalLeveragedDebt reads
-        // (totalLeveragedInterest / interestRate); see GR-001 note in _splitAuxiliaryGovFees.
+        // (totalLeveragedInterest / interestRate); see the short-circuit note in _splitAuxiliaryGovFees.
         uint256 totalLeveragedDebt = _captureLockedAuxiliaryFees(verseId, verse, polSplitter, hook);
         // Write Stage.Unlocked BEFORE the callbacks: POLendUpgradeable re-enters the launcher during executeGlobalSettlement
         // and must observe the Unlocked stage.

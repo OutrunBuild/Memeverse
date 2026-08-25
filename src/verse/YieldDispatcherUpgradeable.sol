@@ -138,7 +138,7 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
     ///      out-of-range TokenType) and a clean parseable payload naming this dispatcher as its own receiver
     ///      (`receiver == address(this)`) are consumed with `Settled` + `ComposeRejected` and no settlement —
     ///      shared convergence / hash-binding / self-harm rationale: see `IComposeState`'s dev note (authoritative).
-    ///      F-0026 note: a parseable UASSET→governor frame whose `token` is not yet registered as a treasury
+    ///      Note: a parseable UASSET→governor frame whose `token` is not yet registered as a treasury
     ///      token (`NonTreasuryToken` in `recordTreasuryIncome`) is intentionally NOT consumed; `_settle`
     ///      reverts and the `Settled` write rolls back to `None`, pinning the endpoint for retry until governance
     ///      `registerTreasuryToken` heals it (see `_settleToContract`). This preserves the healable-vs-never-settle
@@ -329,7 +329,7 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
     ///      before the approve), mirroring the staker's deposit branch: a forged (fake token, real vault) frame is
     ///      intercepted before any fund movement. UASSET applies no binding: the governor pulls the payload-named
     ///      token, so no (token, receiver) mismatch class exists.
-    ///      F-0026 liveness boundary (VALID NON-SECURITY OBSERVATION, Low): UASSET→governor settlement
+    ///      Liveness boundary (valid non-security observation, low severity): UASSET→governor settlement
     ///      reverts with `NonTreasuryToken` when `token` is not yet registered in
     ///      `GovernanceCycleIncentivizerUpgradeable._treasuryTokens` (checked in `recordTreasuryIncome`).
     ///      Both `lzCompose` (Settled) and `settlePendingCompose` (Released) share this `_settle` path and

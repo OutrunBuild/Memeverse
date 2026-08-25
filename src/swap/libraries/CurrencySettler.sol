@@ -10,7 +10,7 @@ import {IERC20} from "../../common/token/OutrunERC20Init.sol";
 /// @title CurrencySettler
 /// @notice Production helper for settling and taking PoolManager deltas.
 /// @dev Mirrors the standard Uniswap v4 settle/take behavior without depending on upstream test utilities.
-/// @dev Pool currency hard ERC20 spec — single source of truth for the whole repo (M-1 / H-2):
+/// @dev Pool currency hard ERC20 spec — single source of truth for the whole repo:
 ///      - ERC20-only: no native currency; `Currency.isAddressZero()` is unsupported and reverts.
 ///      - Strict bool: `transfer` / `transferFrom` / `approve` must return `bool` and return `true` on success;
 ///        missing returndata (old USDT), `false`, or revert are all treated as failure.
@@ -57,7 +57,7 @@ library CurrencySettler {
 
     /// @notice Transfers ERC20 `currency` to `to`, reverting on zero-address recipient or transfer failure.
     /// @dev Guards (amount==0 early-return, to==0 revert) plus OutrunSafeERC20.safeTransfer, which handles
-    ///      non-compliant ERC20s that return no bool. Shared by Hook and Router (CI-010).
+    ///      non-compliant ERC20s that return no bool. Shared by Hook and Router.
     function transferWithGuard(Currency currency, address to, uint256 amount) internal {
         if (amount == 0) return;
         if (to == address(0)) revert ZeroAddress();

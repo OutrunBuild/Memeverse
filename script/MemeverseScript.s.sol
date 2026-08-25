@@ -137,7 +137,7 @@ contract MemeverseScript is BaseScript {
         // _getDeployedPOLSplitter(2);
 
         // Update OutrunRouter after deployed
-        // _deployGenesisCreditFactory(2);             // R1-F5: homeChainEid guardrail — mandatory deploy path
+        // _deployGenesisCreditFactory(2);             // homeChainEid guardrail — mandatory deploy path
         // _deployPOLend(2);                            // optimizer-runs: 200
         // _deployMemeverseLauncher(2);                 // optimizer-runs: 200
         // _deployPOLSplitter(2);                       // optimizer-runs: 200
@@ -669,7 +669,7 @@ contract MemeverseScript is BaseScript {
     }
 
     /// @notice Deploys GenesisCreditFactory with the canonical home-chain eid baked in as an immutable.
-    /// @dev R1-F5 guardrail. `homeChainEid` is immutable on the factory and on every credit it deploys
+    /// @dev Home-chain guardrail. `homeChainEid` is immutable on the factory and on every credit it deploys
     ///      (injected into the credit init_code), and is the parameter source for `GenesisCredit.claim`'s
     ///      home-chain gate (`endpoint.eid() == homeChainEid`). A remote-chain factory that baked in the
     ///      remote eid would open merkle minting on the remote.

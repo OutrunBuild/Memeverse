@@ -376,7 +376,7 @@ contract DeployMemeverseHookProxy is BaseScript {
     /// @param hookOwner Owner expected on a reusable hook proxy.
     /// @param hookTreasury Treasury expected on a reusable hook proxy.
     /// @param poolManager PoolManager expected on a reusable hook and its facets.
-    /// @param hookLauncher Launcher expected on a reusable hook proxy (write-once, init-bound under C1).
+    /// @param hookLauncher Launcher expected on a reusable hook proxy (write-once, init-bound).
     /// @return proxy Selected proxy address used by deployHookProxy/run.
     function getPredictedProxy(
         IOutrunDeployer outrunDeployer,
@@ -788,7 +788,7 @@ contract DeployMemeverseHookProxy is BaseScript {
             revert ExistingHookPoolManagerMismatch(proxy, address(expectedPoolManager), address(actual.poolManager));
         }
 
-        // Launcher is init-bound and write-once under C1 (structurally like poolManager), so a same-nonce
+        // Launcher is init-bound and write-once (structurally like poolManager), so a same-nonce
         // reuse must match it too — otherwise a stale/wrong MEMEVERSE_LAUNCHER env is silently accepted.
         if (actual.hookLauncher != expectedHookLauncher) {
             revert ExistingHookLauncherMismatch(proxy, expectedHookLauncher, actual.hookLauncher);

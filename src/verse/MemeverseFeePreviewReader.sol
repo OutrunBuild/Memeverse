@@ -53,7 +53,7 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         require(verse.currentStage >= IMemeverseLauncher.Stage.Locked, IMemeverseLauncher.NotReachedLockedStage());
 
         // Cache the launcher config bundle once and pass the cached fields down to helpers, instead of
-        // each helper re-fetching the same bundle (F-98: previously up to ~6 pulls of getLauncherContracts
+        // each helper re-fetching the same bundle (previously up to ~6 pulls of getLauncherContracts
         // per quote). The proxy storage is immutable within a single staticcall frame, so caching is safe.
         IMemeverseLauncher.LauncherContracts memory contracts = IMemeverseLauncher(PROXY).getLauncherContracts();
         (memecoinFee, uAssetFee) = _previewPairFees(verse.memecoin, verse.uAsset, contracts.memeverseSwapRouter);
@@ -72,7 +72,7 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         if (govChainId == block.chainid) return 0;
 
         // Cache the launcher config bundle once and pass the cached fields down to helpers, instead of
-        // each helper re-fetching the same bundle (F-98: previously up to ~6+2 pulls of getLauncherContracts
+        // each helper re-fetching the same bundle (previously up to ~6+2 pulls of getLauncherContracts
         // and getLauncherParameters per quote). The proxy storage is immutable within a single staticcall
         // frame, so caching is safe.
         IMemeverseLauncher.LauncherContracts memory contracts = IMemeverseLauncher(PROXY).getLauncherContracts();
@@ -170,7 +170,7 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         uint256 totalPTFee,
         bool preserveNormalShare
     ) internal view returns (uint256 govUAssetFee, uint256 govPTFee) {
-        // GR-001: short-circuit before the proxy SLOAD + external getTotalLeveragedDebt fetch on the
+        // Short-circuit before the proxy SLOAD + external getTotalLeveragedDebt fetch on the
         // Unlocked-stage path (preserveNormalShare == false). Mirrors the lib helper's own first-line guard;
         // restoring pre-refactor gas. Same return values; only skips the wasted fetch on the false branch.
         if (!preserveNormalShare) return (totalUAssetFee, totalPTFee);

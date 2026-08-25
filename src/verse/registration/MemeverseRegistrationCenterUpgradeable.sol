@@ -332,7 +332,7 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
     ///      during execution. Callback-capable assets are outside the protocol's supported scope;
     ///      this precondition is guaranteed by governance and deployment, not runtime detection
     ///      (this setter only manages whitelist membership). A callback-capable `uAsset` would
-    ///      conditionally enable the LP per-share accounting reentrancy window (F-020) at
+    ///      conditionally enable the LP per-share accounting reentrancy window at
     ///      `MemeverseUniswapHookUpgradeable.sol::_addLiquidityCore`.
     ///      Hard requirements enforced by the swap and settlement layers (router is `OutrunSafeERC20`-tolerant for missing `bool`, settlement `CurrencySettler` remains strict `IERC20Minimal` due to PoolManager):
     ///      - `transfer` / `transferFrom` / `approve` must return `bool` per EIP-20 (no missing return, e.g. legacy USDT);

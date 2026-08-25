@@ -552,7 +552,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         // Crystallize the recipient's accrued fees before minting changes their LP balance baseline.
         _updateUserSnapshotViaFacet(poolId, params.to);
 
-        // Dust note (F-0034): quote may return 0 liquidity for dust budgets (full-range getLiquidityForAmounts rounds to 0).
+        // Dust note: quote may return 0 liquidity for dust budgets (full-range getLiquidityForAmounts rounds to 0).
         // UniswapLP.mint with 0 is an OZ no-op (Transfer 0, no supply change) and cachedLpTotalSupply +=0 is neutral.
         // The zero-delta _modifyLiquidity settles nothing; snapshot is idempotent. This keeps dust adds from reverting
         // and is intentionally load-bearing for UX; no accounting relies on the zero path.
@@ -569,7 +569,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
             })
         );
 
-        // Zero-liquidity mint is tolerated as no-op dust handling (F-0034): see dust note above.
+        // Zero-liquidity mint is tolerated as no-op dust handling: see dust note above.
         UniswapLP(liquidityToken).mint(params.to, liquidity);
         _memeverseUniswapHookStorage.cachedLpTotalSupply[poolId] += liquidity;
 
@@ -614,7 +614,7 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         // Crystallize the caller's accrued fees before burning changes their LP balance baseline.
         _updateUserSnapshotViaFacet(poolId, msg.sender);
 
-        // Dust note (F-0034): params.liquidity ==0 flows into zero-delta modifyLiquidity and UniswapLP.burn no-op; tolerated, no supply change.
+        // Dust note: params.liquidity ==0 flows into zero-delta modifyLiquidity and UniswapLP.burn no-op; tolerated, no supply change.
         UniswapLP lp = UniswapLP(_memeverseUniswapHookStorage.poolInfo[poolId].liquidityToken);
         lp.burn(msg.sender, params.liquidity);
         _memeverseUniswapHookStorage.cachedLpTotalSupply[poolId] -= params.liquidity;

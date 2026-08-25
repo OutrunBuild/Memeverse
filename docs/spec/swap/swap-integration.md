@@ -49,7 +49,7 @@ fee claim 需要单独区分两类能力：
 原因：
 
 1. Router 统一处理 `deadline`、`amountOutMinimum`、`amountInMaximum`
-2. Router 对 swap 栈执行 fail-close 输入约束（native 拒绝 V5、收费/币种边界 V4）见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3
+2. Router 对 swap 栈执行 fail-close 输入约束（native 拒绝、收费/币种边界 V4）见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3
 3. Router 提供 pair 级 helper，如 `lpToken(...)`、`quoteAmountsForLiquidity(...)`
 4. Router 对普通用户路由保持公开 surface；`createPoolAndAddLiquidity(...)` 明确划为仅 `Launcher` 可调用的启动期建池/首笔流动性入口，普通集成方无需感知专用 bootstrap / settlement 接线
 
@@ -131,7 +131,7 @@ function swap(
 
 参数含义：
 
-- `key`：池子 key（`currency0` / `currency1` 的 ERC20-only 与 native 拒绝 V5 见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3）
+- `key`：池子 key（`currency0` / `currency1` 的 ERC20-only 与 native 拒绝规则见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3）
 - `params`：Uniswap v4 swap 参数
 - `recipient`：最终接收输出币的地址；为零地址时 `MemeverseSwapRouter.sol::_swap` 入口回退 `InvalidRecipient(recipient)`（recipient 非零规则见 [docs/spec/invariants.md](../invariants.md) INV-07）
 - `deadline`：过期时间
@@ -217,7 +217,7 @@ Permit2 入口是并行路径，不替代现有 approve 路径。集成时应注
 - 池创建仅走 `Launcher -> Router.createPoolAndAddLiquidity(...)`，Router 侧受 `onlyLauncher` 限制，不是 Permit2 路径
 - Permit2 拉资后，deadline、slippage、Hook 语义与普通入口一致
 - `removeLiquidity(...)` / `removeLiquidityWithPermit2(...)` 的最终 `recipient` 不能为 `address(0)`；共享 Router payout helper 会 fail-close（recipient 非零 V7 见 [docs/spec/invariants.md](../invariants.md) INV-07）
-- Permit2 只处理 ERC20；swap 栈不接受 native 资产，也不接受 `msg.value`（V5 见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3；Permit2 入口语义 V6 见 [docs/spec/swap/permit2.md](permit2.md)）
+- Permit2 只处理 ERC20；swap 栈不接受 native 资产，也不接受 `msg.value`（native 拒绝见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3；Permit2 入口语义见 [docs/spec/swap/permit2.md](permit2.md)）
 - 签名里的 `spender` 必须是 Router 地址，`transferDetails.to` 必须是 Router
 
 ---

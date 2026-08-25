@@ -48,7 +48,7 @@ witness 绑定了关键业务参数（池子、方向、预算、截止时间等
 
 - 一致：Permit2 只改变 ERC20 资金准备方式，后续 slippage、deadline、hook 语义一致。`[代码已证]`
 - 一致：`removeLiquidityWithPermit2(...)` 进入共享 Router remove-liquidity 出款路径；最终 `recipient` 不允许是 `address(0)`，否则在 Router payout helper fail-close。`[代码已证]`
-- 不一致：swap 栈对 native fail-close（V5 规则见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3），Permit2 不为 native 提供任何兜底路径。`[代码已证]`
+- 不一致：swap 栈对 native fail-close（规则见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3），Permit2 不为 native 提供任何兜底路径。`[代码已证]`
 - pool creation 不是 Permit2 路径；仅允许 `Launcher -> Router.createPoolAndAddLiquidity(...)`，并由 Router 的 `onlyLauncher` 限制。`[代码已证]`
 
 ### 5.1 Smart EOA session 边界 `[代码已证]`

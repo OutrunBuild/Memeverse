@@ -130,7 +130,7 @@
 - 约束：settlement dust reserve 只来自 `fundSettlementDustReserve(address,uint256)` 手动注入、Launcher bootstrap unused `uAsset` 注入；不得通过 mint、残值扣减、普通侧 LP 扣减或 treasury 隐式透支产生。`[目标规范]`
 - 约束：settlement dust reserve 主要覆盖正确执行 `previewPTToUAsset` 固定 backing ratio 转换后的整数舍入 dust；不得覆盖 PT backing ratio / 模型错误。INV-07A Accepted Risk 下 `MemeverseLiquidityImpl._removeLeveragedAuxiliaryLiquidity` 固定 `0,0` 产生的有界价格缺口亦由该 reserve 有界覆盖（仍受 `maxReserve` 与 `deficit <= reserveBeforeSettlement` 约束，`SettlementDustInsufficient` fail-closed），不视为对本约束的违背。`[目标规范]`
 - 约束：bootstrap pre-LP residual `POL/PT` 与普通 auxiliary LP split dust 是两个不同类别。前者必须先按 funding share 切分：`leveragedShare = floor(totalResidual * totalLeveragedDebt / totalGenesisFunds)`，`normalShare = totalResidual - leveragedShare`；不能把它们当成永久 launcher bucket 或未分类 dust。`[目标规范]`
-- 价值：C1 主要允许 wei 级整数舍入缺口通过 reserve 解决；INV-07A 下有界零滑点推价缺口亦由同一 reserve 有界覆盖，均受 `maxReserve` 硬上界与 `SettlementDustInsufficient` fail-closed 约束，不把无界资不抵债或模型错误伪装成 dust。
+- 价值：本条约束主要允许 wei 级整数舍入缺口通过 reserve 解决；INV-07A 下有界零滑点推价缺口亦由同一 reserve 有界覆盖，均受 `maxReserve` 硬上界与 `SettlementDustInsufficient` fail-closed 约束，不把无界资不抵债或模型错误伪装成 dust。
 - 主要真源：[docs/spec/polend/core.md](polend/core.md)
 
 ### INV-14 POLendUpgradeable PT raw 与 uAsset backing 必须分离

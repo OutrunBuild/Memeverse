@@ -56,7 +56,7 @@ flowchart TD
 说明：
 
 - 普通 swap 采用单路径结算，execute-or-revert（V10 定义见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §4）。
-- swap 栈只支持 ERC20/ERC20 pair；native 拒绝规则（V5）与收费/币种边界见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
+- swap 栈只支持 ERC20/ERC20 pair；native 拒绝规则与收费/币种边界见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
 - 启动期保护通过 Hook 内的 `launch fee window` 费率逻辑体现。
 
 ### 1.1 普通动态 Swap 的费用与 delta 流 `[代码已证]`
@@ -172,9 +172,9 @@ flowchart TD
 
 说明：
 
-- Permit2 只改变 ERC20 资金准备方式；Permit2 入口语义（V6）见 [docs/spec/swap/permit2.md](permit2.md)。
+- Permit2 只改变 ERC20 资金准备方式；Permit2 入口语义见 [docs/spec/swap/permit2.md](permit2.md)。
 - 一旦资金到达 Router，后续业务语义与普通入口完全一致。
-- native 拒绝（V5）见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
+- native 拒绝见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
 
 ---
 

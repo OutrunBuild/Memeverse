@@ -94,34 +94,3 @@ forge script MemeverseScript.s.sol:MemeverseScript --rpc-url sepolia \
 #     --broadcast --ffi -vvvv \
 #     --verify
 
-## TestScript ##
-
-# forge script TestScript.s.sol:TestScript --rpc-url monad_testnet \
-#     --with-gas-price 52000000000 \
-#     --via-ir \
-#     --broadcast --ffi -vvvv
-
-# forge script TestScript.s.sol:TestScript --rpc-url bsc_testnet \
-#     --with-gas-price 1000000000 \
-#     --via-ir \
-#     --broadcast --ffi -vvvv \
-
-# forge script TestScript.s.sol:TestScript --rpc-url arbitrum_sepolia \
-#     --with-gas-price 100000000 \
-#     --via-ir \
-#     --broadcast --ffi -vvvv
-
-# forge script TestScript.s.sol:TestScript --rpc-url polygon_amoy \
-#     --priority-gas-price 40000000000 --with-gas-price 50000000000 \
-#     --via-ir \
-#     --broadcast --ffi -vvvv
-
-# forge script TestScript.s.sol:TestScript --rpc-url scroll_sepolia \
-#     --priority-gas-price 1000 --with-gas-price 600000000 \
-#     --via-ir \
-#     --broadcast --ffi -vvvv
-
-# forge script TestScript.s.sol:TestScript --rpc-url base_sepolia \
-#     --with-gas-price 1200000 \
-#     --via-ir \
-#     --broadcast --ffi -vvvv

@@ -611,6 +611,13 @@ run_slither_with_baseline() {
     local command_string
     local raw_output_file
     local new_findings_file
+    local combined_file
+    local build_output_file
+    local raw_output_file_2
+    local run1_count
+    local run2_count
+    local run1_key_count
+    local run2_key_count
     local exit_code
     local baseline_count
     local current_count
@@ -637,10 +644,29 @@ run_slither_with_baseline() {
         return
     fi
 
+    build_output_file="$(mktemp "$repo_root/.harness/tmp/slither-build.XXXXXX.log")"
     raw_output_file="$(mktemp "$repo_root/.harness/tmp/slither.XXXXXX.json")"
+    raw_output_file_2="$(mktemp "$repo_root/.harness/tmp/slither.XXXXXX.json")"
     new_findings_file="$(mktemp "$repo_root/.harness/tmp/slither-new.XXXXXX.json")"
+    combined_file="$(mktemp "$repo_root/.harness/tmp/slither-combined.XXXXXX.json")"
+    register_cleanup "$build_output_file"
     register_cleanup "$raw_output_file"
+    register_cleanup "$raw_output_file_2"
     register_cleanup "$new_findings_file"
+    register_cleanup "$combined_file"
+
+    set +e
+    bash "$repo_root/script/harness/forge-serialize.sh" build > "$build_output_file" 2>&1
+    exit_code=$?
+    set -e
+
+    if [ "$exit_code" -ne 0 ]; then
+        filter_command_output "$build_output_file" "$exit_code"
+        verification_failed=1
+        record_command_result "slither-prerequisite-build" "failed" "$exit_code" "serialized forge build failed" "verifier"
+        append_finding blocking_findings_json "verifier" "verification command failed: slither-prerequisite-build" "slither-prerequisite-build" "error"
+        return
+    fi
 
     set +e
     slither src \
@@ -670,7 +696,35 @@ run_slither_with_baseline() {
         return
     fi
 
-    jq --slurpfile baseline "$baseline_file" '
+    set +e
+    slither src \
+        --filter-paths "$slither_filter_paths" \
+        --exclude-dependencies \
+        --exclude "$slither_exclude_detectors" \
+        --json - \
+        --json-types detectors \
+        --fail-none \
+        --disable-color > "$raw_output_file_2" 2>&1
+    exit_code=$?
+    set -e
+
+    if [ "$exit_code" -ne 0 ]; then
+        filter_command_output "$raw_output_file_2" "$exit_code"
+        verification_failed=1
+        record_command_result "$id" "failed" "$exit_code" "slither command failed (run 2)" "verifier"
+        append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
+        return
+    fi
+
+    if ! jq -e '.success == true and (.results.detectors | type == "array")' "$raw_output_file_2" >/dev/null 2>&1; then
+        head -n 40 "$raw_output_file_2"
+        verification_failed=1
+        record_command_result "$id" "failed" "1" "slither did not emit valid detector JSON (run 2)" "verifier"
+        append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
+        return
+    fi
+
+    jq --slurpfile baseline "$baseline_file" --slurpfile run2 "$raw_output_file_2" '
         def norm_summary:
             (.description // "")
             | split("\n")[0]
@@ -691,16 +745,35 @@ run_slither_with_baseline() {
                 )
             };
         ($baseline[0].findings | map(.key // .id) | unique) as $baseline_keys
-        | [
-            .results.detectors[]
-            | normalize
-            | select((.key // .id) as $key | $key == "" or ($baseline_keys | index($key) | not))
-        ]
-    ' "$raw_output_file" > "$new_findings_file"
+        | ([.results.detectors[] | normalize]) as $run1_normalized
+        | ($run1_normalized | map(.key) | unique) as $run1_keys
+        | ($run2[0].results.detectors | map(normalize.key) | unique) as $run2_keys
+        | ([$run1_normalized[] | select(.key as $key | $run2_keys | index($key))]) as $stable
+        | {
+            drift: (($run1_keys | length) != ($run2_keys | length) or ($run1_keys - $run2_keys | length) > 0 or ($run2_keys - $run1_keys | length) > 0),
+            run1_key_count: ($run1_keys | length),
+            run2_key_count: ($run2_keys | length),
+            stable_count: ($stable | length),
+            new: [
+                $stable[]
+                | select((.key // .id) as $key | $key == "" or ($baseline_keys | index($key) | not))
+            ]
+        }
+    ' "$raw_output_file" > "$combined_file"
 
     baseline_count="$(jq '.findings | length' "$baseline_file")"
-    current_count="$(jq '.results.detectors | length' "$raw_output_file")"
-    new_count="$(jq 'length' "$new_findings_file")"
+    run1_count="$(jq '.results.detectors | length' "$raw_output_file")"
+    run2_count="$(jq '.results.detectors | length' "$raw_output_file_2")"
+    run1_key_count="$(jq '.run1_key_count' "$combined_file")"
+    run2_key_count="$(jq '.run2_key_count' "$combined_file")"
+    current_count="$(jq '.stable_count' "$combined_file")"
+    new_count="$(jq '.new | length' "$combined_file")"
+    jq '.new' "$combined_file" > "$new_findings_file"
+
+    if [ "$(jq '.drift' "$combined_file")" = "true" ] \
+        && [ "$(resolved_output_format)" = "text" ] && [ "$quiet" -eq 0 ] && { [ "$log_level" = "info" ] || [ "$log_level" = "debug" ]; }; then
+        echo "[gate] slither drift: run1=$run1_key_count keys, run2=$run2_key_count keys; comparing $current_count stable findings (raw run1=$run1_count, run2=$run2_count)"
+    fi
 
     if [ "$new_count" -eq 0 ]; then
         summary="all $current_count slither findings matched baseline ($baseline_count entries)"

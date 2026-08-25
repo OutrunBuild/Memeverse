@@ -91,6 +91,7 @@
       "^package\\.json$",
       "^remappings\\.txt$",
       "^script/harness/.*$",
+      "^script/deploy\\.sh$",
       "^\\.?solhint.*(\\.config\\.js|\\.json)$"
     ],
     "solidity_prod": [

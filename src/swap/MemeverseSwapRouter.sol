@@ -505,9 +505,16 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         return delta;
     }
 
+    /// @dev All pulls are caller-funded: `from` must equal `msg.sender`, otherwise reverts.
     function _pullCurrency(Currency currency, address from, uint256 amount) internal {
+        _requireCallerPayer(from);
         if (amount == 0) return;
         IERC20(Currency.unwrap(currency)).safeTransferFrom(from, address(this), amount);
+    }
+
+    /// @notice Enforces the invariant that token pulls are always funded by the caller.
+    function _requireCallerPayer(address payer) internal view {
+        if (payer != msg.sender) revert TransferFromNotCaller(payer, msg.sender);
     }
 
     function _prepareSwapPermit2Input(
@@ -549,6 +556,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         if (permitParams.transferDetails.requestedAmount != amount) {
             revert InvalidPermit2Amount(0, amount, permitParams.transferDetails.requestedAmount);
         }
+        _requireCallerPayer(owner);
         permit2.permitWitnessTransferFrom(
             permitParams.permit, permitParams.transferDetails, owner, witness, witnessTypeString, permitParams.signature
         );
@@ -570,6 +578,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
 
         _validatePermit2BatchEntry(permitParams, 0, token0, amount0);
         _validatePermit2BatchEntry(permitParams, 1, token1, amount1);
+        _requireCallerPayer(owner);
 
         permit2.permitWitnessTransferFrom(
             permitParams.permit, permitParams.transferDetails, owner, witness, witnessTypeString, permitParams.signature
@@ -646,6 +655,7 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         // `key` is the canonical pool key resolved once by the caller (see removeLiquidity /
         // removeLiquidityWithPermit2). Reusing it avoids a redundant _canonicalHookPoolKey call.
         if (!liquidityPrepared) {
+            _requireCallerPayer(payer);
             address liquidityToken = hook.liquidityTokenOf(key.toId());
             IERC20(liquidityToken).safeTransferFrom(payer, address(this), liquidity);
         }

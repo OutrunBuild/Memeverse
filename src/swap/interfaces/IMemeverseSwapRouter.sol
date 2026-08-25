@@ -32,19 +32,15 @@ interface IMemeverseSwapRouter {
     /// @notice Reverts when the pool key does not use the configured Memeverse hook.
     error InvalidHook();
 
-    /// @notice Reverts when `deadline` has passed.
     error ExpiredPastDeadline();
 
-    /// @notice Reverts when the swap amount is zero.
     error SwapAmountCannotBeZero();
 
     /// @notice Reverts when an exact-output swap omits `amountInMaximum`.
     error AmountInMaximumRequired();
 
-    /// @notice Reverts when the required input exceeds `amountInMaximum`.
     error InputAmountExceedsMaximum(uint256 actualInputAmount, uint256 amountInMaximum);
 
-    /// @notice Reverts when the received output is below `amountOutMinimum`.
     error OutputAmountBelowMinimum(uint256 actualOutputAmount, uint256 amountOutMinimum);
 
     /// @notice Reverts when bootstrap uses identical token addresses.
@@ -66,17 +62,20 @@ interface IMemeverseSwapRouter {
     /// @param actualAmount The requested amount in the Permit2 payload.
     error InvalidPermit2Amount(uint256 index, uint256 expectedAmount, uint256 actualAmount);
 
-    /// @notice Reverts when an ERC20 approve returns false.
-    error ERC20ApproveFailed();
-
     /// @notice Reverts when a launcher-only bootstrap function is called by any other account.
     error UnauthorizedLauncher();
+
+    /// @notice Reverts when a token pull specifies a payer other than the caller.
+    /// @dev Relayed or contract-mediated permit2 pulls (owner != msg.sender) are unsupported by design;
+    /// smart-contract wallets remain supported since they are msg.sender.
+    /// @param from The payer that was rejected.
+    /// @param caller The actual `msg.sender`.
+    error TransferFromNotCaller(address from, address caller);
 
     /// @notice Reverts when a swap output recipient is the zero address.
     /// @param recipient The zero-address recipient that was rejected.
     error InvalidRecipient(address recipient);
 
-    /// @notice Reverts when a lens address has no deployed bytecode.
     /// @param lens Address that failed the code check.
     error HookLensCodeNotReady(address lens);
 

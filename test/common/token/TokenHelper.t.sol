@@ -190,31 +190,4 @@ contract TokenHelperTest is Test {
         address spender = makeAddr("spender");
         harness.safeApproveInf(NATIVE, spender);
     }
-
-    function testTransferFromMovesFunds() external {
-        address from = makeAddr("from");
-        address to = makeAddr("to");
-        uint256 amount = 1 ether;
-        token.mint(from, amount);
-        vm.prank(from);
-        token.approve(address(harness), amount);
-
-        harness.transferFrom(address(token), from, to, amount);
-
-        assertEq(token.balanceOf(to), amount);
-        assertEq(token.balanceOf(from), 0);
-    }
-
-    function testTransferFromZeroAmountSkipsTransfer() external {
-        // amount == 0 skips the internal safeTransferFrom; no approval needed, balances unchanged.
-        address from = makeAddr("from");
-        address to = makeAddr("to");
-        uint256 fromBalance = token.balanceOf(from);
-        uint256 toBalance = token.balanceOf(to);
-
-        harness.transferFrom(address(token), from, to, 0);
-
-        assertEq(token.balanceOf(from), fromBalance);
-        assertEq(token.balanceOf(to), toBalance);
-    }
 }

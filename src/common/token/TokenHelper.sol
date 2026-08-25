@@ -15,6 +15,7 @@ abstract contract TokenHelper is ReentrancyGuardTransient {
     error NativeValueMismatch(uint256 expected, uint256 actual);
     error NativeTransferFailed();
     error SafeApproveFailed(address token, address spender, uint256 value);
+    error TransferFromNotCaller(address from, address caller);
 
     /// @notice Single entry point for all inbound token pulls (ERC20 `safeTransferFrom`, native `msg.value`).
     /// @dev Unlike `_transferOut`, this inbound pull carries no `nonReentrant`: `safeTransferFrom` is an
@@ -22,13 +23,11 @@ abstract contract TokenHelper is ReentrancyGuardTransient {
     ///      the caller before its effects are complete. Inbound reentrancy safety therefore rests on the trust
     ///      precondition that every asset pulled in here is a plain ERC20 without transfer hooks — a
     ///      per-asset precondition.
+    ///      All pulls are caller-funded: `from` must equal `msg.sender`, otherwise reverts.
     function _transferIn(address token, address from, uint256 amount) internal {
+        if (from != msg.sender) revert TransferFromNotCaller(from, msg.sender);
         if (token == NATIVE) require(msg.value == amount, NativeValueMismatch(amount, msg.value));
         else if (amount != 0) IERC20(token).safeTransferFrom(from, address(this), amount);
-    }
-
-    function _transferFrom(IERC20 token, address from, address to, uint256 amount) internal {
-        if (amount != 0) token.safeTransferFrom(from, to, amount);
     }
 
     /// @notice Single exit point for all outbound token transfers.

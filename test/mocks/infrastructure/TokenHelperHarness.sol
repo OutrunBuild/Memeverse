@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 import {TokenHelper} from "../../../src/common/token/TokenHelper.sol";
 
 contract TokenHelperHarness is TokenHelper {
@@ -28,10 +26,6 @@ contract TokenHelperHarness is TokenHelper {
 
     function safeApproveInf(address token, address spender) external {
         _safeApproveInf(token, spender);
-    }
-
-    function transferFrom(address token, address from, address to, uint256 amount) external {
-        _transferFrom(IERC20(token), from, to, amount);
     }
 
     receive() external payable {}

@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 
 /// @title HookStorageLayoutTest
-/// @notice Regression guard for F-0009: ERC-7201 namespace literal repetition across diamond hosts.
+/// @notice Regression guard: ERC-7201 namespace literal repetition across diamond hosts.
 /// @dev The hook and its three delegatecall facets MUST share `layout at erc7201("outrun.storage.MemeverseUniswapHook")`.
 ///      solc only checks layout conflicts within a single inheritance graph and `layout at` only accepts a
 ///      literal, so repetition is language-forced and a typo compiles to an orphan slot (silent zero-read/

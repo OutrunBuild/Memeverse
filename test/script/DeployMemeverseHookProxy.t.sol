@@ -480,7 +480,7 @@ contract DeployMemeverseHookProxyTest is Test {
     }
 
     /// @notice A same-nonce reuse that supplies a different launcher is rejected.
-    /// @dev The launcher is init-bound and write-once under C1, so `_validateExistingDeployment` reverts
+    /// @dev The launcher is init-bound and write-once, so `_validateExistingDeployment` reverts
     ///      `ExistingHookLauncherMismatch` when the caller-supplied launcher differs from the on-chain binding
     ///      (a stale/wrong MEMEVERSE_LAUNCHER env must not be silently accepted on reuse).
     function testSameNonceReuseRejectsExistingHookLauncherMismatch() external {

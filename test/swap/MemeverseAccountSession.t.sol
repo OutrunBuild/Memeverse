@@ -826,7 +826,7 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
     }
 
     // -----------------------------------------------------------------
-    // Same-principal batch accumulation (CF-006 coverage gap)
+    // Same-principal batch accumulation (coverage gap)
     // -----------------------------------------------------------------
 
     /// @notice Covers the missing "same session principal strictly accumulates within the batch window"
@@ -859,13 +859,13 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
         assertGt(bsAfter2, bsAfter1, "same-principal second swap must strictly accumulate within the batch window");
     }
 
-    /// @notice CF-005 REGRESSION DETECTOR (characterization mode). This test currently LOCKS the BUGGY
-    ///         behavior of CF-005: rotating fresh principals each reset the batch on their own first swap
-    ///         (the `else` branch in DynamicFeeFacet), so they do NOT accumulate across principals. Once
-    ///         CF-005 is fixed (batch keying changed to a non-rotatable identity), this assertion MUST flip:
+    /// @notice REGRESSION DETECTOR (characterization mode). This test currently LOCKS the BUGGY
+    ///         behavior: rotating fresh principals each reset the batch on their own first swap
+    ///         (the `else` branch in DynamicFeeFacet), so they do NOT accumulate across principals.
+    ///         Once fixed (batch keying changed to a non-rotatable identity), this assertion MUST flip:
     ///         assert instead that "the rotating shards' total accumulation >= the unsharded single-principal
     ///         accumulation" (or rewrite against the post-fix correct invariant). Until then, this test
-    ///         passing means CF-005 is still present.
+    ///         passing means the bug is still present.
     /// @dev The batch is keyed by params.trader = session-captured activePrincipal = begin's msg.sender, which
     ///      is each fresh principal's own address. Each rotating principal's FIRST swap hits the `else` reset
     ///      branch (batchAccumPpm = its own single pifPpm), so they never share. The single accountA, running
@@ -919,9 +919,9 @@ contract MemeverseAccountSessionRealV4Test is Test, HookStorageHelper {
         uint256 rotP0 = uint256(hook.addressBatchStateOf(address(p0), poolId).batchAccumPpm);
         uint256 rotP1 = uint256(hook.addressBatchStateOf(address(p1), poolId).batchAccumPpm);
         uint256 rotP2 = uint256(hook.addressBatchStateOf(address(p2), poolId).batchAccumPpm);
-        assertGt(accumSingle, rotP0, "CF-005 char: single principal accumulates 3 slices, rotator p0 only its own");
-        assertGt(accumSingle, rotP1, "CF-005 char: single principal accumulates 3 slices, rotator p1 only its own");
-        assertGt(accumSingle, rotP2, "CF-005 char: single principal accumulates 3 slices, rotator p2 only its own");
+        assertGt(accumSingle, rotP0, "char: single principal accumulates 3 slices, rotator p0 only its own");
+        assertGt(accumSingle, rotP1, "char: single principal accumulates 3 slices, rotator p1 only its own");
+        assertGt(accumSingle, rotP2, "char: single principal accumulates 3 slices, rotator p2 only its own");
     }
 
     // -----------------------------------------------------------------

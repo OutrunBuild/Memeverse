@@ -24,7 +24,7 @@ import {MockComposeAsset} from "test/mocks/yield/YieldMocks.sol";
 ///        Σ entry.lockedAssets equals pushed - paid exactly (lockstep decrements,
 ///        entries only pop at locked == 0)
 ///      The sentinel observer is bound at construction (an `address` parameter would
-///      let the fuzzer substitute arbitrary observers and break V7 tracking).
+///      let the fuzzer substitute arbitrary observers and break value-monotonicity tracking).
 ///      Some properties are asserted inside op bodies (pre/post snapshots) because the
 ///      state they observe only exists transiently.
 contract YieldVaultHandler is Test {
@@ -62,7 +62,7 @@ contract YieldVaultHandler is Test {
 
     // ---- shared helpers -----------------------------------------------------------
 
-    /// @dev V7: a fixed holder's share value never decreases across any handler op.
+    /// @dev a fixed holder's share value never decreases across any handler op.
     ///      The pre-op value is captured at entry and asserted at exit — asserting at
     ///      entry against the previous exit's snapshot would compare a value to itself,
     ///      because only handler ops can change the value between checks.
@@ -71,7 +71,7 @@ contract YieldVaultHandler is Test {
     }
 
     function _assertSentinelNotDecreased(uint256 preValue) internal {
-        assertGe(_shareValue(sentinel), preValue, "V7: sentinel share value decreased");
+        assertGe(_shareValue(sentinel), preValue, "sentinel share value decreased");
     }
 
     function _shareValue(address who) internal view returns (uint256) {
@@ -80,7 +80,7 @@ contract YieldVaultHandler is Test {
         return Math.mulDiv(b, vault.totalAssets() + vault.virtualAssets(), vault.totalSupply() + vault.virtualAssets());
     }
 
-    /// @dev Foreign-op value-growth accounting for V5: a deposit/mint/requestRedeem
+    /// @dev Foreign-op value-growth accounting: a deposit/mint/requestRedeem
     ///      by `who` can raise other holders' per-share value by floor-dust — up to
     ///      ~rate weis for a dominant holder (Delta(b*r) < b*r/(S+s+V)), so the slack
     ///      must be measured exactly, not bounded by a per-op constant.
@@ -107,7 +107,7 @@ contract YieldVaultHandler is Test {
 
     // ---- actor operations ----------------------------------------------------------
 
-    /// V1/V3: deposit side (floor rounding).
+    /// deposit side (floor rounding).
     function deposit(uint256 actorSeed, uint256 amountSeed) external {
         address who = actors[actorSeed % ACTORS];
         uint256 sentinelPre = _sentinelPreValue();
@@ -124,13 +124,13 @@ contract YieldVaultHandler is Test {
         vm.startPrank(who);
         try vault.deposit(amount, who) returns (uint256 shares) {
             ghostAssetsIn[who] += amount;
-            // V3: a truly empty vault (S == 0 AND T == 0) mints exactly 1:1. A
+            // a truly empty vault (S == 0 AND T == 0) mints exactly 1:1. A
             // residual state (S == 0, T > 0 after full exits) legitimately
             // mints fewer, richer shares — only the zero-share lockout is asserted there.
             if (supplyBefore == 0 && assetsBefore == 0) {
-                assertEq(shares, amount, "V3: empty-vault deposit not 1:1");
+                assertEq(shares, amount, "empty-vault deposit not 1:1");
             } else {
-                assertGt(shares, 0, "V3: zero-share deposit");
+                assertGt(shares, 0, "zero-share deposit");
             }
         } catch {}
         vm.stopPrank();
@@ -138,7 +138,7 @@ contract YieldVaultHandler is Test {
         _assertSentinelNotDecreased(sentinelPre);
     }
 
-    /// V1/V6: mint side (ceil rounding); actor funded with the previewed cost.
+    /// mint side (ceil rounding); actor funded with the previewed cost.
     function mint(uint256 actorSeed, uint256 sharesSeed) external {
         address who = actors[actorSeed % ACTORS];
         uint256 sentinelPre = _sentinelPreValue();
@@ -164,7 +164,7 @@ contract YieldVaultHandler is Test {
         _assertSentinelNotDecreased(sentinelPre);
     }
 
-    /// V2/V5: burn shares into the redemption queue (floor lock pricing).
+    /// burn shares into the redemption queue (floor lock pricing).
     function requestRedeem(uint256 actorSeed, uint256 sharesSeed) external {
         address who = actors[actorSeed % ACTORS];
         uint256 sentinelPre = _sentinelPreValue();
@@ -177,9 +177,9 @@ contract YieldVaultHandler is Test {
         uint256[3] memory valuesBefore = _captureValues();
         vm.startPrank(who);
         try vault.requestRedeem(shares, who, who) returns (uint256 locked) {
-            // V2 premise recorded at push time: rate >= 1 keeps locked >= shares,
+            // Premise recorded at push time: rate >= 1 keeps locked >= shares,
             // which keeps per-entry floor payouts non-zero (lockstep decrements preserve it).
-            assertGe(locked, shares, "V2: locked below shares at push");
+            assertGe(locked, shares, "locked below shares at push");
             ghostQueuePushedLocked += locked;
         } catch {}
         vm.stopPrank();
@@ -192,7 +192,7 @@ contract YieldVaultHandler is Test {
         vm.warp(block.timestamp + REDEEM_DELAY + bound(extra, 0, 3 days));
     }
 
-    /// V2/V8: shares-first claim of matured entries.
+    /// shares-first claim of matured entries.
     function redeem(uint256 actorSeed, uint256 sharesSeed) external {
         address who = actors[actorSeed % ACTORS];
         uint256 sentinelPre = _sentinelPreValue();
@@ -211,7 +211,7 @@ contract YieldVaultHandler is Test {
         _assertSentinelNotDecreased(sentinelPre);
     }
 
-    /// V6/V8: assets-first claim; InsufficientClaimableRedeem is an expected floor
+    /// assets-first claim; InsufficientClaimableRedeem is an expected floor
     /// granularity outcome and is swallowed, not a failure.
     function withdraw(uint256 actorSeed, uint256 assetsSeed) external {
         address who = actors[actorSeed % ACTORS];
@@ -231,7 +231,7 @@ contract YieldVaultHandler is Test {
         _assertSentinelNotDecreased(sentinelPre);
     }
 
-    /// V4/V5: yield push — burned while the vault is empty, credited otherwise.
+    /// yield push — burned while the vault is empty, credited otherwise.
     function accumulateYields(uint256 yieldSeed) external {
         uint256 sentinelPre = _sentinelPreValue();
         uint256 headroom = UINT208_MAX - vault.totalAssets();
@@ -244,7 +244,7 @@ contract YieldVaultHandler is Test {
         _fund(yieldActor, amount);
         vm.startPrank(yieldActor);
         try vault.accumulateYields(amount) {
-            // V5: exact per-holder value growth from the credited yield. An empty
+            // exact per-holder value growth from the credited yield. An empty
             // vault burns the yield instead, so no growth is measured there.
             for (uint256 i; i < ACTORS; ++i) {
                 address a = actors[i];
@@ -256,7 +256,7 @@ contract YieldVaultHandler is Test {
         _assertSentinelNotDecreased(sentinelPre);
     }
 
-    /// V4-2: a direct ERC20 donation must not move accounting-based pricing. Both
+    /// a direct ERC20 donation must not move accounting-based pricing. Both
     /// snapshots are frozen in ghosts and compared by the invariant function (other ops
     /// may legitimately change the rate between donation and check).
     function directTransferDonation(uint256 amountSeed) external {
@@ -281,10 +281,10 @@ contract MemecoinYieldVaultInvariants is StdInvariant, Test {
     MockComposeAsset internal asset;
     YieldVaultHandler internal handler;
 
-    // Fixed holder that never transacts — observes V7 value monotonicity.
+    // Fixed holder that never transacts — observes value monotonicity.
     address internal sentinel;
 
-    uint256 internal constant VIRTUAL_ASSETS = 1e24; // production-scale buffer keeps V5 meaningful
+    uint256 internal constant VIRTUAL_ASSETS = 1e24; // production-scale buffer keeps the value-growth property meaningful
 
     function setUp() external {
         asset = new MockComposeAsset();
@@ -303,23 +303,23 @@ contract MemecoinYieldVaultInvariants is StdInvariant, Test {
         targetContract(address(handler));
     }
 
-    /// V1: totalSupply() <= totalAssets() in every reachable state (rate >= 1 is
-    /// the premise for V2's lockstep and redeem's non-zero payout guard).
+    /// totalSupply() <= totalAssets() in every reachable state (rate >= 1 is
+    /// the premise for the lockstep bound and redeem's non-zero payout guard).
     function invariant_supplyNeverExceedsAssets() external view {
-        assertLe(vault.totalSupply(), vault.totalAssets(), "V1");
+        assertLe(vault.totalSupply(), vault.totalAssets(), "supply must not exceed assets");
     }
 
-    /// V4-2: the frozen before/after snapshots around a direct ERC20 donation are
+    /// the frozen before/after snapshots around a direct ERC20 donation are
     /// identical (donations bypass totalAssets, so pricing cannot see them).
     function invariant_directDonationDoesNotChangeRate() external view {
         assertEq(
             handler.ghostRateUnitBeforeLastDonation(),
             handler.ghostRateUnitAfterLastDonation(),
-            "V4-2: donation moved the rate"
+            "donation moved the rate"
         );
     }
 
-    /// V5: no actor receives more than paid in plus their exactly-measured
+    /// no actor receives more than paid in plus their exactly-measured
     /// share-value growth while holding — from credited yield events and from foreign
     /// deposit/mint/requestRedeem floor dust. (The V-damped tight bound lives in
     /// testFuzz_PostDepositDonationProfitBounded; this is the sequential form.)
@@ -329,26 +329,24 @@ contract MemecoinYieldVaultInvariants is StdInvariant, Test {
             assertLe(
                 handler.ghostPayoutsOut(a),
                 handler.ghostAssetsIn(a) + handler.ghostYieldCredit(a) + handler.ghostValueGift(a),
-                "V5: payout above damped bound"
+                "payout above damped bound"
             );
         }
     }
 
-    /// V8-1: solvency — holdings cover accounting plus every queued lock. The
+    /// solvency — holdings cover accounting plus every queued lock. The
     /// contract's queue total equals ghostPushed - ghostPaid exactly (lockstep
     /// decrements; entries pop only at locked == 0).
     function invariant_holdingsCoverAccountingPlusQueue() external view {
         uint256 queueLive = handler.ghostQueuePushedLocked() - handler.ghostQueuePaid();
         assertGe(
-            asset.balanceOf(address(vault)),
-            vault.totalAssets() + queueLive,
-            "V8-1: holdings below accounting plus queue"
+            asset.balanceOf(address(vault)), vault.totalAssets() + queueLive, "holdings below accounting plus queue"
         );
     }
 
     // ---- standalone single-sequence fuzz properties ----
 
-    /// V4-1: yield pushed to an empty vault is burned, never credited — the
+    /// yield pushed to an empty vault is burned, never credited — the
     /// pre-deposit donation attack stays inert. (Stateful-suite note: the sentinel's
     /// permanent deposit keeps totalSupply() > 0 there, so this property lives here;
     /// example-level coverage also exists in MemecoinYieldVault.t.sol.)
@@ -360,12 +358,12 @@ contract MemecoinYieldVaultInvariants is StdInvariant, Test {
         asset.approve(address(v), y);
         v.accumulateYields(y);
         vm.stopPrank();
-        assertEq(v.totalAssets(), 0, "V4-1: empty vault credited yield");
+        assertEq(v.totalAssets(), 0, "empty vault credited yield");
         assertEq(v.totalSupply(), 0);
-        assertEq(asset.balanceOf(address(v)), 0, "V4-1: yield not burned");
+        assertEq(asset.balanceOf(address(v)), 0, "yield not burned");
     }
 
-    /// V3: on a fresh vault, deposit is exactly 1:1 and chained mints stay exactly
+    /// on a fresh vault, deposit is exactly 1:1 and chained mints stay exactly
     /// 1:1 while S == T (rate pinned at 1 by the symmetric +V buffer).
     function testFuzz_EmptyVaultDepositMintExact(uint96 amount, uint96 mintShares) external {
         amount = uint96(bound(amount, 1, type(uint96).max));
@@ -381,7 +379,7 @@ contract MemecoinYieldVaultInvariants is StdInvariant, Test {
         vm.stopPrank();
     }
 
-    /// V5: single-attacker donation profit bound. After deposit(d) -> yield(y),
+    /// single-attacker donation profit bound. After deposit(d) -> yield(y),
     /// the full-exit lock is floor(d*(d+y+V)/(d+V)) so profit = lock - d <= d*y/(d+V).
     function testFuzz_PostDepositDonationProfitBounded(uint96 d, uint96 y) external {
         d = uint96(bound(d, 1, type(uint96).max));
@@ -399,7 +397,7 @@ contract MemecoinYieldVaultInvariants is StdInvariant, Test {
         vm.stopPrank();
     }
 
-    /// V6 (incremental half — previewDeposit floor already covered elsewhere):
+    /// Rounding directions (incremental half — previewDeposit floor already covered elsewhere):
     /// the mint cost is the exact ceil and the requestRedeem lock the exact floor of
     /// the same rate, asserted by bracketing inequalities rather than re-derivation.
     function testFuzz_MintCeilAndRedeemLockRounding(

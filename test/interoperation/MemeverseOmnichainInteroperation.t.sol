@@ -232,7 +232,7 @@ contract MemeverseOmnichainInteroperationTest is Test {
         assertEq(interoperation.omnichainStakingGasLimit(), stakingGasLimit);
     }
 
-    /// @notice Regression guard for the sub-`decimalConversionRate` truncation (MR-45).
+    /// @notice Regression guard for the sub-`decimalConversionRate` truncation.
     /// @dev `_removeDust` truncates `amountLD / rate * rate`; for an 18-decimal memecoin (rate = 1e12) any
     ///      `0 < amount < 1e12` collapses to `amountReceivedLD = 0`. Before the fix this would silently pull the
     ///      dust into the router, send a zero-amount compose (zero position, full LZ fee), and strand the dust.

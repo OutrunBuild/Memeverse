@@ -59,8 +59,8 @@ contract GasBurnableToken is MockERC20, IBurnable {
 }
 
 /// @title LzComposeGasBenchmark
-/// @notice Gas baseline for the two composers' `lzCompose` happy paths, closing the verification gap flagged in
-///         MR-58: the executor's compose gas budget (`omnichainStakingGasLimit` / `yieldDispatcherGasLimit`) must
+/// @notice Gas baseline for the two composers' `lzCompose` happy paths, closing the verification gap flagged by
+///         the executor's compose gas budget (`omnichainStakingGasLimit` / `yieldDispatcherGasLimit`) must
 ///         comfortably bound the post-rewrite `lzCompose` footprint (asset() binding, abi.decode, _safeApprove,
 ///         _parseCompose dual slices, mutex SLOAD+SSTORE). Each test reports the measured gas and asserts a ceiling
 ///         shaped by two constraints: a regression margin over the measured warm footprint (~40% for most branches),

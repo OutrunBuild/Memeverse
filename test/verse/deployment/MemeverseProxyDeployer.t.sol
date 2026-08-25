@@ -527,7 +527,7 @@ contract MemeverseProxyDeployerTest is Test {
         assertEq(deployer.minQuorumNumerator(), 50);
     }
 
-    /// @notice Regression for F-93: setter rejects min quorum numerator above 100.
+    /// @notice Regression: setter rejects min quorum numerator above 100.
     ///         A value >100 is a percent of total supply and makes governance quorum permanently
     ///         unreachable, so both the upper boundary (100) and lower boundary (1) must pass
     ///         while anything above the cap reverts with `InvalidMinQuorumNumerator`.
@@ -545,7 +545,7 @@ contract MemeverseProxyDeployerTest is Test {
         assertEq(deployer.minQuorumNumerator(), 1);
     }
 
-    /// @notice Regression for F-93: constructor enforces the same >0 && <=100 range as the setter.
+    /// @notice Regression: constructor enforces the same >0 && <=100 range as the setter.
     function testConstructorRejectsMinQuorumNumeratorAboveUpperBound() external {
         vm.expectRevert(MemeverseProxyDeployer.InvalidMinQuorumNumerator.selector);
         new MemeverseProxyDeployer(
@@ -1083,7 +1083,7 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         address stakerAddr = address(uint160(0x6005));
         vm.etch(stakerAddr, type(MockReadinessHook).creationCode);
         scriptHarness.setOmnichainMemecoinStakerForTest(stakerAddr);
-        // F3: readiness reads back staker.localEndpoint() (STAKER_ENDPOINT_NOT_READY); the etched
+        // Readiness reads back staker.localEndpoint() (STAKER_ENDPOINT_NOT_READY); the etched
         // MockReadinessHook has no such getter, so mock it to match endpoints[block.chainid]
         // (LOCAL_ENDPOINT, kept consistent with the dispatcher above).
         vm.mockCall(stakerAddr, abi.encodeWithSignature("localEndpoint()"), abi.encode(LOCAL_ENDPOINT));

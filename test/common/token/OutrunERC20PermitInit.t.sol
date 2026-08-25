@@ -54,7 +54,7 @@ contract OutrunERC20PermitInitTest is Test {
     }
 
     /// @notice Test the cached domain separator stays consistent with the live EIP-712 metadata.
-    /// @dev Guards the invariant introduced by the F-14 hash cache: `_EIP712Name`/`_EIP712Version`
+    /// @dev Guards the invariant introduced by the hash cache: `_EIP712Name`/`_EIP712Version`
     ///      must return stable values after init, otherwise the cached `_hashedName`/`_hashedVersion`
     ///      desync from what `eip712Domain()` exposes. This check recomputes the separator from the
     ///      live metadata, so a future dynamic override that diverges from the cache turns red.

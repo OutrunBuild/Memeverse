@@ -867,7 +867,7 @@ contract MemecoinYieldVaultTest is Test {
 
     /// @notice Yield pushing totalAssets past type(uint208).max reverts the named TotalAssetsOverflowed error
     ///         instead of SafeCast's opaque overflow revert in the governance checkpoint write.
-    /// @dev F-109 defense-in-depth: the asset checkpoint stores uint208, so the new require in _accumulateYield
+    /// @dev Defense-in-depth: the asset checkpoint stores uint208, so the new require in _accumulateYield
     ///      pins the bound. Seed shares first (else the yield would hit the burn-on-empty branch), pin totalAssets
     ///      at the cap via vm.store, then a 1-wei yield increments past it and the require fires.
     function test_AccumulateYieldsRevertsWhenTotalAssetsExceedsUint208() external {
@@ -1450,7 +1450,7 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(shares, 1, "2 wei maps to 1 share at the fixture rate");
     }
 
-    /// @notice Pins the F-144 round-trip loss in the residual state (S=0, A=500 wei, V=1): a 1000-wei
+    /// @notice Pins the round-trip loss in the residual state (S=0, A=500 wei, V=1): a 1000-wei
     ///         deposit mints 1 share but redeems only 750 wei, leaving 250 wei ownerless in totalAssets.
     /// @dev Both conversions are floor-floor mulDiv (MemecoinYieldVault.sol::_convertToShares /
     ///      _convertToAssets). With S=0 and V=1 the pre-deposit rate is 1 share per 501 wei, so 1000 wei
@@ -1458,10 +1458,10 @@ contract MemecoinYieldVaultTest is Test {
     ///      at redemption. The 250 wei gap stays in totalAssets with zero totalSupply, unredeemable by any
     ///      share. ZeroSharesDeposit fires only when shares == 0, so the deposit succeeds here and does not
     ///      bound this loss. The older "~1 wei round-trip loss" characterization holds only near rate == 1;
-    ///      F-144 pins the rate-scaled domain, so exact amounts (750/250) must break this test if the
+    ///      This test pins the rate-scaled domain, so exact amounts (750/250) must break this test if the
     ///      rounding semantics change.
     function test_RoundTripLossInResidualState() external {
-        // Pin the exact F-144 state: virtualAssets at slot 3, totalAssets at slot 1, totalSupply at the
+        // Pin the exact state: virtualAssets at slot 3, totalAssets at slot 1, totalSupply at the
         // ERC20 storage location (same slots as the uint192/uint208 overflow tests).
         vm.store(address(vault), bytes32(uint256(3)), bytes32(uint256(1)));
         vm.store(address(vault), bytes32(uint256(1)), bytes32(uint256(500)));
@@ -1491,14 +1491,14 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(vault.totalAssets(), 750, "250 wei round-trip loss stays in totalAssets");
     }
 
-    /// @notice Pins the F-144 round-trip loss in a high-rate state (S=1, A=1000 wei, V=1): a 1000-wei
+    /// @notice Pins the round-trip loss in a high-rate state (S=1, A=1000 wei, V=1): a 1000-wei
     ///         deposit mints 1 share but redeems only 667 wei, leaving 333 wei unredeemable.
     /// @dev Rate-scaled counterpart of the residual-state pin: with rate 2 shares per 1001 wei the deposit
     ///      maps to floor(1000 * 2 / 1001) = 1 share, and the post-deposit rate of 2 shares per 2001 wei
     ///      prices that share at floor(2001 / 3) = 667 wei. Exact amounts (667/333) are asserted so any
     ///      change to the floor-floor rounding or to conversion at post-deposit state breaks this test.
     function test_RoundTripLossInHighRateState() external {
-        // Pin the exact F-144 state: virtualAssets at slot 3, totalAssets at slot 1, totalSupply at the
+        // Pin the exact state: virtualAssets at slot 3, totalAssets at slot 1, totalSupply at the
         // ERC20 storage location.
         vm.store(address(vault), bytes32(uint256(3)), bytes32(uint256(1)));
         vm.store(address(vault), bytes32(uint256(1)), bytes32(uint256(1000)));
@@ -1869,7 +1869,7 @@ contract MemecoinYieldVaultTest is Test {
         message = abi.encodePacked(bytes8(uint64(1)), uint32(101), amountLD, bytes32(uint256(uint160(ATTACKER))), tail);
     }
 
-    /// @notice Anchors MR-69's window invariant: while a full-redeem queue is in-flight (shares burned but
+    /// @notice Anchors the window invariant: while a full-redeem queue is in-flight (shares burned but
     ///         REDEEM_DELAY not yet elapsed), incoming yield hits the `totalSupply() == 0` burn branch and is
     ///         burned, yet the queued redemption obligation is neither consumed nor diluted — the matured
     ///         `redeem` still pays the full locked amount. Distinct from the existing empty-vault test,

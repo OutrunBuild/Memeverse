@@ -436,7 +436,7 @@ contract MemeverseScriptTest is Test {
         // Readiness wiring: _requireDeploymentReady now requires code at OMNICHAIN_MEMECOIN_STAKER and
         // consistency between the dispatcher's localEndpoint() and the harness endpoints mapping.
         vm.etch(STAKER, address(lens).code);
-        // F3: readiness reads back staker.localEndpoint() (STAKER_ENDPOINT_NOT_READY); the etched lens code
+        // Readiness reads back staker.localEndpoint() (STAKER_ENDPOINT_NOT_READY); the etched lens code
         // has no such getter, so mock it to match endpoints[block.chainid].
         vm.mockCall(STAKER, abi.encodeWithSignature("localEndpoint()"), abi.encode(LOCAL_ENDPOINT));
         script.setOmnichainMemecoinStakerForTest(STAKER);
@@ -877,7 +877,7 @@ contract MemeverseScriptTest is Test {
         vm.expectRevert("ZERO_PROTOCOL_TREASURY");
         script.deployYieldDispatcherForTest(2);
 
-        // F1: pin that the guard fires BEFORE any OutrunDeployer call.
+        // Pin that the guard fires BEFORE any OutrunDeployer call.
         assertEq(deployer.lastSalt(), bytes32(0));
         assertEq(deployer.lastCreationCode(), bytes(""));
     }
@@ -906,7 +906,7 @@ contract MemeverseScriptTest is Test {
         assertEq(YieldDispatcherUpgradeable(predictedProxy).owner(), address(script));
     }
 
-    // F-001 regression: under the documented dual-role deployment (deployer/broadcaster != owner), the CREATE3
+    // Regression: under the documented dual-role deployment (deployer/broadcaster != owner), the CREATE3
     // namespace is keyed by the deploy caller (msg.sender = address(script) here), NOT by owner. The proxy must land
     // at getDeployed(deployCaller, salt) and the assert must pass even though owner (the initialize initialOwner,
     // the multisig) differs from the deploy caller.
@@ -1180,7 +1180,7 @@ contract MemeverseScriptTest is Test {
         vm.expectRevert("ZERO_LOCAL_ENDPOINT");
         script.deployYieldDispatcherForTest(2);
 
-        // F1: pin that the guard fires BEFORE any OutrunDeployer call. The revert alone would still
+        // Pin that the guard fires BEFORE any OutrunDeployer call. The revert alone would still
         // pass if the require were later moved after the deploy call (the mock deployer never reverts),
         // silently losing the "deploy never invoked" property this test exists to protect.
         assertEq(deployer.lastSalt(), bytes32(0));
@@ -1233,7 +1233,7 @@ contract MemeverseScriptTest is Test {
         assertEq(deployer.lastCreationCode(), bytes(""));
     }
 
-    // RR-01 regression: a zero OUTRUN_DEPLOYER must fail loudly at dispatcher deploy time instead of
+    // Regression: a zero OUTRUN_DEPLOYER must fail loudly at dispatcher deploy time instead of
     // handing the CREATE3 salt/creation code to an unusable deployer (calls to address(0) succeed
     // silently with empty return data, so the deploy would look "successful" without deploying).
     function testDeployYieldDispatcherRevertsOnZeroOutrunDeployer() external {
@@ -1249,7 +1249,7 @@ contract MemeverseScriptTest is Test {
         assertEq(deployer.lastCreationCode(), bytes(""));
     }
 
-    // F1 regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // Regression: a zero local endpoint must fail loudly at deploy time instead of baking
     // localEndpoint=0 into the Memecoin/MemecoinYieldVault/Incentivizer implementations.
     function testDeployImplementationRevertsOnZeroLocalEndpoint() external {
         MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
@@ -1264,7 +1264,7 @@ contract MemeverseScriptTest is Test {
         assertEq(deployer.lastCreationCode(), bytes(""));
     }
 
-    // F1 regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // Regression: a zero local endpoint must fail loudly at deploy time instead of baking
     // localEndpoint=0 into the MemecoinPOL implementation.
     function testDeployMemecoinPOLImplementationRevertsOnZeroLocalEndpoint() external {
         MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
@@ -1279,7 +1279,7 @@ contract MemeverseScriptTest is Test {
         assertEq(deployer.lastCreationCode(), bytes(""));
     }
 
-    // F1 regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // Regression: a zero local endpoint must fail loudly at deploy time instead of baking
     // localEndpoint=0 into the registration center.
     function testDeployRegistrationCenterRevertsOnZeroLocalEndpoint() external {
         MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
@@ -1294,7 +1294,7 @@ contract MemeverseScriptTest is Test {
         assertEq(deployer.lastCreationCode(), bytes(""));
     }
 
-    // F1 regression: a zero local endpoint must fail loudly at deploy time instead of baking
+    // Regression: a zero local endpoint must fail loudly at deploy time instead of baking
     // localEndpoint=0 into the memeverse registrar.
     function testDeployMemeverseRegistrarRevertsOnZeroLocalEndpoint() external {
         MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
@@ -1309,7 +1309,7 @@ contract MemeverseScriptTest is Test {
         assertEq(deployer.lastCreationCode(), bytes(""));
     }
 
-    // F2 regression: a zero OUTRUN_DEPLOYER must fail loudly at staker deploy time (the endpoint guard
+    // Regression: a zero OUTRUN_DEPLOYER must fail loudly at staker deploy time (the endpoint guard
     // fires first, so wire a non-zero endpoint to reach the deployer guard).
     function testDeployOmnichainMemecoinStakerRevertsOnZeroOutrunDeployer() external {
         MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
@@ -1324,7 +1324,7 @@ contract MemeverseScriptTest is Test {
         assertEq(deployer.lastCreationCode(), bytes(""));
     }
 
-    // F2 regression: a zero OUTRUN_DEPLOYER must fail loudly at interoperation deploy time (the staker
+    // Regression: a zero OUTRUN_DEPLOYER must fail loudly at interoperation deploy time (the staker
     // guard fires first, so wire a non-zero staker to reach the deployer guard).
     function testDeployMemeverseOmnichainInteroperationRevertsOnZeroOutrunDeployer() external {
         MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
@@ -1367,7 +1367,7 @@ contract MemeverseScriptTest is Test {
         script.requireDeploymentReady(address(0), address(0));
     }
 
-    // F3 regression: readiness must reject a staker whose localEndpoint() differs from
+    // Regression: readiness must reject a staker whose localEndpoint() differs from
     // endpoints[block.chainid] (mirror of the dispatcher's YIELD_DISPATCHER_ENDPOINT_NOT_READY check).
     function testReadinessRevertsWhenStakerEndpointMismatchesLocal() external {
         vm.mockCall(STAKER, abi.encodeWithSignature("localEndpoint()"), abi.encode(address(0x9999)));

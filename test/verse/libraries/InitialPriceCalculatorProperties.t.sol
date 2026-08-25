@@ -20,7 +20,7 @@ contract InitialPriceCalculatorProperties is Test {
     address internal constant LOWER = address(0x1000);
     address internal constant HIGHER = address(0x2000);
 
-    /// @notice D4-P1: for every allowed fundBasedAmount (1 .. 2^64-1, the
+    /// @notice For every allowed fundBasedAmount (1 .. 2^64-1, the
     ///         setFundMetaData domain) and every uAsset budget (1 .. 2^128-1,
     ///         MAX_SUPPORTED_TOTAL_GENESIS_FUNDS), BOTH address orderings price
     ///         successfully — no InvalidSqrtPrice, no PriceRatioTooHigh.
@@ -42,13 +42,13 @@ contract InitialPriceCalculatorProperties is Test {
         uint160 sqrtPrice =
             InitialPriceCalculator.calculateInitialSqrtPriceX96(memecoin, uAsset, memecoinBudget, uAssetBudget);
 
-        // D4-P2: sqrt brackets the exact ratio (price = token1/token0).
+        // sqrt brackets the exact ratio (price = token1/token0).
         uint256 amount1 = memecoinSortsHigh ? memecoinBudget : uint256(uAssetBudget);
         uint256 amount0 = memecoinSortsHigh ? uint256(uAssetBudget) : memecoinBudget;
         _assertSqrtIsFloorOfRatio(sqrtPrice, amount1, amount0);
     }
 
-    /// @notice D4-P3: the success/failure boundary sits exactly at the config
+    /// @notice The success/failure boundary sits exactly at the config
     ///         ceiling — 2^64-1 succeeds and 2^64 reverts PriceRatioTooHigh (with
     ///         amount0 = 1 the raw ratio equals fba exactly, so the fast check is the
     ///         binding edge and InvalidSqrtPrice is unreachable near the top).
@@ -66,7 +66,7 @@ contract InitialPriceCalculatorProperties is Test {
 
         // The whole config domain succeeds: bisect down to confirm the largest accepted
         // value is exactly 2^64 - 1 (all probes below the ceiling succeed, so this also
-        // double-checks P1 on the price = fba axis).
+        // double-checks the success domain on the price = fba axis).
         uint256 lo = 1;
         uint256 hi = uint256(type(uint64).max) + 1;
         while (lo + 1 < hi) {
@@ -91,11 +91,11 @@ contract InitialPriceCalculatorProperties is Test {
         return InitialPriceCalculator.calculateInitialSqrtPriceX96(tokenA, tokenB, amountADesired, amountBDesired);
     }
 
-    /// @dev D4-P2 helper: s must equal floor(sqrt(amount1 * 2^192 / amount0)),
+    /// @dev Helper: s must equal floor(sqrt(amount1 * 2^192 / amount0)),
     ///      asserted via the bracketing inequalities s^2 <= q < (s+1)^2 with
     ///      q = mulDiv(amount1, 2^192, amount0) — the definition of floor sqrt,
     ///      expressed independently of Math.sqrt.
-    ///      Domain safety: in the P1 domain ratio is in [2^-64, 2^64), so s < 2^128;
+    ///      Domain safety: in the success domain ratio is in [2^-64, 2^64), so s < 2^128;
     ///      with q <= (2^64-1) * 2^192 = 2^256 - 2^192 < (2^128-1)^2, both squares fit
     ///      256 bits (guaranteed by the fuzz bounds above, not assumed here).
     function _assertSqrtIsFloorOfRatio(uint160 s, uint256 amount1, uint256 amount0) private pure {

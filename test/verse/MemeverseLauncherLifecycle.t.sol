@@ -1360,12 +1360,12 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
     }
 
     /// @notice Verifies that, post-unlock, freshly claimed auxiliary fees do not accrue to `normalFeeStates`.
-    /// @dev GR-001 short-circuits `_splitAuxiliaryGovFees`/`_accrueAuxiliaryFeeShares` on `!preserveNormalShare`,
+    /// @dev The short-circuit skips `_splitAuxiliaryGovFees`/`_accrueAuxiliaryFeeShares` on `!preserveNormalShare`,
     ///      so the entire auxiliary uAsset fee flows to governance while `accUAssetFee` stays frozen.
     function testRedeemAndDistributeFees_UnlockedStageFreezesNormalAuxiliaryFeeShare() external {
         uint256 verseId = 51;
         _setUnlockedVerse(verseId);
-        // normalFunds + leveragedDebt make the normal share non-zero in the Locked branch, so a GR-001 regression
+        // normalFunds + leveragedDebt make the normal share non-zero in the Locked branch, so a regression
         // (accUAssetFee += totalUAssetFee - govUAssetFee) would otherwise inflate the normal accrual here.
         setGenesisFundForTest(launcherProxy, verseId, 120 ether);
         polend.setTotalLeveragedDebt(verseId, 40 ether);
@@ -1373,7 +1373,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         setNormalFeeStateForTest(launcherProxy, verseId, 5 ether, 0);
 
         // Inject only the pol/uAsset auxiliary fee; leave main pool and pt pairs at zero to isolate the
-        // auxiliary-only path that exercises GR-001.
+        // auxiliary-only path that exercises the short-circuit.
         router.setClaimQuote(address(memecoin), address(uAsset), address(launcher), 0, 0);
         if (address(liquidProof) < address(uAsset)) {
             router.setClaimQuote(address(liquidProof), address(uAsset), address(launcher), 0, 8 ether);
@@ -1392,12 +1392,12 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
 
         (uint256 govFee,,,) = launcher.redeemAndDistributeFees(verseId, REWARD_RECEIVER);
 
-        // GR-001: auxiliary uAsset fee never accrues to normal-side during Unlocked.
+        // Auxiliary uAsset fee never accrues to normal-side during Unlocked.
         (uint256 accUAssetFeeAfter, uint256 accPTFeeAfter) = _concrete().normalFeeStates(verseId);
         assertEq(accUAssetFeeAfter, accUAssetFeeBefore, "normal uAsset fee frozen after unlock");
         assertEq(accPTFeeAfter, accPTFeeBefore, "normal pt fee frozen after unlock");
 
-        // GR-001: the entire auxiliary uAsset fee routes to governance via the dispatcher.
+        // The entire auxiliary uAsset fee routes to governance via the dispatcher.
         assertEq(govFee, 8 ether, "auxiliary uAsset fee all to gov");
         assertEq(uAsset.balanceOf(address(dispatcher)), 8 ether, "dispatcher uAsset");
         assertEq(dispatcher.composeCallCount(), 1, "compose called");
@@ -1716,7 +1716,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         // The remote lzCompose execution gas is allocated solely by the encoded executor options, so the OFT sends
         // must carry them verbatim. Literal gas limits (matching the setUp `initialize` args 10/11) are asserted
         // instead of storage getters: reading the getters would silently follow a re-wiring to the wrong storage
-        // slot, defeating the anchor (F-100).
+        // slot, defeating the anchor.
         bytes memory expectedOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(115_000, 0)
             .addExecutorLzComposeOption(0, 135_000, 0);
         assertEq(remoteUAsset.lastSendOptions(), expectedOptions, "uAsset send must carry executor options");

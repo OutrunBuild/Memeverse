@@ -220,7 +220,7 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
     ///      to Locked, and asserts the fixed 0.35% protocol fee plus the preorder memecoin vesting schedule.
     function _provideLiquiditySettleAndAssert(uint256 verseId) internal {
         IMemeverseLauncher.Memeverse memory verseBefore = launcher.getMemeverseByVerseId(verseId);
-        // Under C1 the launcher is bound to the hook at deploy (initialize), so the launcher proxy — not
+        // The launcher is bound to the hook at deploy (initialize), so the launcher proxy — not
         // this contract — must drive `createPoolAndAddLiquidity` (router onlyLauncher). Fund the launcher
         // with the three pool assets and act as it; LP tokens are still minted to this contract (recipient).
         vm.prank(address(launcher));

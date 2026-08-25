@@ -159,7 +159,7 @@ contract MockStakerYieldVault {
         if (receiver == address(0)) revert ERC20InvalidReceiver(receiver);
         // Drift simulation: a vault variant that absorbs the assets but mints nothing and returns 0 without
         // reverting (the real vault reverts ZeroSharesDeposit instead). Exercises the staker's amount-gated
-        // deposit return-value guard (MR-42).
+        // deposit return-value guard.
         if (returnZeroSharesForNonZero) {
             MockERC20(token).transferFrom(msg.sender, address(this), amount);
             lastDepositAmount = amount;

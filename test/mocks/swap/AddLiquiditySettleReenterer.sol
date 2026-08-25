@@ -12,7 +12,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 /// @title AddLiquiditySettleReenterer
 /// @notice ERC-777/ERC-1363-style callback token that reenters `poolManager.swap` from the add-liquidity
 ///         settle window (`MemeverseUniswapHookUpgradeable._addLiquidityCore` → `_settleDeltas` → `CurrencySettler.settle`).
-/// @dev Models the ALR-001 adversarial window. `CurrencySettler.settle` pulls the liquidity payment with
+/// @dev Models the add-liquidity settle adversarial window. `CurrencySettler.settle` pulls the liquidity payment with
 ///      `transferFrom(payer, manager, amount)` while the PoolManager is unlocked (the add path runs inside
 ///      `poolManager.unlock`), so a direct `poolManager.swap` from this token's `transferFrom` passes
 ///      `onlyWhenUnlocked`. The reentrant swap caller is this token contract, not the hook, so real v4

@@ -40,7 +40,7 @@ import {MockLauncherSwapIntegrationProxyDeployer} from "../mocks/verse/LauncherS
 import {UniversalAssetForPOLendSettlementInvariant} from "../mocks/verse/LauncherSettlementMocks.sol";
 
 /// @notice Drives the real-stack POLendUpgradeable global settlement path end-to-end.
-/// @dev Unlike the preset-mock A-2/A-3 tests, this contract wires the real Uniswap v4 swap stack
+/// @dev Unlike the preset-mock attack-path tests, this contract wires the real Uniswap v4 swap stack
 ///      (PoolManager + MemeverseUniswapHookUpgradeable + MemeverseSwapRouter) together with the real POLendUpgradeable
 ///      and POLSplitterUpgradeable, then drives changeStage Genesis -> Locked -> Unlocked so that
 ///      POLendUpgradeable.executeGlobalSettlement removes real auxiliary liquidity and repays debt on the
@@ -284,7 +284,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
     }
 
     /// @notice Real-stack POLendUpgradeable settlement burns leveraged debt and clears the per-uAsset global accounting.
-    /// @dev Reproduce the A-2/A-3 attack path with no preset mocks: every settlement-relevant contract
+    /// @dev Reproduce the attack path with no preset mocks: every settlement-relevant contract
     ///      (Launcher, POLendUpgradeable, POLSplitterUpgradeable, Hook, Router, PoolManager, UniversalAsset) is a production
     ///      artifact, so this test would fail if executeGlobalSettlement, settleLeveragedAuxiliaryLiquidity
     ///      or UniversalAsset.repay were ever short-circuited by a mock.
@@ -404,7 +404,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
     ///      pol/uAsset pool inflates polAmount, and that pol is burned via redeemMemecoinLiquidity
     ///      into more uAsset than the swap drained.  The memecoin->uAsset direction is blocked by
     ///      POLSplitterUpgradeable.settle()'s safety invariant (settlementUAsset >= ptBacking, with zero
-    ///      margin).  The dust-deficit branch is covered by the preset-mock A-3 tests, which
+    ///      margin).  The dust-deficit branch is covered by the preset-mock attack-path tests, which
     ///      control LP-removal outputs directly.  This integration test targets the mock fix.
     function test_A3_RealPathSettlementDustCoversDeficitUnderReserveCap() external {
         _lockWithLeveragedLiquidity();

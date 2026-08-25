@@ -664,7 +664,7 @@ contract MemeverseRegistrationCenterTest is Test {
     }
 
     /// @notice Test initialize registers the owner as the endpoint delegate keyed by the proxy address.
-    /// @dev SECR-001 adjudication: initialize runs inside the ERC1967Proxy constructor delegatecall, so
+    /// @dev Adjudication: initialize runs inside the ERC1967Proxy constructor delegatecall, so
     ///      `__OApp_init`'s `endpoint.setDelegate(_owner)` CALL executes with msg.sender == the proxy
     ///      (address(this) of the delegatecall frame), not the implementation or any deploy factory. The
     ///      mock keys `delegates` by caller, so this assertion fails under any other keying.
@@ -767,7 +767,7 @@ contract MemeverseRegistrationCenterTest is Test {
 
     /// @notice Test upgradeToAndCall reverts with the named guard error when the target has code but no
     ///         `endpoint()` getter at all.
-    /// @dev LR-001 coverage: the `_authorizeUpgrade` probe's catch branch must fold this honest-failure
+    /// @dev Coverage: the `_authorizeUpgrade` probe's catch branch must fold this honest-failure
     ///      class into `UpgradeEndpointUnreadable` so the upgrade still fails closed with a greppable
     ///      label instead of a bare revert.
     function testUpgradeRevertsWhenEndpointGetterMissing() external {
@@ -782,7 +782,7 @@ contract MemeverseRegistrationCenterTest is Test {
 
     /// @notice Test upgradeToAndCall reverts with the named guard error when the target's `endpoint()`
     ///         getter exists but reverts.
-    /// @dev LR-001 coverage: second catch-branch input — a reverting getter must fail closed through the
+    /// @dev Coverage: second catch-branch input — a reverting getter must fail closed through the
     ///      same `UpgradeEndpointUnreadable` label, not surface the getter's own error.
     function testUpgradeRevertsWhenEndpointGetterReverts() external {
         EndpointGetterRevertingShell shell = new EndpointGetterRevertingShell();
@@ -834,7 +834,7 @@ contract MemeverseRegistrationCenterTest is Test {
     }
 
     /// @notice Test registrar-pointer replacement unlocks the local path immediately and pairs with
-    ///         `setPeer` for inbound (LR-003 deadlock unlock).
+    ///         `setPeer` for inbound (deadlock unlock).
     /// @dev The local-chain `localRegistration` callback follows the storage pointer alone; inbound
     ///      `_lzReceive` additionally passes the OApp base's peer check first, so re-pointing inbound
     ///      traffic requires the paired `setPeer`. The intermediate state (pointer moved, peer still old)

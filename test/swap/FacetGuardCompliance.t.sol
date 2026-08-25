@@ -23,7 +23,7 @@ import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
 
 /// @title FacetGuardComplianceTest
-/// @notice Regression guard for F-0010: `setFacet` does not verify `FacetGuard` on-chain.
+/// @notice Regression guard: `setFacet` does not verify `FacetGuard` on-chain.
 /// @dev The on-chain `setFacet` intentionally stays minimal (onlyOwner + code + poolManager check,
 ///      see docs/spec/upgradeability.md 2.1). The missing `onlyViaRouter` guarantee is closed off-chain
 ///      by this suite and the gate harness:

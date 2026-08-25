@@ -1364,7 +1364,7 @@ contract MockOFTToken is MockERC20, IOFT {
     /// @notice Last `SendParam.extraOptions` observed by `send`.
     /// @dev Recorded verbatim so tests can assert the executor options (receive/compose gas limits) that the
     ///      production settlement path encodes for the remote lzCompose execution; without this, an options-wiring
-    ///      regression ships with a green suite (F-100 test anchor).
+    ///      regression ships with a green suite.
     bytes public lastSendOptions;
     uint256 public sendCallCount;
 

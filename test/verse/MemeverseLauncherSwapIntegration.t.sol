@@ -177,7 +177,7 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
     }
 
     function testDeployGovernanceComponents_ProposalThresholdIsTotalSupplyOverFifty() external {
-        // F-101 anchor: the launcher derives the governor proposal threshold as totalSupply / 50
+        // Anchor: the launcher derives the governor proposal threshold as totalSupply / 50
         // (MemeverseLaunchImpl.sol::_deployGovernanceComponents) and forwards it to the proxy
         // deployer. The mock records the arguments it received during the lock flow, so this test
         // pins the /50 formula at the launcher level.

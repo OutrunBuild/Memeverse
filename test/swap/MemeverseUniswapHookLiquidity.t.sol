@@ -1394,7 +1394,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
     /// @notice Verifies the owner launch-fee setter updates state and rejects invalid inputs.
     /// @dev Covers the launch scheduler configuration surface. The launcher binding is write-once at
-    ///      initialize under C1 (covered by testInitialize_RevertsWhenLauncherZero); there is no runtime
+    ///      initialize (covered by testInitialize_RevertsWhenLauncherZero); there is no runtime
     ///      launcher setter.
     function testOwnerSetters_UpdateLaunchFeeConfig() external {
         vm.expectRevert(IMemeverseUniswapHook.ZeroValue.selector);
@@ -1681,7 +1681,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook.setFacet(swapFacetRole, address(shell));
     }
 
-    /// @notice Verifies initialize rejects a zero launcher binding (C1 write-once launcher invariant).
+    /// @notice Verifies initialize rejects a zero launcher binding (write-once launcher invariant).
     /// @dev The launcher zero-check is the first check in initialize, so a single reverting proxy CREATE
     ///      (with dummy non-zero facets) exercises it without the multi-step deployHookAtFlagAddress path
     ///      (whose preceding sub-calls would consume vm.expectRevert).

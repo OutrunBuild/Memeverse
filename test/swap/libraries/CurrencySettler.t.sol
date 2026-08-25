@@ -23,7 +23,7 @@ contract CurrencySettlerHarness {
         currency.settle(manager, payer, amount);
     }
 
-    /// @dev Exposes transferWithGuard for unit testing (CI-010).
+    /// @dev Exposes transferWithGuard for unit testing.
     function transferWithGuard(Currency currency, address to, uint256 amount) external {
         currency.transferWithGuard(to, amount);
     }
@@ -57,7 +57,7 @@ contract CurrencySettlerTest is Test {
         harness.settle(Currency.wrap(address(token)), IPoolManager(address(manager)), address(harness), 1 ether);
     }
 
-    /// @dev Zero-amount is a no-op: no external call, no revert (CI-010 guard).
+    /// @dev Zero-amount is a no-op: no external call, no revert.
     function testTransferWithGuardSkipsZeroAmount() external {
         FalseTransferToken token = new FalseTransferToken();
 
@@ -65,7 +65,7 @@ contract CurrencySettlerTest is Test {
         harness.transferWithGuard(Currency.wrap(address(token)), address(0xBEEF), 0);
     }
 
-    /// @dev Zero-address recipient reverts before any external call (CI-010 guard).
+    /// @dev Zero-address recipient reverts before any external call.
     function testTransferWithGuardRevertsOnZeroAddressRecipient() external {
         FalseTransferToken token = new FalseTransferToken();
 
@@ -73,7 +73,7 @@ contract CurrencySettlerTest is Test {
         harness.transferWithGuard(Currency.wrap(address(token)), address(0), 1 ether);
     }
 
-    /// @dev Non-compliant ERC20 (transfer returns no bool) succeeds — the core behavior change of CI-010.
+    /// @dev Non-compliant ERC20 (transfer returns no bool) succeeds — the core behavior change.
     function testTransferWithGuardSucceedsWithNonCompliantERC20() external {
         NoReturnTransferToken token = new NoReturnTransferToken();
 
@@ -81,7 +81,7 @@ contract CurrencySettlerTest is Test {
         harness.transferWithGuard(Currency.wrap(address(token)), address(0xBEEF), 1 ether);
     }
 
-    /// @dev Compliant ERC20 returning false still reverts with SafeERC20FailedOperation (CI-010).
+    /// @dev Compliant ERC20 returning false still reverts with SafeERC20FailedOperation.
     function testTransferWithGuardRevertsWhenTransferReturnsFalse() external {
         FalseTransferToken token = new FalseTransferToken();
 

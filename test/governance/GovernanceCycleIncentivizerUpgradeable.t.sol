@@ -474,7 +474,7 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
     }
 
     /// @notice Test finalize with a zero-income reward token truncates address(0)/0 ghost entries.
-    /// @dev Regression for F-032: finalize allocated rewardTokens/rewards to the full registered length but only
+    /// @dev Regression: finalize allocated rewardTokens/rewards to the full registered length but only
     /// filled the first `j` slots, so trailing address(0)/0 entries reached storage and the event, making
     /// isRewardToken(cycle, address(0)) return true. A reward token with zero treasury income is skipped
     /// (j < rewardLength), a path the pre-fix tests never exercised.
@@ -517,7 +517,7 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
     }
 
     /// @notice Test finalize with no accumulated votes produces an empty reward list, not address(0) ghosts.
-    /// @dev Regression for F-032: with totalVotes == 0 every reward token is skipped (j == 0), so the pre-fix
+    /// @dev Regression: with totalVotes == 0 every reward token is skipped (j == 0), so the pre-fix
     /// code wrote rewardTokenList = [address(0)] into the frozen cycle and emitted it in CycleFinalized.
     function testFinalizeTruncatesGhostEntriesWhenCycleHasNoVotes() external {
         tokenA.mint(address(governor), 100 ether);

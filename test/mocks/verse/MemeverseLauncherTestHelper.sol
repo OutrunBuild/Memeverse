@@ -259,7 +259,7 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
         bool flashGenesis
     ) internal {
         bytes32 base = _mappingSlot(OFF_MEMEVERSES, verseId);
-        // slot+4 packs uAsset (bytes 0-19), currentStage (byte 20), flashGenesis (byte 21) per F-89 layout.
+        // slot+4 packs uAsset (bytes 0-19), currentStage (byte 20), flashGenesis (byte 21), per the documented layout.
         _writeSlot(
             proxy,
             bytes32(uint256(base) + 4),

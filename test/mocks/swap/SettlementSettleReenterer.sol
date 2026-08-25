@@ -12,7 +12,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title SettlementSettleReenterer
 /// @notice ERC-777/ERC-1363-style callback token that reenters `poolManager.swap` from two settlement windows.
-/// @dev Models the SECR-001 adversarial windows. The settlement entry has two ERC20 call sites a callback
+/// @dev Models the settlement-entry adversarial windows. The settlement entry has two ERC20 call sites a callback
 ///      token can hijack:
 ///      - `transferFrom` (Phase 1/2, BEFORE `poolManager.unlock`): reenters via `poolManager.unlock` + swap.
 ///      - `transfer` (inside `CurrencySettler.settle`, DURING the unlock, v4 lock open): reenters via a

@@ -77,7 +77,7 @@ contract AddLiquiditySamePoolReentrancyTest is Test, HookStorageHelper {
         // The callback token is the caller of the inner swap and must pay its own reentrant input leg: the
         // cross-pool test forges token0/token1, and the same-pool test forges the callback token itself. Without
         // this self-funding an unfixed same-pool reentry would fail on the mock's underfunded input transfer
-        // instead of exercising the F-020 fee-leak chain.
+        // instead of exercising the fee-leak chain.
         token0.mint(address(callbackToken), 100 ether);
         token1.mint(address(callbackToken), 100 ether);
         callbackToken.mint(address(callbackToken), 100 ether);

@@ -35,11 +35,11 @@ contract MaliciousIncentivizer is UUPSUpgradeable {
 }
 
 /// @title IncentivizerUpgradeTreasuryDrainTest
-/// @notice F-123 fix coverage. Pre-fix, a simple-majority coalition upgraded the incentivizer (target != governor),
+/// @notice Fix coverage. Pre-fix, a simple-majority coalition upgraded the incentivizer (target != governor),
 ///         bypassing both the upgrade supermajority (only gated self-calls) and the per-execution treasury
 ///         cap (only ran inside `_executeOperations` over registered tokens); the swapped impl then called
 ///         `governor.disburseReward` out-of-band, draining ANY token in full. Root A extends the supermajority gate to
-///         incentivizer targets, closing F-123. A residual risk remains: a coalition meeting the supermajority can
+///         incentivizer targets, closing the vector. A residual risk remains: a coalition meeting the supermajority can
 ///         still upgrade to a malicious impl that drains custody via `disburseReward`; this is documented (not fixed)
 ///         by `test_ResidualRisk_MaliciousSupermajorityStillDrainsViaDisburseReward`.
 contract IncentivizerUpgradeTreasuryDrainTest is Test {
@@ -214,7 +214,7 @@ contract IncentivizerUpgradeTreasuryDrainTest is Test {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // RESIDUAL RISK — Root A closes the F-123 simple-majority vector by extending the upgrade supermajority to
+    // RESIDUAL RISK — Root A closes the simple-majority vector by extending the upgrade supermajority to
     // incentivizer targets. It does NOT, and cannot, defend against a coalition that already meets that supermajority:
     // such a coalition may upgrade the incentivizer to a malicious impl that drains governor custody via
     // `disburseReward` out-of-band. This is an ACCEPTED residual risk (a supermajority coalition is trusted with
@@ -223,7 +223,7 @@ contract IncentivizerUpgradeTreasuryDrainTest is Test {
     // regressed `claimReward` via snapshot/registry drift and is bypassable by a malicious impl forging `metaData()`).
     // ---------------------------------------------------------------------------------------------
 
-    /// @dev RESIDUAL RISK (SECR-002 boundary): after Root A, a coalition that clears the 60% supermajority (here
+    /// @dev RESIDUAL RISK: after Root A, a coalition that clears the 60% supermajority (here
     ///      unanimous: ALICE + BOB both For, 1000/1000 >= 60%) can still swap the incentivizer impl to
     ///      `MaliciousIncentivizer`. The malicious impl then calls `governor.disburseReward` with
     ///      `msg.sender == incentivizer proxy`, passing the governor's only-sender check, and drains ANY token in

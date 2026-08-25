@@ -66,7 +66,7 @@ contract StageAwareLauncherMock {
 
 /// @notice POLend stand-in for the splitter invariant suite.
 /// @dev Records `burnPreRedeemedBacking` calls and pulls the repaid uAsset (the real
-///      POLend pulls via the splitter's approval), so S7 can assert the repaid
+///      POLend pulls via the splitter's approval), so the suite can assert the repaid
 ///      amount matches the recorded backing exactly.
 contract SimplePOLendMock {
     MockERC20 internal immutable uAsset;

@@ -126,7 +126,7 @@ contract MemeverseLauncherFundraisingBoundaryTest is Test, MemeverseLauncherTest
         uAsset.approve(address(launcher), type(uint256).max);
     }
 
-    /// @notice D1: the combined genesis cap is exact and atomic. For any debt
+    /// @notice the combined genesis cap is exact and atomic. For any debt
     ///         level, deposits filling the remaining headroom land the combined total
     ///         at exactly 2^128 - 1; one wei more reverts TotalGenesisFundsTooHigh
     ///         leaving state unchanged; remainingGenesisCapacity agrees throughout.
@@ -165,7 +165,7 @@ contract MemeverseLauncherFundraisingBoundaryTest is Test, MemeverseLauncherTest
         assertEq(launcher.totalNormalFunds(VERSE_ID), remaining, "revert must not change state");
     }
 
-    /// @notice D2: a single user's cumulative GenesisData.genesisFund (uint128)
+    /// @notice a single user's cumulative GenesisData.genesisFund (uint128)
     ///         accumulates without truncation up to the cap. The aggregate cap bounds
     ///         every user's cumulative total below 2^128, so two-part deposits must
     ///         sum exactly (equality, not <=).
@@ -181,11 +181,11 @@ contract MemeverseLauncherFundraisingBoundaryTest is Test, MemeverseLauncherTest
         launcher.genesis(VERSE_ID, target - first, ALICE);
 
         (uint256 genesisFund,,) = MemeverseLauncherUpgradeable(launcherProxy).userGenesisData(VERSE_ID, ALICE);
-        assertEq(genesisFund, target, "D2: uint128 accumulation truncated");
-        assertEq(launcher.totalNormalFunds(VERSE_ID), target, "D2: aggregate mismatch");
+        assertEq(genesisFund, target, "uint128 accumulation truncated");
+        assertEq(launcher.totalNormalFunds(VERSE_ID), target, "aggregate mismatch");
     }
 
-    /// @notice D3: the facade capacity view equals the lib oracle for any base and
+    /// @notice the facade capacity view equals the lib oracle for any base and
     ///         any validated ratio, stays within 70% of the base, and the enforcement
     ///         path agrees exactly: preordering the full capacity succeeds and drains
     ///         the view to 0, one wei more reverts InvalidLength.
@@ -203,12 +203,12 @@ contract MemeverseLauncherFundraisingBoundaryTest is Test, MemeverseLauncherTest
         // Oracle: MemeverseLauncherLib.preorderMaxCapacity formula, computed here
         // independently (FullMath) from the same inputs the facade reads.
         uint256 expected = FullMath.mulDiv(base + debt, 7 * ratio, 10 * 10_000);
-        assertEq(launcher.previewPreorderCapacity(VERSE_ID), expected, "D3: facade view != oracle");
-        assertLe(expected * 10, (base + debt) * 7, "D3: capacity above 70% of base");
+        assertEq(launcher.previewPreorderCapacity(VERSE_ID), expected, "facade view != oracle");
+        assertLe(expected * 10, (base + debt) * 7, "capacity above 70% of base");
         if (ratio == 10_000) {
             // At the max ratio the capacity is exactly floor(0.7 * base): the cross-
             // multiplied gap is the floor remainder, strictly below 10.
-            assertLt((base + debt) * 7 - expected * 10, 10, "D3: ratio=10^4 must sit at floor(0.7*base)");
+            assertLt((base + debt) * 7 - expected * 10, 10, "ratio=10^4 must sit at floor(0.7*base)");
         }
 
         // Enforcement agreement: full-capacity preorder succeeds, view drains to 0,
@@ -216,15 +216,15 @@ contract MemeverseLauncherFundraisingBoundaryTest is Test, MemeverseLauncherTest
         if (expected != 0) {
             vm.prank(ALICE);
             launcher.preorder(VERSE_ID, expected, ALICE);
-            assertEq(launcher.previewPreorderCapacity(VERSE_ID), 0, "D3: view must drain to 0");
+            assertEq(launcher.previewPreorderCapacity(VERSE_ID), 0, "view must drain to 0");
             (uint256 preorderFunds,,) = getPreorderStateForTest(launcherProxy, VERSE_ID);
-            assertEq(preorderFunds, expected, "D3: preorder funds mismatch");
+            assertEq(preorderFunds, expected, "preorder funds mismatch");
 
             vm.prank(ALICE);
             vm.expectRevert(IMemeverseLauncher.InvalidLength.selector);
             launcher.preorder(VERSE_ID, 1, ALICE);
             (preorderFunds,,) = getPreorderStateForTest(launcherProxy, VERSE_ID);
-            assertEq(preorderFunds, expected, "D3: revert must not change state");
+            assertEq(preorderFunds, expected, "revert must not change state");
         }
     }
 

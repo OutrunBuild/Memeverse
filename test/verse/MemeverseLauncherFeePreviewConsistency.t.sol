@@ -110,7 +110,7 @@ contract MemeverseLauncherFeePreviewConsistencyTest is MemeverseLauncherLifecycl
 
     /// @notice The fee-distribution send reverts `DustAmount` when a memecoin fee is below the OFT
     ///         `decimalConversionRate` (1e12 for the 18-decimal mock), closing the truncate-to-zero class on the
-    ///         fee path (MR-45 F2). Without the guard, a sub-rate fee would burn nothing, deliver a zero-amount
+    ///         fee path. Without the guard, a sub-rate fee would burn nothing, deliver a zero-amount
     ///         compose, strand the fee at the launcher/dispatcher, and still charge the LayerZero fee.
     /// @dev Uses a fixed gov-quote fee large enough to fund the LZ send; the memecoin fee (1e12 - 1) is the
     ///      sub-rate trigger. The guard runs in `_sendRedeemedFeesCrossChain` right before the memecoin `send`,

@@ -86,7 +86,7 @@ contract MockLauncherSwapIntegrationProxyDeployer {
         pol;
         yieldVault;
         uniqueId;
-        // Record the governance threshold inputs so tests can anchor the launcher's /50 formula (F-101).
+        // Record the governance threshold inputs so tests can anchor the launcher's /50 formula.
         lastProposalThreshold = proposalThreshold;
         lastMemecoinSupply = MockIntegrationMemecoin(memecoin).totalSupply();
         return (predictedGovernor, predictedIncentivizer);

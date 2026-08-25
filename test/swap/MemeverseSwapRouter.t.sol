@@ -254,7 +254,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         });
     }
 
-    /// @notice Verifies initialize rejects a zero launcher binding (C1 write-once launcher invariant).
+    /// @notice Verifies initialize rejects a zero launcher binding (write-once launcher invariant).
     /// @dev The launcher zero-check is the first check in initialize, so a single reverting proxy CREATE
     ///      (with dummy non-zero facets) exercises it without the multi-step deploy path.
     function testInitialize_RevertsWhenLauncherZero() external {

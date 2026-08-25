@@ -96,7 +96,7 @@ contract UniswapLPTest is Test {
     }
 
     /// @dev The common base reverts with the IERC6093 error surface instead of the old `ZeroAddressTransfer`
-    ///      custom error / Panic underflow (F-55 accepted change).
+    ///      custom error / Panic underflow (accepted change).
     function testTransferToZeroAddressReverts() external {
         vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
         token.transfer(address(0), 1);
@@ -132,7 +132,7 @@ contract UniswapLPTest is Test {
         token.permit(OWNER, SPENDER, 7 ether, deadline, v, r, s);
     }
 
-    /// @dev F-55 permit now routes through OZ ECDSA.recover, which enforces the low-s bound: mirroring a valid
+    /// @dev Permit now routes through OZ ECDSA.recover, which enforces the low-s bound: mirroring a valid
     ///      low-s `s` across the secp256k1 group order yields a high-s value (always > n/2) that must be rejected.
     ///      A bare `ecrecover` implementation would accept this signature, so this test locks in the ECDSA path.
     function testPermitRevertsWithHighS() external {
@@ -185,11 +185,11 @@ contract UniswapLPSnapshotTransferTest is Test {
         vm.prank(address(hook));
         token.mint(holder, 10 ether);
 
-        // Mint routes from == address(0) through `_update`, so the snapshot callback must not fire (F-55).
+        // Mint routes from == address(0) through `_update`, so the snapshot callback must not fire.
         assertEq(hook.snapshotCallCount(TEST_POOL_ID, holder), 0, "mint excludes snapshot");
     }
 
-    /// @dev Burn routes `to == address(0)` through `_update`, so the snapshot callback must not fire (F-55).
+    /// @dev Burn routes `to == address(0)` through `_update`, so the snapshot callback must not fire.
     function testBurnExcludesSnapshot() external {
         vm.prank(address(hook));
         token.burn(holder, 1 ether);
@@ -198,7 +198,7 @@ contract UniswapLPSnapshotTransferTest is Test {
         assertEq(token.balanceOf(holder), 9 ether, "balance after burn");
     }
 
-    /// @dev Self-transfer must update the snapshot exactly once, not twice (SWAP-002a redundancy removal).
+    /// @dev Self-transfer must update the snapshot exactly once, not twice (redundancy removal).
     function testSelfTransferUpdatesSnapshotOnce() external {
         vm.prank(holder);
         token.transfer(holder, 1 ether);
@@ -219,7 +219,7 @@ contract UniswapLPSnapshotTransferTest is Test {
     }
 
     /// @dev `transferFrom` is a separate entry point into the `_update` snapshot callback; a self-transferFrom must
-    ///      also update the snapshot exactly once (locks in LR-001 entry-point coverage).
+    ///      also update the snapshot exactly once.
     function testSelfTransferFromUpdatesSnapshotOnce() external {
         vm.startPrank(holder);
         // Infinite self-allowance skips the finite-allowance decrement; only the snapshot path is under test.

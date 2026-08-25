@@ -107,7 +107,7 @@ contract POLSplitterHandler is Test {
         } catch {}
     }
 
-    /// S1: split(p) mints p PT + p YT and books p collateral.
+    /// split(p) mints p PT + p YT and books p collateral.
     function split(uint256 actorSeed, uint256 amountSeed) external {
         if (!_inPhaseA()) return;
         address who = actors[actorSeed % ACTORS];
@@ -119,7 +119,7 @@ contract POLSplitterHandler is Test {
         vm.stopPrank();
     }
 
-    /// S2/S1: merge(a) reverses split symmetrically (1:1, no rounding path).
+    /// merge(a) reverses split symmetrically (1:1, no rounding path).
     function merge(uint256 actorSeed, uint256 amountSeed) external {
         if (!_inPhaseA()) return;
         address who = actors[actorSeed % ACTORS];
@@ -130,7 +130,7 @@ contract POLSplitterHandler is Test {
         try splitter.merge(VERSE_ID, amount) {} catch {}
     }
 
-    /// S7: preRedeemPTFee burns the launcher's PT and records floored backing.
+    /// preRedeemPTFee burns the launcher's PT and records floored backing.
     /// The launcher mock acquires PT from a split actor first (plain transfer).
     function preRedeemPTFee(uint256 actorSeed, uint256 amountSeed) external {
         if (!ratioRecorded || settled) return;
@@ -195,7 +195,7 @@ contract POLSplitterHandler is Test {
         }
     }
 
-    /// S3: PT redemption (partial amounts explored).
+    /// PT redemption (partial amounts explored).
     function redeemPT(uint256 actorSeed, uint256 amountSeed) external {
         if (!settled) return;
         address who = actors[actorSeed % ACTORS];
@@ -210,7 +210,7 @@ contract POLSplitterHandler is Test {
         vm.stopPrank();
     }
 
-    /// S4/S5: YT redemption (partial amounts explored) with monotonicity snapshot.
+    /// YT redemption (partial amounts explored) with monotonicity snapshot.
     function redeemYT(uint256 actorSeed, uint256 amountSeed) external {
         if (!settled) return;
         address who = actors[actorSeed % ACTORS];
@@ -274,22 +274,22 @@ contract POLSplitterInvariants is StdInvariant, Test {
         targetContract(address(handler));
     }
 
-    /// S1: PT (outstanding + already pre-redeemed) == YT == totalPOLCollateral for
+    /// PT (outstanding + already pre-redeemed) == YT == totalPOLCollateral for
     /// every pre-settle state. preRedeemPTFee legitimately burns PT early, so the
     /// conservation law counts the preRedeemedStates.ptAmount back in.
     /// Failure: unpaired mint/burn or collateral bookkeeping decoupled from transferIn.
     function invariant_ptYtCollateralTripleEquality() external view {
         (address pt, address yt,,,, uint256 collateral,,,,, bool verseSettled) = splitter.splitInfos(VERSE_ID);
-        if (verseSettled) return; // settle zeroes collateral; pools take over (S4)
+        if (verseSettled) return; // settle zeroes collateral; pools take over
         (uint256 preRedeemedPt,) = splitter.preRedeemedStates(VERSE_ID);
-        assertEq(IERC20(pt).totalSupply() + preRedeemedPt, IERC20(yt).totalSupply(), "S1: PT != YT");
-        assertEq(IERC20(yt).totalSupply(), collateral, "S1: YT != collateral");
-        // S2 transfer leg: the splitter's actual POL holdings must equal the
+        assertEq(IERC20(pt).totalSupply() + preRedeemedPt, IERC20(yt).totalSupply(), "PT != YT");
+        assertEq(IERC20(yt).totalSupply(), collateral, "YT != collateral");
+        // Transfer leg: the splitter's actual POL holdings must equal the
         // accounting leg — a transfer amount drifting from the burned amount breaks it.
-        assertEq(pol.balanceOf(address(splitter)), collateral, "S2: POL holdings != collateral");
+        assertEq(pol.balanceOf(address(splitter)), collateral, "POL holdings != collateral");
     }
 
-    /// S3: settled verses always cover outstanding PT at the recorded ratio, so
+    /// settled verses always cover outstanding PT at the recorded ratio, so
     /// every holder can redeem in full (floor subadditivity keeps this preserved).
     /// Failure: ceil rounding in _ptToUAsset (early redeemers over-claim, late revert).
     function invariant_settlementCoversPTRatio() external view {
@@ -297,10 +297,10 @@ contract POLSplitterInvariants is StdInvariant, Test {
         if (n == 0 || !handler.settled()) return;
         (uint256 su,) = _livePools();
         uint256 ptSupply = IERC20(splitter.getPT(VERSE_ID)).totalSupply();
-        assertGe(su, Math.mulDiv(ptSupply, n, d), "S3: settlement below PT reserve");
+        assertGe(su, Math.mulDiv(ptSupply, n, d), "settlement below PT reserve");
     }
 
-    /// S4: waterfall conservation —
+    /// waterfall conservation —
     /// SU + ΣuAssetPaid(PT) + ΣuAssetPaid(YT) == SU0 and
     /// SM + ΣmemecoinPaid(YT) == SM0 (pools frozen at settle; R repaid and cleared).
     /// Failure: double pool deduction, PT-reserve/YT-pool confusion, R not cleared.
@@ -310,14 +310,12 @@ contract POLSplitterInvariants is StdInvariant, Test {
         assertEq(
             su + handler.ghostPaidPTuAsset() + handler.ghostPaidYT_uAsset(),
             handler.ghostSettlementUAsset0(),
-            "S4: uAsset waterfall broken"
+            "uAsset waterfall broken"
         );
-        assertEq(
-            sm + handler.ghostPaidYTMemecoin(), handler.ghostSettlementMemecoin0(), "S4: memecoin waterfall broken"
-        );
+        assertEq(sm + handler.ghostPaidYTMemecoin(), handler.ghostSettlementMemecoin0(), "memecoin waterfall broken");
     }
 
-    /// S5: YT per-unit redeemable never decreases (floor keeps dust in the pool).
+    /// YT per-unit redeemable never decreases (floor keeps dust in the pool).
     /// Integer form: SM_now * YT_supply_then >= SM_then * YT_supply_now.
     function invariant_ytPerUnitRedeemableNeverDecreases() external view {
         if (!handler.settled() || !handler.ghostSawYtRedeem()) return;
@@ -326,11 +324,11 @@ contract POLSplitterInvariants is StdInvariant, Test {
         assertGe(
             Math.mulDiv(smNow, handler.ghostYtSupplyBeforeLastYtRedeem(), 1),
             Math.mulDiv(handler.ghostSmBeforeLastYtRedeem(), ytNow, 1),
-            "S5: YT per-unit redeemable decreased"
+            "YT per-unit redeemable decreased"
         );
     }
 
-    /// S6: full-drain dust bound — with both supplies at zero, the remaining pools
+    /// full-drain dust bound — with both supplies at zero, the remaining pools
     /// are bounded by the redemption call counts (each floor leaves < 1 wei per call).
     function invariant_finalDustBoundedByRedemptionCount() external view {
         if (!handler.settled()) return;
@@ -341,9 +339,9 @@ contract POLSplitterInvariants is StdInvariant, Test {
         assertLe(
             su,
             handler.ghostPtRedemptionCalls() + handler.ghostPreRedeemCalls() + handler.ghostYtRedemptionCalls(),
-            "S6: uAsset dust above call-count bound"
+            "uAsset dust above call-count bound"
         );
-        assertLe(sm, handler.ghostYtRedemptionCalls(), "S6: memecoin dust above call-count bound");
+        assertLe(sm, handler.ghostYtRedemptionCalls(), "memecoin dust above call-count bound");
     }
 
     /// @dev Live settlement pools (splitInfos slots 7/8 of 11).
@@ -352,19 +350,19 @@ contract POLSplitterInvariants is StdInvariant, Test {
         return (suLive, smLive);
     }
 
-    /// S7: preRedeemed backing equals the floor-sum of per-burn conversions while
+    /// preRedeemed backing equals the floor-sum of per-burn conversions while
     /// unsettled, is repaid to POLend exactly at settle, and is cleared afterwards.
     function invariant_preRedeemedBackingMatchesBurnedPT() external view {
         (uint256 ptAmount, uint256 uAssetBacking) = splitter.preRedeemedStates(VERSE_ID);
         if (!handler.settled()) {
-            assertEq(uAssetBacking, handler.ghostPreRedeemedBackingFloorSum(), "S7: backing != floor sum");
+            assertEq(uAssetBacking, handler.ghostPreRedeemedBackingFloorSum(), "backing != floor sum");
         } else {
-            assertEq(ptAmount, 0, "S7: preRedeemed PT not cleared");
-            assertEq(uAssetBacking, 0, "S7: preRedeemed backing not cleared");
+            assertEq(ptAmount, 0, "preRedeemed PT not cleared");
+            assertEq(uAssetBacking, 0, "preRedeemed backing not cleared");
             assertEq(
                 polendMock.totalBurnedPreRedeemedBacking(),
                 handler.ghostPreRedeemedBackingFloorSum(),
-                "S7: POLend repayment mismatch"
+                "POLend repayment mismatch"
             );
         }
     }

@@ -27,7 +27,7 @@ contract FalseTransferToken {
 }
 
 /// @notice Non-compliant ERC20 whose transfer returns no data (no bool).
-/// @dev Exercises the OutrunSafeERC20 success-on-empty-returndata branch (CI-010).
+/// @dev Exercises the OutrunSafeERC20 success-on-empty-returndata branch.
 contract NoReturnTransferToken {
     /// @dev Returns nothing — not even a bool. OZ-style safeTransfer treats this as success.
     function transfer(address, uint256) external {

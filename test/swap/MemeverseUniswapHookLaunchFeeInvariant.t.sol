@@ -369,7 +369,7 @@ contract MemeverseUniswapHookPreorderSettlementInvariantTest is StdInvariant, Te
         settlementRecipient = makeAddr("settlementRecipient");
         token0 = new MockERC20("Token0", "TK0", 18);
         token1 = new MockERC20("Token1", "TK1", 18);
-        // Predict the handler address so the hook can bind it as launcher at initialize (write-once under C1).
+        // Predict the handler address so the hook can bind it as launcher at initialize (write-once).
         // Nonce path: deployHookAtFlagAddress consumes 6 sender nonces (5 CREATE: LP impl + 3 facets + hook
         // impl, + 1 nonce increment from the CREATE2'd ERC1967Proxy — both CREATE and CREATE2 increment the
         // sender nonce per EIP-1014) + 1 CREATE for the Lens below == handler is the 8th contract, created at

@@ -41,13 +41,13 @@ contract DynamicFeeFacetTest is Test {
     }
 
     // -----------------------------------------------------------------
-    // OPT-013: quote / prepare paths must not write realized state
+    // Quote / prepare paths must not write realized state
     // -----------------------------------------------------------------
 
     /// @notice `prepareSwapFee` only refreshes the volatility anchor in storage; it must not write the
     ///         realized swap fields (`weightedVolume0`, `weightedPriceVolume0`, `ewVWAPX18`,
     ///         `shortImpactPpm`, `shortLastTs`) or the trader batch accumulator (`batchAccumPpm`,
-    ///         `batchStartTs`). Strong OPT-013 regression guard: a zero→zero assertion would pass even if
+    ///         `batchStartTs`). Strong regression guard: a zero→zero assertion would pass even if
     ///         the facet silently wrote zeros, so every field is seeded non-zero and asserted preserved.
     /// @dev The volatility anchor is intentionally seeded stale (`SQRT_PRICE_UP`, != `params.preSqrtPriceX96`)
     ///      and `volLastMoveTs` is aged past `VOL_FILTER_PERIOD_SEC` so `_refreshVolatilityAnchorAndCarry`
@@ -147,7 +147,7 @@ contract DynamicFeeFacetTest is Test {
     ///         ON THE REFRESH BOUNDARY — when elapsed >= VOL_FILTER_PERIOD_SEC
     ///         and a non-zero deviation forces the decay mulDiv to run. `testQuoteReturnsPreparedSwapFee`
     ///         seeds elapsed=100 (>= VOL_DECAY_PERIOD_SEC=60), so its refresh takes the reset-to-zero
-    ///         sub-branch and would NOT catch divergence in the decay-mulDiv ternary — the exact OPT-013
+    ///         sub-branch and would NOT catch divergence in the decay-mulDiv ternary — the exact
     ///         drift hazard this test locks down.
     /// @dev `quote` is a view, so calling it first leaves storage untouched; `prepareSwapFee` then reads the
     ///      same pre-refresh state. `volLastMoveTs = block.timestamp - 50` lands elapsed in [10, 60): the

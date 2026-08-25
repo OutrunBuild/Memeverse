@@ -248,34 +248,7 @@
       "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) has external calls inside a loop: IMemeverseRegistrarAtLocal(registrar).localRegistration(param)"
     },
     {
-      "id": "69245dfbc04eb910276142691c549d8af85ccab2e08d554ccb729356726c191b",
-      "check": "calls-loop",
-      "impact": "Low",
-      "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L244-L275",
-      "summary": "MemeverseRegistrationCenterUpgradeable._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) has external calls inside a loop: IMemeverseRegistrarAtLocal(registrar).localRegistration(param)",
-      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable._omnichainSend(uint32[],IMemeverseRegistrar.MemeverseParam) has external calls inside a loop: IMemeverseRegistrarAtLocal(registrar).localRegistration(param)"
-    },
-    {
       "id": "2ba8e2522c3201e638aad6269eb15837b05d615f5ec8ff3869f8c8edc7c3cb6b",
-      "check": "calls-loop",
-      "impact": "Low",
-      "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L125-L165",
-      "summary": "MemeverseRegistrationCenterUpgradeable.quoteSend(uint32[],bytes) has external calls inside a loop: eid = registry.lzEndpointIdOfChain(omnichainId)",
-      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable.quoteSend(uint32[],bytes) has external calls inside a loop: eid = registry.lzEndpointIdOfChain(omnichainId)"
-    },
-    {
-      "id": "95b5d7b147db65a230e5f3a610150cffc5e733032ff97385b805de4cc5ba915b",
-      "check": "calls-loop",
-      "impact": "Low",
-      "confidence": "Medium",
-      "location": "src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol#L125-L165",
-      "summary": "MemeverseRegistrationCenterUpgradeable.quoteSend(uint32[],bytes) has external calls inside a loop: eid = registry.lzEndpointIdOfChain(omnichainId)",
-      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|MemeverseRegistrationCenterUpgradeable.quoteSend(uint32[],bytes) has external calls inside a loop: eid = registry.lzEndpointIdOfChain(omnichainId)"
-    },
-    {
-      "id": "ef477eb482967c87a95ffb3303b755524e182f5795ca344020a46e4a872276bd",
       "check": "calls-loop",
       "impact": "Low",
       "confidence": "Medium",
@@ -545,24 +518,6 @@
       "key": "msg-value-in-nonpayable|src/common/token/TokenHelper.sol|TokenHelper._transferIn(address,address,uint256) uses msg.value but is not reachable from any payable function"
     },
     {
-      "id": "d0a1e65895518d077a73cca43e2202fb70db0440843973beb1881ae10a07c305",
-      "check": "msg-value-in-nonpayable",
-      "impact": "High",
-      "confidence": "High",
-      "location": "src/common/token/TokenHelper.sol#L27-L31",
-      "summary": "TokenHelper._transferIn(address,address,uint256) uses msg.value but is not reachable from any payable function",
-      "key": "msg-value-in-nonpayable|src/common/token/TokenHelper.sol|TokenHelper._transferIn(address,address,uint256) uses msg.value but is not reachable from any payable function"
-    },
-    {
-      "id": "de57669bd39fb20ccb488581fc3403ee4b3d57a7d75c415a798bbc721fb5050c",
-      "check": "msg-value-in-nonpayable",
-      "impact": "High",
-      "confidence": "High",
-      "location": "src/common/token/TokenHelper.sol#L27-L31",
-      "summary": "TokenHelper._transferIn(address,address,uint256) uses msg.value but is not reachable from any payable function",
-      "key": "msg-value-in-nonpayable|src/common/token/TokenHelper.sol|TokenHelper._transferIn(address,address,uint256) uses msg.value but is not reachable from any payable function"
-    },
-    {
       "id": "e5249e9ab1b5daf85da00e1b9f57979b4282d53d3c9ad642216edea0c2348567",
       "check": "redundant-statements",
       "impact": "Informational",
@@ -604,15 +559,6 @@
       "impact": "Informational",
       "confidence": "High",
       "location": "src/common/token/extensions/governance/OutrunVotesInit.sol#L338",
-      "summary": "Redundant expression \"pastTotalAssets\" inOutrunVotesInit",
-      "key": "redundant-statements|src/common/token/extensions/governance/OutrunVotesInit.sol|Redundant expression \"pastTotalAssets\" inOutrunVotesInit"
-    },
-    {
-      "id": "3f280d72ff81e4b5d2cb74a53458791750f54919a26011e6c639f52fb1cf66a5",
-      "check": "redundant-statements",
-      "impact": "Informational",
-      "confidence": "High",
-      "location": "src/common/token/extensions/governance/OutrunVotesInit.sol#L322",
       "summary": "Redundant expression \"pastTotalAssets\" inOutrunVotesInit",
       "key": "redundant-statements|src/common/token/extensions/governance/OutrunVotesInit.sol|Redundant expression \"pastTotalAssets\" inOutrunVotesInit"
     },
@@ -860,7 +806,7 @@
       "key": "reentrancy-events|src/token/Memecoin.sol|Reentrancy in Memecoin.initialize(string,string,address,address):"
     },
     {
-      "id": "f41cb4878e48f5c1ead58c9f0d51b75c468fa36404d49a6ed33aedc912265462",
+      "id": "d2dcfd95a3c8cfc16c57291a999d403bd27d255da433140e313d5cb6958f6a3b",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
@@ -887,7 +833,7 @@
       "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address):"
     },
     {
-      "id": "51ae7ed6255aec7323c58721c6f2c5316c2202b16e32a7b0224b3967eb46b7a6",
+      "id": "23604d68a9014eb3a13227e3f2a3c5f245907873a6bdeb8c4a40731e0de9408a",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
@@ -1175,7 +1121,7 @@
       "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|Reentrancy in MemeverseLaunchImpl.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool):"
     },
     {
-      "id": "baebbafefee6dfcaf81e360ca0af05df8973e8deba59606ec6e170a1d5eef299",
+      "id": "5816c41e9e409c5e320cc044522713094b640f58757daa3e59d0ebaac87d3d2c",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
@@ -1193,16 +1139,7 @@
       "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256):"
     },
     {
-      "id": "cbd8cd71f82e9846093edd3f0b7582440a5d3b77c925737a2d878c9292eb2522",
-      "check": "reentrancy-no-eth",
-      "impact": "Medium",
-      "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L252-L299",
-      "summary": "Reentrancy in MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256):",
-      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256):"
-    },
-    {
-      "id": "97cf5e0c2fb58b5f756424afbd44fb78c3c6787524cd53a4fb5b2d728f3e5491",
+      "id": "6adcb2b61f8993ba26777b466f93186f23ceb3de15a9819fabbb6dcee7d28b6e",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
@@ -2238,3 +2175,4 @@
     }
   ]
 }
+

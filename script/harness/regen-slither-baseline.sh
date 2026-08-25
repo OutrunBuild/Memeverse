@@ -110,17 +110,20 @@ run2_keys="$(jq '
     [.results.detectors[] | normalize.key] | unique
 ' "$run2_file")"
 
+# The baseline is consumed as a KEY SET, so deduplicate by key (keep the first
+# occurrence per key): a single run may contain multiple detector entries that
+# normalize to the same key (e.g. several timestamp findings in one function).
 stable_file="$tmp_dir/stable.json"
 printf '%s' "$run1_normalized" | jq --argjson run2_keys "$run2_keys" '
-    [.[] | select(.key as $key | $run2_keys | index($key))] | sort_by(.key)
+    [.[] | select(.key as $key | $run2_keys | index($key))]
+    | group_by(.key) | map(.[0])
+    | sort_by(.key)
 ' > "$stable_file"
 
 run1_count="$(jq '.results.detectors | length' "$run1_file")"
 run2_count="$(jq '.results.detectors | length' "$run2_file")"
 run1_key_count="$(printf '%s' "$run1_normalized" | jq 'map(.key) | unique | length')"
 run2_key_count="$(printf '%s' "$run2_keys" | jq 'length')"
-drift_count=$(( (run1_key_count > run2_key_count ? run1_key_count : run2_key_count) - (run1_key_count < run2_key_count ? run1_key_count : run2_key_count) * 2 + run1_key_count + run2_key_count ))
-stable_count="$(jq 'length' "$stable_file")"
 intersection_key_count="$(jq 'map(.key) | unique | length' "$stable_file")"
 drift_count=$(( run1_key_count + run2_key_count - 2 * intersection_key_count ))
 
@@ -135,13 +138,18 @@ jq -n \
 # Validations before writing.
 python3 -m json.tool "$candidate_file" >/dev/null 2>&1 || jq -e . "$candidate_file" >/dev/null 2>&1 || die "produced baseline failed JSON round-trip"
 
+written_count="$(jq '.findings | length' "$candidate_file")"
 written_key_count="$(jq '[.findings[].key] | unique | length' "$candidate_file")"
-expected_key_count="$(jq 'map(.key) | unique | length' "$stable_file")"
-[ "$written_key_count" -eq "$expected_key_count" ] || die "self-check failed: written key count ($written_key_count) != intersection key count ($expected_key_count)"
-[ "$stable_count" -eq "$expected_key_count" ] || die "self-check failed: stable count ($stable_count) != unique key count ($expected_key_count)"
+run1_keys="$(printf '%s' "$run1_normalized" | jq -c 'map(.key) | unique')"
+run2_keys_j="$(printf '%s' "$run2_keys" | jq -c '.')"
+[ "$written_count" -eq "$intersection_key_count" ] || die "self-check failed: written count ($written_count) != intersection key count ($intersection_key_count)"
+[ "$written_key_count" -eq "$intersection_key_count" ] || die "self-check failed: written unique key count ($written_key_count) != intersection key count ($intersection_key_count)"
+missing_from_runs="$(jq --argjson findings "$(jq -c '[.findings[].key]' "$candidate_file")" --argjson r1 "$run1_keys" --argjson r2 "$run2_keys_j" -n '$ARGS.named.findings - ($ARGS.named.r1 + $ARGS.named.r2 | unique) | length')"
+[ "$missing_from_runs" -eq 0 ] || die "self-check failed: $missing_from_runs written keys not present in both runs' key sets"
 
 printf '\n' >> "$candidate_file"
 mv "$candidate_file" "$baseline_file"
 
-echo "regen-slither-baseline: run1=$run1_count detectors ($run1_key_count keys), run2=$run2_count detectors ($run2_key_count keys), drift=$drift_count (symmetric difference of key sets)"
-echo "regen-slither-baseline: wrote $stable_count findings to $baseline_file"
+echo "regen-slither-baseline: run1=$run1_count detectors ($run1_key_count unique keys), run2=$run2_count detectors ($run2_key_count unique keys)"
+echo "regen-slither-baseline: intersection (written)=$written_count findings, drift=$drift_count (symmetric difference of key sets)"
+echo "regen-slither-baseline: wrote $written_count findings to $baseline_file"

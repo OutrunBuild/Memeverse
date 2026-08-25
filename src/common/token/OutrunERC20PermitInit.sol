@@ -23,14 +23,8 @@ abstract contract OutrunERC20PermitInit is OutrunERC20Init, IERC20Permit, Outrun
     // solhint-disable-next-line gas-small-strings
     keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
-    /**
-     * @dev Permit deadline has expired.
-     */
     error ERC2612ExpiredSignature(uint256 deadline);
 
-    /**
-     * @dev Mismatched signature.
-     */
     error ERC2612InvalidSigner(address signer, address owner);
 
     /**
@@ -42,19 +36,12 @@ abstract contract OutrunERC20PermitInit is OutrunERC20Init, IERC20Permit, Outrun
         __OutrunEIP712_init(_name, "1");
     }
 
-    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
-    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
-    function __ERC20Permit_init_unchained(string memory) internal onlyInitializing {}
-
     /// @notice Sets allowance via an EIP-2612 signature.
     /// @dev Consumes `owner` nonce and reverts on expired or invalid signature.
     /// @param owner Token holder that signed the permit.
     /// @param spender Address receiving allowance.
     /// @param value Allowance amount to set.
     /// @param deadline Expiration timestamp for the signature.
-    /// @param v Signature recovery parameter.
-    /// @param r Signature field `r`.
-    /// @param s Signature field `s`.
     function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
         public
         virtual
@@ -72,21 +59,13 @@ abstract contract OutrunERC20PermitInit is OutrunERC20Init, IERC20Permit, Outrun
         _approve(owner, spender, value);
     }
 
-    /// @notice Reads the current permit nonce for `owner`.
-    /// @dev Nonce increments after each successful `permit` call.
-    /// @param owner Account to query.
-    /// @return nonce Current nonce value.
+    /// @inheritdoc IERC20Permit
     function nonces(address owner) public view virtual override(IERC20Permit, OutrunNoncesInit) returns (uint256) {
         return super.nonces(owner);
     }
 
-    /**
-     * @inheritdoc IERC20Permit
-     */
+    /// @inheritdoc IERC20Permit
     // solhint-disable-next-line func-name-mixedcase
-    /// @notice Exposes the EIP-712 domain separator used by `permit`.
-    /// @dev Domain is derived from token name, version, chain ID, and contract address.
-    /// @return separator Domain separator hash.
     function DOMAIN_SEPARATOR() external view virtual returns (bytes32) {
         return _domainSeparatorV4();
     }

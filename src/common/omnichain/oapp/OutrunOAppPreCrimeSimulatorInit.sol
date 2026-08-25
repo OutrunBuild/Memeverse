@@ -34,15 +34,8 @@ abstract contract OutrunOAppPreCrimeSimulatorInit is IOAppPreCrimeSimulator, Out
         }
     }
 
-    /**
-     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
-     * accommodate the different version of Ownable.
-     */
+    /// @dev Ownable is not initialized here; see OutrunOAppCoreInit.
     function __OutrunOAppPreCrimeSimulator_init() internal onlyInitializing {}
-
-    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
-    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
-    function __OutrunOAppPreCrimeSimulator_init_unchained() internal onlyInitializing {}
 
     /// @notice Reads the preCrime contract currently wired into the simulator.
     /// @dev Returns the zero address when simulation checks are disabled.

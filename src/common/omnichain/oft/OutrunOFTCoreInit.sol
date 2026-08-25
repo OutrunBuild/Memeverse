@@ -85,18 +85,13 @@ abstract contract OutrunOFTCoreInit is
      * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
      *
      * @dev The delegate typically should be set as the owner of the contract.
-     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
-     * accommodate the different version of Ownable.
+     * @dev Ownable is not initialized here; see OutrunOAppCoreInit.
      */
     function __OutrunOFTCore_init(address _delegate) internal onlyInitializing {
         __OutrunOApp_init(_delegate);
         __OutrunOAppPreCrimeSimulator_init();
         __OutrunOAppOptionsType3_init();
     }
-
-    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
-    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
-    function __OFTCore_init_unchained() internal onlyInitializing {}
 
     /// @notice Reads the optional outbound message inspector contract.
     /// @dev Inspector validates outbound message/options before send.

@@ -22,17 +22,12 @@ abstract contract OutrunOFTInit is OutrunOFTCoreInit, OutrunERC20Init {
      * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
      *
      * @dev The delegate typically should be set as the owner of the contract.
-     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
-     * accommodate the different version of Ownable.
+     * @dev Ownable is not initialized here; see OutrunOAppCoreInit.
      */
     function __OutrunOFT_init(string memory _name, string memory _symbol, address _delegate) internal onlyInitializing {
         __OutrunERC20_init(_name, _symbol);
         __OutrunOFTCore_init(_delegate);
     }
-
-    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
-    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
-    function __OFT_init_unchained() internal onlyInitializing {}
 
     /// @notice Exposes the underlying ERC20 token address for this OFT.
     /// @dev In default OFT, the bridge contract itself is the token.

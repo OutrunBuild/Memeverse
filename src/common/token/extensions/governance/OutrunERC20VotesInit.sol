@@ -28,10 +28,6 @@ abstract contract OutrunERC20VotesInit is OutrunERC20Init, OutrunVotesInit {
 
     function __OutrunERC20Votes_init() internal onlyInitializing {}
 
-    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
-    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
-    function __OutrunERC20Votes_init_unchained() internal onlyInitializing {}
-
     /**
      * @dev Maximum token supply. Defaults to `type(uint208).max` (2^208^ - 1).
      *

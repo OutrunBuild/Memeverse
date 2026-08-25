@@ -96,10 +96,6 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
 
     function __OutrunVotes_init() internal onlyInitializing {}
 
-    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
-    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
-    function __OutrunVotes_init_unchained() internal onlyInitializing {}
-
     /// @notice Exposes the governance clock used for vote checkpoints.
     /// @dev Uses block numbers as defined by ERC-6372.
     /// @return currentTimepoint Current block-number timepoint.
@@ -166,14 +162,6 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
             $._totalCheckpoints.upperLookupRecent(validatedTimepoint),
             $._totalAssetsCheckpoint.upperLookupRecent(validatedTimepoint)
         );
-    }
-
-    /**
-     * @dev Returns the current total supply of votes.
-     */
-    function _getTotalSupply() internal view virtual returns (uint256) {
-        VotesStorage storage $ = _getVotesStorage();
-        return $._totalCheckpoints.latest();
     }
 
     /// @notice Reads the delegate currently chosen by `account`.

@@ -10,7 +10,6 @@ import {OutrunOAppCoreInit} from "./OutrunOAppCoreInit.sol";
  * @dev Abstract contract implementing the ILayerZeroReceiver interface and extending OAppCore for OApp receivers.
  */
 abstract contract OutrunOAppReceiverInit is IOAppReceiver, OutrunOAppCoreInit {
-    // Custom error message for when the caller is not the registered endpoint/
     error OnlyEndpoint(address addr);
 
     // @dev The version of the OAppReceiver implementation.
@@ -19,8 +18,7 @@ abstract contract OutrunOAppReceiverInit is IOAppReceiver, OutrunOAppCoreInit {
 
     /**
      * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
-     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
-     * accommodate the different version of Ownable.
+     * @dev Ownable is not initialized here; see OutrunOAppCoreInit.
      */
     function __OutrunOAppReceiver_init(address _delegate) internal onlyInitializing {
         __OutrunOAppCore_init(_delegate);
@@ -43,11 +41,6 @@ abstract contract OutrunOAppReceiverInit is IOAppReceiver, OutrunOAppCoreInit {
 
     /**
      * @notice Indicates whether an address is an approved composeMsg sender to the Endpoint.
-     * @dev _origin The origin information containing the source endpoint and sender address.
-     *  - srcEid: The source chain endpoint ID.
-     *  - sender: The sender address on the src chain.
-     *  - nonce: The nonce of the message.
-     * @dev _message The lzReceive payload.
      * @param _origin The origin information for the composed message.
      * @param _message The received LayerZero payload.
      * @param _sender The sender address.
@@ -105,13 +98,10 @@ abstract contract OutrunOAppReceiverInit is IOAppReceiver, OutrunOAppCoreInit {
         address _executor,
         bytes calldata _extraData
     ) public payable virtual {
-        // Ensures that only the endpoint can attempt to lzReceive() messages to this OApp.
         if (address(endpoint) != msg.sender) revert OnlyEndpoint(msg.sender);
 
-        // Ensure that the sender matches the expected peer for the source endpoint.
         if (_getPeerOrRevert(_origin.srcEid) != _origin.sender) revert OnlyPeer(_origin.srcEid, _origin.sender);
 
-        // Call the internal OApp implementation of lzReceive.
         _lzReceive(_origin, _guid, _message, _executor, _extraData);
     }
 

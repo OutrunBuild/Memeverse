@@ -36,15 +36,8 @@ abstract contract OutrunOAppOptionsType3Init is IOAppOptionsType3, OutrunOwnable
         }
     }
 
-    /**
-     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
-     * accommodate the different version of Ownable.
-     */
+    /// @dev Ownable is not initialized here; see OutrunOAppCoreInit.
     function __OutrunOAppOptionsType3_init() internal onlyInitializing {}
-
-    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
-    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
-    function __OutrunOAppOptionsType3_init_unchained() internal onlyInitializing {}
 
     /// @notice Exposes enforced type-3 options for a route and message type.
     /// @dev Empty bytes means no enforced options are configured.

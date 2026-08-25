@@ -18,7 +18,6 @@ import {OutrunOAppCoreInit} from "./OutrunOAppCoreInit.sol";
 abstract contract OutrunOAppSenderInit is OutrunOAppCoreInit {
     using OutrunSafeERC20 for IERC20;
 
-    // Custom error messages
     error NotEnoughNative(uint256 msgValue);
     error LzTokenUnavailable();
 
@@ -28,8 +27,7 @@ abstract contract OutrunOAppSenderInit is OutrunOAppCoreInit {
 
     /**
      * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
-     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
-     * accommodate the different version of Ownable.
+     * @dev Ownable is not initialized here; see OutrunOAppCoreInit.
      */
     function __OutrunOAppSender_init(address _delegate) internal onlyInitializing {
         __OutrunOAppCore_init(_delegate);

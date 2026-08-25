@@ -21,18 +21,13 @@ abstract contract OutrunOAppInit is OutrunOAppSenderInit, OutrunOAppReceiverInit
      * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
      *
      * @dev The delegate typically should be set as the owner of the contract.
-     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
-     * accommodate the different version of Ownable.
+     * @dev Ownable is not initialized here; see OutrunOAppCoreInit.
      */
     function __OutrunOApp_init(address _delegate) internal onlyInitializing {
         __OutrunOAppCore_init(_delegate);
         __OutrunOAppReceiver_init_unchained();
         __OutrunOAppSender_init_unchained();
     }
-
-    /// @dev Form-compat stub: mirrors the upstream full/`_unchained` initializer pair convention
-    ///      this file ports. Empty and unwired in the production init chain; kept for convention.
-    function __OutrunOApp_init_unchained() internal onlyInitializing {}
 
     /// @notice Exposes the sender and receiver implementation versions for this OApp.
     /// @dev Signals that both OApp sender and receiver modules are enabled.

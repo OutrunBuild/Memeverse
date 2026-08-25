@@ -28,7 +28,7 @@ abstract contract OutrunOAppCoreInit is IOAppCore, OutrunOwnableInit {
     }
 
     /**
-     * @dev Constructor to initialize the OAppCore with the provided endpoint and delegate.
+     * @dev Constructor to initialize the OAppCore with the provided endpoint.
      * @param _endpoint The address of the LOCAL Layer Zero endpoint.
      */
     constructor(address _endpoint) {
@@ -40,8 +40,8 @@ abstract contract OutrunOAppCoreInit is IOAppCore, OutrunOwnableInit {
      * @param _delegate The delegate capable of making OApp configurations inside of the endpoint.
      *
      * @dev The delegate typically should be set as the owner of the contract.
-     * @dev Ownable is not initialized here on purpose. It should be initialized in the child contract to
-     * accommodate the different version of Ownable.
+     * @dev Ownable is not initialized here on purpose: the child contract initializes it to accommodate its
+     * flavor of Ownable.
      */
     function __OutrunOAppCore_init(address _delegate) internal onlyInitializing {
         __OutrunOAppCore_init_unchained(_delegate);

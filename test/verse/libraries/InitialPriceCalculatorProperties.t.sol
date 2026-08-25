@@ -7,10 +7,8 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {InitialPriceCalculator} from "src/verse/libraries/InitialPriceCalculator.sol";
 
 /// @title InitialPriceCalculatorProperties
-/// @notice Success-domain and rounding properties for the launcher initial-price helper
-///         (audit batch 2026-08-19, design doc §4 property INV-D4 — the 04a-G-03
-///         adjudicator).
-/// @dev G-03 claimed fundBasedAmount in (2^48, 2^64-1] is a "legal config, guaranteed
+/// @notice Success-domain and rounding properties for the launcher initial-price helper.
+/// @dev Adjudicates the claim that fundBasedAmount in (2^48, 2^64-1] is a "legal config, guaranteed
 ///      pricing revert" dead zone, derived from "MAX_SQRT_PRICE ~ 2^120". The vendored
 ///      TickMath constant is ~2^159.97, and ratio >= 2^64 is structurally unreachable
 ///      in this calculator (with amount0 <= 2^192 the fast check reverts
@@ -22,14 +20,14 @@ contract InitialPriceCalculatorProperties is Test {
     address internal constant LOWER = address(0x1000);
     address internal constant HIGHER = address(0x2000);
 
-    /// @notice INV-D4-P1: for every allowed fundBasedAmount (1 .. 2^64-1, the
+    /// @notice D4-P1: for every allowed fundBasedAmount (1 .. 2^64-1, the
     ///         setFundMetaData domain) and every uAsset budget (1 .. 2^128-1,
     ///         MAX_SUPPORTED_TOTAL_GENESIS_FUNDS), BOTH address orderings price
     ///         successfully — no InvalidSqrtPrice, no PriceRatioTooHigh.
     /// @dev The calculator sorts the pair by address, so swapping call arguments is a
     ///      no-op: the two price directions (price = fba vs price = 1/fba) are explored
     ///      by placing memecoin at HIGHER vs LOWER. Failing this test anywhere in the
-    ///      domain means G-03's dead zone is real.
+    ///      domain means the claimed dead zone is real.
     function testFuzz_InitialPriceSuccessDomain(uint64 fba, uint128 uAssetBudget, bool memecoinSortsHigh)
         external
         pure
@@ -44,13 +42,13 @@ contract InitialPriceCalculatorProperties is Test {
         uint160 sqrtPrice =
             InitialPriceCalculator.calculateInitialSqrtPriceX96(memecoin, uAsset, memecoinBudget, uAssetBudget);
 
-        // INV-D4-P2: sqrt brackets the exact ratio (price = token1/token0).
+        // D4-P2: sqrt brackets the exact ratio (price = token1/token0).
         uint256 amount1 = memecoinSortsHigh ? memecoinBudget : uint256(uAssetBudget);
         uint256 amount0 = memecoinSortsHigh ? uint256(uAssetBudget) : memecoinBudget;
         _assertSqrtIsFloorOfRatio(sqrtPrice, amount1, amount0);
     }
 
-    /// @notice INV-D4-P3: the success/failure boundary sits exactly at the config
+    /// @notice D4-P3: the success/failure boundary sits exactly at the config
     ///         ceiling — 2^64-1 succeeds and 2^64 reverts PriceRatioTooHigh (with
     ///         amount0 = 1 the raw ratio equals fba exactly, so the fast check is the
     ///         binding edge and InvalidSqrtPrice is unreachable near the top).
@@ -93,7 +91,7 @@ contract InitialPriceCalculatorProperties is Test {
         return InitialPriceCalculator.calculateInitialSqrtPriceX96(tokenA, tokenB, amountADesired, amountBDesired);
     }
 
-    /// @dev INV-D4-P2 helper: s must equal floor(sqrt(amount1 * 2^192 / amount0)),
+    /// @dev D4-P2 helper: s must equal floor(sqrt(amount1 * 2^192 / amount0)),
     ///      asserted via the bracketing inequalities s^2 <= q < (s+1)^2 with
     ///      q = mulDiv(amount1, 2^192, amount0) — the definition of floor sqrt,
     ///      expressed independently of Math.sqrt.

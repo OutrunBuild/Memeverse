@@ -11,16 +11,15 @@ import {DynamicFeeMath} from "src/swap/libraries/DynamicFeeMath.sol";
 import {IDynamicFeeFacet} from "src/swap/interfaces/IDynamicFeeFacet.sol";
 
 /// @title FeeLibraryProperties
-/// @notice Property-based tests for the pure fee math in FeeMath / DynamicFeeMath
-///         (audit batch 2026-08-19, design doc §4 properties INV-C2..C7).
-/// @dev Split-fee conservation (INV-C1) is intentionally NOT duplicated here — it is
+/// @notice Property-based tests for the pure fee math in FeeMath / DynamicFeeMath.
+/// @dev Split-fee conservation (C1) is intentionally NOT duplicated here — it is
 ///      already covered by test/swap/FeeMath.t.sol (testFuzzSplitSumInvariant,
 ///      testFuzzProtocolFeeRatio) over the reachable domain (feeBps <= 10_000).
 ///      Oracles are algebraic identities or differently-composed expressions, never a
 ///      copy of the implementation formula (anti-tautology).
 contract FeeLibraryProperties is Test {
     // ---------------------------------------------------------------------------------
-    // INV-C2: composite dynamic fee selection
+    // C2: composite dynamic fee selection
     // ---------------------------------------------------------------------------------
 
     /// @dev Fills DynamicFeeState fields inside their storage-type domains; `view`
@@ -49,7 +48,7 @@ contract FeeLibraryProperties is Test {
         b.batchAccumPpm = uint192(bound(seed >> 32, 0, type(uint192).max));
     }
 
-    /// @notice INV-C2: over the validated launch config domain (launchFeeBps <= BPS_BASE,
+    /// @notice C2: over the validated launch config domain (launchFeeBps <= BPS_BASE,
     ///         enforced by MemeverseUniswapHookUpgradeable::setDefaultLaunchFeeConfig)
     ///         and every storage-typed state/batch field, fee selection never reverts
     ///         and stays within [FEE_BASE_BPS, FEE_MAX_BPS].
@@ -78,10 +77,10 @@ contract FeeLibraryProperties is Test {
     }
 
     // ---------------------------------------------------------------------------------
-    // INV-C3: price-move (PIF) range over the whole TickMath domain
+    // C3: price-move (PIF) range over the whole TickMath domain
     // ---------------------------------------------------------------------------------
 
-    /// @notice INV-C3: priceMovePpmCapped never reverts for valid sqrt prices, stays in
+    /// @notice C3: priceMovePpmCapped never reverts for valid sqrt prices, stays in
     ///         [0, PIF_CAP_PPM], and is zero exactly when prices are equal.
     /// @dev Up/down rounding asymmetry is documented behavior and deliberately NOT
     ///      asserted as a symmetry property.
@@ -96,13 +95,13 @@ contract FeeLibraryProperties is Test {
     }
 
     // ---------------------------------------------------------------------------------
-    // INV-C4: volatility sqrt fee oracle, saturation semantics, overflow domain
+    // C4: volatility sqrt fee oracle, saturation semantics, overflow domain
     // ---------------------------------------------------------------------------------
 
-    /// @notice INV-C4: the direct-multiply implementation matches an overflow-safe
+    /// @notice C4: the direct-multiply implementation matches an overflow-safe
     ///         recomposition (floor(sqrt(floor(x))) == floor(sqrt(x)) for integer x),
     ///         is <= 50 below the saturation marker and keeps growing (>= 50) past it —
-    ///         "saturates" means "reaches 50", NOT clamping; the composite cap INV-C2
+    ///         "saturates" means "reaches 50", NOT clamping; the composite cap C2
     ///         carries the absolute bound.
     /// @dev Domain contract: accumulator <= (2^256-1)/2500 keeps `acc * 2500` inside
     ///      uint256. Larger values panic inside the library — the reachable uint24
@@ -124,7 +123,7 @@ contract FeeLibraryProperties is Test {
         }
     }
 
-    /// @notice INV-C4-2: monotone non-decreasing over ordered pairs within the uint24
+    /// @notice C4-2: monotone non-decreasing over ordered pairs within the uint24
     ///         storage domain (the only reachable runtime domain).
     function testFuzz_VolatilityFeeMonotone(uint24 smallAcc, uint24 largeAcc) external pure {
         uint256 a = bound(smallAcc, 0, type(uint24).max);
@@ -133,10 +132,10 @@ contract FeeLibraryProperties is Test {
     }
 
     // ---------------------------------------------------------------------------------
-    // INV-C5: spot conversion exact oracle
+    // C5: spot conversion exact oracle
     // ---------------------------------------------------------------------------------
 
-    /// @notice INV-C5: spotX18FromSqrtPrice(p) == floor(p^2 * 1e18 / 2^192) for the full
+    /// @notice C5: spotX18FromSqrtPrice(p) == floor(p^2 * 1e18 / 2^192) for the full
     ///         uint160 domain, with the oracle computed by a differently-composed
     ///         expression (p * 1e18 fits 256 bits; mulDiv handles the 512-bit product),
     ///         so equality cross-checks squareWide's carry path.
@@ -145,10 +144,10 @@ contract FeeLibraryProperties is Test {
     }
 
     // ---------------------------------------------------------------------------------
-    // INV-C6: launch-fee decay monotonicity, endpoints, bounds
+    // C6: launch-fee decay monotonicity, endpoints, bounds
     // ---------------------------------------------------------------------------------
 
-    /// @notice INV-C6: the launch fee decays monotonically from exactly startFeeBps at
+    /// @notice C6: the launch fee decays monotonically from exactly startFeeBps at
     ///         launch to exactly minFeeBps after the window, and never leaves
     ///         [minFeeBps, startFeeBps] for validated configs (min <= start <= BPS_BASE).
     function testFuzz_LaunchFeeMonotoneBounded(uint24 start, uint24 min, uint32 duration, uint40 nowOffset) external {
@@ -177,7 +176,7 @@ contract FeeLibraryProperties is Test {
         assertLe(feeLater, fee, "decay not monotone");
     }
 
-    /// @notice INV-C6-2: the normalized decay weight is exactly 1e18 at elapsed = 0,
+    /// @notice C6-2: the normalized decay weight is exactly 1e18 at elapsed = 0,
     ///         exactly 0 at elapsed = duration, and within [0, 1e18] in between.
     function testFuzz_NormalizedDecayWadBounds(uint256 elapsed, uint256 duration) external pure {
         duration = bound(duration, 1, 365 days);
@@ -189,10 +188,10 @@ contract FeeLibraryProperties is Test {
     }
 
     // ---------------------------------------------------------------------------------
-    // INV-C7 (supporting): linear decay bounded and window-terminating
+    // C7 (supporting): linear decay bounded and window-terminating
     // ---------------------------------------------------------------------------------
 
-    /// @notice Supporting property for INV-C6: decayLinearPpm never exceeds the accumulator and hits zero once
+    /// @notice Supporting property for C6: decayLinearPpm never exceeds the accumulator and hits zero once
     ///         the window has fully elapsed.
     function testFuzz_DecayLinearPpmBounded(uint96 acc, uint64 lastTsOffset, uint32 window) external {
         acc = uint96(bound(acc, 1, type(uint96).max));

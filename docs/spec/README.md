@@ -70,7 +70,7 @@
 
 ## 2. OCLPAR canonical-home 表
 
-下表是 Phase 2 跨文档去冗余审计确立的"每条规则/概念权威主页"索引——**索引，不重述语义本体**。同名规则在其他文档出现均为引用，编辑应改 home。`polend/` 类目 canonical home 为 `polend/README.md`（子文件清单见 §1 POLendUpgradeable 区）。
+下表是"每条规则/概念权威主页"索引——**索引，不重述语义本体**。同名规则在其他文档出现均为引用，编辑应改 home。`polend/` 类目 canonical home 为 `polend/README.md`（子文件清单见 §1 POLendUpgradeable 区）。
 
 ### 2.1 常量群
 

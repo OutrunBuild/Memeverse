@@ -40,11 +40,11 @@
 
 `[代码已证]`
 
-### 3.2.1 COMMON-001 跨链通胀攻击面已消除
+### 3.2.1 跨链通胀攻击面已消除
 
 `Memecoin` 与 `MemePol` 均直接继承 `OutrunOFTInit`（`is OutrunOFTInit`），且二者均 **未 override** `_credit`/`_debit`/`send`/`_lzReceive`/`_update`（二者额外 override `mint`/`burn`，但均未 override 上述 OFT compose 路径函数）。合并后 `OutrunOFTInit` 已回归官方 LayerZero OFTCore 语义，token 层 UBO 机制（`withdrawIfNotExecuted`/`ComposeTxStatus`）已删除，本节说明该攻击面已被消除。
 
-**COMMON-001（已消除）**：旧 UBO 机制下，源链持有 ≥1 个 `Memecoin`/`MemePol` 的攻击者调用公开 `send({to: bytes32(0), composeMsg: ...})`，源端 `_debit` burn 1X，目的端 `_lzReceive`→`_credit` 首次 mint 后，攻击者可再调 `withdrawIfNotExecuted` 触发 `_update` 二次 mint，净效果 burn 1X / mint 2X，绕过 token 层 launcher-only mint 约束造成跨链通胀。下述流程证明该二次 mint 入口已随 UBO 机制删除而不复存在：
+**已消除的攻击面**：旧 UBO 机制下，源链持有 ≥1 个 `Memecoin`/`MemePol` 的攻击者调用公开 `send({to: bytes32(0), composeMsg: ...})`，源端 `_debit` burn 1X，目的端 `_lzReceive`→`_credit` 首次 mint 后，攻击者可再调 `withdrawIfNotExecuted` 触发 `_update` 二次 mint，净效果 burn 1X / mint 2X，绕过 token 层 launcher-only mint 约束造成跨链通胀。下述流程证明该二次 mint 入口已随 UBO 机制删除而不复存在：
 
 - 源端 `send` 经 `_debit` 在源链 burn 1X（`OutrunOFTInit::_debit`）。
 - 目的端 `_lzReceive` → `_credit(...)`，`OutrunOFTInit::_credit` 仅把 `_to == address(0x0)` 重映射到 `0xdead` 并**单次** mint 该数量，mint 即终态，无 `withdrawIfNotExecuted` 可被调用。

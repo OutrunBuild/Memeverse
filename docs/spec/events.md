@@ -120,7 +120,7 @@
 
 以上均为 `[代码已证]`。
 
-**`Transfer` 与供给守恒**：mint（`from = address(0)`）与 burn（`to = address(0)`）是 token 单通道供给变更的见证；守恒语义见 [docs/spec/invariants.md INV-09A](invariants.md)。OFT 回归官方 OFTCore 后，公开 send 路径不再产生 COMMON-001 跨链通胀例外（源端 burn 1X、目的端单次 mint 1X）。
+**`Transfer` 与供给守恒**：mint（`from = address(0)`）与 burn（`to = address(0)`）是 token 单通道供给变更的见证；守恒语义见 [docs/spec/invariants.md INV-09A](invariants.md)。OFT 回归官方 OFTCore 后，公开 send 路径不再产生跨链通胀例外（源端 burn 1X、目的端单次 mint 1X）。
 
 **`OFTReceived` 的 to=0 语义**：`send` 传 `to = bytes32(0)` 时，事件 `toAddress` 参数与 `endpoint.sendCompose` 路由均使用重映射前的 `address(0)`（`OutrunOFTCoreInit.sol::_lzReceive` 直接使用消息解码出的 `toAddress`），而余额经 `OutrunOFTInit.sol::_credit` 重映射后实际 mint 至 `0xdead` 哨兵；事件 toAddress 与余额落点不一致，按 `toAddress` 过滤的监控需知悉该分叉。同时该路由在 endpoint 队列留下**永久 pending 槽**：`MessagingComposer.sendCompose` 对 `to` 无守卫，照写 `composeQueue[token][0][guid][0] = keccak256(message)` 并 emit `ComposeSent`；该槽无收敛路径——`MessagingComposer.lzCompose` 对无代码目标（0 地址/普通 EOA）的高层调用经 solc 0.8.x EXTCODESIZE 前置检查 revert（`RECEIVED_MESSAGE_HASH` 写入随整笔交易回滚），executor 投递同样 revert（`LzComposeAlert` + 重试恒失败），同槽重写 `sendCompose` 报 `LZ_ComposeExists`，故槽位永久停留 `keccak256(message)`，监控信号为 `ComposeSent` 恒无对应 `ComposeDelivered`（预期终态，不可修复）。同族一般化：`to` 为任意无 composer 代码地址（含普通 EOA——用户普通 OFT 转账误带非空 composeMsg 即触发，非自伤）时机制相同。operations.md §3.13 步骤 4 的免许可 `lzCompose` 重驱动仅对实现 `lzCompose` 的 composer 目标（dispatcher/staker）成立，对无代码目标不适用。`[代码已证]`
 

@@ -1733,7 +1733,7 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(burnableAsset.balanceOf(address(emptyVault)), 0, "vault holds no burned yield");
     }
 
-    /// @notice Vault-side E2E (finding part B): a REAL OFT `_lzReceive` writes the compose queue the vault's
+    /// @notice Vault-side E2E: a REAL OFT `_lzReceive` writes the compose queue the vault's
     ///         `reAccumulateYields` recovery entry reads — the runbook chain's first hop (OFT mints the bridged
     ///         amount to the dispatcher) through the re-accumulate retry (queue proof → Released), with the settle
     ///         payload copied VERBATIM from the endpoint's ComposeSent log.

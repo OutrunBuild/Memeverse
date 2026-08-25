@@ -128,7 +128,7 @@ contract OutrunOFTInitTest is Test {
         assertEq(endpoint.lastComposeIndex(), 0);
     }
 
-    /// @notice COMMON-001 regression: a bridged compose payload mints exactly once and exposes no
+    /// @notice Regression: a bridged compose payload mints exactly once and exposes no
     ///         token-side second-mint entry.
     /// @dev After the UBO/ComposeTxStatus mechanism was removed, the only way for a bridged `lzReceive`
     ///      compose to settle is the off-chain `lzCompose` path (or `settlePendingCompose` via the dispatcher). This

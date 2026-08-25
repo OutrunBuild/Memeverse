@@ -55,6 +55,13 @@ docs/TRACEABILITY.md lists control files and artifact locations; other repositor
 - Do not read `script/harness/gate.sh` when policy, runtime, or verification docs already answer the routing question.
 - If tool output is empty, partial, or suspicious, retry once with a different command before treating it as evidence.
 
+## Audit and Review Reference Containment
+
+- Audit and review documents (`docs/audits/**`, `docs/review/**`, and any external audit/review report) are fix input only. Never write their finding IDs (e.g. `F-007`, `L-001`, `M-03`, review-comment numbers) or document references into code or into docs outside `docs/audits/` and `docs/review/`.
+- Prohibited sinks include Solidity comments and NatSpec, error and revert strings, contract/function/variable/event/error names, test names and test descriptions, script content, and all non-audit docs (spec, README, ARCHITECTURE, GLOSSARY, TRACEABILITY, etc.).
+- Fixes must be self-contained: comments and docs state the behavior, invariant, or rationale in domain terms — never "fix for F-007" / "per review comment 12" / "audit finding M-03" style provenance.
+- Finding-to-fix traceability lives only inside the audit/review documents themselves (findings ledger, verdicts) or the driving task/batch document. An inline reference in code or docs is allowed only when a human explicitly requests it.
+
 ## Harness Dispatch Procedure
 
 When `.harness/policy.json` exists and the task modifies repository files:
@@ -86,6 +93,7 @@ Before final response, check:
 - every edited path was classified pre-edit, matches `.harness/policy.json`, and no edited path is outside the classified surface
 - writer, reviewer, and verifier routing followed policy and gate evidence
 - validation command and result are fresh
+- no edited code or doc introduces audit/review finding IDs or document references (containment rule above)
 - final answer reports only completed work, validation, and blockers
 
 ## Escalation Boundaries

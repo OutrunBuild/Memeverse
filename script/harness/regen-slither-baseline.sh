@@ -70,7 +70,7 @@ run_slither "$run1_file"
 echo "regen-slither-baseline: slither run 2 of 2"
 run_slither "$run2_file"
 
-normalized_jq='
+run1_normalized="$(jq '
     def norm_summary:
         (.description // "")
         | split("\n")[0]
@@ -90,10 +90,25 @@ normalized_jq='
                 norm_summary
             )
         };
-'
-
-run1_normalized="$(jq "$normalized_jq" '[.results.detectors[] | normalize]' "$run1_file")"
-run2_keys="$(jq "$normalized_jq" '[.results.detectors[] | normalize.key] | unique' "$run2_file")"
+    [.results.detectors[] | normalize]
+' "$run1_file")"
+run2_keys="$(jq '
+    def norm_summary:
+        (.description // "")
+        | split("\n")[0]
+        | sub(" \\([^)]*#L?[0-9]+(-L?[0-9]+)?\\)"; "")
+        | sub(" \\([^)]*#[0-9]+(-[0-9]+)?\\)"; "");
+    def normalize:
+        {
+            summary: norm_summary,
+            key: (
+                (.check // "") + "|" +
+                ((.first_markdown_element // "") | split("#")[0]) + "|" +
+                norm_summary
+            )
+        };
+    [.results.detectors[] | normalize.key] | unique
+' "$run2_file")"
 
 stable_file="$tmp_dir/stable.json"
 printf '%s' "$run1_normalized" | jq --argjson run2_keys "$run2_keys" '

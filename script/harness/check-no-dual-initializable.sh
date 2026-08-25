@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# check-no-dual-initializable.sh — CI guard for G-11 dual Initializable invariant.
+# check-no-dual-initializable.sh — CI guard for the dual Initializable invariant.
 #
 # Invariant: a single contract MUST NOT inherit both Initializable families:
 #   - custom family: src/common/access/Initializable.sol (slot outrun.storage.Initializable)
@@ -60,7 +60,7 @@ while IFS= read -r -d '' file; do
     has_oz=1
   fi
   if [[ $has_custom -eq 1 && $has_oz -eq 1 ]]; then
-    echo "[check-no-dual-initializable] FAIL: $file mixes custom and OZ Initializable families (G-11)" >&2
+    echo "[check-no-dual-initializable] FAIL: $file mixes custom and OZ Initializable families" >&2
     echo "  custom: $(echo "$body" | grep -Eo "$custom_pattern" | head -n 5 | paste -sd ',' -)" >&2
     echo "  oz: $(echo "$body" | grep -Eo "$oz_pattern" | head -n 5 | paste -sd ',' -)" >&2
     fail=1

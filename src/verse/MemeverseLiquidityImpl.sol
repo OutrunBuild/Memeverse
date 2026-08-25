@@ -367,7 +367,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             treasuryExcess = unusedBootstrapUAsset - credited;
             _safeApprove(uAsset, _polend, unusedBootstrapUAsset);
             IPOLend(_polend).fundSettlementDustReserve(uAsset, unusedBootstrapUAsset);
-            // G-09: clear exact polend allowance after funding (normally consumed, revoke for hygiene).
+            // Clear exact polend allowance after funding (normally consumed, revoke for hygiene).
             if (uAsset != NATIVE) _safeApprove(uAsset, _polend, 0);
         }
         // Emit only when something actually happened: unused uAsset routed, or memecoin burned.
@@ -447,7 +447,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         // is enforced cross-file via ExactInputPartialFill (SettlementFacet.sol::settlementUnlockCallback) — this
         // MIN/MAX is the v4 tick-range safety bound, not a slippage intent.
         uint160 sqrtPriceLimitX96 = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
-        // G-09: use exact allowance for hook settlement (was _safeApproveInf). totalFunds is known.
+        // Use exact allowance for hook settlement (was _safeApproveInf). totalFunds is known.
         if (uAsset != NATIVE) _safeApprove(uAsset, hookAddress, totalFunds);
         // Settlement goes through the hook's dedicated preorder-settlement path so preorder accounting stays isolated from public swap flow.
         BalanceDelta delta = IMemeverseUniswapHook(hookAddress)
@@ -460,7 +460,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
                 recipient: address(this)
             })
             );
-        // G-09: clear exact hook allowance after settlement (no-op if reverted).
+        // Clear exact hook allowance after settlement (no-op if reverted).
         if (uAsset != NATIVE) _safeApprove(uAsset, hookAddress, 0);
 
         uint256 settledMemecoin = _positiveDeltaAmount(

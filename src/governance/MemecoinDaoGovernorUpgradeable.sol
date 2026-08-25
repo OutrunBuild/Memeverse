@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {Bytes} from "@openzeppelin/contracts/utils/Bytes.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {GovernorUpgradeable} from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
@@ -309,9 +310,11 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     }
 
     /// @dev Rejects nested execution and records the operation count so registration confirmation can be limited to
-    ///      a one-operation execution. The registered token list and this Governor's balances are snapshotted before
-    ///      operations run. Afterward, only tokens with `pre > 0` and `post < pre` are checked: `spent = pre - post`
-    ///      and `limit = pre * maxTreasurySpendRatio / 10000`.
+    ///      a one-operation execution. The registered token list is read up front and this Governor's balances are
+    ///      snapshotted before operations run. Any operation approving a registered treasury token may name only the
+    ///      vote token (the paired yield vault, whose deposit path pulls treasury funds) as spender; any other spender
+    ///      reverts the whole execution. Afterward, only tokens with `pre > 0` and `post < pre` are checked:
+    ///      `spent = pre - post` and `limit = pre * maxTreasurySpendRatio / 10000`.
     // slither-disable-next-line dead-code
     function _executeOperations(
         uint256 proposalId,
@@ -348,9 +351,26 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
             );
         }
 
-        // Snapshot registered treasury balances before any proposal action can move them.
+        // Registered treasury token list, read once for both the allowance guard and the balance snapshot.
         (,,, address[] memory treasuryTokens,) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData();
         uint256 treasuryTokenLength = treasuryTokens.length;
+
+        // Allowance-dimension guard: an approve on a registered treasury token prepares a future balance outflow
+        // that the post-execution balance delta cannot see (the allowance moves no balance until a transferFrom
+        // spends it outside any execution check). Only the vote token — the paired yield vault that pulls treasury
+        // funds for its deposit path — is a sanctioned spender; any other spender reverts the whole execution.
+        // Payloads shorter than a full approve call are left to the token's own argument decoding, which reverts.
+        address voteToken = address(token());
+        for (uint256 i = 0; i < targetsLength; ++i) {
+            bytes memory operationCalldata = calldatas[i];
+            // Calldata-shape filter first: only approve-shaped payloads pay the O(N) registration scan.
+            if (operationCalldata.length < 68 || bytes4(operationCalldata) != IERC20.approve.selector) continue;
+            if (!_isRegisteredTreasuryToken(treasuryTokens, targets[i])) continue;
+            (address spender,) = abi.decode(Bytes.slice(operationCalldata, 4, 68), (address, uint256));
+            if (spender != voteToken) revert UnauthorizedTreasuryAllowance(targets[i], spender);
+        }
+
+        // Snapshot registered treasury balances before any proposal action can move them.
         uint256[] memory preBalances = new uint256[](treasuryTokenLength);
         for (uint256 i = 0; i < treasuryTokenLength; ++i) {
             preBalances[i] = IERC20(treasuryTokens[i]).balanceOf(address(this));
@@ -409,5 +429,18 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         if (memecoinDaoGovernorStorage.userUnfinalizedProposalId[proposer] == proposalId) {
             memecoinDaoGovernorStorage.userUnfinalizedProposalId[proposer] = 0;
         }
+    }
+
+    /// @dev Returns whether `candidate` appears in the registered treasury token list.
+    function _isRegisteredTreasuryToken(address[] memory treasuryTokens, address candidate)
+        private
+        pure
+        returns (bool)
+    {
+        uint256 length = treasuryTokens.length;
+        for (uint256 i = 0; i < length; ++i) {
+            if (treasuryTokens[i] == candidate) return true;
+        }
+        return false;
     }
 }

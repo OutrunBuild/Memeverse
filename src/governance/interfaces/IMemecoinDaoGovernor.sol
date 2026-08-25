@@ -96,6 +96,7 @@ interface IMemecoinDaoGovernor {
     error GovernanceNotStarted();
     error InvalidGovernanceParams();
     error TreasurySpendExceedsLimit(address token, uint256 spent, uint256 limit);
+    error UnauthorizedTreasuryAllowance(address token, address spender);
     error UnauthorizedTreasuryTokenRegistration();
     error RegistrationOutsideExecution();
     error RegistrationMustBeStandalone();

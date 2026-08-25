@@ -46,7 +46,6 @@ contract MockPolForPOLendIntegration is MockERC20 {
         _mint(to, amount);
     }
 
-
     function burn(address from, uint256 amount) public override {
         burnedAmount += amount;
         _burn(from, amount);

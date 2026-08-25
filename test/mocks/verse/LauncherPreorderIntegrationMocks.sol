@@ -216,7 +216,6 @@ contract MockIntegrationLiquidProof is MockERC20 {
         peers[eid] = peer;
     }
 
-
     /// @notice Test helper for mint.
     /// @param account See implementation.
     /// @param amount See implementation.

@@ -725,7 +725,6 @@ contract MockLiquidProof is MockERC20 {
         burnedAmount += value;
         super.burn(from, value);
     }
-
 }
 
 contract RefundCallbackToken is MockERC20 {

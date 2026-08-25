@@ -110,5 +110,4 @@ contract MemePolTest is Test {
         (bool success2,) = address(memePol).call(abi.encodeWithSelector(poolIdSelector));
         assertFalse(success2, "poolId getter should not exist after deletion");
     }
-
 }

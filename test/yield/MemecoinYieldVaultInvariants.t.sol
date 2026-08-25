@@ -125,7 +125,7 @@ contract YieldVaultHandler is Test {
         try vault.deposit(amount, who) returns (uint256 shares) {
             ghostAssetsIn[who] += amount;
             // V3: a truly empty vault (S == 0 AND T == 0) mints exactly 1:1. A
-            // residual state (S == 0, T > 0 after full exits, see 04a G-2) legitimately
+            // residual state (S == 0, T > 0 after full exits) legitimately
             // mints fewer, richer shares — only the zero-share lockout is asserted there.
             if (supplyBefore == 0 && assetsBefore == 0) {
                 assertEq(shares, amount, "V3: empty-vault deposit not 1:1");

@@ -137,7 +137,7 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
     ///      guid. A `Released` pair is absorbed as a no-op; structurally invalid payloads (undecodable or
     ///      out-of-range TokenType) and a clean parseable payload naming this dispatcher as its own receiver
     ///      (`receiver == address(this)`) are consumed with `Settled` + `ComposeRejected` and no settlement —
-    ///      shared convergence / hash-binding / self-harm rationale: see `IComposeState`'s @dev note (authoritative).
+    ///      shared convergence / hash-binding / self-harm rationale: see `IComposeState`'s dev note (authoritative).
     ///      F-0026 note: a parseable UASSET→governor frame whose `token` is not yet registered as a treasury
     ///      token (`NonTreasuryToken` in `recordTreasuryIncome`) is intentionally NOT consumed; `_settle`
     ///      reverts and the `Settled` write rolls back to `None`, pinning the endpoint for retry until governance

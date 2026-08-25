@@ -40,11 +40,10 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
     using Address for address;
     using OptionsBuilder for bytes;
 
-    // uint256 public constant DAY = 24 * 3600;
     uint256 public constant DAY = 180; // OutrunTODO 180 seconds for testing
 
     /// @notice Storage layout for the MemeverseRegistrationCenterUpgradeable ERC-7201 namespace.
-    ///         When adding fields in upgrades, append only at the end. Never reorder or insert fields.
+    ///         Append-only layout — see `IMemeverseLauncherStorage`.
     /// @custom:storage-location erc7201:outrun.storage.MemeverseRegistrationCenter
     struct MemeverseRegistrationCenterStorage {
         address memeverseRegistrar;
@@ -242,11 +241,6 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
         _lzSend(dstEid, message, options, fee, refundAddress);
     }
 
-    /**
-     * @notice Omnichain send
-     * @param omnichainIds - The omnichain ids
-     * @param param - The registration parameter
-     */
     function _omnichainSend(uint32[] memory omnichainIds, IMemeverseRegistrar.MemeverseParam memory param) internal {
         bytes memory message = abi.encode(param);
         (uint256 totalFee, uint256[] memory fees, uint32[] memory eids) = quoteSend(omnichainIds, message);
@@ -290,10 +284,6 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
         return OptionsBuilder.newOptions().addExecutorLzReceiveOption(registerGasLimit_, 0);
     }
 
-    /**
-     * @notice Registration parameter validation
-     * @param param - The registration parameter
-     */
     function _registrationParamValidation(RegistrationParam memory param) internal view {
         require(
             param.durationDays >= registrationCenterStorage.minDurationDays
@@ -313,9 +303,6 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
         param.omnichainIds = MemeverseRegistrationLib.deduplicate(omnichainIds);
     }
 
-    /**
-     * @notice Internal function to implement lzReceive logic
-     */
     function _lzReceive(
         Origin calldata _origin,
         bytes32,

@@ -17,12 +17,6 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
     /// @dev Repo invariant: ownership is never renounceable.
     error OwnershipRenounceDisabled();
 
-    /**
-     * @notice Constructor to initialize the MemeverseRegistrar.
-     * @param _owner - The owner of the contract.
-     * @param _memeverseLauncher - Address of memeverseLauncher.
-     * @param _lzEndpointRegistry - Address of LzEndpointRegistry.
-     */
     constructor(address _owner, address _memeverseLauncher, address _lzEndpointRegistry) Ownable(_owner) {
         MEMEVERSE_LAUNCHER = _memeverseLauncher;
         LZ_ENDPOINT_REGISTRY = _lzEndpointRegistry;

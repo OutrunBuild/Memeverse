@@ -27,35 +27,20 @@ import {MemeverseLauncherStorage} from "./interfaces/IMemeverseLauncherStorage.s
 /// @notice Delegatecall-only sibling that owns every liquidity-side flow for MemeverseLauncherUpgradeable: bootstrap
 ///         liquidity deployment, POL minting, auxiliary-liquidity redemption, leveraged auxiliary settlement,
 ///         and memecoin-side liquidity redemption.
-/// @dev Binds the SAME ERC-7201 namespace as the launcher facade
-///      (`erc7201("outrun.storage.MemeverseLauncher")`), so under delegatecall every storage read/write lands
-///      on the launcher proxy's MemeverseLauncherStorage. The sibling has no initializer, no owner, no own
-///      mutable state, and intentionally no `msg.sender == launcher` guard: under delegatecall `msg.sender` is
-///      the facade's original caller (user or POLendUpgradeable), and `address(this)` is the launcher proxy. A direct
-///      (non-delegatecall) call reverts via the inherited `onlyDelegatecall` guard (see `DelegatecallOnly`)
-///      before any storage or router access, so the sibling is explicitly guarded.
-///
-///      Nested types and the Stage enum live in interface IMemeverseLauncher; this sibling only inherits
-///      TokenHelper, so every reference below is qualified as `IMemeverseLauncher.X` (unlike the facade, which
-///      inherits IMemeverseLauncher and uses bare names).
+/// @dev Binds the launcher's ERC-7201 namespace, so under delegatecall `msg.sender` is the facade's
+///      original caller (user or POLendUpgradeable) and `address(this)` is the launcher proxy; no
+///      initializer, owner, or own state, and direct calls revert via the inherited `onlyDelegatecall`
+///      guard. Nested types live in IMemeverseLauncher and are qualified as `IMemeverseLauncher.X` below.
 contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLauncher") is TokenHelper, DelegatecallOnly {
     using PoolIdLibrary for PoolKey;
 
-    /// @dev Same ERC-7201 namespace as the launcher facade; under delegatecall this reads/writes the proxy's
-    ///      MemeverseLauncherStorage. Do NOT add an initializer, owner, or any setter.
     MemeverseLauncherStorage private memeverseLauncherStorage;
 
     // =========================================================================================================
     // Bootstrap liquidity
     // =========================================================================================================
 
-    /**
-     * @notice Bootstrap liquidity entrypoint. Invoked by the MemeverseLauncherUpgradeable facade (via the nested
-     *         delegatecall site `_deployLiquidity`, reached from `MemeverseLaunchImpl.changeStage`) so it
-     *         writes to the proxy's MemeverseLauncherStorage.
-     * @dev Delegatecall-only is enforced by the inherited `onlyDelegatecall` guard (see `DelegatecallOnly`),
-     *      which reverts on direct call before any storage access.
-     */
+    /// See `IMemeverseLiquidityImpl.deployBootstrapLiquidity` for the full facade-facing documentation.
     function deployBootstrapLiquidity(
         uint256 verseId,
         address uAsset,
@@ -84,7 +69,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 mainPoolMemecoinBudget =
             mainPoolUAssetBudget * memeverseLauncherStorage.fundMetaDatas[uAsset].fundBasedAmount;
         _safeApprove(memecoin, swapRouter, mainPoolMemecoinBudget);
-        // hook uAsset allowance is now handled per-settlement in _settlePreorder with exact amount (see G-09).
+        // hook uAsset allowance is now handled per-settlement in _settlePreorder with exact amount.
 
         (uint256 mainPoolUAssetUsed, uint256 polUAssetUsed, uint256 ptUAssetUsed, uint256 burnedMemecoin) = _createBootstrapPools(
             verseId,
@@ -105,7 +90,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 unusedBootstrapUAsset = totalSpent < totalGenesisFunds ? totalGenesisFunds - totalSpent : 0;
         _handleBootstrapResiduals(verseId, uAsset, memecoin, unusedBootstrapUAsset, burnedMemecoin, _polend);
 
-        // G-09 tail revocation: clear residual router allowances after bootstrap (uAsset cross-verse, memecoin per-verse).
+        // Tail revocation: clear residual router allowances after bootstrap (uAsset cross-verse, memecoin per-verse).
         if (uAsset != NATIVE) _safeApprove(uAsset, swapRouter, 0);
         if (memecoin != NATIVE) _safeApprove(memecoin, swapRouter, 0);
     }
@@ -230,7 +215,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
             totalLeveragedDebt
         );
 
-        // G-09: clear residual pol->router allowance after auxiliary pools (pol is per-verse, hygiene).
+        // Clear residual pol->router allowance after auxiliary pools (pol is per-verse, hygiene).
         if (pol != NATIVE) _safeApprove(pol, swapRouter, 0);
     }
 
@@ -295,7 +280,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         (ptUsedForPtPol, polUsedForPtPol) =
             _createPTPOLAuxiliaryPool(verseId, pol, pt, swapRouter, ptForPtPol, plan.polForPtPol);
 
-        // G-09: clear per-verse pol->splitter and pt->router allowances after PT pools.
+        // Clear per-verse pol->splitter and pt->router allowances after PT pools.
         if (pol != NATIVE) _safeApprove(pol, _polSplitter, 0);
         if (pt != NATIVE) _safeApprove(pt, swapRouter, 0);
 
@@ -511,14 +496,9 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
     // POL minting
     // =========================================================================================================
 
-    /**
-     * @notice Collects uAsset/memecoin from the caller, adds liquidity via the verse router, mints POL to the
-     *         caller, and refunds any unused input.
-     * @dev Invoked via delegatecall by the facade's `mintPOLToken`. The facade performs outer validation
-     *      (verseId / pause / input non-zero / stage >= Locked) and reads verse.uAsset / verse.memecoin /
-     *      verse.pol before delegating. Under delegatecall `msg.sender` is the original caller (transfer-in
-     *      payer, POL mint recipient, refund target) and `address(this)` is the launcher proxy.
-     */
+    /// See `IMemeverseLiquidityImpl.mintPOLToken` for the full facade-facing documentation.
+    /// @dev The facade performs outer validation (verseId / pause / input non-zero / stage >= Locked) and
+    ///      reads verse.uAsset / verse.memecoin / verse.pol before delegating.
     function mintPOLToken(
         address uAsset,
         address memecoin,
@@ -643,15 +623,11 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
     // Auxiliary-liquidity redemption + leveraged settlement + memecoin-liquidity redemption
     // =========================================================================================================
 
-    /**
-     * @notice Redeems the caller's post-settlement auxiliary-liquidity share (POL/uAsset, PT/uAsset, PT/POL LP
-     *         plus the caller's normal residual-claim slice).
-     * @dev Invoked via delegatecall by the facade's `redeemAuxiliaryLiquidity`. The facade keeps only the outer
-     *      `versIdValidate` / `whenNotPaused` guards; this sibling owns the `Stage.Unlocked` check, the redemption
-     *      state transition, every token movement, and the `RedeemAuxiliaryLiquidity` emit (the facade emits
-     *      nothing to avoid a double-emit under delegatecall). Under delegatecall
-     *      `msg.sender` is the original caller (LP/residual recipient).
-     */
+    /// See `IMemeverseLiquidityImpl.redeemAuxiliaryLiquidity` for the full facade-facing documentation.
+    /// @dev Redeems POL/uAsset, PT/uAsset, and PT/POL LP plus the caller's normal residual-claim slice.
+    ///      The facade keeps only the outer `versIdValidate` / `whenNotPaused` guards; this sibling owns
+    ///      the `Stage.Unlocked` check, the redemption state transition, every token movement, and the
+    ///      `RedeemAuxiliaryLiquidity` emit.
     function redeemAuxiliaryLiquidity(uint256 verseId)
         external
         onlyDelegatecall
@@ -729,13 +705,11 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         if (ptPolLpAmount != 0) _transferOut(_pairLpToken(pt, pol, swapRouter), recipient, ptPolLpAmount);
     }
 
-    /**
-     * @notice Settles the leveraged auxiliary-liquidity portion on behalf of POLendUpgradeable: removes the leveraged LP
-     *         share, consumes the leveraged residual claims, and forwards all proceeds to POLendUpgradeable.
-     * @dev Invoked via delegatecall by the facade's `settleLeveragedAuxiliaryLiquidity`. The facade keeps the
-     *      `msg.sender == polend` + `Stage.Unlocked` guards on the public ABI; under delegatecall `msg.sender`
-     *      here is POLendUpgradeable (the trusted caller). No outer `whenNotPaused` (mirrors the facade).
-     */
+    /// See `IMemeverseLiquidityImpl.settleLeveragedAuxiliaryLiquidity` for the full facade-facing documentation.
+    /// @dev Removes the leveraged LP share, consumes the leveraged residual claims, and forwards all
+    ///      proceeds to POLendUpgradeable. The facade keeps the `msg.sender == polend` + `Stage.Unlocked`
+    ///      guards on the public ABI; under delegatecall `msg.sender` here is POLendUpgradeable (the
+    ///      trusted caller). No outer `whenNotPaused` (mirrors the facade).
     function settleLeveragedAuxiliaryLiquidity(uint256 verseId)
         external
         onlyDelegatecall
@@ -864,21 +838,13 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         claims.leveragedResidualPT = 0;
     }
 
-    /**
-     * @notice Redeems launcher-managed memecoin-side LP using POL, optionally unwrapping the LP into underlying
-     *         assets through the verse router.
-     * @dev Invoked via delegatecall by the facade's `redeemMemecoinLiquidity`. The facade keeps the outer
-     *      `versIdValidate` + `Stage.Unlocked` guards (and intentionally omits `whenNotPaused`); this sibling owns
-     *      the input-non-zero check, POL burn, LP balance check, and unwrap/transfer. POLendUpgradeable also reaches this
-     *      entry through the facade callback ABI. Under delegatecall `msg.sender` is the original caller (POL
-     *      burner, LP/refund recipient). The 1:1 LP amount equals the burned POL amount by main-pool construction.
-     *      The POL burn is executed by the launcher proxy on the caller's behalf: callers must first approve the
-     *      launcher proxy as a POL spender for at least `amountInPOL`, or POL's `_spendAllowance` reverts with
-     *      `ERC20InsufficientAllowance`.
-     *      Deprecated: the 3-arg overload keeps zero-slippage unwrap which is sandwichable after the protection
-     *      window. New callers must use the 6-arg overload with `amount0Min`/`amount1Min`/`deadline`.
-     *      This overload now reverts on `unwrap==true` to force migration to the slippage-protected path.
-     */
+    /// See `IMemeverseLiquidityImpl.redeemMemecoinLiquidity` for the full facade-facing documentation.
+    /// @dev The facade keeps the outer `versIdValidate` + `Stage.Unlocked` guards (and intentionally omits
+    ///      `whenNotPaused`); this sibling owns the input-non-zero check, POL burn, LP balance check, and
+    ///      unwrap/transfer. The 1:1 LP amount equals the burned POL amount by main-pool construction.
+    ///      Deprecated: the 3-arg overload keeps zero-slippage unwrap which is sandwichable after the protection
+    ///      window. New callers must use the 6-arg overload with `amount0Min`/`amount1Min`/`deadline`.
+    ///      This overload now reverts on `unwrap==true` to force migration to the slippage-protected path.
     function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool unwrap)
         external
         onlyDelegatecall
@@ -903,21 +869,10 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         _transferOut(lpToken, msg.sender, amountInLP);
     }
 
-    /**
-     * @notice Redeems launcher-managed memecoin-side LP using POL, optionally unwrapping the LP into underlying
-     *         assets through the verse router with slippage protection.
-     * @dev Invoked via delegatecall by the facade's slippage-protected `redeemMemecoinLiquidity`. The facade keeps the outer
-     *      `versIdValidate` + `Stage.Unlocked` guards (and intentionally omits `whenNotPaused`); this sibling owns
-     *      the input-non-zero check, POL burn, LP balance check, and unwrap/transfer. Under delegatecall `msg.sender`
-     *      is the original caller (POL burner, LP/refund recipient). When `unwrap` is true, `amount0Min`/`amount1Min`/`deadline`
-     *      are forwarded to the router for slippage protection; when `unwrap` is false they are ignored.
-     * @param verseId Memeverse id.
-     * @param amountInPOL POL amount to burn (1:1 with LP).
-     * @param unwrap Whether to unwrap LP into underlying assets.
-     * @param amount0Min Minimum currency0 output when unwrapping.
-     * @param amount1Min Minimum currency1 output when unwrapping.
-     * @param deadline Latest timestamp for the unwrap removal.
-     */
+    /// See `IMemeverseLiquidityImpl.redeemMemecoinLiquidity` for the full facade-facing documentation.
+    /// @dev The facade keeps the outer `versIdValidate` + `Stage.Unlocked` guards (and intentionally omits
+    ///      `whenNotPaused`); this sibling owns the input-non-zero check, POL burn, LP balance check, and
+    ///      unwrap/transfer.
     function redeemMemecoinLiquidity(
         uint256 verseId,
         uint256 amountInPOL,

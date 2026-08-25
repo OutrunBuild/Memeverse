@@ -9,28 +9,24 @@ interface IMemeverseSettlementImpl {
     /// @notice Refund the caller's uAsset genesis contribution after a verse resolved to `Stage.Refund`.
     /// @dev Invoked via delegatecall by the facade's `refund`. Under delegatecall `msg.sender` is the
     ///      original caller (refund recipient) and `address(this)` is the launcher proxy.
-    /// @param verseId Memeverse id.
     /// @return genesisFund The refunded genesis contribution amount.
     function refund(uint256 verseId) external returns (uint256 genesisFund);
 
     /// @notice Refund the caller's uAsset preorder contribution after a verse resolved to `Stage.Refund`.
     /// @dev Invoked via delegatecall by the facade's `refundPreorder`. Under delegatecall `msg.sender` is
     ///      the original caller (refund recipient) and `address(this)` is the launcher proxy.
-    /// @param verseId Memeverse id.
     /// @return preorderFund The refunded preorder contribution amount.
     function refundPreorder(uint256 verseId) external returns (uint256 preorderFund);
 
     /// @notice Claim the caller's normal YT (Yield Token) share after Genesis resolves to `Locked`.
     /// @dev Invoked via delegatecall by the facade's `claimNormalYT`. Under delegatecall `msg.sender` is
     ///      the original caller (YT recipient) and `address(this)` is the launcher proxy.
-    /// @param verseId Memeverse id.
     /// @return amount The claimed YT amount.
     function claimNormalYT(uint256 verseId) external returns (uint256 amount);
 
     /// @notice Claim the caller's accumulated uAsset and PT normal-fee entitlements.
     /// @dev Invoked via delegatecall by the facade's `claimNormalFees`. Under delegatecall `msg.sender`
     ///      is the original caller (fee recipient) and `address(this)` is the launcher proxy.
-    /// @param verseId Memeverse id.
     /// @return uAssetAmount The claimed uAsset fee amount.
     /// @return ptAmount The PT fee amount: transferred PT, or zero when redeemed to uAsset in place;
     ///      on the settled zero-backing dust path it reports the still-pending PT entitlement.
@@ -41,7 +37,6 @@ interface IMemeverseSettlementImpl {
     ///      `msg.sender` is the original caller (memecoin recipient) and `address(this)` is the launcher
     ///      proxy. Uses the shared `MemeverseLauncherLib.claimablePreorderMemecoinForAccount` helper so the
     ///      view and the claim path cannot drift.
-    /// @param verseId Memeverse id.
     /// @return amount The claimed preorder memecoin amount.
     function claimUnlockedPreorderMemecoin(uint256 verseId) external returns (uint256 amount);
 
@@ -49,7 +44,6 @@ interface IMemeverseSettlementImpl {
     /// @dev Invoked via delegatecall by the facade's `redeemAndDistributeFees`. `msg.value` is the
     ///      caller-supplied LayerZero native fee and is preserved across the delegatecall, hence `payable`.
     ///      Under delegatecall `msg.sender` is the facade's caller (arbitrary executor + refund target).
-    /// @param verseId Memeverse id.
     /// @param rewardReceiver Receiver of the executor reward.
     /// @param polSplitter The launcher's configured POLSplitterUpgradeable address (forwarded by the facade).
     /// @return govFee The distributed governor fee amount.
@@ -69,7 +63,6 @@ interface IMemeverseSettlementImpl {
     ///      owns the `ChangeStage` emit; this entry performs the state transition only. Under delegatecall
     ///      `msg.sender` is the facade's caller (arbitrary stage advancer) and `address(this)` is the
     ///      launcher proxy.
-    /// @param verseId Memeverse id.
     /// @param polSplitter The launcher's configured POLSplitterUpgradeable address (forwarded by the facade).
     /// @param hook The launcher's configured MemeverseUniswapHookUpgradeable address (forwarded by the facade).
     function unlockFromLocked(uint256 verseId, address polSplitter, address hook) external;

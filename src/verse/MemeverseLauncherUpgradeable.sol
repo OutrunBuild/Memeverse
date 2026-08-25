@@ -25,6 +25,13 @@ import {MemeverseLauncherLib} from "./libraries/MemeverseLauncherLib.sol";
  *      the boolean-based guard. The exception is `changeStage`, which omits it because the
  *      Locked→Unlocked transition triggers cross-contract callbacks (`IPOLSplitter.settle`,
  *      `IPOLend.executeGlobalSettlement`) that must be able to re-enter the launcher.
+ *
+ *      Delegatecall model: the state-changing entrypoints delegatecall into the launch / settlement /
+ *      liquidity siblings, which run in this proxy's context — under delegatecall `msg.sender` is the
+ *      original caller and `address(this)` is the launcher proxy. The siblings own the business logic
+ *      and the event emits, so those facade entries emit nothing (emitting here too would double-emit
+ *      under delegatecall). Only `redeemAndDistributeFees`, `mintPOLToken`, `removeGasDust`, and the
+ *      config setters emit directly on the facade.
  */
 contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.MemeverseLauncher")
     is
@@ -272,7 +279,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     /**
      * @notice Preview claimable preorder memecoin of caller after preorder settlement.
      * @dev Uses the caller's stored preorder purchase and claim data as the claim basis.
-     * @param verseId Memeverse id.
      * @return amount The currently claimable preorder memecoin amount.
      */
     function claimablePreorderMemecoin(uint256 verseId) public view override returns (uint256 amount) {
@@ -284,7 +290,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
      * @dev Capacity is computed from current memecoin-side genesis funds and the configured cap ratio.
      *      Routed through `MemeverseLauncherLib.preorderMaxCapacity` so the cap cannot drift from the
      *      launch sibling's preorder path, which uses the same helper.
-     * @param verseId Memeverse id.
      * @return remaining The remaining preorder uAsset capacity.
      */
     function previewPreorderCapacity(uint256 verseId) public view override returns (uint256 remaining) {
@@ -307,8 +312,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         whenNotPaused
     {
         // Delegatecall launch sibling: it enforces the stage/cap checks, updates accounting, transfers uAsset
-        // in, AND emits Genesis. Facade emits nothing to avoid a double-emit under delegatecall (the sibling's
-        // emit writes through this proxy's storage/code).
+        // in, AND emits Genesis.
         address impl = memeverseLauncherStorage.launchImpl;
         require(impl != address(0), LaunchImplNotSet());
         impl.functionDelegateCall(
@@ -319,7 +323,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     /**
      * @notice Deposit uAsset into the preorder pool during Genesis.
      * @dev The preorder pool is capped relative to the current memecoin-side genesis funds.
-     * @param verseId Memeverse id.
      * @param amountInUAsset Amount of uAsset.
      * @param user Address of user participating in preorder.
      */
@@ -330,7 +333,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         whenNotPaused
     {
         // Delegatecall launch sibling: it enforces the stage/capacity checks, updates accounting, transfers
-        // uAsset in, AND emits Preorder. Facade emits nothing to avoid a double-emit under delegatecall.
+        // uAsset in, AND emits Preorder.
         address impl = memeverseLauncherStorage.launchImpl;
         require(impl != address(0), LaunchImplNotSet());
         impl.functionDelegateCall(
@@ -342,9 +345,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
      * @notice Atomically contribute uAsset to genesis then preorder for the same `user` in one transaction.
      * @dev Eliminates the two-tx race where a standalone `preorder` could be front-run and fill the capacity
      *      the standalone `genesis` just opened. Thin delegatecall to the launch sibling, which runs both legs
-     *      and emits `Genesis` and `Preorder`; the facade emits nothing (avoiding a double-emit under
-     *      delegatecall).
-     * @param verseId Memeverse id.
+     *      and emits `Genesis` and `Preorder`.
      * @param genesisAmount uAsset contributed to the genesis pool (enlarges the preorder base).
      * @param preorderAmount uAsset contributed to the preorder pool.
      * @param user Address credited for both the genesis and the preorder participation.
@@ -364,10 +365,10 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         );
     }
 
-    /// @notice Adaptively advance the verse stage (Genesis -> Locked/Refund, Locked -> Unlocked).
+    /// @inheritdoc IMemeverseLauncher
     /// @dev Delegatecalls the launch sibling, which owns the eligibility checks, stage transition, nested
     ///      delegatecalls into the liquidity/settlement siblings, and the `ChangeStage` emit. The facade keeps
-    ///      only the outer `versIdValidate` guard and emits nothing (avoiding a double-emit under delegatecall).
+    ///      only the outer `versIdValidate` guard.
     ///      Intentionally omits `whenNotPaused` (refund/settlement must remain executable during a pause) and
     ///      `nonReentrant` (the Locked->Unlocked transition relies on cross-contract callbacks from
     ///      `IPOLSplitter.settle` / `IPOLend.executeGlobalSettlement` that must re-enter the launcher).
@@ -384,13 +385,10 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     /**
      * @notice Refund uAsset after genesis failed because the omnichain funds did not meet the minimum requirement.
      * @dev Marks the caller as refunded before transferring funds out.
-     * @param verseId - Memeverse id
      * @return genesisFund - The refunded genesis contribution amount.
      */
     function refund(uint256 verseId) external override versIdValidate(verseId) returns (uint256 genesisFund) {
         // Delegatecall sibling: it validates stage / claim eligibility, transfers uAsset, AND emits Refund.
-        // Facade emits nothing to avoid a double-emit under delegatecall (the sibling's emit writes through
-        // this proxy's storage/code).
         address impl = memeverseLauncherStorage.settlementImpl;
         require(impl != address(0), SettlementImplNotSet());
         genesisFund = abi.decode(
@@ -402,12 +400,10 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     /**
      * @notice Refund uAsset after preorder became invalid because Genesis failed.
      * @dev Marks the caller as refunded before transferring funds out.
-     * @param verseId Memeverse id.
      * @return preorderFund The refunded preorder contribution amount.
      */
     function refundPreorder(uint256 verseId) external override versIdValidate(verseId) returns (uint256 preorderFund) {
         // Delegatecall sibling: it validates stage / claim eligibility, transfers uAsset, AND emits RefundPreorder.
-        // Facade emits nothing to avoid a double-emit under delegatecall.
         address impl = memeverseLauncherStorage.settlementImpl;
         require(impl != address(0), SettlementImplNotSet());
         preorderFund = abi.decode(
@@ -421,7 +417,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     /**
      * @notice Claim the caller's share of normal YT (Yield Token) after Genesis stage resolves to Locked.
      * @dev Reads only pre-committed `totalNormalClaimableYT` and the one-shot `normalYTClaimed` flag.
-     * @param verseId Memeverse id.
      * @return amount The claimed YT amount.
      */
     function claimNormalYT(uint256 verseId)
@@ -432,7 +427,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         returns (uint256 amount)
     {
         // Delegatecall sibling: it validates stage / claim eligibility, transfers YT, AND emits ClaimNormalYT.
-        // Facade emits nothing to avoid a double-emit under delegatecall.
         address impl = memeverseLauncherStorage.settlementImpl;
         require(impl != address(0), SettlementImplNotSet());
         amount = abi.decode(
@@ -446,10 +440,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
      * @dev Reads pre-committed `feeState.accUAssetFee` and `feeState.accPTFee` accumulators.
      *      Uses CEI pattern (commit `claimedXxx` before external calls)
      *      to prevent double-claim; the trust boundary is the configured POLSplitterUpgradeable.
-     * @param verseId Memeverse id.
      * @return uAssetAmount The claimed uAsset fee amount.
-     * @return ptAmount The PT fee amount: transferred PT, or zero when redeemed to uAsset in place;
-     *      on the settled zero-backing dust path it reports the still-pending PT entitlement.
      */
     function claimNormalFees(uint256 verseId)
         external
@@ -459,7 +450,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         returns (uint256 uAssetAmount, uint256 ptAmount)
     {
         // Delegatecall sibling: it validates stage / claim eligibility, transfers uAsset/PT, AND emits
-        // ClaimNormalFees. Facade emits nothing to avoid a double-emit under delegatecall.
+        // ClaimNormalFees.
         address impl = memeverseLauncherStorage.settlementImpl;
         require(impl != address(0), SettlementImplNotSet());
         (uAssetAmount, ptAmount) = abi.decode(
@@ -478,8 +469,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         returns (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount)
     {
         // Delegatecall sibling: it enforces the Unlocked stage, reads genesis fund / auxiliary liquidity state,
-        // transfers LP + residual claims, AND emits RedeemAuxiliaryLiquidity. Facade emits nothing to avoid
-        // a double-emit under delegatecall (the sibling's emit writes through this proxy's storage/code).
+        // transfers LP + residual claims, AND emits RedeemAuxiliaryLiquidity.
         address impl = memeverseLauncherStorage.liquidityImpl;
         require(impl != address(0), LiquidityImplNotSet());
         (polUAssetLpAmount, ptUAssetLpAmount, ptPolLpAmount) = abi.decode(
@@ -516,7 +506,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
      * @notice Claim unlocked preorder memecoin after preorder settlement.
      * @dev Transfers the caller's currently vested preorder memecoin balance.
      *      Reads only pre-committed `claimablePreorderMemecoin` and the cumulative `claimedMemecoin` counter.
-     * @param verseId Memeverse id.
      * @return amount The claimed preorder memecoin amount.
      */
     function claimUnlockedPreorderMemecoin(uint256 verseId)
@@ -527,7 +516,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         returns (uint256 amount)
     {
         // Delegatecall sibling: it computes the vested amount (via the shared lib helper), transfers memecoin,
-        // AND emits ClaimPreorderMemecoin. Facade emits nothing to avoid a double-emit under delegatecall.
+        // AND emits ClaimPreorderMemecoin.
         address impl = memeverseLauncherStorage.settlementImpl;
         require(impl != address(0), SettlementImplNotSet());
         amount = abi.decode(
@@ -540,7 +529,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
 
     /**
      * @dev Redeem transaction fees and distribute them to the owner(uAsset) and vault(Memecoin)
-     * @param verseId - Memeverse id
      * @param rewardReceiver - Address of executor reward receiver
      * @return govFee - The uAsset-side gov fee.
      * @return memecoinFee - The memecoin fee.
@@ -602,7 +590,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
 
         // Delegatecall sibling: it burns the caller's POL, transfers/removes LP, AND emits
-        // RedeemMemecoinLiquidity. Facade emits nothing to avoid a double-emit under delegatecall.
+        // RedeemMemecoinLiquidity.
         address impl = memeverseLauncherStorage.liquidityImpl;
         require(impl != address(0), LiquidityImplNotSet());
         amountInLP = abi.decode(
@@ -619,7 +607,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     ///         with slippage protection. Approve this launcher proxy as a POL spender first.
     /// @dev Intentionally omits `whenNotPaused` for the same reason as the 3-arg overload. When `unwrap` is true,
     ///      `amount0Min`/`amount1Min`/`deadline` protect the underlying `removeLiquidity` against sandwich price movement.
-    /// @param verseId Memeverse id.
     /// @param amountInPOL POL amount to burn.
     /// @param unwrap Whether to unwrap LP into underlying assets.
     /// @param amount0Min Minimum currency0 output when unwrapping (ignored when unwrap is false).
@@ -637,7 +624,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         require(verse.currentStage == Stage.Unlocked, NotUnlockedStage());
 
         // Delegatecall sibling: it burns the caller's POL, transfers/removes LP, AND emits
-        // RedeemMemecoinLiquidity. Facade emits nothing to avoid a double-emit under delegatecall.
+        // RedeemMemecoinLiquidity.
         address impl = memeverseLauncherStorage.liquidityImpl;
         require(impl != address(0), LiquidityImplNotSet());
         amountInLP = abi.decode(
@@ -662,7 +649,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
      * `uAsset` and memecoin amounts it consumed. When `amountOutDesired != 0`, the launcher first asks the router
      * for the exact token amounts required for the target LP liquidity and then calls the detailed add-liquidity
      * entrypoint so the minted LP amount still fails closed if execution can no longer reach the requested output.
-     * @param verseId Memeverse id.
      * @param amountInUAssetDesired Maximum uAsset budget transferred into the launcher.
      * @param amountInMemecoinDesired Maximum memecoin budget transferred into the launcher.
      * @param amountInUAssetMin Minimum uAsset spend accepted by the router in auto-liquidity mode.
@@ -732,9 +718,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         bool flashGenesis
     ) external override whenNotPaused {
         // Delegatecall launch sibling: it enforces the registrar ACL, deploys memecoin/POL, wires LayerZero
-        // peers, stores the verse config, registers the POLendUpgradeable market, AND emits RegisterMemeverse. Facade
-        // emits nothing to avoid a double-emit under delegatecall. Under delegatecall `msg.sender` is the
-        // original caller (must equal `memeverseRegistrar`) and `address(this)` is the launcher proxy.
+        // peers, stores the verse config, registers the POLendUpgradeable market, AND emits RegisterMemeverse.
         address impl = memeverseLauncherStorage.launchImpl;
         require(impl != address(0), LaunchImplNotSet());
         impl.functionDelegateCall(
@@ -796,11 +780,7 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
 
     /// @notice Set the MemeverseSettlementImpl sibling address used to run fee collection and distribution.
     /// @dev Only callable by the owner. `redeemAndDistributeFees` and the Locked->Unlocked branch of
-    ///      `changeStage` delegatecall this sibling, so a zero address would delegatecall into address(0)
-    ///      and burn the call; reject it explicitly here. When rotating (not initial wiring), the new
-    ///      implementation must inherit `DelegatecallOnly`, match the `IMemeverseSettlementImpl` ABI, and
-    ///      keep the shared `outrun.storage.MemeverseLauncher` storage layout; these are owner responsibilities —
-    ///      none of that is checkable on-chain.
+    ///      `changeStage` delegatecall this sibling. Rotation rules otherwise identical to `setLaunchImpl`.
     /// @param impl The MemeverseSettlementImpl sibling address.
     function setSettlementImpl(address impl) external override onlyOwner {
         require(impl != address(0), ZeroInput());
@@ -819,11 +799,8 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     }
 
     /// @notice Set the MemeverseLiquidityImpl sibling implementation invoked via delegatecall for POL minting.
-    /// @dev Only callable by the owner. `mintPOLToken` delegatecalls this sibling, so a zero address
-    ///      would delegatecall into address(0) and burn the call; reject it explicitly here. When rotating
-    ///      (not initial wiring), the new implementation must inherit `DelegatecallOnly`, match the
-    ///      `IMemeverseLiquidityImpl` ABI, and keep the shared `outrun.storage.MemeverseLauncher` storage
-    ///      layout; these are owner responsibilities — none of that is checkable on-chain.
+    /// @dev Only callable by the owner. `mintPOLToken` delegatecalls this sibling. Rotation rules otherwise
+    ///      identical to `setLaunchImpl`.
     /// @param impl The MemeverseLiquidityImpl sibling address.
     function setLiquidityImpl(address impl) external override onlyOwner {
         require(impl != address(0), ZeroInput());
@@ -1005,7 +982,6 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     /**
      * @notice Set external metadata for a memeverse.
      * @dev Callable by the verse governor or the registrar.
-     * @param verseId - Memeverse id
      * @param uri - IPFS URI of memecoin icon
      * @param description - Description
      * @param communities - Community(Website, X, Discord, Telegram and Others)

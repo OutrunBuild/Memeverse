@@ -139,7 +139,7 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     /// @dev Permissionless: anyone may call, but the beneficiary is decoded from `message` and cannot be tampered with.
     ///      Delivery and authenticity are proven via the shared `OFTComposeSettleVerify.verifySettle` against the
     ///      endpoint's public `composeQueue` (three-state queue semantics — zero / RECEIVED_MESSAGE_HASH /
-    ///      keccak256(message) — see `OFTComposeSettleVerify`'s @dev note).
+    ///      keccak256(message) — see `OFTComposeSettleVerify`'s dev note).
     ///      Guards against double resolution with the same `composeStates` mutex used by `lzCompose`.
     ///      All checks run before any state change or state-changing external call (CEI), and the mutex is advanced to `Released`
     ///      before settlement. Settlement is identical to `_settle`: a no-code receiver splits by `tokenType` — a MEMECOIN

@@ -130,14 +130,11 @@ contract MemeverseFeePreviewReader is IMemeverseFeePreviewReader {
         (uint256 pendingUAssetFee, uint256 pendingPTFee) =
             IMemeverseLauncher(PROXY).pendingAuxiliaryGovFeeStates(verseId);
 
-        // Preview live auxiliary fees from POL/uAsset and PT/uAsset pools
         (uint256 auxUAssetFee, uint256 auxPTFee) = _previewAuxiliaryGovFees(verseId, verse, pt, swapRouter);
 
-        // Merge pending accumulated fees with live preview
         govUAssetFee = pendingUAssetFee + auxUAssetFee;
         govPTFee = pendingPTFee + auxPTFee;
 
-        // Convert PT-denominated fee to uAsset so the caller can add it directly
         if (govPTFee != 0) {
             govPTFee = IPOLSplitter(polSplitter).previewPTToUAsset(verseId, govPTFee);
         }

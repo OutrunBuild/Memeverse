@@ -24,27 +24,18 @@ import {IMemeverseSettlementImpl} from "./interfaces/IMemeverseSettlementImpl.so
 ///         registration (memecoin/POL deploy, LayerZero peer wiring, verse config storage), genesis and
 ///         preorder deposits, and the adaptive `changeStage` dispatcher (Genesis -> Locked/Refund,
 ///         Locked -> Unlocked).
-/// @dev Binds the SAME ERC-7201 namespace as the launcher facade
-///      (`erc7201("outrun.storage.MemeverseLauncher")`), so under delegatecall every storage read/write lands
-///      on the launcher proxy's MemeverseLauncherStorage. The sibling has no initializer, no owner, no own
-///      mutable state, and intentionally no `msg.sender == launcher` guard: under delegatecall `msg.sender`
-///      is the facade's original caller (registrar, genesis/preorder depositor, or stage advancer) and
-///      `address(this)` is the launcher proxy. ACL that must travel with the call (e.g. the
-///      `msg.sender == memeverseRegistrar` check in `registerMemeverse`) stays in the body and resolves
-///      correctly under delegatecall. The facade keeps the outer `versIdValidate` / `whenNotPaused` guards
-///      and re-applies them before delegatecalling, so this sibling does NOT re-apply them. A direct
-///      (non-delegatecall) call reverts via the inherited `onlyDelegatecall` guard (see `DelegatecallOnly`)
-///      before any storage access, so the sibling is explicitly guarded.
-///
-///      Nested types (Memeverse, Stage, PreorderState, FundMetaData, GenesisData, PreorderData) and the
-///      errors live in interface IMemeverseLauncher; this sibling only inherits TokenHelper, so every
-///      reference below is qualified as `IMemeverseLauncher.X` (unlike the facade, which inherits
-///      IMemeverseLauncher and uses bare names).
+/// @dev Binds the launcher's ERC-7201 namespace, so under delegatecall `msg.sender` is the facade's
+///      original caller (registrar, genesis/preorder depositor, or stage advancer) and `address(this)`
+///      is the launcher proxy; no initializer, owner, or own state, and direct calls revert via the
+///      inherited `onlyDelegatecall` guard. Nested types live in IMemeverseLauncher and are qualified
+///      as `IMemeverseLauncher.X` below.
+///      ACL that must travel with the call (e.g. the `msg.sender == memeverseRegistrar` check in
+///      `registerMemeverse`) stays in the body and resolves correctly under delegatecall. The facade
+///      keeps the outer `versIdValidate` / `whenNotPaused` guards and re-applies them before
+///      delegatecalling, so this sibling does NOT re-apply them.
 contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher") is TokenHelper, DelegatecallOnly {
     using Address for address;
 
-    /// @dev Same ERC-7201 namespace as the launcher facade; under delegatecall this reads/writes the proxy's
-    ///      MemeverseLauncherStorage. Do NOT add an initializer, owner, or any setter.
     MemeverseLauncherStorage private memeverseLauncherStorage;
 
     // =========================================================================================================
@@ -53,13 +44,9 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
     // in the body because it travels correctly under delegatecall).
     // =========================================================================================================
 
-    /**
-     * @notice Register a new memeverse: deploy memecoin/POL, wire LayerZero peers, store verse config.
-     * @dev Invoked via delegatecall by the facade's `registerMemeverse`. The facade keeps the outer
-     *      `whenNotPaused` guard; this sibling owns the registrar ACL, fund-metadata validation, token
-     *      deploy, LayerZero peer wiring, verse storage, and emit. Under delegatecall `msg.sender` is the
-     *      original caller (must equal `memeverseRegistrar`).
-     */
+    /// See `IMemeverseLaunchImpl.registerMemeverse` for the full facade-facing documentation.
+    /// @dev The facade keeps the outer `whenNotPaused` guard; this sibling owns the registrar ACL,
+    ///      fund-metadata validation, token deploy, LayerZero peer wiring, verse storage, and emit.
     function registerMemeverse(
         string calldata name,
         string calldata symbol,
@@ -166,12 +153,9 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
     // `versIdValidate` / `whenNotPaused` modifiers moved back to the facade).
     // =========================================================================================================
 
-    /**
-     * @notice Deposit uAsset into the genesis pool on behalf of `user`.
-     * @dev Invoked via delegatecall by the facade's `genesis`. The facade keeps the outer `versIdValidate`
-     *      + `whenNotPaused` guards; this sibling owns the stage check, cap check, accounting update,
-     *      transfer-in, and emit. Under delegatecall `msg.sender` is the original caller (transfer-in payer).
-     */
+    /// See `IMemeverseLaunchImpl.genesis` for the full facade-facing documentation.
+    /// @dev The facade keeps the outer `versIdValidate` + `whenNotPaused` guards; this sibling owns the
+    ///      stage check, cap check, accounting update, transfer-in, and emit.
     function genesis(uint256 verseId, uint256 amountInUAsset, address user) external onlyDelegatecall {
         _genesis(verseId, amountInUAsset, user);
     }
@@ -204,15 +188,11 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         emit IMemeverseLauncher.Genesis(verseId, msg.sender, user, amountInUAsset);
     }
 
-    /**
-     * @notice Deposit uAsset into the preorder pool during Genesis.
-     * @dev Invoked via delegatecall by the facade's `preorder`. The facade keeps the outer `versIdValidate`
-     *      + `whenNotPaused` guards; this sibling owns the stage check, capacity check (via the shared
-     *      `MemeverseLauncherLib.preorderMaxCapacity` helper so the cap cannot drift from the facade view),
-     *      accounting update, transfer-in, and emit. Under delegatecall `msg.sender` is the original caller
-     *      (transfer-in payer). The preorder pool is capped relative to the current memecoin-side genesis
-     *      funds.
-     */
+    /// See `IMemeverseLaunchImpl.preorder` for the full facade-facing documentation.
+    /// @dev The facade keeps the outer `versIdValidate` + `whenNotPaused` guards; this sibling owns the
+    ///      stage check, capacity check (via the shared `MemeverseLauncherLib.preorderMaxCapacity` helper
+    ///      so the cap cannot drift from the facade view), accounting update, transfer-in, and emit. The
+    ///      preorder pool is capped relative to the current memecoin-side genesis funds.
     function preorder(uint256 verseId, uint256 amountInUAsset, address user) external onlyDelegatecall {
         _preorder(verseId, amountInUAsset, user);
     }
@@ -244,16 +224,13 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         emit IMemeverseLauncher.Preorder(verseId, msg.sender, user, amountInUAsset);
     }
 
-    /**
-     * @notice Atomically contribute uAsset to genesis then preorder for the same `user` in one transaction.
-     * @dev Invoked via delegatecall by the facade's `genesisAndPreorder`. Runs `_genesis` first (which writes
-     *      `totalNormalFunds` before returning) so the subsequent `_preorder` capacity check sees the enlarged
-     *      base, letting the same payer secure preorder capacity the genesis top-up just opened. Both helpers
-     *      re-check the Genesis stage and emit their own events. If `_preorder` reverts (e.g. the preorder
-     *      amount exceeds the enlarged cap), the whole transaction reverts, so genesis accounting and the
-     *      uAsset transfer-in never partially apply. Under delegatecall `msg.sender` is the original caller
-     *      (transfer-in payer for both legs).
-     */
+    /// See `IMemeverseLaunchImpl.genesisAndPreorder` for the full facade-facing documentation.
+    /// @dev Runs `_genesis` first (which writes `totalNormalFunds` before returning) so the subsequent
+    ///      `_preorder` capacity check sees the enlarged base, letting the same payer secure preorder
+    ///      capacity the genesis top-up just opened. Both helpers re-check the Genesis stage and emit
+    ///      their own events. If `_preorder` reverts (e.g. the preorder amount exceeds the enlarged cap),
+    ///      the whole transaction reverts, so genesis accounting and the uAsset transfer-in never
+    ///      partially apply.
     function genesisAndPreorder(uint256 verseId, uint256 genesisAmount, uint256 preorderAmount, address user)
         external
         onlyDelegatecall
@@ -275,20 +252,14 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
     // the call runs in the proxy context.
     // =========================================================================================================
 
-    /**
-     * @notice Adaptively advance the verse stage (Genesis -> Locked/Refund, Locked -> Unlocked).
-     * @dev Invoked via delegatecall by the facade's `changeStage`. The facade keeps the outer `versIdValidate`
-     *      guard; this sibling owns the eligibility checks, the stage transition, the nested delegatecalls
-     *      into the liquidity and settlement siblings, and the `ChangeStage` emit. Under delegatecall
-     *      `msg.sender` is the facade's caller (arbitrary stage advancer) and `address(this)` is the
-     *      launcher proxy.
-     *      Ordering invariant (reentrancy-critical): in the Genesis->Locked branch `verse.currentStage =
-     *      Stage.Locked` is written BEFORE `_deployAndSetupMemeverse`, which performs external token deploys
-     *      and router calls; the reentrancy test depends on observing the Locked stage during these calls.
-     *      Intentionally omits `whenNotPaused` and `nonReentrant` (mirrors the facade): settlement flows must
-     *      stay executable during a pause, and the Locked->Unlocked transition relies on cross-contract
-     *      callbacks (`IPOLSplitter.settle`, `IPOLend.executeGlobalSettlement`) that must re-enter the launcher.
-     */
+    /// See `IMemeverseLaunchImpl.changeStage` for the full facade-facing documentation.
+    /// @dev The facade keeps the outer `versIdValidate` guard; this sibling owns the eligibility checks.
+    ///      Ordering invariant (reentrancy-critical): in the Genesis->Locked branch `verse.currentStage =
+    ///      Stage.Locked` is written BEFORE `_deployAndSetupMemeverse`, which performs external token deploys
+    ///      and router calls; the reentrancy test depends on observing the Locked stage during these calls.
+    ///      Intentionally omits `whenNotPaused` and `nonReentrant` (mirrors the facade): settlement flows must
+    ///      stay executable during a pause, and the Locked->Unlocked transition relies on cross-contract
+    ///      callbacks (`IPOLSplitter.settle`, `IPOLend.executeGlobalSettlement`) that must re-enter the launcher.
     function changeStage(uint256 verseId) external onlyDelegatecall returns (IMemeverseLauncher.Stage currentStage) {
         require(verseId != 0, IMemeverseLauncher.ZeroInput());
         uint256 currentTime = block.timestamp;

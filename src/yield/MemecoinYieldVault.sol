@@ -79,10 +79,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return "mode=timestamp";
     }
 
-    /// @notice Preview how many vault shares a deposit would mint at the current rate.
-    /// @dev Does not transfer assets or mutate share supply.
-    /// @param assets Amount of underlying asset to deposit.
-    /// @return Shares that would be minted.
+    /// @inheritdoc IMemecoinYieldVault
     function previewDeposit(uint256 assets) external view override returns (uint256) {
         return _convertToShares(assets, totalAssets);
     }
@@ -94,49 +91,29 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         revert PreviewRedeemNotSupported();
     }
 
-    /// @notice Converts an asset amount to vault shares at the current rate.
-    /// @dev Reuses the internal floor conversion with the `virtualAssets` buffer, sharing the same
-    ///      baseline as `previewDeposit` (the only current-rate preview; `previewRedeem` always reverts
-    ///      because claims use per-entry locked rates it cannot represent).
-    /// @param assets Amount of underlying asset to convert.
-    /// @return shares Shares equivalent at the current rate.
+    /// @inheritdoc IMemecoinYieldVault
+    /// @dev `previewDeposit` is the only current-rate preview; `previewRedeem` always reverts because
+    ///      claims use per-entry locked rates a single current rate cannot represent.
     function convertToShares(uint256 assets) external view override returns (uint256) {
         return _convertToShares(assets, totalAssets);
     }
 
-    /// @notice Converts a vault share amount to underlying assets at the current rate.
-    /// @dev Reuses the internal floor conversion with the `virtualAssets` buffer.
-    /// @param shares Amount of vault shares to convert.
-    /// @return assets Asset equivalent at the current rate.
+    /// @inheritdoc IMemecoinYieldVault
     function convertToAssets(uint256 shares) external view override returns (uint256) {
         return _convertToAssets(shares, totalAssets);
     }
 
-    /// @notice Maximum assets a single deposit could accept for `receiver`.
-    /// @dev The vault imposes no deposit cap, so this is the unbounded sentinel.
-    /// @return maxAssets Unbounded upper bound.
+    /// @inheritdoc IMemecoinYieldVault
     function maxDeposit(address) external pure override returns (uint256) {
         return type(uint256).max;
     }
 
-    /// @notice Maximum shares a single mint could accept for `receiver`.
-    /// @dev The vault imposes no mint cap, so this is the unbounded sentinel.
-    /// @return maxShares Unbounded upper bound.
+    /// @inheritdoc IMemecoinYieldVault
     function maxMint(address) external pure override returns (uint256) {
         return type(uint256).max;
     }
 
-    /// @notice Maximum assets `owner` could withdraw right now.
-    /// @dev Claim-mode semantics: sums `lockedAssets` across `owner`'s matured (claimable) queue entries.
-    ///      Shares are burned at requestRedeem time, so this does NOT reflect `balanceOf`. This is the
-    ///      total claimable amount; due to per-entry floor granularity (`floor(lockedAssets/shares)`),
-    ///      not every `0 < assets <= maxWithdraw` is exactly withdrawable in a single `withdraw` call —
-    ///      `withdraw` is exact-or-revert and reverts `InsufficientClaimableRedeem` on unreachable
-    ///      partial targets (see `withdraw` NatSpec). Full-drain `withdraw(maxWithdraw(owner))` is
-    ///      always exact; for partial claims prefer `redeem(shares)` or pre-check with
-    ///      `isWithdrawReachable`.
-    /// @param owner Account whose claimable assets are queried.
-    /// @return maxAssets Total claimable locked assets for `owner`.
+    /// @inheritdoc IMemecoinYieldVault
     function maxWithdraw(address owner) external view override returns (uint256) {
         RedeemRequestEntry[] storage queue = redeemRequestQueues[owner];
         uint256 total;
@@ -151,16 +128,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return total;
     }
 
-    /// @notice Checks whether `assets` can be withdrawn exactly in one `withdraw` call.
-    /// @dev View-only simulation of `withdraw`'s per-entry floor granularity
-    ///      (`takeShares = ceil((takeAssets+1)*S/L)-1`, `payout = floor(takeShares*L/S)`).
-    ///      Returns false instead of reverting, so frontends can pre-check partial targets.
-    ///      Full-drain `assets == maxWithdraw(owner)` always returns true when matured. The
-    ///      simulation mirrors `withdraw`'s FIFO scan with swap-pop compaction in memory, so the
+    /// @inheritdoc IMemecoinYieldVault
+    /// @dev The simulation mirrors `withdraw`'s FIFO scan with swap-pop compaction in memory, so the
     ///      reachability result matches the state-changing call exactly.
-    /// @param owner Account whose queue is checked.
-    /// @param assets Exact asset amount to test.
-    /// @return ok True if `withdraw(assets, receiver, owner)` would succeed exactly.
     function isWithdrawReachable(address owner, uint256 assets) external view override returns (bool ok) {
         if (assets == 0) return false;
         RedeemRequestEntry[] storage queue = redeemRequestQueues[owner];
@@ -223,10 +193,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return _claimableShares(owner);
     }
 
-    /// @notice Previews the asset cost of minting exactly `shares`.
-    /// @dev Rounds up (ceil) — EIP-4626 requires the deposit to cost no fewer than this amount.
-    /// @param shares Amount of vault shares to mint.
-    /// @return assets Underlying asset amount needed.
+    /// @inheritdoc IMemecoinYieldVault
     function previewMint(uint256 shares) external view override returns (uint256) {
         return _convertToAssetsCeil(shares, totalAssets);
     }
@@ -351,29 +318,17 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return assets;
     }
 
-    /// @notice Queues a redemption request, burning `shares` and locking their asset value immediately.
-    /// @dev ERC-7540-style request phase. Self-redemption only: `controller` and `owner` must both equal
-    ///      `msg.sender`, so no one can enqueue into another account's queue (griefing defense). The locked
-    ///      asset amount is computed once via the floor conversion and stops participating in future yield;
-    ///      it is paid out later by `redeem`/`withdraw` once `REDEEM_DELAY` elapses. Each controller owns a
-    ///      single FIFO self-claim queue, so the vault uses one shared time-delay model instead of
-    ///      per-request ids. Entries remain until fully claimed (swap-pop on `entry.shares == 0`), so
-    ///      matured entries still occupy `MAX_REDEEM_REQUESTS` slots until `redeem`/`withdraw` frees them;
-    ///      when the queue already holds 5 entries - even if all are matured - a new `requestRedeem`
-    ///      reverts `MaxRedeemRequestsReached` and the caller must first claim. The 5-entry bound keeps
-    ///      `maxWithdraw`/`_claimableShares`/claim loops gas-bounded (5 x double SLOAD); relaxing it
-    ///      requires re-estimating those bounds. Governance: shares are burned at request time via
-    ///      `_requestWithdraw` (`_burn` → `totalAssets -= lockedAssets` → `_writeTotalAssetCheckpoint`),
-    ///      so the owner's `getVotes`/`getPastVotes` (asset-denominated via `_convertVotes` /
-    ///      `_convertPastVotes` over `OutrunVotesInit.sol::_totalAssetsCheckpoint`) drop to the post-burn
-    ///      checkpoint immediately and remain zero for that position throughout `REDEEM_DELAY`; a proposal
-    ///      snapshot taken in that window records zero voting power and a later `redeem`/`withdraw` does
-    ///      not restore it — requesting is exiting governance one day early (see
-    ///      `MemecoinYieldVault.sol::_requestWithdraw` / `OutrunVotesInit.sol::getPastVotes`).
-    /// @param shares Amount of vault shares to burn into the redemption queue.
-    /// @param controller Account that will later claim (must be `msg.sender`).
-    /// @param owner Account whose queue is debited (must be `msg.sender`).
-    /// @return lockedAssets Asset amount locked for the request (no longer earns yield).
+    /// @inheritdoc IMemecoinYieldVault
+    /// @dev Entries remain until fully claimed (swap-pop on `entry.shares == 0`), so matured entries
+    ///      still occupy `MAX_REDEEM_REQUESTS` slots until `redeem`/`withdraw` frees them. Governance:
+    ///      shares are burned at request time via `_requestWithdraw` (`_burn` → `totalAssets -=
+    ///      lockedAssets` → `_writeTotalAssetCheckpoint`), so the owner's `getVotes`/`getPastVotes`
+    ///      (asset-denominated via `_convertVotes` / `_convertPastVotes` over
+    ///      `OutrunVotesInit.sol::_totalAssetsCheckpoint`) drop to the post-burn checkpoint immediately
+    ///      and remain zero for that position throughout `REDEEM_DELAY`; a proposal snapshot taken in
+    ///      that window records zero voting power and a later `redeem`/`withdraw` does not restore it —
+    ///      requesting is exiting governance one day early (see `_requestWithdraw` /
+    ///      `OutrunVotesInit.sol::getPastVotes`).
     function requestRedeem(uint256 shares, address controller, address owner)
         external
         override
@@ -397,18 +352,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return lockedAssets;
     }
 
-    /// @notice Claims `shares` worth of matured redemption requests, paying out their locked assets.
-    /// @dev FIFO claim over `owner`'s queue. `owner` must equal `msg.sender`: shares were already burned at
-    ///      requestRedeem time, so there is no allowance path and a third-party `owner` would steal assets.
-    ///      Governance: voting power was already removed at `requestRedeem` time; `redeem` transfers only the
-    ///      locked assets and does not mint shares or restore `getVotes`/`getPastVotes` — a snapshot taken
-    ///      during `REDEEM_DELAY` remains zero even after claim (see `MemecoinYieldVault.sol::requestRedeem`).
-    ///      The whole bounded queue is scanned (no early break on an immature entry) because swap-pop
-    ///      compaction can reorder entries; MAX_REDEEM_REQUESTS keeps the loop gas-bounded.
-    /// @param shares Amount of previously burned shares to claim payouts for.
-    /// @param receiver Recipient of the unlocked assets.
-    /// @param owner Account whose matured requests are claimed (must be `msg.sender`).
-    /// @return assets Total locked assets paid out.
+    /// @inheritdoc IMemecoinYieldVault
     function redeem(uint256 shares, address receiver, address owner) external override returns (uint256) {
         require(owner == msg.sender, NotSelfRedemption());
         require(shares > 0, ZeroRedeemRequest());
@@ -475,24 +419,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return totalPayout;
     }
 
-    /// @notice Claims exactly `assets` from matured redemption requests.
-    /// @dev Assets-first FIFO claim. For each matured entry it solves the share count whose floor payout
-    ///      does not exceed the asset target (`takeShares = ceil((takeAssets+1)*S/L)-1`, payout
-    ///      `floor(takeShares*L/S) <= takeAssets`), then decrements shares/lockedAssets in lockstep.
-    ///      Floor loss means an exact target is often unreachable; the call then reverts
-    ///      `InsufficientClaimableRedeem` (EIP-4626 "MUST revert if all assets cannot be withdrawn").
-    ///      Granularity per entry is `floor(L/S)` (>=1 while `lockedAssets >= shares`); when
-    ///      `takeAssets + 1 <= L/S` the entry yields 0 shares and is skipped, so a tiny `assets`
-    ///      against a high-rate entry (e.g. 1 wei when `L >> S` after yield) reverts — callers
-    ///      should use `redeem(shares)` to claim by shares for full drainage. Governance: voting power
-    ///      was already removed at `requestRedeem` time; `withdraw` transfers only the locked assets and
-    ///      does not restore voting power — a snapshot taken during `REDEEM_DELAY` remains zero even after
-    ///      claim (see `MemecoinYieldVault.sol::requestRedeem`). Same self-claim guard and scan as
-    ///      `redeem`.
-    /// @param assets Exact amount of locked assets to pay out.
-    /// @param receiver Recipient of the unlocked assets.
-    /// @param owner Account whose matured requests are claimed (must be `msg.sender`).
-    /// @return shares Total burned shares consumed by the claim.
+    /// @inheritdoc IMemecoinYieldVault
     function withdraw(uint256 assets, address receiver, address owner) external override returns (uint256) {
         require(owner == msg.sender, NotSelfRedemption());
         require(assets > 0, ZeroRedeemRequest());
@@ -555,9 +482,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return totalShares;
     }
 
-    /// @notice Total shares in `controller`'s queue still pending the `REDEEM_DELAY` maturity.
-    /// @param controller Account whose pending shares are queried.
-    /// @return shares Sum of immature (pending) shares.
+    /// @inheritdoc IMemecoinYieldVault
     function pendingRedeemRequest(address controller) external view override returns (uint256 shares) {
         RedeemRequestEntry[] storage queue = redeemRequestQueues[controller];
         // Read-only scan: queue is not mutated here, so caching length once saves the per-iteration storage read.
@@ -569,9 +494,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         }
     }
 
-    /// @notice Total shares in `controller`'s queue that have matured and are claimable now.
-    /// @param controller Account whose claimable shares are queried.
-    /// @return shares Sum of matured (claimable) shares.
+    /// @inheritdoc IMemecoinYieldVault
     function claimableRedeemRequest(address controller) external view override returns (uint256 shares) {
         return _claimableShares(controller);
     }
@@ -590,13 +513,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @dev Burns `shares`, deducts `lockedAssets` from totalAssets (so the queued amount stops earning
-    ///      yield immediately), writes the asset checkpoint, and enqueues the packed entry. Governance:
-    ///      `_burn` immediately clears raw votes via `OutrunERC20VotesInit::_update` →
-    ///      `OutrunVotesInit::_transferVotingUnits` and `_writeTotalAssetCheckpoint` advances the asset
-    ///      checkpoint, so `getVotes`/`getPastVotes` for that position are zero throughout `REDEEM_DELAY`
-    ///      and a later `redeem`/`withdraw` does not restore them. Caller-side checks (self-redemption,
-    ///      non-zero shares, uint192 cap) live in `requestRedeem`; the cap is re-checked here as
-    ///      defense-in-depth.
+    ///      yield immediately), writes the asset checkpoint, and enqueues the packed entry. Caller-side
+    ///      checks (self-redemption, non-zero shares, uint192 cap) live in `requestRedeem`; the cap is
+    ///      re-checked here as defense-in-depth.
     function _requestWithdraw(address owner, uint256 lockedAssets, uint256 shares) internal {
         uint256 requestCount = redeemRequestQueues[owner].length;
         require(requestCount < MAX_REDEEM_REQUESTS, MaxRedeemRequestsReached());

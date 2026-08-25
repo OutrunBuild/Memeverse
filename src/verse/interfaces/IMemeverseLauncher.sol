@@ -25,14 +25,13 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         uint256 burnedMemecoin
     );
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
+    /// @notice Storage struct. Layout is append-only — see `IMemeverseLauncherStorage`.
     struct AuxiliaryLiquidity {
         uint256 polUAssetLpAmount;
         uint256 ptUAssetLpAmount;
         uint256 ptPolLpAmount;
     }
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     /// PT here denotes the Principal Token minted by `POLSplitterUpgradeable` (the principal half of a POL split; the yield
     /// half is the YT, Yield Token).
     struct BootstrapResidualClaims {
@@ -42,7 +41,6 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         uint256 leveragedResidualPT;
     }
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     struct Memeverse {
         string name; // Token name
         string symbol; // Token symbol
@@ -61,13 +59,11 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         uint32[] omnichainIds; // ChainIds of the token's omnichain(EVM),The first chainId is main governance chain
     }
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     struct FundMetaData {
         uint256 minTotalFund; // The minimum participation genesis fund corresponding to uAsset
         uint256 fundBasedAmount; // The number of Memecoins minted per unit of Memecoin genesis fund
     }
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     struct GenesisData {
         // uint128 narrows safely because `_genesis` rejects any deposit whose projected total genesis funds
         // exceeds MemeverseLauncherLib.MAX_SUPPORTED_TOTAL_GENESIS_FUNDS (= uint128.max) before this field is
@@ -78,14 +74,12 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         bool isRedeemed; // Whether the user has redeemed the POL liquidity
     }
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     struct PreorderData {
         uint256 funds; // The amount of uAsset user has contributed to the preorder pool
         uint256 claimedMemecoin; // The amount of preorder memecoin already claimed by the user
         bool isRefunded; // Whether the user has refunded the preorder contribution
     }
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     struct PreorderState {
         uint256 totalFunds;
         uint256 settledMemecoin;
@@ -101,19 +95,16 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         uint256 polForPtPol;
     }
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     struct NormalFeeState {
         uint256 accUAssetFee;
         uint256 accPTFee;
     }
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     struct UserNormalFeeClaim {
         uint256 claimedUAssetFee;
         uint256 claimedPTFee;
     }
 
-    /// @notice Storage struct. When adding fields in upgrades, append only at the end.
     struct PendingAuxiliaryGovFeeState {
         uint256 pendingUAssetFee;
         uint256 pendingPTFee;

@@ -193,11 +193,8 @@ interface IMemecoinYieldVault is IERC20 {
     ///      never over-pays. The whole bounded queue (MAX_REDEEM_REQUESTS) is scanned rather than breaking
     ///      at the first immature entry, because partial-claim swap-pop compaction can reorder entries.
     ///      `owner` must equal `msg.sender`: shares were already burned at requestRedeem time, so there is
-    ///      no allowance path and a third-party `owner` would steal assets. Governance: voting power was
-    ///      already removed at `requestRedeem` time; `redeem` transfers only the locked assets and does
-    ///      not mint shares or restore `getVotes`/`getPastVotes` — a snapshot taken during `REDEEM_DELAY`
-    ///      remains zero even after claim (see `MemecoinYieldVault.sol::requestRedeem`). Reverts
-    ///      `ZeroRedeemRequest` for zero shares, `NotSelfRedemption` for a third-party owner, and
+    ///      no allowance path and a third-party `owner` would steal assets. Reverts `ZeroRedeemRequest`
+    ///      for zero shares, `NotSelfRedemption` for a third-party owner, and
     ///      `InsufficientClaimableRedeem` if the matured queue cannot cover the requested shares.
     /// @param shares Amount of previously burned shares to claim payouts for.
     /// @param receiver Recipient of the unlocked assets.
@@ -216,10 +213,7 @@ interface IMemecoinYieldVault is IERC20 {
     ///      (≥1 while `lockedAssets >= shares`); when `takeAssets + 1 <= entry.lockedAssets / entry.shares`
     ///      the entry contributes 0 shares and is skipped, so a small `assets` against a high-rate entry
     ///      (e.g. 1 wei when `lockedAssets >> shares` after yield) reverts — use `redeem(shares)` to
-    ///      claim by shares instead. Governance: voting power was already removed at `requestRedeem` time;
-    ///      `withdraw` transfers only the locked assets and does not restore voting power — a snapshot
-    ///      taken during `REDEEM_DELAY` remains zero even after claim (see `MemecoinYieldVault.sol::requestRedeem`).
-    ///      Same self-claim owner guard and FIFO scan as `redeem`.
+    ///      claim by shares instead. Same self-claim owner guard and FIFO scan as `redeem`.
     /// @param assets Exact amount of locked assets to pay out.
     /// @param receiver Recipient of the unlocked assets.
     /// @param owner Account whose matured requests are claimed (must be `msg.sender`).

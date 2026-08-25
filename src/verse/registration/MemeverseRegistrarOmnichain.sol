@@ -21,16 +21,6 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
 
     RegistrationGasLimit public registrationGasLimit;
 
-    /**
-     * @dev Constructor
-     * @param _owner - The owner of the contract
-     * @param _localEndpoint - The local endpoint
-     * @param _registrationCenterEid - The registration center eid
-     * @param _registrationCenterChainid - The registration center chainid
-     * @param _baseRegistrationGasLimit - The base registration gas limit
-     * @param _localRegistrationGasLimit - The local registration gas limit
-     * @param _omnichainRegistrationGasLimit - The omnichain registration gas limit
-     */
     constructor(
         address _owner,
         address _localEndpoint,
@@ -102,9 +92,6 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
         emit SetRegistrationGasLimit(_registrationGasLimit);
     }
 
-    /**
-     * @dev Internal function to implement lzReceive logic
-     */
     function _lzReceive(
         Origin calldata,
         /*_origin*/

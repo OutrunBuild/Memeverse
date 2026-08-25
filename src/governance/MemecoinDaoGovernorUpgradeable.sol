@@ -87,19 +87,10 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     }
 
     /**
-     * @notice Initialize the governor with voting settings and the incentivizer reference.
+     * @inheritdoc IMemecoinDaoGovernor
      * @dev Wires the OpenZeppelin governor mixins and stores the incentivizer address.
-     * @param _name The governor's name exposed to off-chain tooling.
-     * @param _token The vote token used for proposals and voting.
      * @param _votingDelay Voting delay in governor clock units (seconds under the vault's timestamp clock).
      * @param _votingPeriod Voting period in governor clock units (seconds under the vault's timestamp clock).
-     * @param _proposalThreshold Minimum voting power required to propose.
-     * @param _quorumNumerator Fractional quorum numerator for governance decisions.
-     * @param _governanceCycleIncentivizer Address of the incentivizer that tracks cycle rewards.
-     * @param _minQuorum Absolute minimum quorum floor frozen at deploy-time (memecoin.totalSupply() * minQuorumNumerator / 100) and enforced via Math.max(super.quorum(timepoint), _minQuorum); not diluted by the fractional quorum.
-     * @param _bootstrapPeriod Delay after deployment before proposals are accepted.
-     * @param _maxTreasurySpendRatio Maximum treasury spend per execution, in basis points (10000 = 100%).
-     * @param _upgradeSupermajorityRatio Required for-votes ratio for proposals targeting the Governor or its incentivizer, in basis points (10000 = 100%).
      */
     function initialize(
         string calldata _name,
@@ -130,14 +121,12 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     }
 
     /// @notice Exposes how long a proposal waits before voting opens.
-    /// @dev Delegates to the OpenZeppelin governor-settings module.
     /// @return Voting delay in governor clock units.
     function votingDelay() public view override(GovernorUpgradeable, GovernorSettingsUpgradeable) returns (uint256) {
         return super.votingDelay();
     }
 
     /// @notice Exposes how long voting remains open for each proposal.
-    /// @dev Delegates to the OpenZeppelin governor-settings module.
     /// @return Voting period in governor clock units.
     function votingPeriod() public view override(GovernorUpgradeable, GovernorSettingsUpgradeable) returns (uint256) {
         return super.votingPeriod();
@@ -158,7 +147,6 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     }
 
     /// @notice Exposes the minimum voting power required to create a proposal.
-    /// @dev Delegates to the OpenZeppelin governor-settings module.
     /// @return Proposal threshold in vote units.
     function proposalThreshold()
         public
@@ -397,9 +385,8 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
 
     /**
      * @dev Casts a vote and accumulates incremental weight into the active governance cycle.
-     * @notice Each successful `castVote` (including `castVoteWithReason`, `castVoteWithReasonAndParams` and `castVoteBySig` variants) forwards its newly consumed weight via `GovernanceCycleIncentivizerUpgradeable.sol::accumCycleVotes`.
-     * Accumulated `userVotes`/`totalVotes` scale with voting volume (count x weight) across all proposals in the cycle, including votes on proposals that later end as `Defeated` or `Canceled`; no cross-proposal deduplication is performed and `_cancel` does not roll back the ledger.
-     * Within a single proposal, `GovernorCountingFractionalUpgradeable.sol::_countVote` caps the sum of partial casts by `getPastVotes(account, proposalSnapshot)`, so no double-count beyond snapshot power; fractional `support=255` splits are bounded by remaining weight.
+     * @notice Each successful `castVote` (including `castVoteWithReason`, `castVoteWithReasonAndParams` and `castVoteBySig` variants) forwards its newly consumed weight via `GovernanceCycleIncentivizerUpgradeable.sol::accumCycleVotes`; the cycle-level accumulation semantics (voting-volume scaling, `Defeated`/`Canceled` inclusion, no cross-proposal deduplication, per-proposal cap at the snapshot) are documented there.
+     * `_cancel` does not roll back the accumulated ledger, and fractional `support=255` splits are bounded by remaining weight.
      */
     function _castVote(uint256 proposalId, address account, uint8 support, string memory reason, bytes memory params)
         internal
@@ -412,7 +399,7 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
     }
 
     /**
-     * @dev Allowing upgrades to the implementation contract only through governance proposals.
+     * @dev Same governance-only upgrade gate as `GovernanceCycleIncentivizerUpgradeable._authorizeUpgrade`.
      */
     function _authorizeUpgrade(address newImplementation) internal override onlyGovernance {}
 

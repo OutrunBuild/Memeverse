@@ -60,11 +60,7 @@ interface IOmnichainMemecoinStaker is IComposeState, ILayerZeroComposer {
     ///      receiver never reaches this error: it passes the shape check and falls through to `NotBeneficiary`, whose
     ///      `msg.sender == address(0)` test is permanently unsatisfiable.
 
-    /// @notice Sweeps native gas dust (e.g. LayerZero compose nativeDrop) to the receiver.
-    /// @dev Owner-only counterpart to `MemeverseLauncherUpgradeable.removeGasDust` and
-    ///      `MemeverseRegistrationCenterUpgradeable.removeGasDust` and
-    ///      `YieldDispatcherUpgradeable.removeGasDust`; transfers the full native balance.
-    /// @param receiver Recipient of the swept dust.
+    /// @notice Emitted when `removeGasDust` sweeps the full native balance to `receiver`.
     event RemoveGasDust(address indexed receiver, uint256 dust);
 
     /// @notice Sweeps native gas dust (e.g. LayerZero compose nativeDrop) to the receiver.
@@ -78,14 +74,12 @@ interface IOmnichainMemecoinStaker is IComposeState, ILayerZeroComposer {
     /// @dev Only the beneficiary (`msg.sender ==` the receiver read from `message`) may call, which blocks a third
     ///      party from front-running the settle before `lzCompose` runs; the beneficiary is bound to `message` via the
     ///      endpoint's `composeQueue` hash proof (immutable). Proves delivery against the endpoint's public
-    ///      `composeQueue` mapping (three-state queue semantics: see `OFTComposeSettleVerify`'s @dev note), which is the
+    ///      `composeQueue` mapping (three-state queue semantics: see `OFTComposeSettleVerify`'s dev note), which is the
     ///      canonical record of whether a compose was delivered and still pending.
     ///      The receiver here is the original staker (an EOA or a contract able to self-initiate this settle call — a
     ///      contract receiver without any callable path cannot satisfy the `msg.sender == receiver` check), released
     ///      via direct push since there is no separate accounting step (unlike a pull-based yield-vault release path).
-    ///      Shape asymmetry with `lzCompose`: see `MalformedComposeMsg` above for the full asymmetry; the release
-    ///      path reads only the first 32-byte word of the inner composeMsg as `receiver` and ignores trailing
-    ///      bytes, so a non-64 but >=32-byte malformed payload is recoverable by the beneficiary.
+    ///      Shape asymmetry with `lzCompose`: see `MalformedComposeMsg` above (authoritative).
     /// @param memecoin Bridged memecoin address that owns the compose payload.
     /// @param guid Compose guid used for replay protection.
     /// @param message Encoded compose payload proving the beneficiary and amount via the endpoint's composeQueue hash.

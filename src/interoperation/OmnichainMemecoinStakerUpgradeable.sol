@@ -65,27 +65,21 @@ contract OmnichainMemecoinStakerUpgradeable layout at erc7201("outrun.storage.Om
 
     function _authorizeUpgrade(address) internal view override onlyOwner {}
 
-    /// @notice Local LayerZero endpoint that is allowed to call `lzCompose` (set once by `initialize`).
-    /// @return Configured local endpoint address.
+    /// @notice Local LayerZero endpoint allowed to call `lzCompose`; set once by `initialize`.
     function localEndpoint() external view returns (address) {
         return omnichainMemecoinStakerStorage.localEndpoint;
     }
 
-    /// @notice Per-(memecoin, guid) compose mutex shared by `lzCompose` (writes Settled) and
-    ///         `settlePendingCompose` (writes Released); a pair resolves at most once.
-    /// @param memecoin Bridged memecoin address keying the mutex.
-    /// @param guid Compose guid keying the mutex.
-    /// @return Current ComposeState of the pair (None / Settled / Released).
+    /// @notice Per-(memecoin, guid) compose state — single-resolution semantics documented on the
+    ///         `composeStates` storage field's dev note above.
     function composeStates(address memecoin, bytes32 guid) external view returns (ComposeState) {
         return omnichainMemecoinStakerStorage.composeStates[memecoin][guid];
     }
 
-    /// @notice Sweeps native gas dust (e.g. LayerZero compose nativeDrop) to the receiver.
-    /// @dev Owner-only utility to recover ETH stranded via payable `lzCompose` (third-party OFT direct sends
-    ///      with a non-zero compose `value` or future option misconfiguration). Mirrors
-    ///      `YieldDispatcherUpgradeable.removeGasDust` and `MemeverseRegistrationCenterUpgradeable.removeGasDust`
-    ///      using the shared `TokenHelper._transferOut(NATIVE)` path.
-    /// @param receiver Recipient of the swept dust.
+    /// @inheritdoc IOmnichainMemecoinStaker
+    /// @dev Recovers ETH stranded via the payable `lzCompose` (third-party OFT direct sends with a non-zero
+    ///      compose `value`, or future option misconfiguration) through the shared `TokenHelper._transferOut(NATIVE)`
+    ///      path.
     function removeGasDust(address receiver) external override onlyOwner {
         uint256 dust = address(this).balance;
         emit RemoveGasDust(receiver, dust);
@@ -98,7 +92,7 @@ contract OmnichainMemecoinStakerUpgradeable layout at erc7201("outrun.storage.Om
     ///      directly to the receiver as a fallback. The compose guid is marked Settled before settlement (CEI); a
     ///      settlement revert rolls back the write and leaves the guid available for endpoint retry. A `Released`
     ///      pair is absorbed as a no-op; content-invalid 64-byte frames are likewise never reverted — shared
-    ///      convergence / hash-binding / self-harm rationale: see `IComposeState`'s @dev note (authoritative). Local
+    ///      convergence / hash-binding / self-harm rationale: see `IComposeState`'s dev note (authoritative). Local
     ///      branch selection: a dirty-high-bit receiver word is consumed with `ComposeRejected`; a dirty-high-bit
     ///      vault word is released via the vault-absent fallback; a zero receiver word keeps the documented
     ///      receiver==0 self-harm boundary (the fallback's zero-address guard reverts and the slot stays pinned).
@@ -193,12 +187,9 @@ contract OmnichainMemecoinStakerUpgradeable layout at erc7201("outrun.storage.Om
         (amount, composeMsg) =
             OFTComposeSettleVerify.verifySettle(omnichainMemecoinStakerStorage.localEndpoint, memecoin, guid, message);
         require(amount != 0, ZeroInput());
-        // Release-path schema guard. Unlike `lzCompose`, which reads both `receiver` and `yieldVault` and enforces an
-        // exact 64-byte composeMsg, the release path only needs the beneficiary (always pushes via `_transferOut`,
-        // never touches `yieldVault`). So the shape is asymmetric on purpose: it accepts any composeMsg of at least
-        // one 32-byte word, reads only the first as `receiver`, discarding trailing bytes. This makes a self-stranded
-        // malformed payload (non-64 but >=32 bytes) recoverable rather than permanently trapped. Length checked
-        // before the read (no OOB).
+        // Release-path schema guard: accepts any composeMsg of at least 32 bytes, reading only the first word as
+        // `receiver` — the lzCompose/release shape asymmetry is documented on `MalformedComposeMsg`'s @dev in
+        // IOmnichainMemecoinStaker (authoritative).
         require(composeMsg.length >= 32, MalformedComposeMsg());
         uint256 receiverWord = abi.decode(composeMsg, (uint256));
         // Reject a dirty high-96-bits receiver word: `uint160` would silently truncate it into a forged address

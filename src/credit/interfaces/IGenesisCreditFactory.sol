@@ -35,12 +35,8 @@ interface IGenesisCreditFactory {
     event CreditDeployed(address indexed uAsset, address indexed credit);
 
     /// @notice Deploys a new GenesisCredit for `uAsset` via CREATE3.
-    /// @dev Reverts with `AlreadyDeployed()` if a credit already exists for `uAsset`,
-    ///      `ZeroUAsset()` when `uAsset` is the zero address, and `ZeroDelegate()` when `delegate`
-    ///      is the zero address. Deployment is deterministic CREATE3
-    ///      where the factory delegates to solmate's `CREATE3` library (deployer = factory itself), so the resulting
-    ///      address matches `predictCredit(uAsset)`. The GenesisCredit constructor runs in-line;
-    ///      no initialize step.
+    /// @dev Deterministic CREATE3 per the interface-level salt derivation, so the deployed address
+    ///      matches `predictCredit(uAsset)`.
     /// @param uAsset Underlying asset key identifying the credit token.
     /// @param name ERC-20 token name.
     /// @param symbol ERC-20 token symbol.

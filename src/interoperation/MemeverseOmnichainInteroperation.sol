@@ -34,15 +34,6 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     /// @dev Repo invariant: ownership is never renounceable.
     error OwnershipRenounceDisabled();
 
-    /**
-     * @dev Constructor
-     * @param _owner - The owner of the contract
-     * @param _lzEndpointRegistry - Address of LzEndpointRegistry
-     * @param _memeverseLauncher - Address of MemeverseLauncherUpgradeable
-     * @param _omnichainMemecoinStaker - Address of OmnichainMemecoinStakerUpgradeable
-     * @param _oftReceiveGasLimit - Gas limit for OFT receive
-     * @param _omnichainStakingGasLimit - Gas limit for omnichain memecoin staking
-     */
     constructor(
         address _owner,
         address _lzEndpointRegistry,
@@ -64,10 +55,6 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     /// @inheritdoc IMemeverseOmnichainInteroperation
     /// @dev Governance chain is `verse.omnichainIds[0]`. Same-chain routes return a zero fee but still need a
     ///      deployed yield vault for the actual staking call; remote routes quote the exact LayerZero fee.
-    /// @param memecoin memecoin address.
-    /// @param receiver receiver address.
-    /// @param amount token amount.
-    /// @return lzFee LayerZero fee.
     function quoteMemecoinStaking(address memecoin, address receiver, uint256 amount)
         external
         view
@@ -91,16 +78,11 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     /// @dev Governance chain is `verse.omnichainIds[0]`. Same-chain: native fee must be 0, reverts `EmptyYieldVault`
     ///      if the vault is missing. Remote: quotes and sends with the exact native fee; a successful source send may
     ///      still leave destination `lzReceive`/`lzCompose` failures for LayerZero to retry.
-    /// @dev Remote sends reject amounts that `_removeDust` truncates to zero (`amount < decimalConversionRate`,
-    ///      e.g. < 1e12 for an 18-decimal memecoin with 6 shared decimals): such a send burns nothing, delivers a
-    ///      zero-amount compose, charges the full LayerZero fee, and strands the full amount (no sweep). Pre-checked
-    ///      before `_transferIn`, so a rejected amount never moves the caller's tokens.
+    /// @dev Remote sends reject zero-collapsed dust amounts before `_transferIn` moves any token — full truncation
+    ///      analysis: see `_requireNonZeroRemoteDelivery`'s dev note (authoritative).
     /// @dev Non-zero-remainder truncation (`amount >= decimalConversionRate` but not a clean multiple) is NOT
     ///      rejected: the caller meant to stake, so the un-burnt remainder (`amount - amountSentLD`) is refunded to
     ///      `msg.sender` on the source chain in the same tx right after the OFT send — nothing strands.
-    /// @param memecoin memecoin address.
-    /// @param receiver receiver address.
-    /// @param amount token amount.
     function memecoinStaking(address memecoin, address receiver, uint256 amount) external payable override {
         require(memecoin != address(0) && receiver != address(0) && amount != 0, ZeroInput());
 
@@ -111,7 +93,6 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
 
         SendParam memory sendParam;
         bool isRemote = govChainId != block.chainid;
-        // Pre-check before `_transferIn`: a zero-truncated remote send strands the dust (no sweep) for a full fee.
         if (isRemote) {
             sendParam = _buildStakingSendParam(govChainId, receiver, yieldVault, amount);
             _requireNonZeroRemoteDelivery(memecoin, sendParam);
@@ -162,21 +143,11 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     }
 
     /// @inheritdoc IMemeverseOmnichainInteroperation
-    /// @dev Only callable by the owner. Both values are validated only for `> 0`; no minimum execution budget is
-    ///      enforced, so a value below the destination's actual execution cost permanently breaks that path:
-    ///      - `_oftReceiveGasLimit` too low: the LayerZero executor's delivery (gas-capped by this option) always
-    ///        runs out of gas in the governance-chain memecoin OFT `lzReceive` (mint). The source amount is already
-    ///        burned and there is no protocol-internal settle for the receive side (`settlePendingCompose` only
-    ///        covers the compose side); recovery is a permissionless manual re-delivery of the verified payload via
-    ///        the destination-chain `EndpointV2.lzReceive` with caller-provided gas (same class as the permissionless
-    ///        `lzCompose` re-drive) — funds are not lost, but stay undelivered until then.
-    ///      - `_omnichainStakingGasLimit` too low: the destination `lzCompose` runs out of gas; the beneficiary can
-    ///        still recover the bare amount via `settlePendingCompose` (no position is created) — UX degradation,
-    ///        not a loss.
-    ///      When adjusting, keep `_omnichainStakingGasLimit` at or above the benchmarked compose-side gas budget, and
-    ///      keep `_oftReceiveGasLimit` at or above a receive-side budget benchmarked by the same methodology.
-    /// @param _oftReceiveGasLimit OFT receive gas limit.
-    /// @param _omnichainStakingGasLimit omnichain staking gas limit.
+    /// @dev Only callable by the owner. Both values are validated only for `> 0`: the too-low failure mode of each
+    ///      limit (receive-side delivery stall, compose-side stall recoverable via `settlePendingCompose`) is
+    ///      documented on `IMemeverseOmnichainInteroperation.setGasLimits`. When adjusting, keep
+    ///      `_omnichainStakingGasLimit` at or above the benchmarked compose-side gas budget, and keep
+    ///      `_oftReceiveGasLimit` at or above a receive-side budget benchmarked by the same methodology.
     function setGasLimits(uint128 _oftReceiveGasLimit, uint128 _omnichainStakingGasLimit) external override onlyOwner {
         require(_oftReceiveGasLimit > 0 && _omnichainStakingGasLimit > 0, ZeroInput());
 

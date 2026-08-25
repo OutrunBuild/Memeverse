@@ -10,7 +10,9 @@ import {IGovernanceCycleIncentivizer} from "./interfaces/IGovernanceCycleIncenti
 import {IMemecoinDaoGovernor} from "./interfaces/IMemecoinDaoGovernor.sol";
 
 /**
- * @dev External expansion of {Governor} for governance cycle incentive.
+ * @dev Governance cycle incentivizer paired with the Memecoin DAO governor: accumulates per-cycle
+ *      vote weight, tracks the DAO treasury ledger, and splits finalized treasury income into
+ *      pro-rata cycle rewards.
  */
 // solhint-disable-next-line gas-small-strings
 contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storage.GovernanceCycleIncentivizer")
@@ -287,8 +289,6 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
     /**
      * @notice Records treasury income for the current cycle.
      * @dev Updates accounting only; the governor contract remains responsible for the actual token transfer.
-     * @param token - The token address
-     * @param amount - The amount
      */
     function recordTreasuryIncome(address token, uint256 amount) external override onlyGovernance {
         require(token != address(0) && amount != 0, ZeroInput());
@@ -304,9 +304,6 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
      * @notice Records a treasury asset transfer for the current cycle.
      * @dev Updates accounting only; the governor contract remains responsible for the actual token transfer. All
      * actions to transfer assets from the DAO treasury must use this entrypoint.
-     * @param token - The token address
-     * @param to - The receiver address
-     * @param amount - The amount to transfer
      */
     function recordTreasuryAssetSpend(address token, address to, uint256 amount) external override onlyGovernance {
         require(token != address(0) && to != address(0) && amount != 0, ZeroInput());
@@ -468,7 +465,6 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
      * @notice Accumulates voting power for a user in the active cycle.
      * @dev Called by the governor after vote casting succeeds. Each successful `castVote` across any proposal in the active cycle contributes its incremental weight here, including votes on proposals that later become `Defeated` or `Canceled`; no filtering or cross-proposal deduplication.
      * Reward share therefore scales with voting volume (`userVotes`/`totalVotes` per cycle) rather than unique participation. Within one proposal the governor's fractional counting caps the sum by `getPastVotes` at the proposal snapshot, so accumulation never exceeds per-proposal voting power. Invariant `sum(userVotes) == totalVotes` holds (both incremented together), so `mulDiv(rewardBalance, userVotes, totalVotes)` remains conservation-safe.
-     * @param user - The user address
      * @param votes - The incremental vote weight just consumed (return value of `super._castVote`)
      */
     function accumCycleVotes(address user, uint256 votes) external override onlyGovernance {
@@ -480,8 +476,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
     }
 
     /**
-     * @dev Register for receivable treasury token
-     * @param token - The token address
+     * @inheritdoc IGovernanceCycleIncentivizer
      * @notice Governance must only register reviewed standard ERC20 tokens.
      * @dev This treasury ledger assumes nominal `amount` accounting and does not adapt to fee-on-transfer,
      * rebasing, or other non-standard balance semantics. Registering such a token can distort treasury/reward
@@ -497,8 +492,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
     }
 
     /**
-     * @dev Register for reward token，it MUST first be registered as a treasury token.
-     * @param token - The token address
+     * @inheritdoc IGovernanceCycleIncentivizer
      * @notice Governance must only register reviewed standard ERC20 reward tokens.
      * @dev Reward payout uses nominal `amount` accounting and assumes the recipient receives the quoted amount.
      * Fee-on-transfer, rebasing, or other non-standard balance semantics are unsupported and must not be admitted
@@ -516,7 +510,6 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
     /**
      * @notice Unregisters a treasury token from the active cycle configuration.
      * @dev Also clears current-cycle accounting and unregisters the reward token if necessary.
-     * @param token - The token address
      */
     function unregisterTreasuryToken(address token) external override onlyGovernance {
         require(governanceCycleIncentivizerStorage._treasuryTokens[token], NonRegisteredToken());
@@ -548,7 +541,6 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
     /**
      * @notice Unregisters a reward token from the active cycle configuration.
      * @dev Clears current-cycle reward accounting for the token.
-     * @param token - The token address
      */
     function unregisterRewardToken(address token) external override onlyGovernance {
         require(governanceCycleIncentivizerStorage._rewardTokens[token], NonRegisteredToken());

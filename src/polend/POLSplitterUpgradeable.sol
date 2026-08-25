@@ -400,10 +400,7 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         uint256 settlementMemecoin = info.settlementMemecoin;
         uint256 ytRedeemableUAssetPool = _ytRedeemableUAssetPool(info);
 
-        // Floor (mulDiv default) is deliberate, same rationale as `_ptToUAsset`: each redeemer
-        // gets at most their exact pro-rata share, so leftover dust stays in the pool and the
-        // share of each remaining YT holder never drops — keeping everyone redeemable. Ceil
-        // would over-pay early redeemers and drain the pools; do not change the direction.
+        // Floor (mulDiv default) is deliberate — same rationale as `_ptToUAsset` (authoritative).
         uAssetAmount = Math.mulDiv(ytRedeemableUAssetPool, ytAmount, outstandingYT);
         memecoinAmount = Math.mulDiv(settlementMemecoin, ytAmount, outstandingYT);
         if (uAssetAmount == 0 && memecoinAmount == 0) revert InvalidClaim();
@@ -421,8 +418,8 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
         // Pre-settlement `settlementUAsset` is always 0 (`settle` is its only writer and also sets
         // `settled`), so the YT pool is definitionally 0 — mirror the `outstandingYT == 0` zero-return
-        // and skip the underflowing `_ytRedeemableUAssetPool`; also makes garbage verseIds return 0
-        // without reading `totalSupply` on address(0).
+        // instead of calling `_ytRedeemableUAssetPool` (underflow guarantee: see its @notice); also
+        // makes garbage verseIds return 0 without reading `totalSupply` on address(0).
         if (!info.settled) return 0;
         uint256 outstandingYT = IERC20(info.yt).totalSupply();
         if (outstandingYT == 0) return 0;

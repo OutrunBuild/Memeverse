@@ -57,7 +57,7 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
         homeChainEid = homeChainEid_;
     }
 
-    /// @notice Sets the merkle root used to verify claims.
+    /// @inheritdoc IGenesisCredit
     /// @dev Owner-only (OAppCore Ownable); callable infinitely with no on-chain timelock,
     ///      review window, or finalization flag. Expected to be set after deployment once the
     ///      airdrop tree is finalized; unclaimed allocations can be overwritten by a later
@@ -65,13 +65,12 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
     ///      `setMerkleRoot`). Use an off-chain multisig/timelock for the owner and monitor
     ///      `MerkleRootSet` for unexpected rotations — chain emits only this event with no
     ///      old-value field.
-    /// @param newMerkleRoot Root of the (user, amount) allocation tree.
     function setMerkleRoot(bytes32 newMerkleRoot) external override onlyOwner {
         merkleRoot = newMerkleRoot;
         emit MerkleRootSet(newMerkleRoot);
     }
 
-    /// @notice Emergency stop: halts every token state change until `unpause` is called.
+    /// @inheritdoc IGenesisCredit
     /// @dev Owner-only (same OZ Ownable as `setMerkleRoot`). ERC20Pausable's `_update` is the
     ///      most-derived override of ERC-20's single state-change chokepoint, which `_transfer`,
     ///      `_mint` and `_burn` all route through — so a pause also blocks claims (mint) and OFT
@@ -81,13 +80,13 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
         _pause();
     }
 
-    /// @notice Lifts the pause so transfers, claims, burns and OFT bridging resume.
-    /// @dev Owner-only; reverts with OZ `ExpectedPause` when the contract is not paused.
+    /// @inheritdoc IGenesisCredit
+    /// @dev Owner-only (same OZ Ownable as `setMerkleRoot`).
     function unpause() external override onlyOwner {
         _unpause();
     }
 
-    /// @notice Merkle airdrop claim. Only callable on the home chain.
+    /// @inheritdoc IGenesisCredit
     /// @dev Order matters: chain gate -> amount -> double-claim -> proof. Total supply is not
     ///      capped locally; `POLendUpgradeable`'s `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` +
     ///      `_debtCap` only bounds how much credit-minted *debt* may enter a verse via
@@ -95,8 +94,6 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
     ///      circulation). Minted credit remains a normal ERC20/OFT token and stays
     ///      transferable/bridgeable even when debt caps are hit. Each user may claim at
     ///      most once (`claimed` guard, never cleared by `setMerkleRoot`).
-    /// @param amount Allocation amount for msg.sender.
-    /// @param merkleProof Merkle proof for (msg.sender, amount) leaf.
     function claim(uint256 amount, bytes32[] calldata merkleProof) external override {
         // Home-chain gate: remote deployments bridge supply, they must never mint via claims.
         require(endpoint.eid() == homeChainEid, NotHomeChain(homeChainEid));
@@ -112,8 +109,7 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
         emit Claimed(msg.sender, amount);
     }
 
-    /// @notice Standard self-burn (caller burns own balance).
-    /// @param amount Amount of tokens to burn.
+    /// @inheritdoc IGenesisCredit
     function burn(uint256 amount) external override {
         require(amount != 0, ZeroInput());
         _burn(msg.sender, amount);

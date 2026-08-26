@@ -44,9 +44,7 @@
 
 - Launcher 使用 `ERC1967Proxy + UUPS`；canonical Launcher address 是 `IOutrunDeployer` CREATE3 部署的 ERC1967 proxy 地址，implementation 只承载逻辑。
 - Launcher proxy owner 负责 UUPS 升级授权；脚本使用独立 implementation salt 与 canonical proxy salt，部署后 readiness 校验依赖 back-reference 与 fund metadata。
-- `DeployMemeverseHookProxy.DeploymentResult` 返回 6 个 first-class deployment artifact：`hookImplementation`、`hookProxy`、`lpTokenImplementation` 与 3 facet（SwapFacet / DynamicFeeFacet / SettlementFacet），全部参与 same-nonce 复用验证；其中 `hookImplementation`、`lpTokenImplementation` 与各 facet 地址经固定 seed + nonce 预测，必须等于同 nonce 预测地址（`hookProxy` 经 mining 选址，见下条）。
-- Hook proxy 使用 `ERC1967Proxy(implementation, initializeData)`（UUPS 不传 owner 给 proxy constructor，owner 经 `initialize` 植入 Hook storage）。same-nonce/existing Hook proxy 复用校验包括 `EXPECTED_HOOK_PROXY_CODEHASH`（ERC1967Proxy runtime）与 Hook `owner()`（完整复用校验路径见 [operations.md](operations.md)）；operational ownership transfer 即升级授权转移，无 ProxyAdmin 对齐需求。
-- 3 facet readiness 以运行期 codehash 等于预期值、地址非零且有代码为准；3 facet 部署时必须传与 hook 同一个 `poolManager`——`initialize`/`setFacet` 经 `_requireFacetPoolManager` 对 3 facet 强制一致性（不匹配 revert `FacetPoolManagerMismatch`，getter 不可读 revert `FacetPoolManagerUnreadable`），SwapFacet/SettlementFacet 另在 DELEGATECALL callback 中读自己 bytecode immutable 调 PoolManager；以及 router↔hook PoolManager 一致性（readiness `_requireSwapReady` 校验 `router.poolManager() == hook.poolManager()`，错误串 `ROUTER_POOL_MANAGER_NOT_READY`）。
+- `DeployMemeverseHookProxy` 返回 6 个 first-class deployment artifact（`hookImplementation`、`hookProxy`、`lpTokenImplementation` 与 3 facet）；same-nonce 复用校验、Hook proxy 部署形态、3 facet readiness 与 PoolManager 一致性校验的完整清单见 [operations.md §3.9 / §3.9.7 / §3.10](operations.md) 与 [spec/upgradeability.md §3.5](spec/upgradeability.md)。
 
 ## 3. 测试与 Harness 映射状态
 
@@ -62,7 +60,7 @@
   - `test/swap/DynamicFeeFacet.t.sol`：`prepareSwapFee` 的单 word 热路径、`quote` 的 11-word `PreparedSwapFee` 固定 ABI、一次选费与容量一致性。
   - `test/swap/MemeverseUniswapHookIntegration.t.sol`：Lens/bridge/执行跨方向、请求类型和协议费币腿的一致性，以及不足 price limit 的一致拒绝。
   - `test/swap/MemeverseQuoteReadOnlyInvariant.t.sol`、`test/swap/MemeverseTransientState.t.sol`：报价只读与 encoded fee/pre-price/core-target transient context。
-  - 现有迁移兼容性基线：`test/swap/MemeverseUniswapHookIntegration.t.sol`、`test/swap/MemeverseSwapRouter.t.sol`、`test/swap/MemeverseSwapRouterPermit2.t.sol` 与 `test/swap/fork/MemeverseSwapFork*.t.sol`。
+  - swap 行为回归基线：`test/swap/MemeverseUniswapHookIntegration.t.sol`、`test/swap/MemeverseSwapRouter.t.sol`、`test/swap/MemeverseSwapRouterPermit2.t.sol` 与 `test/swap/fork/MemeverseSwapFork*.t.sol`。
 - 仍保留 residual testing gap：
   - `src/common/**` 中少量仍未被 targeted rule 单独建模的基础层子集（如 `IBurnable`、`OutrunOAppPreCrimeSimulatorInit`、`TokenHelper`）
   - 证据：`.harness/policy.json`

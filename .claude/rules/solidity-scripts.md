@@ -35,7 +35,6 @@ console.log("Deployer:", msg.sender);
 forge script script/MemeverseScript.s.sol:MemeverseScript --rpc-url sepolia
 # 2) Real broadcast + verify
 forge script script/MemeverseScript.s.sol:MemeverseScript --rpc-url sepolia --broadcast --verify
-# Hardware signing: use --ledger instead of --account
 ```
 
 (example only; see Key management)
@@ -45,8 +44,6 @@ forge script script/MemeverseScript.s.sol:MemeverseScript --rpc-url sepolia --br
 |---|---|
 | Local (anvil) | Anvil default keys — publicly known, never on real networks |
 | Testnet / Mainnet | Env var `PRIVATE_KEY` via `BaseScript.setUp()` (loaded from `.env` by `script/deploy.sh`) |
-
-Note: the keystore (`--account`) and hardware-wallet (`--ledger`) key sources are **not** currently wired into this repo — only the `PRIVATE_KEY` env flow works today.
 
 Keep `.env` out of VCS (`.gitignore` lists `.env` and `.env.*`, with `!.env.example` for the committed template); required vars are documented in the root `.env.example`.
 

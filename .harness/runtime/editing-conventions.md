@@ -19,6 +19,12 @@ Read this file before editing any `.sol` file (all scopes), writing tests or moc
 - Do not write code line numbers in these documents (e.g. `MemeverseLaunchImpl.sol:130-131`): line numbers drift as code evolves and distort doc anchors; function names/symbols are the stable anchors.
 - New or modified documents must follow this convention; when reviewing these documents, treat violations as minor-level findings.
 
+## Canonical-Home Restraint
+
+- A passage that names a canonical home ("唯一权威/唯一 canonical 见 X") must not restate the rule body: keep it to at most a 2-sentence summary plus a link to the home. The canonical-home index is `docs/spec/README.md` §2.
+- A document must not carry a rule paragraph verbatim identical to one whose home is elsewhere; cross-reference the home instead.
+- Exceptions: self-contained invariant entries in `docs/spec/invariants.md` (they carry explicit dedup-relationship notes), runbook content in `docs/operations.md` where operations is itself the declared home, and reference-style guardrails (rule citation plus a non-rewrite declaration) in `docs/SECURITY_AND_APPROVALS.md` §4.
+
 ## Test Code Rules
 
 - Test contracts must NOT inherit upgradeable production contracts (those using `Initializable`, proxy patterns, or storage-in-heritage layouts). Use interfaces, abstract contracts, or standalone implementations to simulate dependencies.

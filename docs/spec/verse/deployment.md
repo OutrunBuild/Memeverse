@@ -107,6 +107,8 @@
 
 `MemeverseLauncherUpgradeable`、`POLendUpgradeable`、`POLSplitterUpgradeable` 由 `script/MemeverseScript.s.sol` 部署，不进 hook 的 `DeploymentResult`；`lpTokenImplementation`、3 facet（`SwapFacet`/`DynamicFeeFacet`/`SettlementFacet`）、`MemeverseUniswapHookUpgradeable` 的 implementation 与 proxy 由 `script/DeployMemeverseHookProxy.s.sol` 部署，全部使用同一 `DEPLOYMENT_NONCE` 派生各自 salt。后者输出的 `DeploymentResult` 必须把 `hookImplementation`、`hookProxy`、`lpTokenImplementation`、`swapFacet`、`dynamicFeeFacet`、`settlementFacet` 这 6 个地址作为 first-class fields 返回。其中 `hookProxy` 是真正的 v4 hook 地址，不能只把 lpToken/facet 当作内部临时地址。
 
+本表是各合约 proxy / implementation salt label 与 canonical 地址的唯一事实表（operations.md §3.9.1 升级表中同名列以本表为准）。
+
 | 合约 / artifact | Proxy salt label | Implementation / helper salt label | Canonical address |
 | --- | --- | --- | --- |
 | `MemeverseLauncherUpgradeable` | `MemeverseLauncher` | `MemeverseLauncherImplementation` | `getDeployed(deployCaller, launcherSalt)` 返回的 Launcher proxy |
@@ -129,7 +131,7 @@
 2. `_deployPOLend(nonce)`：部署 POLendUpgradeable implementation（salt = `POLendImplementation + nonce`），用预测的 Launcher 和 POLSplitterUpgradeable 地址构建 proxy creation code，部署 POLendUpgradeable proxy（salt = `POLend + nonce`）。
 3. `_deployMemeverseLauncher(nonce)`：部署 Launcher implementation（salt = `MemeverseLauncherImplementation + nonce`），用预测的 POLendUpgradeable 和 POLSplitterUpgradeable 地址构建 proxy creation code，部署 Launcher proxy（salt = `MemeverseLauncher + nonce`）。
 4. `_deployPOLSplitter(nonce)`：部署 POLSplitterUpgradeable implementation（salt = `POLSplitterImplementation + nonce`），用已部署的 Launcher 地址构建 proxy creation code，部署 POLSplitterUpgradeable proxy（salt = `POLSplitter + nonce`）。`POLSplitterUpgradeable.initialize` 内部调用 `launcher.polend()` 获取 POLendUpgradeable 地址，因此 Launcher 必须先部署。
-5. 部署 `lpTokenImplementation` 与 3 facet（`SwapFacet`/`DynamicFeeFacet`/`SettlementFacet`），并写入 `DeploymentResult.lpTokenImplementation`、`DeploymentResult.swapFacet`、`DeploymentResult.dynamicFeeFacet`、`DeploymentResult.settlementFacet`；本步末部署的 hook implementation / hook proxy 一并写入 `DeploymentResult.hookImplementation` / `DeploymentResult.hookProxy`（`hookProxy` 是真正的 v4 hook 地址）。3 facet 必须先于 hook proxy 部署：`SwapFacet`/`DynamicFeeFacet`/`SettlementFacet` 三 facet constructor 均传入与 hook 同一个 `poolManager`（DELEGATECALL 下 facet 读取自身 bytecode 中的 immutable），随后 hook proxy `initialize(initialOwner, treasury_, lpTokenImplementation_, swapFacet_, dynamicFeeFacet_, settlementFacet_, launcher_)` 传入 facet 地址与 launcher 建立绑定（部署顺序锚点 `script/DeployMemeverseHookProxy.s.sol`）。
+5. 部署 `lpTokenImplementation`、3 facet、hook implementation 与 hook proxy，全部写入 `DeploymentResult` 的 6 个 first-class 字段（`hookProxy` 是真正的 v4 hook 地址）。部署顺序、facet `poolManager` 一致性与 `initialize` 绑定的操作流程唯一权威见 [operations.md §3.10](../../operations.md)。
 6. 单角色部署模式下，脚本部署三个 delegatecall sibling `MemeverseLaunchImpl` / `MemeverseSettlementImpl` / `MemeverseLiquidityImpl` 与独立 view 合约 `MemeverseFeePreviewReader` 并分别调用 `launcher.setLaunchImpl(...)` / `launcher.setSettlementImpl(...)` / `launcher.setFeePreviewReader(...)` / `launcher.setLiquidityImpl(...)` 接线（双角色模式跳过，由 `initialOwner` 在单独交易中完成）。`[代码已证]`
 7. 打开 registration 前执行 readiness checks。fund metadata 与 launchImpl readiness 取决于部署模式：单角色部署时脚本已在部署中写入 `setFundMetaData` 与 launch/settlement/fee-preview/liquidity 四个 setter；双角色部署时 `initialOwner` 须在单独交易中调用 `launcher.setFundMetaData(...)`、`launcher.setLaunchImpl(...)`、`launcher.setSettlementImpl(...)`、`launcher.setFeePreviewReader(...)`、`launcher.setLiquidityImpl(...)`。
 

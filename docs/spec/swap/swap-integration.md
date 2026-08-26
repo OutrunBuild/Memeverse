@@ -283,7 +283,7 @@ Hook 仍保留（LP 与池操作低层入口）：
 - `removeLiquidityCore(...)`
 - `claimFeesCore(...)`
 
-报价（quote）不在 Hook Core：普通集成方走 `MemeverseSwapRouter.quoteSwap`，链上自定义 Router / 聚合器走 `MemeverseUniswapHookLens.quoteSwap`（两个公开入口均为 `view`；Lens 内部以 `STATICCALL` 进入 Hook 的 `quoteSwapFeeWithContext`，Hook 再 `DELEGATECALL` 到 `DynamicFeeFacet.quote`，详见 [docs/ARCHITECTURE.md](../../ARCHITECTURE.md) 费率报价表）。Hook 没有名为 `quoteSwap` 的 selector。
+报价（quote）不在 Hook Core：普通集成方走 `MemeverseSwapRouter.quoteSwap`，链上自定义 Router / 聚合器走 `MemeverseUniswapHookLens.quoteSwap`（两个公开入口均为 `view`；Lens 内部以 `STATICCALL` 进入 Hook 的 `quoteSwapFeeWithContext`，Hook 再 `DELEGATECALL` 到 `DynamicFeeFacet.quote`，详见 [uniswap-v4.md §2.1](uniswap-v4.md)）。Hook 没有名为 `quoteSwap` 的 selector。
 
 这些低层接口主要面向：
 
@@ -344,12 +344,7 @@ YT Flash Swap 是与 `MemeverseSwapRouter` **相互独立**的公开入口，由
     - **trader 一致性**：Lens quote 的 `trader` 必须等于执行 session principal（已在本节「不接收 quote」与「session 复用」覆盖，此处仅引用，不展开）。
     - **费用展示**：`SwapQuote` 的 `feeBps` / `estimatedProtocolFeeAmount` / `estimatedLpFeeAmount` 可直接用于前端费率分项展示；这些字段与底层普通 PT/POL swap 同源（经同一 `DynamicFeeFacet.quote` 路径）。
 
-- **入口前置（任何资金动作前）**：
-
-  1. `deadline` 未过期、exact amount 与 `int128`/`uint256` 边界合法、`recipient` 非零且非 Router。
-  2. `hook.activeAccountSessionPrincipal() == msg.sender`（无 session 或不匹配回滚 `AccountSessionPrincipalMismatch`，该 error 由 Router 自身接口定义，区别于 Hook 既有同名 error，详见 yt-flash-swap.md §11）。
-  3. 动态验证 canonical dependency：`hook.launcher().getLauncherContracts()` 的 `memeverseUniswapHook`/`polSplitter` 与 Router immutable 一致（否则 `CanonicalDependencyMismatch`）。外调前若 launcher 为零地址或无 deployed code，先回滚 `LauncherCodeNotReady`。
-  4. 构造期 PoolManager 对角（不可变，非运行时）：零地址检查后、读取 `hook_.poolManager()` 并进行 manager 对角比较前，Router 构造器要求 `manager_`、`hook_`、`splitter_` 三个 immutable executable dependency 均有 deployed code；分别无 code 时回滚 `PoolManagerCodeNotReady`、`HookCodeNotReady`、`SplitterCodeNotReady`。随后 fail-closed 校验 `manager_ == hook_.poolManager()`，失配回滚 `RouterPoolManagerMismatch`。`SafeCallback(manager_)` 在构造器 body 前已绑定 manager immutable，因此 code-ready 检查的正确语义是部署成功前、读取 getter 与对角比较前完成，而不是发生在该绑定之前。集成方/部署方无需运行时处理这些错误——它们都是部署期不可变约束，运行时不会触发（详见 yt-flash-swap.md §2 与 INV-24）。
+- **入口前置（任何资金动作前）**：deadline / int128 边界与 recipient 校验、`hook.activeAccountSessionPrincipal() == msg.sender`、canonical dependency 一致性、构造期 PoolManager 对角（部署期不可变约束，运行时不触发）——完整前置条件唯一权威见 [yt-flash-swap.md §7](yt-flash-swap.md) 与 [INV-24](../invariants.md)。
 
 - **session 复用**：Router 不自行 `beginAccountSession`/`endAccountSession`；它复用 smart-account/Safe/EIP-7702 原子 frame 内同一 active session principal（session 边界见 §1.1）。报价与执行必须使用同一 principal。
 

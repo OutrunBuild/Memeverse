@@ -177,6 +177,14 @@
 | registerMemeverse 7 步执行序列 | [registration-details.md §10](verse/registration-details.md) | launcher 侧注册执行顺序权威 |
 | Symbol 注册状态生命周期 | [state-machines.md §3.1](verse/state-machines.md) | symbol 状态迁移（Available/Active/Historical）权威 |
 
+### 2.10 升级/部署事实
+
+| 规则/概念 | canonical home | 说明 |
+| --- | --- | --- |
+| deployment salt label / canonical 地址推导 | [verse/deployment.md §6](verse/deployment.md) | 部署 artifact salt 唯一事实表 |
+| storage namespace / 共享 storage 兼容规则 | [upgradeability.md §2](upgradeability.md) | 升级面分类与 namespace 归属 |
+| setFundMetaData 活读决策点 | [verse/config-matrix.md §2](verse/config-matrix.md) | 四处决策点与方向性影响 |
+
 ## 3. 相关真源
 
 - 分层与冲突顺序：[docs/ARCHITECTURE.md](../ARCHITECTURE.md)

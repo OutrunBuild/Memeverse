@@ -42,6 +42,12 @@
 - Hook ABI 增加 `beginAccountSession()` 与 `endAccountSession()`；Hook 自己持有 transient active session context，并在 begin 时从 `msg.sender` 捕获 principal。`msg.sender.code.length != 0` 只拒绝传统 EOA，不是认证或白名单；EIP-7702 delegated account 仍可被接受。
 - `beforeSwap` 与 `afterSwap` 只可读取 active session context 的 principal，并将其作为 `DynamicFeeFacet` 的执行 trader。Router、`hookData`、PoolManager callback caller、`tx.origin` 与 Universal Router `msgSender` 均不得充当 principal 来源。
 
+### 2.2.2 资产结算与转账 helper
+
+- `_settleDeltas`：向 PoolManager settle 负 delta（用户欠池子的资金）；swap 栈语义下仅处理 ERC20/ERC20 pair，任一侧为 `address(0)` 直接 `revert NativeCurrencyUnsupported`。（`MemeverseUniswapHookUpgradeable.sol::_settleDeltas`）
+- `_takeDeltas`：从 PoolManager take 正 delta（池子欠用户的资金）到 recipient。（`MemeverseUniswapHookUpgradeable.sol::_takeDeltas`）
+- `transferWithGuard`：ERC20 转账 helper，Hook 与 Router 共用（两侧均 `using CurrencySettler for Currency;`）——guards（`amount == 0` 早退、`to == address(0)` revert）+ `OutrunSafeERC20.safeTransfer` 处理非合规 ERC20 返回值（返回 `false` 或非 bool 数据），失败抛 `OutrunSafeERC20.SafeERC20FailedOperation(address token)`。`CurrencySettler` 库的 `settle`/`take` 可处理 native 与 ERC20，但 `transferWithGuard` 自身仅 ERC20（swap 栈只允许 ERC20 结算）。`[文档已对齐实现]`（`src/swap/libraries/CurrencySettler.sol::transferWithGuard`）
+
 ### 2.3 Preorder settlement 显式结算通道
 
 - 启动结算调用链是 `MemeverseLauncherUpgradeable -> MemeverseUniswapHookUpgradeable.executePreorderSettlement(...)`。
@@ -126,6 +132,8 @@ PoolManager 传入 `afterSwap` 的 `BalanceDelta` 是实际核心 delta：它决
 - LP 全部移除后（drained pool：`cachedLpTotalSupply == 0` 且 `poolManager.getLiquidity() == 0`），三种路径行为如下：
   - **非零 quote 与公开 swap**：两者都因缺少活跃流动性拒绝。quote 不应用 `BeforeSwapDelta`、不移动资金，但仍必须在返回报价前完成同一可执行性检查；执行路径也不得在 v4 返回零 delta 后继续收取费用。
   - **preorder settlement**：`effectiveSupply == 0`（drained 池，无 LP 可接收 fee 分配）时 fail-closed。具体 selector 随 lpFee 是否非零分两种：当 `lpFeeInputAmount > 0`（常规输入）时入口 revert `NoActiveLiquidityShares`；当 gross 输入极小使 `feeOnAmount(gross, 65)` 下取整为 0 时，`NoActiveLiquidityShares` 检查被跳过，但因零流动性 swap 返回 delta=0，函数末尾的 `actualInputAmount != netInputAmount` 守卫 revert `ExactInputPartialFill`——同样 fail-closed，且该 dust 区间下 protocol fee（需 `gross >= 286`）亦为 0，无任何费用收取代入。
+- LP fee 可领额度 view：`MemeverseUniswapHookLens::claimableFees(hook, key, owner)` 返回已记录 `pendingFee0/1` 加上尚未 snapshot 的增量（LP 余额 × (`feePerShare` − offset)，Q128 向下取整、保守不超领；零 owner 或未建池返回 0，零 LP 余额只返回已记录 pending）；Router 的 `previewClaimableFees(...)` 经该 Lens view 实现。`[代码已证]`
+- LP fee 的收取与 claim 遵循 CEI：fee take 前先经 `_accrueLpFee` 入账（`MemeverseSwapFeeBase::_accrueLpFee` 纯记账、不转账）；`claimFeesCore` 执行链为快照结晶（经 `SwapFacet::updateUserSnapshotLogic`）→ 清零 pending → `CurrencySettler.transferWithGuard` 转账 → `FeesClaimed`。`[代码已证]`
 
 普通动态 Swap 的零金额报价可保留兼容行为：它跳过 raw limit、流动性、容量与曲线检查，但只返回费率预览，不代表 PoolManager 的零金额执行可通过。
 

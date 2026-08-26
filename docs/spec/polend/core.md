@@ -449,10 +449,10 @@ else:
 `POLendUpgradeable` 侧 `ZeroInput` 使用场景：
 
 - `POLendUpgradeable.sol::setLeveragedDebtFactor`：`leveragedDebtFactor == 0`（先于 `InvalidConfig` 分支执行）
-- `POLendUpgradeable.sol::setDefaultInterestRate`：`newRate == 0`（POLendUpgradeable.sol:143）
-- `POLendUpgradeable.sol::setMaxSettlementDustReserve`：`uAsset == 0 || maxReserve == 0`（POLendUpgradeable.sol:173）
-- `POLendUpgradeable.sol::preRedeemPTFee`：`ptAmount == 0 || mintTo == address(0)`（POLendUpgradeable.sol:506）
-- `POLendUpgradeable.sol::burnPreRedeemBacking`：`amount == 0`（POLendUpgradeable.sol:523）
+- `POLendUpgradeable.sol::setDefaultInterestRate`：`newRate == 0`
+- `POLendUpgradeable.sol::setMaxSettlementDustReserve`：`uAsset == 0 || maxReserve == 0`
+- `POLendUpgradeable.sol::preRedeemPTFee`：`ptAmount == 0 || mintTo == address(0)`
+- `POLendUpgradeable.sol::burnPreRedeemedBacking`：`amount == 0`
 
 `POLSplitterUpgradeable` 侧 `InvalidState` 等价错误：
 

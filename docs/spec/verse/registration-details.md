@@ -70,12 +70,8 @@ center 当前负责检查：
 
 ### 7.1 registrar 指针可变性与 inbound 解锁耦合
 
-center 为 UUPS（`ERC1967Proxy`）部署，registrar 是 owner 可变的 storage 指针：
+center 为 UUPS（`ERC1967Proxy`）部署，registrar 是 owner 可变的 storage 指针（`MemeverseRegistrationCenterUpgradeable.sol::setMemeverseRegistrar`，onlyOwner、零值具名拒绝、emit `SetMemeverseRegistrar(old, new)`）。origin 校验不变量绑定**当前配置的** registrar 指针：`_lzReceive` 校验 `_origin.sender ==` 当前 storage 指针，OApp 基座在进入 `_lzReceive` 之前另强制 `peers[srcEid] == origin.sender`；本链路径换指针立即生效，异链 inbound 须逐相关 eid 成对 `setPeer` 才恢复，中间态 fail-closed（`OnlyPeer`）。完整更换 runbook 见 [docs/operations.md §3.1.2](../../operations.md)；不变量口径见 [INV-01](../invariants.md)。
 
-- `MemeverseRegistrationCenterUpgradeable.sol::setMemeverseRegistrar(address)` 为 `onlyOwner` setter（零值具名拒绝），成功后 emit `SetMemeverseRegistrar(address indexed oldRegistrar, address indexed newRegistrar)`。
-- origin 校验不变量随之绑定**当前配置的** registrar 指针：`MemeverseRegistrationCenterUpgradeable.sol::_lzReceive` 校验 `_origin.sender == ` 当前 storage 指针。OApp 基座的 `peers[srcEid]`（`setPeer`，onlyOwner）与 launcher 侧 registrar 指针（`setMemeverseRegistrar`，onlyOwner）同属 owner 信任域，owner 可信前提下两者不会失配出绕过面。
-- 本链路径（§7 第 4 步）只跟随指针：`registration` 成功后 center 按当前指针调用 `MemeverseRegistrarAtLocal.localRegistration`，指针更换后立即生效。
-- inbound（异链 registrar -> center）解锁与 `setPeer` 耦合：OApp 基座在进入 `_lzReceive` 之前强制 `peers[srcEid] == origin.sender`。因此更换 registrar 后要恢复异链注册，必须成对执行 `setMemeverseRegistrar(new)` 与 `setPeer(eid, new)`（每个相关 eid 一次）；中间态（指针已换、peer 未换）下 inbound 在 peer 校验即失败（`OnlyPeer`），fail-closed。完整 runbook 见 [docs/operations.md](../../operations.md) §3.1.2。
 - center 自有配置的显式小写 getter：`memeverseRegistrar()`、`lzEndpointRegistry()`、`minDurationDays()`、`maxDurationDays()`、`registerGasLimit()`、`symbolRegistry(string)`、`symbolHistory(string,uint256)`、`supportedUAssets(address)`；`lzEndpointRegistry` 为 `initialize` 写入的 storage 且无 setter，`DAY` 保持 public constant。
 
 ## 8. 异链注册路径

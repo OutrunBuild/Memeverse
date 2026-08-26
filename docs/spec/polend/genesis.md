@@ -331,7 +331,7 @@ mintedUAsset = totalLeveragedInterest * 1e18 / market.interestRate
 
 `finalizeLeveragedGenesis` 不重复检查 debt cap。
 
-混池 burn 安全性：POLendUpgradeable 对某 uAsset 的 GenesisCredit 托管余额是该 uAsset 所有 verse 的 credit 利息合计（混池）。`markRefundable` 与 `finalizeLeveragedGenesis` 都 `require market.state == Genesis` 并分别迁移到 `Refund` / `Locked`（状态机互斥），同一 verse 的 refund 与 finalize 不会都发生，故 finalize 时刻该 verse 的 `totalCreditInterest` 仍精确等于其未退走的托管量，按 `market.totalCreditInterest` burn 不会误烧其他 verse 的份额（详见 [core.md §6.3](core.md)）。
+混池 burn 安全性：POLendUpgradeable 对某 uAsset 的 GenesisCredit 托管余额是该 uAsset 所有 verse 的 credit 利息合计（混池），finalize 仍能按 verse 精确 burn；`markRefundable` / `finalizeLeveragedGenesis` 状态机互斥的完整论证见 [core.md §6.3](core.md)。
 
 `finalizeLeveragedGenesis` 完成成功路径的利息 treasury 清扫后，`claimRefund` 不可用。
 

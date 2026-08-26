@@ -198,7 +198,7 @@ V2 当前已实现的启动保护是：
 - verse 需先到达 `unlockTime`，然后在实际 `changeStage()` 调用里进入 `Unlocked`
 - launcher 在 settlement 调用完成后，按 `block.timestamp + UNLOCK_PROTECTION_WINDOW` 为受保护池写入 `publicSwapResumeTime`（窗口数值与配置面见 [docs/spec/verse/config-matrix.md §3](config-matrix.md)；结算顺序与保护窗口的不变量见 [docs/spec/invariants.md](../invariants.md) INV-07A 与 INV-12）
 - hook 在 `beforeSwap` 中读取该 pool-level 时间；未到期时继续拒绝受保护 pair 的公开 swap
-- 杠杆辅助流动性结算零滑点为活性优先取舍: `MemeverseLiquidityImpl._removeAuxiliaryLiquidityIfNonZero:794` 固定 `0,0` 以保证 `Locked→Unlocked` 解锁必达(紧下限可被持续推价 grief 致 DOS, 见 invariants.md INV-07A), 推价缺口由 `settlementDustReserve` 有界兜底【INV-13】, 后腿 24h 阻断消除原子三明治
+- 杠杆辅助流动性结算零滑点为活性优先取舍: `MemeverseLiquidityImpl.sol::_removeAuxiliaryLiquidityIfNonZero` 固定 `0,0` 以保证 `Locked→Unlocked` 解锁必达(紧下限可被持续推价 grief 致 DOS, 见 invariants.md INV-07A), 推价缺口由 `settlementDustReserve` 有界兜底【INV-13】, 后腿 24h 阻断消除原子三明治
 - `UNLOCK_PROTECTION_WINDOW` 是正常 `Locked -> Unlocked` 时写入的固定 24 小时窗口；`launcher` 由 hook initialize 固化（initializer write-once），不可 retarget，binding 运行时不可偏离真实 Launcher proxy，无需恢复操作；详见 INV-12 / operations §3.8。
 
 公开 swap 恢复时间锚定实际 `Locked -> Unlocked` 迁移调用，赎回开放与公开 swap 恢复分别由 stage 和 pool-level 时间控制。

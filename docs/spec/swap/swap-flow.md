@@ -295,12 +295,7 @@ sequenceDiagram
     R-->>U: emit YTFlashSwapPOLForYT + return polInUsed
 ```
 
-要点：
-
-- 只拉 `actualPOLIn`，不预拉 `maxPOLIn`，无退款分支。
-- `R_actual == y`（零成本）或 `R_actual > y`（负成本）都 fail closed，不让 unsigned 减法下溢。
-- Router→Splitter 的 POL allowance 成功后必须为 0（split 恰好消耗 y，成功路径不调 `approve(0)`）。
-- PT/POL 腿的费率、referral、动态状态与对应普通 swap 完全一致且只发生一次。
+要点（只拉 `actualPOLIn`、`R_actual` 边界 fail-closed、split 后 allowance 归零、费率只收一次）唯一权威见 [yt-flash-swap.md §8](yt-flash-swap.md) 与 [INV-24](../invariants.md)。
 
 ### 8.2 卖出：精确 YT → POL（一次普通 exact-output POL→PT swap + flash merge）
 
@@ -334,9 +329,4 @@ sequenceDiagram
     R-->>U: emit YTFlashSwapYTForPOL + return polOut
 ```
 
-要点：
-
-- `Q_actual == 0` 或 `Q_actual >= y` 都回滚（避免零债务/负输出/算术下溢）。
-- `polOut < minPOLOut` 必须在 take、pull、merge 前原子回滚。
-- `merge` 直接 burn Router 持有的 PT/YT，不经 ERC20 approval/transferFrom；不产生第二次 swap。
-- PT/POL 腿的费率、referral、动态状态与对应普通 swap 完全一致且只发生一次。
+要点（`Q_actual` 边界回滚、`polOut < minPOLOut` 在资金动作前回滚、merge 不经 approval、费率只收一次）唯一权威见 [yt-flash-swap.md §9](yt-flash-swap.md) 与 [INV-24](../invariants.md)。

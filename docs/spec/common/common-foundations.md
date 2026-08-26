@@ -88,8 +88,8 @@ swap 栈是显式例外：
 - 资金输入输出语义来自 `TokenHelper`
 - clone 初始化边界来自 `Initializable`
 - peer 语义来自 common omnichain 基类 `OutrunOAppCoreInit`（`setPeer`/`_getPeerOrRevert` 门控 `lzReceive` 与 send 路径，见 `src/common/omnichain/oapp/OutrunOAppCoreInit.sol`）
-- compose 语义由 `IComposeState`（`src/common/types/IComposeState.sol` 生命周期枚举与错误单点）+ `OFTComposeSettleVerify.verifySettle`（`src/common/omnichain/OFTComposeSettleVerify.sol:56-75` 交付证明库，`internal` 内联）+ 各消费方 `composeStates[token][guid]` 互斥（`src/verse/YieldDispatcherUpgradeable.sol:48,156,167,223` / `src/interoperation/OmnichainMemecoinStakerUpgradeable.sol:40,103,178,202`）共同承担，非基类
-- replay 语义由 LayerZero endpoint `composeQueue` 的 `RECEIVED_MESSAGE_HASH` 哨兵（外部协议行为，`src/common/omnichain/OFTComposeSettleVerify.sol:14-16` 仅镜像该常量，`:63` 作 `AlreadyExecuted` 检查）+ 上述消费方 `composeStates` 互斥共同承担；common receiver 基类 `OutrunOAppReceiverInit.nextNonce`（`src/common/omnichain/oapp/OutrunOAppReceiverInit.sol:88-92`）缺省恒返 `0`、不提供防线
+- compose 语义由 `IComposeState`（`src/common/types/IComposeState.sol` 生命周期枚举与错误单点）+ `OFTComposeSettleVerify.verifySettle`（`src/common/omnichain/OFTComposeSettleVerify.sol::verifySettle` 交付证明库，`internal` 内联）+ 各消费方 `composeStates[token][guid]` 互斥（`src/verse/YieldDispatcherUpgradeable.sol::composeStates`/`::lzCompose`/`::settlePendingCompose` / `src/interoperation/OmnichainMemecoinStakerUpgradeable.sol::composeStates`/`::lzCompose`/`::settlePendingCompose`）共同承担，非基类
+- replay 语义由 LayerZero endpoint `composeQueue` 的 `RECEIVED_MESSAGE_HASH` 哨兵（外部协议行为，`src/common/omnichain/OFTComposeSettleVerify.sol::RECEIVED_MESSAGE_HASH` 仅镜像该常量，`OFTComposeSettleVerify.sol::verifySettle` 作 `AlreadyExecuted` 检查）+ 上述消费方 `composeStates` 互斥共同承担；common receiver 基类 `OutrunOAppReceiverInit.nextNonce`（`src/common/omnichain/oapp/OutrunOAppReceiverInit.sol::nextNonce`）缺省恒返 `0`、不提供防线
 
 因此 common 层决定了多个业务模块的共同假设。
 

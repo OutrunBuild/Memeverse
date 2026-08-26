@@ -1,6 +1,6 @@
 # YT Flash Swap 规格（POL ↔ YT 复用 PT/POL 池）
 
-本文档是 YT Flash Swap 的 canonical spec（产品真相层）。它在产品规则层面定义：新增独立 Router 复用既有 PT/POL Uniswap v4 池，在不建立第二个 AMM 的前提下把 POL 与 YT 互换。设计记录见 `docs/superpowers/specs/`（设计稿，非产品真源）；普通 PT/POL swap 的唯一 canonical 是 [uniswap-v4.md §3.1–§3.2](uniswap-v4.md)，本文不重述其费率/容量/价格限制规则。
+本文档是 YT Flash Swap 的 canonical spec（产品真相层）。它在产品规则层面定义：新增独立 Router 复用既有 PT/POL Uniswap v4 池，在不建立第二个 AMM 的前提下把 POL 与 YT 互换。普通 PT/POL swap 的唯一 canonical 是 [uniswap-v4.md §3.1–§3.2](uniswap-v4.md)，本文不重述其费率/容量/价格限制规则。
 
 标签约定：`[代码已证]` = 当前代码可直接验证。本文主体已由 `src/swap/MemeverseYTFlashSwapRouter.sol`、接口、Hook `activeAccountSessionPrincipal()` getter 与单元/集成/invariant 测试落地，统一标 `[代码已证]`。
 
@@ -345,7 +345,7 @@ callback 资金步骤或 unlock 后公共入口 postcondition 任一步失败，
 
 canonical POL、PT、YT 均为 18-decimal ERC20，所有数值均使用 raw unit。`y`、`R_actual`、`Q_actual`、`actualPOLIn` 和 `polOut` 都是同一标度的 raw-unit 整数；split/merge 在 raw unit 上 1:1，Router 不做 decimal rescaling。
 
-`R_actual` 与 `Q_actual` 是 Uniswap core/Hook 完成 fee 和 rounding 后的最终普通 swap `BalanceDelta` 数额。普通 swap 语义以 [uniswap-v4.md](uniswap-v4.md) 为准；Router 不重复收费、不对这些值再次取整，且不引入任何额外 rounding 操作。
+`R_actual` 与 `Q_actual` 是 Uniswap core/Hook 完成 fee 和 rounding 后的最终普通 swap `BalanceDelta` 数额。普通 swap 语义以 [uniswap-v4.md](uniswap-v4.md) 为准；Router 不重复收费、不对这些值再次取整，且不引入任何额外 rounding 操作。接口返回值 `polInUsed` 即 §8 推导符号 `actualPOLIn = y - R_actual`（同一数量，返回值名与推导记号并存）。
 
 ## 10. fee、referral 与状态更新
 

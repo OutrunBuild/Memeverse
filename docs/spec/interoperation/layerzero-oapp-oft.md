@@ -105,7 +105,7 @@ OFT 遵循官方 LayerZero OFTCore 语义：`_lzReceive` mint 即终态 + `endpo
 - replay 防护：
  - composer `composeStates` 互斥（权威）+ endpoint 原生 `lzCompose` 的 `LZ_ComposeNotFound` 防重放。
 - 费用约束：
- - 跨链分发与跨链 staking 要求 `msg.value` 与 quote 精确相等（不是"大于等于"），见 [docs/spec/invariants.md INV-06](../invariants.md)；注册路径有意为 `>=`：`MemeverseRegistrationCenterUpgradeable.registration`（center 侧 `MemeverseRegistrationCenterUpgradeable.sol:254` `msg.value >= totalFee`，按报价精确花费、多付滞留 center、可经 `removeGasDust` 回收，退款地址 `address(this)`）与 `MemeverseRegistrarOmnichain.registerAtCenter`（spoke 侧 `MemeverseRegistrarOmnichain.sol:89` `msg.value >= lzFee`，多付由 endpoint 以 `refundAddress=msg.sender` 直退），hub 经 `MemeverseRegistrarAtLocal.registerAtCenter`（`MemeverseRegistrarAtLocal.sol:71-78` `msg.value == value` 转发，残差按 NatSpec `67-68` 作 gas dust 处理）
+ - 跨链分发与跨链 staking 要求 `msg.value` 与 quote 精确相等（不是"大于等于"），见 [docs/spec/invariants.md INV-06](../invariants.md)；注册路径有意为 `>=`：`MemeverseRegistrationCenterUpgradeable.registration`（center 侧 `MemeverseRegistrationCenterUpgradeable.sol::_omnichainSend` `msg.value >= totalFee`，按报价精确花费、多付滞留 center、可经 `removeGasDust` 回收，退款地址 `address(this)`）与 `MemeverseRegistrarOmnichain.registerAtCenter`（spoke 侧 `MemeverseRegistrarOmnichain.sol::registerAtCenter` `msg.value >= lzFee`，多付由 endpoint 以 `refundAddress=msg.sender` 直退），hub 经 `MemeverseRegistrarAtLocal.registerAtCenter`（`MemeverseRegistrarAtLocal.sol::registerAtCenter` `msg.value == value` 转发，残差按其 NatSpec 作 gas dust 处理）
 
 以上均为 `[代码已证]`。
 

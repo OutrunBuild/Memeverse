@@ -57,10 +57,15 @@ docs/TRACEABILITY.md lists control files and artifact locations; other repositor
 
 ## Audit and Review Reference Containment
 
-- Audit and review documents (`docs/audits/**`, `docs/review/**`, and any external audit/review report) are fix input only. Never write their finding IDs (e.g. `F-007`, `L-001`, `M-03`, review-comment numbers) or document references into code or into docs outside `docs/audits/` and `docs/review/`.
-- Prohibited sinks include Solidity comments and NatSpec, error and revert strings, contract/function/variable/event/error names, test names and test descriptions, script content, and all non-audit docs (spec, README, ARCHITECTURE, GLOSSARY, TRACEABILITY, etc.).
-- Fixes must be self-contained: comments and docs state the behavior, invariant, or rationale in domain terms — never "fix for F-007" / "per review comment 12" / "audit finding M-03" style provenance.
-- Finding-to-fix traceability lives only inside the audit/review documents themselves (findings ledger, verdicts) or the driving task/batch document. An inline reference in code or docs is allowed only when a human explicitly requests it.
+- `docs/audits/**`, `docs/review/**`, external audit/review reports are fix-input only. Never write finding IDs (`F-007`/`L-001`/`M-03`/review numbers) or doc references into code or non-audit docs.
+- Prohibited sinks: Solidity comments/NatSpec, error/revert strings, names (contract/function/variable/event/error), test names/descriptions, scripts, and all non-audit docs (spec/README/ARCHITECTURE/GLOSSARY/TRACEABILITY etc.).
+- Fixes self-contained: state behavior/invariant/rationale, not provenance (`fix for F-007` / `per review comment 12` etc.). Traceability stays in audit docs or the driving task doc; inline refs only if human explicitly requests.
+
+## Product Documentation Reference Containment
+
+- Product docs (`docs/**` except `docs/audits/**` and `docs/review/**`) are internal. Never reference them from code — Solidity comments, NatSpec, error strings, inline comments.
+- Comments must be self-contained: state behavior, invariant, or rationale in domain terms, no `see docs/...` / `per docs/...`.
+- Applies to `src/**/*.sol` and `script/**/*.sol`; product docs may cross-reference each other.
 
 ## Harness Dispatch Procedure
 
@@ -93,7 +98,8 @@ Before final response, check:
 - every edited path was classified pre-edit, matches `.harness/policy.json`, and no edited path is outside the classified surface
 - writer, reviewer, and verifier routing followed policy and gate evidence
 - validation command and result are fresh
-- no edited code or doc introduces audit/review finding IDs or document references (containment rule above)
+- no edited code or doc introduces audit/review finding IDs or document references (containment rules above)
+- no edited code introduces product-doc references (`docs/**` in `src/**/*.sol`/`script/**/*.sol` comments or strings)
 - final answer reports only completed work, validation, and blockers
 
 ## Escalation Boundaries

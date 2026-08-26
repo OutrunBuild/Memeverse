@@ -53,4 +53,4 @@ Never inherit an upgradeable production contract (`Initializable`, proxy/storage
 - `-vvvvv`: traces plus storage changes.
 
 ## Comments
-Comments and NatSpec MUST be written in English — same rule as `src/AGENTS.md` ("NatSpec"). Test files have previously needed full Chinese-to-English comment conversion; write English from the start.
+Comments and NatSpec MUST be written in English — same rule as `src/AGENTS.md` ("NatSpec"). Write comments in English from the start.

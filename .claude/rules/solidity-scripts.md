@@ -28,7 +28,7 @@ console.log("Deployer:", msg.sender);
 
 ## Running
 - **Simulate before broadcasting**: omitting `--broadcast` is a dry-run/simulate; confirm the trace is correct, then add `--broadcast`.
-- Actual entry point is the `script/deploy.sh` wrapper. It `source`s `../.env` (so `PRIVATE_KEY` must be set there) then runs `forge script script/MemeverseScript.s.sol:MemeverseScript … --broadcast --verify` directly — **no** `--account`/`--ledger`. This differs from the generic upstream `--account deployer` / `--ledger` example below.
+- Actual entry point is the `script/deploy.sh` wrapper. It `source`s `../.env` (so `PRIVATE_KEY` must be set there) then runs `forge script script/MemeverseScript.s.sol:MemeverseScript … --broadcast --verify` directly — **no** `--account`/`--ledger`.
 
 ```bash
 # 1) Simulate (dry-run): omit --broadcast
@@ -38,7 +38,7 @@ forge script script/MemeverseScript.s.sol:MemeverseScript --rpc-url sepolia --br
 # Hardware signing: use --ledger instead of --account
 ```
 
-The `--account`/`--ledger` example is illustrative only — this repo does not support it without first changing `BaseScript` (see "No hardcoded config or secrets").
+(example only; see Key management)
 
 ## Key management
 | Environment | Key source |

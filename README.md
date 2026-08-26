@@ -52,8 +52,8 @@ Production Solidity semantic changes never downgrade by static allowlist and nev
 | `forge build` | yes | yes | always |
 | `forge test --match-path` | yes | no | changed/mapped targeted tests |
 | `forge test -vvv` | no | yes | full / ci |
-| `forge coverage` | no | yes | `change_class=prod-semantic` and `surface_sensitivity=sensitive` |
-| `slither` | no | yes | same as coverage, only when changed production Solidity includes `src/**/*.sol` |
+| `forge coverage` | no | yes | see [VERIFICATION.md](docs/VERIFICATION.md) |
+| `slither` | no | yes | see [VERIFICATION.md](docs/VERIFICATION.md) |
 | `bash -n` | yes | yes | changed shell files |
 | `node --check` | yes | yes | changed JavaScript files |
 | `npm ci` | yes | yes | package manifest or lockfile changed |

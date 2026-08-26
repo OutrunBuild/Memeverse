@@ -19,7 +19,7 @@
 
 - 杠杆创世由 `POLendUpgradeable` 记录用户支付的利息，并按 market 固定利率推导债务：
 `totalLeveragedDebt = totalLeveragedInterest * 1e18 / market.interestRate`
-- 成功 `genesis` / `leveragedGenesis` 写入后都必须保持 `totalNormalFunds + totalLeveragedDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`，其中 `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = type(uint128).max`；`leveragedGenesis` 写入前必须按累计 `nextTotalLeveragedInterest = totalLeveragedInterest + interestAmount` 推导 `previewDebt = nextTotalLeveragedInterest * 1e18 / market.interestRate`，并同时满足 `previewDebt <= debtCap` 与 `totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`，不能只看当前调用 delta。
+- 杠杆资金计入 `totalLeveragedDebt`；`debtCap` 与累计聚合上限预检见 [polend/genesis.md §3](../polend/genesis.md)。
 - `Genesis` 阶段不 mint 杠杆 `uAsset`；只有成功进入 `Locked` 时才由 `POLendUpgradeable.finalizeLeveragedGenesis` mint 推导债务并计入按 `uAsset` 维度的系统债务。
 - `setLeveragedDebtFactor` 只改未来 `None / Genesis` market 的 debt cap / 容量预览口径，不追溯改变已注册 market 利率、已 mint 债务、退款、结算或 claim 账本。
 - 杠杆退款、初始 `YT`、残值、PT fee 预兑付与全局结算规则以 [docs/spec/polend/settlement-and-fees.md](../polend/settlement-and-fees.md) 为准。

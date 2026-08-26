@@ -147,14 +147,8 @@ settlementUAsset >= previewPTToUAsset(PT.totalSupply())
 
 - 初始与 `Locked` 后新增的 `PT` 都来自真实 `split(POL)`。
 - `preRedeemPTFee` burn 的是 `Launcher` 实际持有的真实 `PT`，因此 `preRedeemedPT.uAssetBacking` 对应的 backing 需求已从后续 `PT.totalSupply()` 中移除。
-- 成功 settlement 的既有不变量是：先偿还 `preRedeemedPT.uAssetBacking`，偿还后剩余 `settlementUAsset` 继续覆盖 `previewPTToUAsset(PT.totalSupply())`。
-- 对应关系为：
 
-```text
-totalRedeemedUAsset >= preRedeemedPT.uAssetBacking + previewPTToUAsset(PT.totalSupply())
-settlementUAsset = totalRedeemedUAsset - preRedeemedPT.uAssetBacking
-settlementUAsset >= previewPTToUAsset(PT.totalSupply())
-```
+（solvency 公式与 `preRedeemedPT.uAssetBacking` 结清语义见 §2 与 [docs/spec/invariants.md](../invariants.md) INV-15/INV-18）
 
 验证证据：
 
@@ -185,7 +179,7 @@ settle 后：
 - `NotSettled`：redeem 前尚未 settle
 - `AlreadyDeployed`：`initializeVerse` 重复调用
 - `TokenImplementationCodeNotReady`：`setTokenImplementations` 目标模板地址无代码
-- 不保留 `InsufficientSettlementUAsset`
+- 统一 revert `InvalidClaim`
 
 ## 3. PT / YT 兑付
 

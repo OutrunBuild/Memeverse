@@ -7,7 +7,7 @@
 - `src/verse/MemeverseLauncherUpgradeable.sol`：facade，verse 生命周期状态机与资金主编排（Genesis/Refund/Locked/Unlocked）的唯一外部入口与 delegatecall 调度方。
 - `src/verse/MemeverseLaunchImpl.sol`：delegatecall sibling，承载 launch 生命周期链（registerMemeverse / genesis / preorder / genesisAndPreorder / `changeStage` stage dispatcher / 治理组件部署编排）。与 facade 共享同一 ERC-7201 storage namespace `outrun.storage.MemeverseLauncher`，在 proxy 存储上下文执行；owner 经 `setLaunchImpl` 替换。`changeStage` 在 Genesis→Locked 成功路径内嵌套 delegatecall `MemeverseLiquidityImpl`，Locked→Unlocked 路径内嵌套 delegatecall `MemeverseSettlementImpl`。
 - `src/verse/MemeverseSettlementImpl.sol`：delegatecall sibling，承载 settlement / claim / fee 链（refund / refundPreorder / claimNormalYT / claimNormalFees / claimUnlockedPreorderMemecoin / redeemAndDistributeFees / fee 捕获+collect+distribute，含 Locked→Unlocked 解算编排与 post-unlock 公开 swap 保护）。同 ERC-7201 namespace；owner 经 `setSettlementImpl` 替换。
-- `src/verse/MemeverseLiquidityImpl.sol`：delegatecall sibling，承载 bootstrap 流动性 / POL mint / LP 赎回链（主池+三辅助池创建、preorder settlement 接线、residual 处置、mintPOLToken、redeemAuxiliaryLiquidity、settleLeveragedAuxiliaryLiquidity、redeemMemecoinLiquidity、LP helper）。同 ERC-7201 namespace；owner 经 `setLiquidityImpl` 替换。bootstrap 入口为 `deployBootstrapLiquidity`（原 `deployLiquidity`，selector 变）。
+- `src/verse/MemeverseLiquidityImpl.sol`：delegatecall sibling，承载 bootstrap 流动性 / POL mint / LP 赎回链（主池+三辅助池创建、preorder settlement 接线、residual 处置、mintPOLToken、redeemAuxiliaryLiquidity、settleLeveragedAuxiliaryLiquidity、redeemMemecoinLiquidity、LP helper）。同 ERC-7201 namespace；owner 经 `setLiquidityImpl` 替换。bootstrap 入口为 `deployBootstrapLiquidity`。
 - `src/verse/MemeverseFeePreviewReader.sol`：独立 view 合约（非 sibling），不绑 ERC-7201、不收 delegatecall，经 immutable `PROXY` staticcall 读 proxy getter 预览 genesis maker fee 与 LayerZero 分发报价；EOA 直调为正常用法，owner 经 `setFeePreviewReader` 替换。
 - 普通创世与 POLendUpgradeable 杠杆创世共享 `totalNormalFunds + totalLeveragedDebt <= type(uint128).max` 的聚合上限；`genesis` 先写入普通创世账本再拉取 uAsset，避免 callback-capable token 在转账中重入 POLendUpgradeable 时读到旧账本。
 
@@ -39,24 +39,7 @@
 
 #### 普通动态 Swap：一次选费与四路径结算
 
-以下为当前普通动态 Swap 实现。`[代码已证]`
-
-普通单池动态 Swap 的唯一选费输入是原始用户请求：exact-input 的 `requestedGrossInput`，或 exact-output 的 `requestedNetOutput`。动态费计算器只运行一次；原始 `sqrtPriceLimitX96`、协议费币腿、变换后的核心目标及本笔费用都不能再次参与选费。因此不支持 fee-on-fee，也不使用多轮迭代去寻找费率。
-
-费率先拆为 `protocolFeeBps` 与 `lpFeeBps`，再按下表把唯一的 `totalFeeBps` 结算到正确币腿。`OrdinarySwapMath` 是这四条普通动态路径的唯一实现归属；`SwapFeeMath` 只保留方向、`BalanceDelta` 与共用上下文，固定费路径才使用 `FeeMath.feeOnAmount`。
-
-| 请求 | 协议费币腿 | v4 核心目标 | 最终用户与费用边界 |
-| --- | --- | --- | --- |
-| exact-input | 输入侧 | `poolInput = floor(requestedGrossInput × (BPS_BASE - totalFeeBps) / BPS_BASE)` | 用户支付原始输入；输入侧总费按已取整总费拆为 protocol 与 LP。 |
-| exact-input | 输出侧 | `poolInput = floor(requestedGrossInput × (BPS_BASE - lpFeeBps) / BPS_BASE)` | LP 费在输入侧；协议费从实际核心毛输出扣除，用户收到净输出。 |
-| exact-output | 输入侧 | 核心输出目标等于 `requestedNetOutput` | 由实际核心输入向上反推用户输入；输入侧总费按已取整总费拆分。 |
-| exact-output | 输出侧 | 核心输出目标为按总费与 LP 费生存率反推并向上取整的 `grossOutput` | 用户收到请求净输出；协议费为毛输出与请求净输出之差，LP 费由实际核心输入向上反推。 |
-
-`afterSwap` 的 PoolManager `BalanceDelta` 是实际核心 delta，用于实际成交、完整填充和动态费历史更新；Hook 返回 delta 后 Router 看到的是最终用户 delta，只能用它执行 `amountOutMinimum` 与 `amountInMaximum`。两者不得混用。非零直接报价、Lens 与执行在同一完整上下文必须给出同一可执行性与最终用户金额；报价在任何调用方式下均只读。
-
-原始价格限制只限制可执行性，绝不改变本笔 `feeBps`。非零请求必须有活跃流动性，事前价格位于全范围的下端点（可等于）与上端点（严格小于）之间；用户内部有效停止价允许核心目标等于容量，但全范围端点只允许严格小于容量。端点 equality 必须拒绝，避免把唯一全范围仓位耗尽。
-
-`DynamicFeeFacet::prepareSwapFee` 在执行热路径只返回一个 `feeBps` word；`SwapFacet` 与 Lens 都用 `OrdinarySwapMath` 完成四路径、容量和最终金额计算。`beforeSwap` 把编码的费率/协议费币腿、事前价格与变换后的核心目标写入 transient context，`afterSwap` 消费它并以实际核心 delta 完成结算。完整 11-word `PreparedSwapFee` 仅由 `DynamicFeeFacet::quote` 经 bridge/Lens 用于只读报价。`[代码已证]`
+普通单池动态 Swap 的唯一选费输入是原始用户请求（exact-input 的 `requestedGrossInput` 或 exact-output 的 `requestedNetOutput`），动态费计算器只运行一次；一次选费、四路径结算、原始价格限制与全范围容量的完整规则唯一 canonical 见 [docs/spec/swap/uniswap-v4.md §3.1–§3.2](spec/swap/uniswap-v4.md)（`OrdinarySwapMath` 是四路径的唯一实现归属）。
 
 **动态费率与状态更新 `[代码已证]`**
 
@@ -87,28 +70,9 @@
 
 | 函数 | 源 | 作用 |
 |---|---|---|
-| `_collectProtocolFee` | `SwapFacet::_collectProtocolFee` | 按 referrer 切 protocol fee rebate：`toTreasury = protocolFee - rebate`。`_settleProtocolFee` 先内联累加 hook storage `pendingRebate`（`pendingRebate[referrer][currency] += rebate`）并 emit `ReferralRebateAccrued`（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 把 `toTreasury` 转给 treasury（interaction），最后 emit `ProtocolFeeCollected`；记账本身是纯 storage effect，无 facet→facet delegatecall 或 PoolManager 调用。该 helper 现为严格 CEI（effect → interaction → event）：treasury take 不触发 v4 hook callback，但 ERC20 currency 会执行外部 `transfer` token 代码；记账先于 treasury take 与调用方执行的 rebate take。`_collectProtocolFee` = `_computeRebate` + `_settleProtocolFee` + 独立 `take(rebate)`，用于 afterSwap 3 点 + beforeSwap 边界（lpFee==0、protocolFee==0、或 effectiveSupply==0（drained pool））；beforeSwap 主路径（`knownLpInputFee > 0 && knownProtocolInputFee > 0 && effectiveSupply != 0`）改走 `_computeRebate` + `_settleProtocolFee` + 合并 `take(currencyIn, address(this), knownLpInputFee + rebate)`。当前顺序的安全边界是 fee currency 为标准 ERC20（注册的协议费代币；普通池下为输入代币）、treasury 是被动收款方，且任一外部调用失败会回滚整笔 swap。进入非零 protocol fee 路径后始终触发 `ProtocolFeeCollected`（`amount` 是 treasury 实收 `toTreasury`；仅当 `rebate > 0` 时 `toTreasury < 完整 protocolFee`，`rebate == 0` 时 `toTreasury` 等于完整 protocolFee）；`protocolFeeAmount == 0` 时函数早返不 emit，`rebate > 0` 时额外触发 hook 的 `ReferralRebateAccrued`。无 referrer（`_decodeReferrer` 返回零）、`referrerRebateBps == 0`、或 `mulDiv` 向下取整使 `rebate == 0` 时不切正数返佣。 |
+| `_collectProtocolFee` | `SwapFacet::_collectProtocolFee` | 按 referrer 切 protocol fee rebate：`toTreasury = protocolFee - rebate`；`_collectProtocolFee` = `_computeRebate` + `_settleProtocolFee` + 独立 rebate take，用于 afterSwap 3 点与 beforeSwap 边界；beforeSwap 主路径走 `_computeRebate` + `_settleProtocolFee` + 与 LP fee 合并 take。CEI 时序、守恒与安全边界唯一权威见 [docs/spec/swap/uniswap-v4.md §3.3](spec/swap/uniswap-v4.md) 与 [INV-20](spec/invariants.md)。 |
 
-**返佣（Referral Rebate）**
-
-普通 swap 当前按 `LP 65 / protocol 35` 拆分 fee，`FeeMath.PROTOCOL_FEE_SHARE_BPS = 3500`；有 referrer 时，rebate 从 protocol share 中切分：
-
-| 场景 | LP | protocol base（treasury 实收） | rebate |
-|---|---|---|---|
-| 无 referrer | 65% | 35% | 0% |
-| 有 referrer（默认 `referrerRebateBps = 1000`） | 65% | 25% | 10% |
-
-rebate 公式：`rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`（提取为 `SwapFacet::_computeRebate`，两级向下取整语义见 [docs/spec/invariants.md INV-20](spec/invariants.md)）。rebate custody 在 `MemeverseUniswapHookUpgradeable`(Router，hook proxy 地址)；`SwapFacet::_settleProtocolFee`（`_collectProtocolFee` 调用；beforeSwap 主路径直接调）先内联写 hook storage `pendingRebate[referrer][currency] += rebate` 并 emit `ReferralRebateAccrued`（rebate>0 时；effect；记账部分是纯 storage 写，无 facet→facet delegatecall、无额外 PoolManager 调用），再做 treasury take（`_takeToTreasury`：`toTreasury = protocolFee - rebate` 经 `poolManager.take(feeCurrency, treasury, toTreasury)` 到 treasury；interaction），最后 emit `ProtocolFeeCollected`。rebate take 由调用方执行（afterSwap / beforeSwap 边界经 `_collectProtocolFee` 内独立 `poolManager.take(feeCurrency, address(this), rebate)`；beforeSwap 主路径与 LP fee 合并 take）。因此 ledger effect 先于 treasury take 与 caller-side rebate take，`_settleProtocolFee` 现为严格 CEI：treasury take 不触发 v4 hook callback，ERC20 currency 仍会执行外部 `transfer` token 代码。该顺序依赖 fee currency 为标准 ERC20（注册的协议费代币；普通池下为输入代币）、treasury 保持被动收款，以及 swap 事务的整体回滚保证。referrer 经 `MemeverseUniswapHookUpgradeable::claimRebate`（Router 直接实现，不经 facet；CEI 清零后 transfer）pull 领取。take 与记账都经 hook（v4 `PoolManager.take` 的 delta 记在 take 的 caller 上——take 是经 DELEGATECALL 从 `address(this)`（=hook proxy）发起的外部 CALL，故 PoolManager 所见 `msg.sender` 为 hook，只有 hook 的 specifiedDelta credit 能抵消；注意 facet 帧内自身的 `msg.sender` 是 callback 下的 PoolManager（delegatecall 保留外层 msg.sender），而非 hook），custody / 记账 / claim 都在 hook。
-
-hook 侧返佣路径锚点：
-
-- `_decodeReferrer`：从 `hookData` 前 20 字节 packed 解码 referrer（caller 用 `abi.encodePacked`；`abi.encode` 左 padding 会误读，禁用）；长度 < 20 或前 20 字节全零视为无 referrer。在 `SwapFacet::beforeSwapLogic` 与 `::afterSwapLogic` 各解码一次。
-- `_collectProtocolFee`：用于 beforeSwap 边界（lpFee==0、protocolFee==0、或 effectiveSupply==0（drained pool））+ afterSwap 3 点（exact-input output 侧、exact-output input 侧、exact-output output 侧），均传入 referrer（位于 `SwapFacet`）；beforeSwap 主路径（`knownLpInputFee > 0 && knownProtocolInputFee > 0 && effectiveSupply != 0`）不走 `_collectProtocolFee`，改走 `_computeRebate` + `_settleProtocolFee` + 合并 take。
-- `返佣记账`：`SwapFacet::_settleProtocolFee`（`_collectProtocolFee` 与 beforeSwap 主路径均调）内联写 hook storage `pendingRebate` 并 emit `ReferralRebateAccrued`；该职责与 DynamicFeeFacet 隔离。
-- `claimRebate` / `pendingRebateOf`：Router 直接实现（非 facet），从 hook custody 转 token，CEI 清零后 transfer。
-- `setReferrerRebateBps`：hook `onlyOwner` 直接实现（Router，写 hook storage `referrerRebateBps`）。
-
-preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，不参与返佣。
+**返佣（Referral Rebate）**：普通 swap 有 referrer 时从 protocol fee 切 rebate 给 referrer（默认 `referrerRebateBps = 1000`，上限 `FeeMath.PROTOCOL_FEE_SHARE_BPS = 3500`）；记账（`SwapFacet::_settleProtocolFee`）、领取（`claimRebate`）与配置（`setReferrerRebateBps`，Router 直接实现）均在 hook。CEI 时序、守恒公式与调用面唯一权威见 [docs/spec/swap/uniswap-v4.md §3.3](spec/swap/uniswap-v4.md)、[INV-20](spec/invariants.md) 与 [docs/operations.md §3.11](operations.md)。preorder settlement 路径不携带 referrer，不参与返佣。
 
 **资产结算与转账**
 
@@ -116,7 +80,7 @@ preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，
 |---|---|---|
 | `_settleDeltas` | `MemeverseUniswapHookUpgradeable::_settleDeltas` | 向 PoolManager settle 负 delta（用户欠池子的资金）。在 swap 栈语义下仅处理 ERC20/ERC20 pair；任一侧为 `address(0)` 直接 `revert NativeCurrencyUnsupported`。 |
 | `_takeDeltas` | `MemeverseUniswapHookUpgradeable::_takeDeltas` | 从 PoolManager take 正 delta（池子欠用户的资金）到 recipient。 |
-| `transferWithGuard` | `CurrencySettler::transferWithGuard`（Hook 与 Router 共用，两侧均已 `using CurrencySettler for Currency;`） | ERC20 转账 helper，已由 Hook/Router 各自的私有 `_transferCurrency` 副本迁移到 `CurrencySettler` 共享库以消除逐字重复。guards（`amount == 0` 早退、`to == address(0)` revert）+ `OutrunSafeERC20.safeTransfer` 处理非合规 ERC20 返回值（返回 `false` 或非 bool 数据）。失败抛 `OutrunSafeERC20.SafeERC20FailedOperation(address token)`。注：`CurrencySettler` 库的 `settle`/`take` 可处理 native 与 ERC20，但 `transferWithGuard` 自身仅 ERC20（swap 栈文义上也只允许 ERC20 结算）。`[文档已对齐实现]` |
+| `transferWithGuard` | `CurrencySettler::transferWithGuard`（Hook 与 Router 共用，两侧均已 `using CurrencySettler for Currency;`） | ERC20 转账 helper，由 `CurrencySettler` 共享库承载（Hook 与 Router 共用）。guards（`amount == 0` 早退、`to == address(0)` revert）+ `OutrunSafeERC20.safeTransfer` 处理非合规 ERC20 返回值（返回 `false` 或非 bool 数据）。失败抛 `OutrunSafeERC20.SafeERC20FailedOperation(address token)`。注：`CurrencySettler` 库的 `settle`/`take` 可处理 native 与 ERC20，但 `transferWithGuard` 自身仅 ERC20（swap 栈文义上也只允许 ERC20 结算）。`[文档已对齐实现]` |
 
 ### 1.4 资产层
 

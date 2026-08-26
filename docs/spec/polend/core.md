@@ -427,8 +427,7 @@ else:
 - `setMaxSettlementDustReserve`：下调上限低于当前已存 reserve（`state.reserve > maxReserve`）
 - `POLendUpgradeable.sol::initialize / POLendUpgradeable.sol::setDefaultInterestRate`：`interestRate > 1e18`（利率上限）
 - `POLendUpgradeable.sol::initialize / POLendUpgradeable.sol::setDefaultInterestRate / POLendUpgradeable.sol::setLeveragedDebtFactor`：`leveragedDebtFactor < minDebtFactor`（`factor == 0` 时先被 `ZeroInput` 拒绝——与 `setMaxSettlementDustReserve` 零值同约定，见 ZeroInput 清单）（`POLendUpgradeable.sol::_validateLeverageConfig` 守卫，即 `factor · rate < 1e36`；`registerLendMarket` 处调用同为防御性守卫，正常流程不可触发）
-- `POLendUpgradeable.sol::leveragedGenesis / POLendUpgradeable.sol::leveragedGenesisWithCredit`：`actualNormalFunds > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`
-- `POLendUpgradeable.sol::leveragedGenesis / POLendUpgradeable.sol::leveragedGenesisWithCredit`：聚合上限 `previewTotalDebt > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds`
+- `POLendUpgradeable.sol::leveragedGenesis / POLendUpgradeable.sol::leveragedGenesisWithCredit`：累计聚合上限预检条件见 [settlement-and-fees.md §10.2](settlement-and-fees.md)；违反聚合上限时 revert `InvalidConfig`（超出 `debtCap` 另 revert `DebtCapExceeded`）
 
 `POLendUpgradeable` 侧 `InvalidState` 使用场景：
 
@@ -502,7 +501,7 @@ GenesisCreditFactory 侧（owner-only 部署）：
 - preorder refund
 - `redeemYT`：`outstandingYT == 0`
 
-不保留 `InvalidRefund / InvalidRedeem` 这种分裂错误。
+统一 revert `InvalidClaim`。
 
 `POLendUpgradeable` 与 `POLSplitterUpgradeable` 的重入锁使用 `ReentrancyGuardReentrantCall` 错误。
 

@@ -142,6 +142,7 @@
 | execute-or-revert | [uniswap-v4.md §4](swap/uniswap-v4.md) | 普通 swap 的执行边界 |
 | Permit2 入口 | [permit2.md](swap/permit2.md) | Permit2 token 入口边界 |
 | YT Flash Swap POL↔YT 复用 PT/POL 池 | [yt-flash-swap.md](swap/yt-flash-swap.md) | 无 YT AMM 的 POL↔YT flash swap 唯一 canonical（两入口、真实 BalanceDelta 结算、split/merge baseline、无 Permit2/quote 入参） |
+| Transient storage 布局与 Smart EOA account session 架构 | [ARCHITECTURE.md §4](../ARCHITECTURE.md) | swap callback 状态传递、session 生命周期与槽位布局的唯一 canonical |
 
 ### 2.6 跨链/interop
 

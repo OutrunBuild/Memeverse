@@ -21,19 +21,7 @@
 
 `POL` fee 不区分普通侧 / 杠杆侧，全部永久 burn。
 
-`uAsset fee / PT fee` 在 `Locked` 阶段按普通侧 / 杠杆侧切分，直接按金额计算，不保存或使用整数比例：
-
-```text
-totalGenesisFunds = totalNormalFunds + totalLeveragedDebt
-
-govUAssetFee = fullPrecisionMulDiv(totalUAssetFee, totalLeveragedDebt, totalGenesisFunds)
-normalUAssetFee = totalUAssetFee - govUAssetFee
-
-govPTFee = fullPrecisionMulDiv(totalPTFee, totalLeveragedDebt, totalGenesisFunds)
-normalPTFee = totalPTFee - govPTFee
-
-取整差额归普通侧。
-```
+`uAsset fee / PT fee` 在 `Locked` 阶段按普通侧 / 杠杆侧切分，直接按金额计算，不保存或使用整数比例：切分公式与 full-precision `mulDiv` 取整规则（`govUAssetFee = fullPrecisionMulDiv(totalUAssetFee, totalLeveragedDebt, totalGenesisFunds)`、取整差额归普通侧）唯一权威见 [docs/spec/verse/accounting.md §5.2](../verse/accounting.md)。
 
 普通侧进入 `normalFeeStates`。
 
@@ -57,7 +45,7 @@ normalPTFee = totalPTFee - govPTFee
 
 #### 1.3 Locked -> Unlocked 最后捕获
 
-`Locked -> Unlocked` 时，facade `src/verse/MemeverseLauncherUpgradeable.sol::changeStage` 经 delegatecall 入 `src/verse/MemeverseLaunchImpl.sol::changeStage` dispatcher，dispatcher 在 Locked 分支经嵌套 delegatecall 调用 `src/verse/MemeverseSettlementImpl.sol::unlockFromLocked(verseId, polSplitter, hook)`，其内部首步 `_captureLockedAuxiliaryFees` 作为 `Locked` 阶段最后一次辅助池 fee 捕获（stage 翻转为 `Unlocked` 之前完成）。
+`Locked -> Unlocked` 时，编排由 facade `changeStage` 的 Locked 分支嵌套 delegatecall `MemeverseSettlementImpl.sol::unlockFromLocked` 发起（完整链路唯一权威见 §4）；`unlockFromLocked` 首步 `_captureLockedAuxiliaryFees` 完成 `Locked` 阶段最后一次辅助池 fee 捕获（stage 翻转为 `Unlocked` 之前完成）。
 
 `_captureLockedAuxiliaryFees`：
 
@@ -764,7 +752,7 @@ Splitter 给 POLendUpgradeable 的 allowance 只在 `preRedeemedPT > 0` 时设�
 | 函数 | Caller | 状态要求 | 输入 / 零值检查 | 事件 / 配置语义 |
 | --- | --- | --- | --- | --- |
 | `registerLendMarket` | `Launcher` | market 未注册 | verse `uAsset` 必须有效，且 `settlementDustStates[uAsset].maxReserve > 0`；复制当前 `defaultInterestRate`，校验 `leveragedDebtFactor` 与利率约束 | 注册后利率固定;emit `LendMarketRegistered` |
-| `leveragedGenesis` | 用户 | Launcher verse 为 `Genesis`；market 为 `None / Genesis` | `interestAmount > 0`；该 `uAsset` 已完成全局 reserve 配置；参与地址为 `msg.sender`，无 user-address 输入；累计 `nextTotalLeveragedInterest -> previewDebt` 预检必须同时满足 `previewDebt <= rawDebtCap` 与 `totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` | `LeveragedGenesis` |
+| `leveragedGenesis` | 用户 | Launcher verse 为 `Genesis`；market 为 `None / Genesis` | `interestAmount > 0`；该 `uAsset` 已完成全局 reserve 配置；参与地址为 `msg.sender`，无 user-address 输入；累计 `nextTotalLeveragedInterest -> previewDebt` 预检双条件见 §10.2 | `LeveragedGenesis` |
 | `leveragedGenesisWithCredit` | 用户 | Launcher verse 为 `Genesis`；market 为 `None / Genesis` | `creditAmount > 0`；该 `uAsset` 已完成全局 reserve 配置且在 `GenesisCreditFactory` 已部署对应 GenesisCredit（否则 `NoCreditForUAsset`）；对应 GenesisCredit 未处于 pause 状态（否则 `transferFrom` revert `EnforcedPause`，见 [genesis.md §4.1](genesis.md)）；参与地址为 `msg.sender`；累计 `nextTotalLeveragedInterest -> previewDebt` 预检同上（real + credit 合计吃 debt cap） | `LeveragedGenesisWithCredit` |
 | `markRefundable` | `Launcher` | market 为 `Genesis` | 无金额输入 | 状态改为 `Refund`;emit `MarketRefundable` |
 | `finalizeLeveragedGenesis` | `Launcher` | `Genesis -> Locked` 流程；market 为 `Genesis` | `totalLeveragedDebt > 0` | 状态改为 `Locked`，mint debt（基于合计 `totalLeveragedInterest`），真付部分 realInterest = totalLeveragedInterest - totalCreditInterest 全额转 `protocolTreasury`（credit 部分无 token 流入，跳过），burn 该 verse `totalCreditInterest` 对应的托管 GenesisCredit，emit `CreditBurned`。另无条件 emit `LeveragedGenesisFinalized`(real-only 市场 `creditBurned==0`)。finalize 不读 `maxReserve`，reserve 配置由 `registerLendMarket` 在注册时强制。GenesisCredit pause 期间 credit 部分被阻断（real-only 不受影响），见 [genesis.md §4.1](genesis.md) / [INV-27](../invariants.md) |
@@ -782,7 +770,7 @@ Splitter 给 POLendUpgradeable 的 allowance 只在 `preRedeemedPT > 0` 时设�
 | `setMaxSettlementDustReserve` | owner | 任意 | `uAsset != address(0)`，`maxReserve > 0`，且下调时当前 `reserve <= maxReserve` | 配置该 `uAsset` 全局 settlement dust reserve 上限；不支持用 0 作为 launch-supported 运行模式 |
 | `setCreditFactory` | owner | 任意 | `newFactory != address(0)` | 替换 `GenesisCreditFactory` 地址指针，影响后续 `leveragedGenesisWithCredit` 按 `uAsset` 查 GenesisCredit 的路径;emit `CreditFactoryChanged` |
 | upgrade authorization | owner（UUPS `_authorizeUpgrade`） | 按升级框架 | 新实现初始化与存储布局必须兼容 | 不改变既有 market 语义 |
-| pause behavior | pauser / owner policy | 任意 | pause 不得阻断必要的 unlock / refund / repay 安全出口；`fundSettlementDustReserve` 视为 unlock / repay 安全出口 | pause 只限制新增资金入口和非必要领取入口。受 `whenNotPaused` 阻断的 Launcher 入口：`MemeverseLauncherUpgradeable.genesis`、`MemeverseLauncherUpgradeable.preorder`、`MemeverseLauncherUpgradeable.genesisAndPreorder`、`MemeverseLauncherUpgradeable.claimNormalYT`、`MemeverseLauncherUpgradeable.claimNormalFees`、`MemeverseLauncherUpgradeable.redeemAuxiliaryLiquidity`、`MemeverseLauncherUpgradeable.claimUnlockedPreorderMemecoin`、`MemeverseLauncherUpgradeable.redeemAndDistributeFees`、`MemeverseLauncherUpgradeable.mintPOLToken`、`MemeverseLauncherUpgradeable.registerMemeverse`。受 `whenNotPaused` 阻断的 POLendUpgradeable 入口：`POLendUpgradeable.leveragedGenesis`、`POLendUpgradeable.leveragedGenesisWithCredit`。不受 pause 阻断的安全出口：`POLendUpgradeable.claimRefund`、`POLendUpgradeable.claimLeveragedYT`、`POLendUpgradeable.claimResidual`、`POLendUpgradeable.fundSettlementDustReserve`、`POLendUpgradeable.executeGlobalSettlement`、`POLSplitterUpgradeable.redeemPT`、`POLSplitterUpgradeable.redeemYT`、`POLSplitterUpgradeable.settle` |
+| pause behavior | pauser / owner policy | 任意 | pause 不得阻断必要的 unlock / refund / repay 安全出口；`fundSettlementDustReserve` 视为 unlock / repay 安全出口 | pause 只限制新增资金入口和非必要领取入口。受 `whenNotPaused` 阻断与豁免的完整入口枚举唯一权威见 [docs/spec/access-control.md](../access-control.md) §3（pause 阻断资金入口；refund/用户退出/结算路径豁免）。 |
 
 #### 10.2 输入校验矩阵
 
@@ -886,7 +874,7 @@ function polend() external view returns (address);
 - 初始化 `PrincipalToken / YieldToken` implementation
 - 必须先于任何 `initializeVerse / split / settle / redeem` 路径完成
 
-`MemeverseSettlementImpl` 是 delegatecall-only sibling：无 owner 入口、无独立业务入口，由 facade `src/verse/MemeverseLauncherUpgradeable.sol` 经 delegatecall 调用。七个 facade 入口与 sibling selector 一一对应：`refund`→`refund`、`refundPreorder`→`refundPreorder`、`claimNormalYT`→`claimNormalYT`、`claimNormalFees`→`claimNormalFees`、`claimUnlockedPreorderMemecoin`→`claimUnlockedPreorderMemecoin`、`redeemAndDistributeFees`→`collectAndDistributeFees`、`changeStage`（经 `MemeverseLaunchImpl::changeStage` dispatcher 的 Locked 分支嵌套 delegatecall）→`unlockFromLocked`。runtime integration ABI（`IMemeverseSettlementImpl`）：
+`MemeverseSettlementImpl` 是 delegatecall-only sibling：无 owner 入口、无独立业务入口，由 facade `src/verse/MemeverseLauncherUpgradeable.sol` 经 delegatecall 调用。七个 facade 入口与 sibling selector 一一对应：`refund`→`refund`、`refundPreorder`→`refundPreorder`、`claimNormalYT`→`claimNormalYT`、`claimNormalFees`→`claimNormalFees`、`claimUnlockedPreorderMemecoin`→`claimUnlockedPreorderMemecoin`、`redeemAndDistributeFees`→`collectAndDistributeFees`、`changeStage`（Locked 分支嵌套 delegatecall，见 §4）→`unlockFromLocked`。runtime integration ABI（`IMemeverseSettlementImpl`）：
 
 ```solidity
 function refund(uint256 verseId) external returns (uint256 genesisFund);

@@ -3,7 +3,6 @@
 - Verification entrypoint: `script/harness/gate.sh`
 - Pre-edit classification entrypoint: `bash script/harness/gate.sh --classify-only --planned-files <path> [<path> ...]`
 - Changed-file classification or verification entrypoint: `bash script/harness/gate.sh --changed-files <path> [<path> ...]`
-- Default local profile: `npm run gate:fast`
 - Fast local profile: `npm run gate:fast`
 - Full local profile: `npm run gate:full`
 - CI profile: `npm run gate:ci`

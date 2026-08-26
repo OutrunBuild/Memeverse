@@ -50,7 +50,7 @@
 | `POLSplitterUpgradeable.redeemPT` / `POLSplitterUpgradeable.redeemYT` | 禁止 | 禁止 | 禁止 | 允许（settle 后） | 当前规则（POLendUpgradeable 四池） |
 | `claimUnlockedPreorderMemecoin` | 禁止 | 禁止 | 允许（按线性解锁） | 允许 | 当前规则（代码已证） |
 
-`genesis` 成功写入后必须保持 `totalNormalFunds + totalLeveragedDebt <= type(uint128).max`；实现上先更新普通创世账本再执行 uAsset 拉取，使 callback-capable token 重入 POLendUpgradeable 时读取到累计普通资金。POLendUpgradeable `leveragedGenesis` 使用累计 `nextTotalLeveragedInterest -> previewDebt` 做同一聚合上限预检。
+`genesis` 成功写入后受聚合上限约束（聚合上限见 [polend/genesis.md §3](../polend/genesis.md)）；实现上先更新普通创世账本再执行 uAsset 拉取，使 callback-capable token 重入 POLendUpgradeable 时读取到累计普通资金。
 
 bootstrap auxiliary pool creation 的 auxiliary underspend 处置（actual spend 记账、不施加独立 bootstrap backing / equality guard、不依赖独立 rounding-envelope 规则）见 [docs/spec/invariants.md](../invariants.md) INV-04。
 

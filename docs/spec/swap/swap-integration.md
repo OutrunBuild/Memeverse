@@ -82,14 +82,10 @@ fee claim 需要单独区分两类能力：
 
 - Protocol fee 币种选择规则（V4：输入侧优先、支持列表、两侧均未注册时落输入侧不回退）见 [docs/spec/swap/uniswap-v4.md](uniswap-v4.md) §3。
 - 协议费代币（`supportedProtocolFeeCurrencies`）只控制收费腿、**不门控是否收费**（规则见上一行 §3）；注册的代币应是标准 ERC20；`treasury` 必须是被动收款方，不在收款期间发起协议操作。
-- 返佣（referral rebate）切流：普通 swap 若 `hookData` 前 20 字节 packed 携带非零 referrer，protocol fee 收取路径（主体 SwapFacet 的 `_collectProtocolFee`，经 Router entry `delegatecall` 到 SwapFacet 执行；rebate 公式提取为 `_computeRebate`，记账 + treasury take + emit 提取为 `_settleProtocolFee`；beforeSwap 主路径不经 `_collectProtocolFee`，改走 `_computeRebate` + `_settleProtocolFee` + 合并 take）先计算 `rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`，再 split：
+- 返佣（referral rebate）切流：普通 swap 若 `hookData` 前 20 字节 packed 携带非零 referrer，先计算 `rebate = protocolFee × referrerRebateBps / PROTOCOL_FEE_SHARE_BPS`，再 split（CEI 时序、守恒与安全边界唯一权威见 [uniswap-v4.md §3.3](uniswap-v4.md) 与 [invariants.md INV-20](../invariants.md)）：
   - `toTreasury = protocolFee - rebate` 经 `_takeToTreasury` 到 treasury；
-  - `_settleProtocolFee` 先内联累加 Router storage 的 `pendingRebate[referrer][currency]` 并 emit `ReferralRebateAccrued`（effect），再经 `_takeToTreasury` 调用 `PoolManager.take` 转出 `toTreasury`（interaction），最后 emit `ProtocolFeeCollected`；这段记账本身是纯 storage effect，无 facet→facet delegatecall 或 PoolManager 调用。ledger effect 先于 treasury take 与调用方的 rebate take，helper 现为严格 CEI（effect → interaction → event）：treasury take 不触发 v4 hook callback，ERC20 currency 仍会执行外部 `transfer` token 代码。beforeSwap 主路径将 rebate 与 LP fee 合并 take，afterSwap / beforeSwap 边界由 `_collectProtocolFee` 独立 take rebate。任一步骤失败都会回滚整笔 swap。
-- rebate custody 在 hook proxy（与 LP fee 同地址，但 `pendingRebate` 账本与 LP per-share accounting 分离）；rebate currency 与该 swap 的 protocol fee currency 一致，in-kind，不进入 treasury、不经过下游 uAsset / POLendUpgradeable 转换。
-- rebate 为 pull 模式：swap 时只记账 + take，referrer 须主动调 `MemeverseUniswapHookUpgradeable::claimRebate(currency, recipient)` 领取（入口在 hook，Router 直接实现；从 hook custody 将 caller/referrer 名下的 rebate 转给 `recipient`——任意非零 payout destination，不必等于 referrer；仅 self-claim，不支持第三方代领 / 签名 claim）。
-- `ProtocolFeeCollected.amount`（on hook）始终是 treasury 实收（`toTreasury = protocolFee - rebate`）。仅当 `rebate > 0` 时 `toTreasury < protocolFee`，差额见 hook 上 emit 的 `ReferralRebateAccrued`；`rebate` 在 `referrerRebateBps == 0` 或小额 `mulDiv` 向下取整为 0 时可为 0，此时 `toTreasury == protocolFee` 且不 emit rebate 事件。索引器统计 protocol 总收入须按 `ProtocolFeeCollected.amount +（若存在）ReferralRebateAccrued.amount` 求和，不要仅凭「是否带 referrer」推断国库金额。
-- 无 referrer（`hookData` 空或前 20 字节为零）时不切 rebate，treasury 收全额 protocol fee。
-- preorder settlement 路径（`executePreorderSettlement`）不携带 referrer，不参与返佣；其 `ProtocolFeeCollected.amount` 仍是完整 protocol fee。
+  - `rebate` 入账 hook `pendingRebate`，referrer 经 `claimRebate` pull 领取。
+- `ProtocolFeeCollected.amount`（on hook）始终是 treasury 实收（`toTreasury = protocolFee - rebate`）；索引器统计 protocol 总收入须按 `ProtocolFeeCollected.amount +（若存在）ReferralRebateAccrued.amount` 求和，不要仅凭「是否带 referrer」推断国库金额。
 
 ### 2.3 两者是分开结算的 `[代码已证]`
 

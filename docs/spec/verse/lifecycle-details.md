@@ -70,7 +70,7 @@ MemeverseV2 的主路径可以概括为：
 - `totalGenesisFunds = totalNormalFunds + totalLeveragedDebt`
 - owner 后续调整 `leveragedDebtFactor` 时，只影响仍处于 `None / Genesis` 且 Launcher verse 仍在 `Genesis` 的 market 后续可新增杠杆容量；不会回写已进入 `Locked / Settled / Refund` 的市场利率、已 mint 债务、退款、结算或 claim 结果。
 - 成功路径只按 `totalGenesisFunds = totalNormalFunds + totalLeveragedDebt` 计创世部署资金，preorder 不计入该口径，且必须满足 `totalGenesisFunds <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`，其中 `MAX_SUPPORTED_TOTAL_GENESIS_FUNDS = type(uint128).max`。
-- Genesis 期新增杠杆前，必须按累计 `nextTotalLeveragedInterest = totalLeveragedInterest + interestAmount` 推导 `previewDebt = nextTotalLeveragedInterest * 1e18 / market.interestRate`，并同时满足 `previewDebt <= debtCap` 与 `totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS`，不能只看当前调用 delta。
+- Genesis 期新增杠杆受 `debtCap` 与累计聚合上限双重预检约束（见 [polend/genesis.md §3](../polend/genesis.md)）。
 
 随后按 POLendUpgradeable 四池模型执行 `70/30` 规则，进入 `memecoin/uAsset` 主池与 `POL/uAsset`、`PT/uAsset`、`PT/POL` 三个辅助池路径。
 

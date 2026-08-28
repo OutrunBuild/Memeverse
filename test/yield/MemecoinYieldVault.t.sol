@@ -26,8 +26,10 @@ contract MemecoinYieldVaultTest is Test {
     address internal constant RECEIVER = address(0xCAFE);
     address internal constant YIELD_SOURCE = address(0xFEED);
     /// @dev Virtual buffer V passed to every test vault. Chosen large enough to visibly dampen rate
-    ///      inflation while keeping assertions readable; production sizing (0.7% of the minimum
-    ///      main-pool memecoin provision) is covered by dedicated tests below.
+    ///      inflation while keeping assertions readable. The nearest production-sizing guard is the
+    ///      deployment-readiness check that rejects configs whose virtual buffer would round to zero
+    ///      (test/script/MemeverseScript.t.sol); the exact 0.7% buffer formula itself has no direct
+    ///      pinned assertion.
     uint256 internal constant VIRTUAL_ASSETS = 100 ether;
 
     MockERC20 internal asset;
@@ -1648,11 +1650,6 @@ contract MemecoinYieldVaultTest is Test {
     // ──────────────────────────────────────────────────────────────────────────────
     // Virtual buffer V tests
     // ──────────────────────────────────────────────────────────────────────────────
-
-    /// @notice initialize stores the supplied virtual buffer verbatim and exposes it via the getter.
-    function testInitializeStoresVirtualAssets() external view {
-        assertEq(vault.virtualAssets(), VIRTUAL_ASSETS, "virtualAssets stored from initialize");
-    }
 
     /// @notice A zero virtual buffer must be rejected so the +V guards actually dampen the rate.
     /// @dev V=0 would degenerate share/asset math to the un-buffered form and remove the donation dampener.

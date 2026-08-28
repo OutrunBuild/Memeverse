@@ -520,8 +520,7 @@
             "test/swap/MemeverseUniswapHookIntegration.t.sol",
             "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
             "test/swap/MemeverseDynamicFeeFacetRevertPropagation.t.sol",
-            "test/swap/DynamicFeeFacetMinRouterRevertTest.t.sol",
-            "test/swap/MemeverseQuoteReadOnlyInvariant.t.sol"
+            "test/swap/MemeverseQuoteReadOnly.t.sol"
           ],
           "evidence_tests": [
             "test/swap/DynamicFeeFacet.t.sol",
@@ -532,8 +531,7 @@
             "test/swap/MemeverseUniswapHookIntegration.t.sol",
             "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
             "test/swap/MemeverseDynamicFeeFacetRevertPropagation.t.sol",
-            "test/swap/DynamicFeeFacetMinRouterRevertTest.t.sol",
-            "test/swap/MemeverseQuoteReadOnlyInvariant.t.sol"
+            "test/swap/MemeverseQuoteReadOnly.t.sol"
           ],
           "id": "swap-dynamic-fee-facet",
           "paths": [
@@ -643,7 +641,7 @@
             "test/swap/SettlementSamePoolReentrancy.t.sol",
             "test/swap/SettlementTransferFromSamePoolReentrancy.t.sol",
             "test/swap/SettlementSequentialExecution.t.sol",
-            "test/swap/MemeverseSwapRouterSettlementInvariant.t.sol",
+            "test/swap/MemeverseSwapRouterTreasuryAccountingInvariant.t.sol",
             "test/swap/MemeverseSwapRouter.t.sol",
             "test/swap/MemeverseUniswapHookIntegration.t.sol",
             "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
@@ -656,7 +654,7 @@
             "test/swap/SettlementSamePoolReentrancy.t.sol",
             "test/swap/SettlementTransferFromSamePoolReentrancy.t.sol",
             "test/swap/SettlementSequentialExecution.t.sol",
-            "test/swap/MemeverseSwapRouterSettlementInvariant.t.sol",
+            "test/swap/MemeverseSwapRouterTreasuryAccountingInvariant.t.sol",
             "test/swap/MemeverseSwapRouter.t.sol",
             "test/swap/MemeverseUniswapHookIntegration.t.sol",
             "test/swap/MemeverseUniswapHookLaunchFeeInvariant.t.sol",
@@ -702,14 +700,14 @@
             "test/swap/MemeverseReferralRebate.t.sol",
             "test/swap/MemeverseReferralRebateRealV4.t.sol",
             "test/swap/MemeverseAddressBatchStateOf.t.sol",
-            "test/swap/MemeverseQuoteReadOnlyInvariant.t.sol"
+            "test/swap/MemeverseQuoteReadOnly.t.sol"
           ],
           "evidence_tests": [
             "test/swap/MemeverseAccountSession.t.sol",
             "test/swap/MemeverseReferralRebate.t.sol",
             "test/swap/MemeverseReferralRebateRealV4.t.sol",
             "test/swap/MemeverseAddressBatchStateOf.t.sol",
-            "test/swap/MemeverseQuoteReadOnlyInvariant.t.sol"
+            "test/swap/MemeverseQuoteReadOnly.t.sol"
           ],
           "id": "swap-hook-direct-surface",
           "paths": [

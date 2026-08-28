@@ -287,17 +287,3 @@ contract MockLauncherIntegrationProxyDeployer {
         return (predictedGovernor, predictedIncentivizer);
     }
 }
-
-/// @notice LZ endpoint registry stand-in for the launcher integration tests.
-/// @dev Maps a human chain id to its LayerZero endpoint id so the launcher can resolve
-///      cross-chain governance destinations without a real LZ endpoint.
-contract MockLauncherIntegrationLzEndpointRegistry {
-    mapping(uint32 chainId => uint32 endpointId) public lzEndpointIdOfChain;
-
-    /// @notice Test helper for setEndpoint.
-    /// @param chainId See implementation.
-    /// @param endpointId See implementation.
-    function setEndpoint(uint32 chainId, uint32 endpointId) external {
-        lzEndpointIdOfChain[chainId] = endpointId;
-    }
-}

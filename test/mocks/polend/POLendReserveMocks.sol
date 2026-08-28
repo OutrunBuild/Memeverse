@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {IMemeverseLauncher} from "../../../src/verse/interfaces/IMemeverseLauncher.sol";
 
 /// @notice Minimal launcher mock for POLend settlement-reserve / credit-path tests.
-/// @dev Mirrors the subset of MockLauncherForPOLend (test/polend/POLend.t.sol) that the exercised
+/// @dev Mirrors the subset of MockLauncherForPOLend (test/mocks/polend/POLendTestMocks.sol) that the exercised
 ///      POLend paths call, with the settlement callback result made configurable per verse. Kept in
 ///      test/mocks/ per the test-code conventions.
 contract SettlementResultLauncher {

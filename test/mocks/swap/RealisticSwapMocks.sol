@@ -3,7 +3,6 @@ pragma solidity ^0.8.35;
 
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
@@ -14,7 +13,6 @@ import {BalanceDelta, BalanceDeltaLibrary, toBalanceDelta} from "@uniswap/v4-cor
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {ISignatureTransfer} from "permit2/src/interfaces/ISignatureTransfer.sol";
 
 import {LiquidityAmounts} from "../../../src/swap/libraries/LiquidityAmounts.sol";
 
@@ -465,35 +463,4 @@ contract RealisticSwapManagerHarness {
     }
 
     receive() external payable {}
-}
-
-contract MockPermit2ForRouterIntegration {
-    using SafeERC20 for IERC20;
-
-    address public lastOwner;
-    address public lastRecipient;
-    address public lastToken;
-    uint256 public lastRequestedAmount;
-    bytes32 public lastWitness;
-    string public lastWitnessTypeString;
-    bytes public lastSignature;
-
-    function permitWitnessTransferFrom(
-        ISignatureTransfer.PermitTransferFrom memory permit,
-        ISignatureTransfer.SignatureTransferDetails calldata transferDetails,
-        address owner,
-        bytes32 witness,
-        string calldata witnessTypeString,
-        bytes calldata signature
-    ) external {
-        lastOwner = owner;
-        lastRecipient = transferDetails.to;
-        lastToken = permit.permitted.token;
-        lastRequestedAmount = transferDetails.requestedAmount;
-        lastWitness = witness;
-        lastWitnessTypeString = witnessTypeString;
-        lastSignature = signature;
-
-        IERC20(permit.permitted.token).safeTransferFrom(owner, transferDetails.to, transferDetails.requestedAmount);
-    }
 }

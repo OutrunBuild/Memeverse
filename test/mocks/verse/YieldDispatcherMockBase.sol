@@ -5,7 +5,7 @@ import {YieldDispatcherUpgradeable} from "../../../src/verse/YieldDispatcherUpgr
 import {IComposeState} from "../../../src/common/types/IComposeState.sol";
 
 /// @notice Shared failure-switch and mid-call compose-state probe mechanism for the YieldDispatcherUpgradeable settlement mocks.
-/// @dev MockDispatcherYieldVault and MockDispatcherGovernor (test/verse/YieldDispatcher.t.sol) must expose identical
+/// @dev MockDispatcherYieldVault and MockDispatcherGovernor (test/mocks/verse/DispatcherTestMocks.sol) must expose identical
 ///      failure and probe control so the settle-fail rollback and CEI write-order tests pin the same contract. The
 ///      mechanism lives here once instead of being copy-pasted into each mock, so the two mocks stay in sync by
 ///      construction. Mirrors MockStakerYieldVault's failure switch (see test/mocks/interoperation/InteroperationMocks.sol).

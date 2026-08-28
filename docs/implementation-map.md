@@ -59,7 +59,7 @@
   - `test/swap/libraries/OrdinarySwapMath.t.sol`：四路径取整、exact-output 反推、方向敏感 raw limit、全范围 capacity 与端点 equality。
   - `test/swap/DynamicFeeFacet.t.sol`：`prepareSwapFee` 的单 word 热路径、`quote` 的 11-word `PreparedSwapFee` 固定 ABI、一次选费与容量一致性。
   - `test/swap/MemeverseUniswapHookIntegration.t.sol`：Lens/bridge/执行跨方向、请求类型和协议费币腿的一致性，以及不足 price limit 的一致拒绝。
-  - `test/swap/MemeverseQuoteReadOnlyInvariant.t.sol`、`test/swap/MemeverseTransientState.t.sol`：报价只读与 encoded fee/pre-price/core-target transient context。
+  - `test/swap/MemeverseQuoteReadOnly.t.sol`、`test/swap/MemeverseTransientState.t.sol`：报价只读与 encoded fee/pre-price/core-target transient context。
   - swap 行为回归基线：`test/swap/MemeverseUniswapHookIntegration.t.sol`、`test/swap/MemeverseSwapRouter.t.sol`、`test/swap/MemeverseSwapRouterPermit2.t.sol` 与 `test/swap/fork/MemeverseSwapFork*.t.sol`。
 - 仍保留 residual testing gap：
   - `src/common/**` 中少量仍未被 targeted rule 单独建模的基础层子集（如 `IBurnable`、`OutrunOAppPreCrimeSimulatorInit`、`TokenHelper`）

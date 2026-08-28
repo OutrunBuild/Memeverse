@@ -5,6 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
+// File placement: the system under test is POLendUpgradeable's credit path (GenesisCredit itself is
+// exercised only through a burnable mock ERC20 stand-in), so this suite lives under test/polend/.
 import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";

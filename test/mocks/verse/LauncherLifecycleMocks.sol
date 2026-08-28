@@ -1334,18 +1334,6 @@ contract MockOFTDispatcher {
     }
 }
 
-contract MockLzEndpointRegistry {
-    mapping(uint32 chainId => uint32 endpointId) public lzEndpointIdOfChain;
-
-    /// @notice Set endpoint.
-    /// @dev Mirrors the registry setter so tests can control chain/endpoint mapping.
-    /// @param chainId See implementation.
-    /// @param endpointId See implementation.
-    function setEndpoint(uint32 chainId, uint32 endpointId) external {
-        lzEndpointIdOfChain[chainId] = endpointId;
-    }
-}
-
 contract MockOFTToken is MockERC20, IOFT {
     MessagingFee internal nextQuoteFee;
     bool internal quoteAmountAsFee;

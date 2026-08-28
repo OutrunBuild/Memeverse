@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {BurnableMockERC20Base} from "../common/BurnableMockERC20Base.sol";
+import {MintableToken} from "../polend/POLendMocks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -12,7 +13,6 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {MemeverseLauncherUpgradeable} from "../../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {IMemeverseLauncher} from "../../../src/verse/interfaces/IMemeverseLauncher.sol";
-import {IMemeverseOFTEnum} from "../../../src/common/types/IMemeverseOFTEnum.sol";
 import {IMemeverseProxyDeployer} from "../../../src/verse/interfaces/IMemeverseProxyDeployer.sol";
 import {IPOLend} from "../../../src/polend/interfaces/IPOLend.sol";
 import {IPOLSplitter} from "../../../src/polend/interfaces/IPOLSplitter.sol";
@@ -112,7 +112,7 @@ contract MockHookForPOLendIntegration {
             require(MockERC20(token).transfer(recipient, amount), "transfer failed");
             return;
         }
-        MintableTokenForPOLendIntegration(token).mint(recipient, amount);
+        MintableToken(token).mint(recipient, amount);
     }
 
     function _pairKey(address tokenA, address tokenB) internal pure returns (bytes32) {
@@ -312,8 +312,8 @@ contract MockRouterForPOLendIntegration {
         RemoveLiquidityResult memory result = removeLiquidityResults[_pairKey(token0, token1)];
         require(result.amount0Out >= amount0Min, "output0 below min");
         require(result.amount1Out >= amount1Min, "output1 below min");
-        if (result.amount0Out != 0) MintableTokenForPOLendIntegration(token0).mint(to, result.amount0Out);
-        if (result.amount1Out != 0) MintableTokenForPOLendIntegration(token1).mint(to, result.amount1Out);
+        if (result.amount0Out != 0) MintableToken(token0).mint(to, result.amount0Out);
+        if (result.amount1Out != 0) MintableToken(token1).mint(to, result.amount1Out);
         return toBalanceDelta(int128(uint128(result.amount0Out)), int128(uint128(result.amount1Out)));
     }
 
@@ -328,30 +328,6 @@ contract CallRecorder {
     function next() external returns (uint256 index) {
         counter++;
         return counter;
-    }
-}
-
-contract MockYieldDispatcherForPOLendIntegration {
-    uint256 public composeCallCount;
-    address public lastToken;
-    bytes public lastMessage;
-
-    function lzCompose(address token, bytes32, bytes calldata message, address, bytes calldata) external payable {
-        composeCallCount++;
-        lastToken = token;
-        lastMessage = message;
-    }
-
-    /// @notice Records a mocked same-chain dispatch.
-    /// @dev Reuses the lzCompose counters/fields so existing assertions stay unchanged.
-    /// Message is encoded as (receiver, tokenType, amount) to match the prior same-chain
-    /// compose payload, keeping `abi.decode(lastMessage, (address, uint8, uint256))` valid.
-    function distributeSameChain(address token, address receiver, IMemeverseOFTEnum.TokenType tokenType, uint256 amount)
-        external
-    {
-        composeCallCount++;
-        lastToken = token;
-        lastMessage = abi.encode(receiver, tokenType, amount);
     }
 }
 
@@ -413,14 +389,6 @@ contract MockProxyDeployerForPOLendIntegration is IMemeverseProxyDeployer {
     function setMaxTreasurySpendRatio(uint256) external pure {}
 
     function setUpgradeSupermajorityRatio(uint256) external pure {}
-}
-
-contract MintableTokenForPOLendIntegration is MockERC20 {
-    constructor(string memory name_, string memory symbol_) MockERC20(name_, symbol_, 18) {}
-
-    function mint(address to, uint256 amount) public override {
-        _mint(to, amount);
-    }
 }
 
 contract MockPOLendForPOLendIntegration {
@@ -635,8 +603,8 @@ contract MockPOLSplitterForPOLendIntegration is IPOLSplitter {
     function split(uint256, uint256 polAmount) external returns (uint256 ptAmount, uint256 ytAmount) {
         /// forge-lint: disable-next-line(erc20-unchecked-transfer)
         MockERC20(pol).transferFrom(msg.sender, address(this), polAmount);
-        MintableTokenForPOLendIntegration(pt).mint(msg.sender, polAmount);
-        MintableTokenForPOLendIntegration(yt).mint(msg.sender, polAmount);
+        MintableToken(pt).mint(msg.sender, polAmount);
+        MintableToken(yt).mint(msg.sender, polAmount);
         return (polAmount, polAmount);
     }
 

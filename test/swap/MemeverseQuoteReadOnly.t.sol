@@ -19,7 +19,7 @@ import {SwapGuardMath} from "../../src/swap/libraries/SwapGuardMath.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 
-/// @title MemeverseQuoteReadOnlyInvariantTest
+/// @title Quote read-only property tests
 /// @notice Pins the read-only invariant of `quoteSwapFeeWithContext` under a direct ordinary CALL.
 /// @dev `quoteSwapFeeWithContext` cannot be marked `view` because solc rejects `view` + `delegatecall`
 ///      (Error 8961), yet it must stay read-only: `DynamicFeeFacet.quote` refreshes the volatility anchor

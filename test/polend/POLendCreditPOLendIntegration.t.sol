@@ -6,6 +6,8 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
+// File placement: the system under test is POLendUpgradeable's credit path (GenesisCredit itself is
+// exercised only through a pausable burnable mock ERC20 stand-in), so this suite lives under test/polend/.
 import {POLendUpgradeable} from "../../src/polend/POLendUpgradeable.sol";
 import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";

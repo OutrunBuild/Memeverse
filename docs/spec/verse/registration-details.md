@@ -1,4 +1,4 @@
-# MemeverseV2 注册链路细化说明
+# Memeverse 注册链路细化说明
 
 ## 1. 目标
 

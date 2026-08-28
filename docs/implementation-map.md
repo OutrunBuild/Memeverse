@@ -1,4 +1,4 @@
-# MemeverseV2 实现面映射（Implementation Map）
+# Memeverse 实现面映射（Implementation Map）
 
 ## 1. 映射原则
 

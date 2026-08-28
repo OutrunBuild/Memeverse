@@ -1,4 +1,4 @@
-# MemeverseV2 配置矩阵
+# Memeverse 配置矩阵
 
 ## 1. 说明
 

@@ -1,4 +1,4 @@
-# MemeverseV2 集成边界：Uniswap v4
+# Memeverse 集成边界：Uniswap v4
 
 ## 1. 范围
 

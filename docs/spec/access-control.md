@@ -1,4 +1,4 @@
-# MemeverseV2 访问控制边界（Authority / Evidence）
+# Memeverse 访问控制边界（Authority / Evidence）
 
 ## 1. 目标与范围
 

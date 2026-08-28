@@ -2,7 +2,7 @@
 
 ## 1. 文档定位
 
-`polend/` 目录是 `POLendUpgradeable` 与 MemeverseV2 集成后的唯一产品真源（导航见 [polend/README.md](README.md)）。本文件承载整体定义：模块边界、POLendUpgradeable 状态、债务推导、错误语义、互斥关系；具体流程由同目录 genesis.md / pt-yt-splitter.md / settlement-and-fees.md 分担。
+`polend/` 目录是 `POLendUpgradeable` 与 Memeverse 集成后的唯一产品真源（导航见 [polend/README.md](README.md)）。本文件承载整体定义：模块边界、POLendUpgradeable 状态、债务推导、错误语义、互斥关系；具体流程由同目录 genesis.md / pt-yt-splitter.md / settlement-and-fees.md 分担。
 
 POLendUpgradeable 定义产品语义、资金流、状态边界、结算规则和接口职责。实现、测试、计划与开发辅助文档都必须服从 POLendUpgradeable 规格。
 

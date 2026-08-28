@@ -1,4 +1,4 @@
-# MemeverseV2 集成边界：Permit2
+# Memeverse 集成边界：Permit2
 
 ## 1. 范围
 

@@ -1,4 +1,4 @@
-# MemeverseV2 升级性与初始化约束（Source-Backed）
+# Memeverse 升级性与初始化约束（Source-Backed）
 
 ## 1. 结论摘要
 

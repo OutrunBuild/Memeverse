@@ -1,4 +1,4 @@
-# MemeverseV2 状态机
+# Memeverse 状态机
 
 ## 1. 说明与来源边界
 

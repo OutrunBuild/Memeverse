@@ -1,4 +1,4 @@
-# MemeverseV2 架构总览
+# Memeverse 架构总览
 
 ## 1. 模块地图
 

@@ -527,7 +527,7 @@ run_gate_step = next(step for step in steps if step.get("name") == "Run gate:ci"
 env = run_gate_step["env"]
 
 assert env["HARNESS_EVENT_NAME"] == "${{ github.event_name }}"
-assert env["RUN_RECORD_PATH"] == "${{ runner.temp }}/memeversev2-gate-ci.json"
+assert env["RUN_RECORD_PATH"] == "${{ runner.temp }}/memeverse-gate-ci.json"
 assert run_gate_step["run"] == "bash script/harness/ci-gate-entrypoint.sh"
 PY
 }

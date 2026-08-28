@@ -1,7 +1,7 @@
 {
   "version": 1,
   "tool": "slither",
-  "generated_at": "2026-08-25",
+  "generated_at": "2026-08-28",
   "target": "src",
   "findings": [
     {
@@ -356,6 +356,15 @@
       "key": "dead-code|src/common/token/extensions/governance/OutrunVotesInit.sol|OutrunVotesInit._subtract(uint208,uint208) is never used and should be removed"
     },
     {
+      "id": "a5264b07f650e1f7d86d017efe0b00e95cb031322752cb0c028c4cb65917a9f8",
+      "check": "dead-code",
+      "impact": "Informational",
+      "confidence": "Medium",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L451-L461",
+      "summary": "MemecoinDaoGovernorUpgradeable._isRegisteredTreasuryToken(address[],address) is never used and should be removed",
+      "key": "dead-code|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._isRegisteredTreasuryToken(address[],address) is never used and should be removed"
+    },
+    {
       "id": "59b2f212462167b3a42db7568c41e8ad8b774876fec83a348f3a59041bee0064",
       "check": "divide-before-multiply",
       "impact": "Medium",
@@ -383,11 +392,20 @@
       "key": "incorrect-equality|src/common/token/TokenHelper.sol|TokenHelper._transferOut(address,address,uint256) uses a dangerous strict equality:"
     },
     {
-      "id": "21200b1218aad32247ec10ad706684856e85e47fa8c9cb907379d782ac8c6a61",
+      "id": "2045e6c9bac438d2134b1c4a24d350078e2df8561f070671909ba5e692b39d67",
       "check": "incorrect-equality",
       "impact": "Medium",
       "confidence": "High",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L196-L216",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L319-L356",
+      "summary": "MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) uses a dangerous strict equality:",
+      "key": "incorrect-equality|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) uses a dangerous strict equality:"
+    },
+    {
+      "id": "b11e5daca327dc78f969c215239f55176fe6f737e5b6305f4653190878505221",
+      "check": "incorrect-equality",
+      "impact": "Medium",
+      "confidence": "High",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L197-L217",
       "summary": "MemecoinDaoGovernorUpgradeable.propose(address[],uint256[],bytes[],string) uses a dangerous strict equality:",
       "key": "incorrect-equality|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable.propose(address[],uint256[],bytes[],string) uses a dangerous strict equality:"
     },
@@ -428,11 +446,11 @@
       "key": "incorrect-equality|src/swap/SwapFacet.sol|SwapFacet._updateUserSnapshot(PoolId,address) uses a dangerous strict equality:"
     },
     {
-      "id": "6e16ca72e82158e59af4dffb6b7964002c4585e33ce1b9bbd03e18d775e14973",
+      "id": "8a42acf0ebdaa0b040e14ac0bd0b199105ba2c89e5c278e2c3940392aec17660",
       "check": "incorrect-equality",
       "impact": "Medium",
       "confidence": "High",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L803-L817",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L798-L812",
       "summary": "MemeverseLiquidityImpl._removeAuxiliaryLiquidityIfNonZero(Currency,Currency,uint128,address,address,uint256,uint256,uint256) uses a dangerous strict equality:",
       "key": "incorrect-equality|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._removeAuxiliaryLiquidityIfNonZero(Currency,Currency,uint128,address,address,uint256,uint256,uint256) uses a dangerous strict equality:"
     },
@@ -477,7 +495,7 @@
       "check": "missing-inheritance",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/token/MemePol.sol#L12-L91",
+      "location": "src/token/MemePol.sol#L12-L83",
       "summary": "MemePol should inherit from IBurnable",
       "key": "missing-inheritance|src/token/MemePol.sol|MemePol should inherit from IBurnable"
     },
@@ -495,7 +513,7 @@
       "check": "missing-inheritance",
       "impact": "Informational",
       "confidence": "High",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L34-L925",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L34-L920",
       "summary": "MemeverseLiquidityImpl should inherit from IMemeverseLiquidityImpl",
       "key": "missing-inheritance|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl should inherit from IMemeverseLiquidityImpl"
     },
@@ -509,7 +527,7 @@
       "key": "missing-inheritance|src/verse/MemeverseSettlementImpl.sol|MemeverseSettlementImpl should inherit from IMemeverseSettlementImpl"
     },
     {
-      "id": "cd45f9c7638e0830259faddeba55bf0332ef0ef1f9ef7b97c4d91ff660a3866a",
+      "id": "2fecfeb809a4ccd90c3eb6bc055db1d1cca1861f401078ab40efed00acdcb39b",
       "check": "msg-value-in-nonpayable",
       "impact": "High",
       "confidence": "High",
@@ -608,11 +626,11 @@
       "key": "reentrancy-benign|src/swap/tokens/UniswapLP.sol|Reentrancy in UniswapLP._update(address,address,uint256):"
     },
     {
-      "id": "07b02eaa41dfbb3ceb381f5c47fe380832fc2086b2c5e5f3d32ae59d475bb59b",
+      "id": "591a38d4b908142a39f83b0b9344df3638db5057ec29e0f9345a8e945caf4062",
       "check": "reentrancy-benign",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/token/MemePol.sol#L35-L51",
+      "location": "src/token/MemePol.sol#L33-L49",
       "summary": "Reentrancy in MemePol.initialize(string,string,address,address,address):",
       "key": "reentrancy-benign|src/token/MemePol.sol|Reentrancy in MemePol.initialize(string,string,address,address,address):"
     },
@@ -626,29 +644,29 @@
       "key": "reentrancy-benign|src/token/Memecoin.sol|Reentrancy in Memecoin.initialize(string,string,address,address):"
     },
     {
-      "id": "06b2223b0536d5d4ac7f5c51e36876432b83c0b91f4e85740175429a23991849",
+      "id": "57b3cccf23b44a0e83d7383f9e54d05b69afd53102ce21a72fb25b99e2950e1a",
       "check": "reentrancy-benign",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L222-L250",
-      "summary": "Reentrancy in MemeverseLiquidityImpl._bootstrapPOLPool(uint256,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,PoolId):",
-      "key": "reentrancy-benign|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._bootstrapPOLPool(uint256,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,PoolId):"
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L220-L245",
+      "summary": "Reentrancy in MemeverseLiquidityImpl._bootstrapPOLPool(uint256,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256):",
+      "key": "reentrancy-benign|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._bootstrapPOLPool(uint256,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256):"
     },
     {
-      "id": "00feca3a14316d9d63c74774f78d06599fd56bda8a83e981f0b07e21a305cf6d",
+      "id": "31dbd3cc6598ab99241185b579cb10a453041c9c8287bdff76a2c399ec423d95",
       "check": "reentrancy-benign",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L317-L329",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L312-L324",
       "summary": "Reentrancy in MemeverseLiquidityImpl._createPTPOLAuxiliaryPool(uint256,address,address,address,uint256,uint256):",
       "key": "reentrancy-benign|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._createPTPOLAuxiliaryPool(uint256,address,address,address,uint256,uint256):"
     },
     {
-      "id": "72b5f81d8ac75fcb76dcb2a8c858f60989dc6667a028c40f16685347136281af",
+      "id": "045d0ceaa4227380268f80661a9418566c445e4ae61335093f61e8d7026f12d9",
       "check": "reentrancy-benign",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L301-L315",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L296-L310",
       "summary": "Reentrancy in MemeverseLiquidityImpl._createPTUAssetAuxiliaryPool(uint256,address,address,address,uint256,uint256,uint256):",
       "key": "reentrancy-benign|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._createPTUAssetAuxiliaryPool(uint256,address,address,address,uint256,uint256,uint256):"
     },
@@ -788,11 +806,11 @@
       "key": "reentrancy-events|src/swap/tokens/UniswapLP.sol|Reentrancy in UniswapLP._update(address,address,uint256):"
     },
     {
-      "id": "389875c158c3acd154964ec81d0431df55227e6f6af24179fc3b37dda1a2f23f",
+      "id": "fbbf90d5e2699c2d3769c60ac0642910d2a8aada6c8ab755f261780b81efc5d6",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/token/MemePol.sol#L35-L51",
+      "location": "src/token/MemePol.sol#L33-L49",
       "summary": "Reentrancy in MemePol.initialize(string,string,address,address,address):",
       "key": "reentrancy-events|src/token/MemePol.sol|Reentrancy in MemePol.initialize(string,string,address,address,address):"
     },
@@ -824,16 +842,16 @@
       "key": "reentrancy-events|src/verse/MemeverseLaunchImpl.sol|Reentrancy in MemeverseLaunchImpl.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool):"
     },
     {
-      "id": "1a1a4fe896e84157305607293c6db5ff6683b1290824e7d45f2479ece5eb6042",
+      "id": "c5e78966be9282dd1f9b889b22ca1fbbd71fd7e2242b296a3e0503cec405fc8b",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L351-L379",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L346-L374",
       "summary": "Reentrancy in MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address):",
       "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address):"
     },
     {
-      "id": "23604d68a9014eb3a13227e3f2a3c5f245907873a6bdeb8c4a40731e0de9408a",
+      "id": "a45fcbed9686d04508d73b404a9c017dd2b501fc2fdfeb384bd061760b6d8eee",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
@@ -842,29 +860,29 @@
       "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl.deployBootstrapLiquidity(uint256,address,address,address,uint256,address,address):"
     },
     {
-      "id": "fc73a2791131bc3b4462191a648bd827f5fc359d5780bb041f6b5a5643d79c9c",
+      "id": "41f6a32a550121059620ec6cdfae746f3eb5c7277bb438e9c58f1f26ae0558db",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L631-L656",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L626-L651",
       "summary": "Reentrancy in MemeverseLiquidityImpl.redeemAuxiliaryLiquidity(uint256):",
       "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl.redeemAuxiliaryLiquidity(uint256):"
     },
     {
-      "id": "ebe6ea772f6e15c05ea87a27660932b8f69853a499ecb4f478b11df4ebad00c9",
+      "id": "fa57dd625658c74a2233bbaa3cb994d62e460259fb76f2aebac2fcbd13793543",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L848-L870",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L843-L865",
       "summary": "Reentrancy in MemeverseLiquidityImpl.redeemMemecoinLiquidity(uint256,uint256,bool):",
       "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl.redeemMemecoinLiquidity(uint256,uint256,bool):"
     },
     {
-      "id": "cdc5fa436900081ab2013cdd56a5dd1e23844a0dd46857ffb7627a85b4d148ba",
+      "id": "560f7f3fca715c9588a053a5f6c0b7ad556b80e0ca2dadf966b3bd15b7782486",
       "check": "reentrancy-events",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L876-L911",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L871-L906",
       "summary": "Reentrancy in MemeverseLiquidityImpl.redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256):",
       "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl.redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256):"
     },
@@ -977,7 +995,7 @@
       "key": "reentrancy-no-eth|src/common/omnichain/oft/OutrunOFTCoreInit.sol|Reentrancy in OutrunOFTCoreInit.__OutrunOFTCore_init(address):"
     },
     {
-      "id": "42114f2ba2d085bf3ed8282bce886dc0a9c0b7bd166a7f68119fc044816dfaf9",
+      "id": "ae1621187acd5f6736ed799560dc75d7cf91683a7ddea8cba66472ab72342766",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
@@ -1085,11 +1103,11 @@
       "key": "reentrancy-no-eth|src/swap/SwapFacet.sol|Reentrancy in SwapFacet.beforeInitializeLogic(address,PoolKey,uint160):"
     },
     {
-      "id": "da24230554aef3eb2480258aaca850e02f0c2b7755b67d12ba8390a14f012533",
+      "id": "1fff5bc9121271be39230a14320bf9faa0904f18c70740f663caab116713180f",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/token/MemePol.sol#L35-L51",
+      "location": "src/token/MemePol.sol#L33-L49",
       "summary": "Reentrancy in MemePol.initialize(string,string,address,address,address):",
       "key": "reentrancy-no-eth|src/token/MemePol.sol|Reentrancy in MemePol.initialize(string,string,address,address,address):"
     },
@@ -1121,38 +1139,38 @@
       "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|Reentrancy in MemeverseLaunchImpl.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool):"
     },
     {
-      "id": "5816c41e9e409c5e320cc044522713094b640f58757daa3e59d0ebaac87d3d2c",
+      "id": "dac8003413fe6b5546492cc1d21eb76276b3df037113fbc468622d2e4e08d135",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L184-L220",
-      "summary": "Reentrancy in MemeverseLiquidityImpl._bootstrapPOLAndAuxiliaryPools(uint256,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,PoolId,uint256):",
-      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._bootstrapPOLAndAuxiliaryPools(uint256,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,PoolId,uint256):"
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L183-L218",
+      "summary": "Reentrancy in MemeverseLiquidityImpl._bootstrapPOLAndAuxiliaryPools(uint256,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256):",
+      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._bootstrapPOLAndAuxiliaryPools(uint256,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256):"
     },
     {
-      "id": "6d3fab3bfe5539e48e323a5ef5665275fbb56664cf6064e06759a039cf97baf8",
+      "id": "555c93c72860a6c983da52285ea1c8f57095feaaa5d035fb19150803fe7e28bb",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L252-L299",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L247-L294",
       "summary": "Reentrancy in MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256):",
       "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256):"
     },
     {
-      "id": "6adcb2b61f8993ba26777b466f93186f23ceb3de15a9819fabbb6dcee7d28b6e",
+      "id": "772991823b3eb058198d859b7dd193782fd7d06bfa5460ca02b2bf77940920af",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L98-L142",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L98-L141",
       "summary": "Reentrancy in MemeverseLiquidityImpl._createBootstrapPools(uint256,address,address,address,uint256,uint256,uint256,uint256,address,address,address,address):",
       "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._createBootstrapPools(uint256,address,address,address,uint256,uint256,uint256,uint256,address,address,address,address):"
     },
     {
-      "id": "c2ca407832b4954875b5fc0e1d4b7b19bb6925a3ab94bc755c5d154b4ab7981c",
+      "id": "2e6d48af2b96c82a81cb8f4ef75d923183fb59c11d172c47b64f87242bf5c2b6",
       "check": "reentrancy-no-eth",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L434-L472",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L429-L467",
       "summary": "Reentrancy in MemeverseLiquidityImpl._settlePreorder(uint256,PoolKey,address,address,address):",
       "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|Reentrancy in MemeverseLiquidityImpl._settlePreorder(uint256,PoolKey,address,address,address):"
     },
@@ -1337,38 +1355,56 @@
       "key": "timestamp|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|GovernanceCycleIncentivizerUpgradeable.finalizeCurrentCycle() uses timestamp for comparisons"
     },
     {
-      "id": "a937a6ab418731b11d5f89fffc349dcb722e4a5bec8bd11ddbca7a39cb4e880a",
+      "id": "eb137e97678c5c5613dc245e61e1e0def0e5a6719b4334c49b0fac38da4415f5",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L316-L373",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L362-L384",
+      "summary": "MemecoinDaoGovernorUpgradeable._enforceUpgradeSupermajority(uint256,address[]) uses timestamp for comparisons",
+      "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._enforceUpgradeSupermajority(uint256,address[]) uses timestamp for comparisons"
+    },
+    {
+      "id": "d956847d6f6d9fb960d0b4c97788492f9223b2d59483ee6cd430548116da5eff",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L319-L356",
       "summary": "MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) uses timestamp for comparisons",
       "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) uses timestamp for comparisons"
     },
     {
-      "id": "e1f5f82c157c82a3acdfb9ff11d20df1e3ad104ccc3257bf345d502540f479c0",
+      "id": "e6ca21ddeed57d6c773ebad1c15ca60f8a263d32ee5fb995bed9e5a4dc2c2203",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L303-L309",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L451-L461",
+      "summary": "MemecoinDaoGovernorUpgradeable._isRegisteredTreasuryToken(address[],address) uses timestamp for comparisons",
+      "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._isRegisteredTreasuryToken(address[],address) uses timestamp for comparisons"
+    },
+    {
+      "id": "ab4ce35060880feaf8514b404f97745539a3e30b114ef4a4c5d963cc7c57a79c",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L304-L310",
       "summary": "MemecoinDaoGovernorUpgradeable.disburseReward(address,address,uint256) uses timestamp for comparisons",
       "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable.disburseReward(address,address,uint256) uses timestamp for comparisons"
     },
     {
-      "id": "fbfb3e9e736b46495c82b81dbd5f3df29fd587cb267e367a0ee8e77810eae6e4",
+      "id": "42ac58e546f223aeaedc8c009a9d83dac36716f11ca34ad53633f147b30dc5ca",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L196-L216",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L197-L217",
       "summary": "MemecoinDaoGovernorUpgradeable.propose(address[],uint256[],bytes[],string) uses timestamp for comparisons",
       "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable.propose(address[],uint256[],bytes[],string) uses timestamp for comparisons"
     },
     {
-      "id": "05e0d631c29cf75344902884554559d27da053bf817a1782aae661197dd3d030",
+      "id": "fdfd91d3cf07fcf4b947be27ad58081ffc38325299579549277e681b9110ffa5",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L273-L279",
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L274-L280",
       "summary": "MemecoinDaoGovernorUpgradeable.recordTreasuryTokenRegistration(address) uses timestamp for comparisons",
       "key": "timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable.recordTreasuryTokenRegistration(address) uses timestamp for comparisons"
     },
@@ -1418,92 +1454,92 @@
       "key": "timestamp|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl.changeStage(uint256) uses timestamp for comparisons"
     },
     {
-      "id": "97e7c5048aa591a050d32bc4d8cfcd8be912771352de3bca4da9fd1491148c8c",
+      "id": "5a95f6fc69441f4f7515101262a416004e0e6f4b92a336703628133047734aa9",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L252-L299",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L247-L294",
       "summary": "MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256) uses timestamp for comparisons"
     },
     {
-      "id": "b0b316993656153eed0166af4ef6e2eb870b67d99a567b1bc88e902a9ef9c2ab",
+      "id": "5d276822f9ae5c13db6c2994629f863999e675fcab6c83e2c96f94531a58ca55",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L98-L142",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L98-L141",
       "summary": "MemeverseLiquidityImpl._createBootstrapPools(uint256,address,address,address,uint256,uint256,uint256,uint256,address,address,address,address) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._createBootstrapPools(uint256,address,address,address,uint256,uint256,uint256,uint256,address,address,address,address) uses timestamp for comparisons"
     },
     {
-      "id": "0517c7d8c23c0dc9b602e51312eacc95410f6be1828079744e180caad580f4cd",
+      "id": "c44098ffdc19b74bda41dd99fe55da8d0a20dd9c93cccfc87e93073054201070",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L144-L182",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L143-L181",
       "summary": "MemeverseLiquidityImpl._createMainBootstrapPool(address,address,uint256,uint256,address) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._createMainBootstrapPool(address,address,uint256,uint256,address) uses timestamp for comparisons"
     },
     {
-      "id": "e9d9d8b910bdb4c657f76548e8921659b6549aea700590e75d6aafcc4a337fa2",
+      "id": "a9f9ea7ab7d30835a26a18387114023905bdce18a1d2144087851a48cf9387dd",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L351-L379",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L346-L374",
       "summary": "MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address) uses timestamp for comparisons"
     },
     {
-      "id": "81c1b0aa54391694fa1300c7819428c82bb8479f6ba27bfd115d5f742a1061e0",
+      "id": "7a15ef425a3c0376efda3146d25f53d550b6ef720d15ce344315f9b221080c9b",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L477-L493",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L472-L488",
       "summary": "MemeverseLiquidityImpl._positiveDeltaAmount(BalanceDelta,address,address,address) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._positiveDeltaAmount(BalanceDelta,address,address,address) uses timestamp for comparisons"
     },
     {
-      "id": "5a9ee3e7bcf237e935f46af3fbc75f38c62f5945a19b2065e531ce8ddabe80cf",
+      "id": "af0199d4c3005a887dfde399165648f9b82f593d829ff343be4c6656a7aba353",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L674-L678",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L669-L673",
       "summary": "MemeverseLiquidityImpl._redeemableGenesisFund(uint256,address) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._redeemableGenesisFund(uint256,address) uses timestamp for comparisons"
     },
     {
-      "id": "dddda8a7330ec66e0fe56ff420cc5202e3e4198eb5358bb9c3e1d95a06f19179",
+      "id": "034a781978d1b51c996ff68a43a3416880a1f97495c83af6d35c893145a7e3ec",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L803-L817",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L798-L812",
       "summary": "MemeverseLiquidityImpl._removeAuxiliaryLiquidityIfNonZero(Currency,Currency,uint128,address,address,uint256,uint256,uint256) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._removeAuxiliaryLiquidityIfNonZero(Currency,Currency,uint128,address,address,uint256,uint256,uint256) uses timestamp for comparisons"
     },
     {
-      "id": "00c075149e925631e250bb48df791d7f93ca6ae57cad0aff1f701505ab9e5134",
+      "id": "04743c58534bbd0c3866289547535827bf1fffd56cbe00b43efbfc83f890af66",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L434-L472",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L429-L467",
       "summary": "MemeverseLiquidityImpl._settlePreorder(uint256,PoolKey,address,address,address) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._settlePreorder(uint256,PoolKey,address,address,address) uses timestamp for comparisons"
     },
     {
-      "id": "8bbd6f22153c84fc90e8c5e2476647ea037c7c88cc426af32108971cbf77acf7",
+      "id": "0659fb9991ccefd6658095aa39e6de66bfa71d8d4365471229f068306c6e289d",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L658-L672",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L653-L667",
       "summary": "MemeverseLiquidityImpl._transferNormalResidualClaims(uint256,uint256,address,address,address,uint256) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._transferNormalResidualClaims(uint256,uint256,address,address,address,uint256) uses timestamp for comparisons"
     },
     {
-      "id": "4ba463477c0fcd6627eec56b0b62e7e52bc6ceebaed950cb8a88d8cff715f25e",
+      "id": "ec23cd56bc92e91b31f6e5286e0cd49a0d18f93a07100d1c4371dc0412b4bd84",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L691-L706",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L686-L701",
       "summary": "MemeverseLiquidityImpl._transferRedeemedAuxiliaryLiquidity(address,address,address,address,uint256,uint256,uint256,address) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._transferRedeemedAuxiliaryLiquidity(address,address,address,address,uint256,uint256,uint256,address) uses timestamp for comparisons"
     },
@@ -1517,38 +1553,38 @@
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl.deployBootstrapLiquidity(uint256,address,address,address,uint256,address,address) uses timestamp for comparisons"
     },
     {
-      "id": "a826e226edccaa8bb56074ee43774cf5c2ddcd7572c8b56fd99f7216422e77ff",
+      "id": "3d78f92218cebe31251ccd6282961c6eeda544821949777809aee061fd21ebf6",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L631-L656",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L626-L651",
       "summary": "MemeverseLiquidityImpl.redeemAuxiliaryLiquidity(uint256) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl.redeemAuxiliaryLiquidity(uint256) uses timestamp for comparisons"
     },
     {
-      "id": "f24f9feb3a5bf1d529591bba45a60fba8412666b5ef33a4f9ad7d8e631be8ece",
+      "id": "95e722332af0aa950affd1fc1ab1581de41d19019f40091b7787315cdbb81a70",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L848-L870",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L843-L865",
       "summary": "MemeverseLiquidityImpl.redeemMemecoinLiquidity(uint256,uint256,bool) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl.redeemMemecoinLiquidity(uint256,uint256,bool) uses timestamp for comparisons"
     },
     {
-      "id": "011329a38a584b931fe3ec0c3f5ce400ca74906b56a8f9630c1541cf607d12e3",
+      "id": "ed1284292500bd9a18ebe167c08727d9caae160b06bb8d3604fefaab6f77b030",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L876-L911",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L871-L906",
       "summary": "MemeverseLiquidityImpl.redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl.redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256) uses timestamp for comparisons"
     },
     {
-      "id": "e46385ce7000fe44ba3d3e38e2824c172aa95203501eff26783714b8e7c491a7",
+      "id": "c24e311f896624c603f31b8bd45965973d72d4ae1afb866fe6892ddf74a2edc6",
       "check": "timestamp",
       "impact": "Low",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L713-L762",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L708-L757",
       "summary": "MemeverseLiquidityImpl.settleLeveragedAuxiliaryLiquidity(uint256) uses timestamp for comparisons",
       "key": "timestamp|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl.settleLeveragedAuxiliaryLiquidity(uint256) uses timestamp for comparisons"
     },
@@ -1746,7 +1782,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L361",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L356",
       "summary": "MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address).credited is a local variable never initialized",
       "key": "uninitialized-local|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address).credited is a local variable never initialized"
     },
@@ -1755,7 +1791,7 @@
       "check": "uninitialized-local",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L362",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L357",
       "summary": "MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address).treasuryExcess is a local variable never initialized",
       "key": "uninitialized-local|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._handleBootstrapResiduals(uint256,address,address,uint256,uint256,address).treasuryExcess is a local variable never initialized"
     },
@@ -1850,13 +1886,13 @@
       "key": "unused-return|src/common/token/extensions/governance/OutrunVotesInit.sol|OutrunVotesInit._writeTotalAssetCheckpoint(uint256) ignores return value by $._totalAssetsCheckpoint.push(clock(),SafeCast.toUint208(totalAssets))"
     },
     {
-      "id": "ac44deb452350078990b7189b3c153950c5c6287c90266dce201d7903426c05e",
+      "id": "45bc9a012c9e40ac3a6692925db2c1ef2149916010fee4007590ca0d7af8b661",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L316-L373",
-      "summary": "MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) ignores return value by (None,None,None,treasuryTokens,None) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData()",
-      "key": "unused-return|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._executeOperations(uint256,address[],uint256[],bytes[],bytes32) ignores return value by (None,None,None,treasuryTokens,None) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData()"
+      "location": "src/governance/MemecoinDaoGovernorUpgradeable.sol#L394-L409",
+      "summary": "MemecoinDaoGovernorUpgradeable._enforceTreasuryAllowanceGuard(address[],bytes[]) ignores return value by (None,None,None,treasuryTokens,None) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData()",
+      "key": "unused-return|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._enforceTreasuryAllowanceGuard(address[],bytes[]) ignores return value by (None,None,None,treasuryTokens,None) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData()"
     },
     {
       "id": "a04ef2b80fab3ec63ed8e4f786f0060f87d86d59d01d33465a4bbb86cdc75702",
@@ -2084,11 +2120,11 @@
       "key": "unused-return|src/verse/MemeverseLauncherUpgradeable.sol|MemeverseLauncherUpgradeable.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool) ignores return value by impl.functionDelegateCall(abi.encodeWithSelector(IMemeverseLaunchImpl.registerMemeverse.selector,name,symbol,uniqueId,endTime,unlockTime,omnichainIds,uAsset,flashGenesis))"
     },
     {
-      "id": "2a0940725b92dca70245e1bc2c2051b9d01dd324b1d2a9b81f9a4eeac3b5c084",
+      "id": "318f3acbcca8d82902065c30601979990c6a19f9324712759f55ed6ae6161234",
       "check": "unused-return",
       "impact": "Medium",
       "confidence": "Medium",
-      "location": "src/verse/MemeverseLiquidityImpl.sol#L252-L299",
+      "location": "src/verse/MemeverseLiquidityImpl.sol#L247-L294",
       "summary": "MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256) ignores return value by (totalPT,None) = IPOLSplitter(_polSplitter).split(verseId,totalToSplit)",
       "key": "unused-return|src/verse/MemeverseLiquidityImpl.sol|MemeverseLiquidityImpl._bootstrapPTPools(uint256,address,address,address,address,address,IMemeverseLauncher.BootstrapPolPlan,uint256,uint256,uint256,uint256) ignores return value by (totalPT,None) = IPOLSplitter(_polSplitter).split(verseId,totalToSplit)"
     },

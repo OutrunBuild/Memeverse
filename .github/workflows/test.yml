@@ -108,7 +108,7 @@ jobs:
       - name: Run gate:ci
         env:
           HARNESS_EVENT_NAME: ${{ github.event_name }}
-          RUN_RECORD_PATH: ${{ runner.temp }}/memeversev2-gate-ci.json
+          RUN_RECORD_PATH: ${{ runner.temp }}/memeverse-gate-ci.json
         run: bash script/harness/ci-gate-entrypoint.sh
 
       - name: Run orchestration regression tests
@@ -119,5 +119,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gate-ci-run-record
-          path: ${{ runner.temp }}/memeversev2-gate-ci.json
+          path: ${{ runner.temp }}/memeverse-gate-ci.json
           if-no-files-found: error

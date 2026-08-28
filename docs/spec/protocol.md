@@ -1,8 +1,8 @@
-# MemeverseV2 协议总览（产品真相层）
+# Memeverse 协议总览（产品真相层）
 
 ## 1. 文档目的与来源边界
 
-本文档描述 MemeverseV2 “产品真相层”规则，不做逐行代码注释。
+本文档描述 Memeverse “产品真相层”规则，不做逐行代码注释。
 
 规则分层（从高到低）：
 - POLendUpgradeable / POLSplitterUpgradeable 当前规则真源：[docs/spec/polend/README.md](polend/README.md)。

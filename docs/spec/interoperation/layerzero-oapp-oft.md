@@ -1,8 +1,8 @@
-# MemeverseV2 集成边界：LayerZero OApp / OFT
+# Memeverse 集成边界：LayerZero OApp / OFT
 
 ## 1. 范围
 
-本文描述 MemeverseV2 与 LayerZero v2 的边界，不复述 LayerZero 通用协议原理。  
+本文描述 Memeverse 与 LayerZero v2 的边界，不复述 LayerZero 通用协议原理。  
 标签：
 
 - `[代码已证]`

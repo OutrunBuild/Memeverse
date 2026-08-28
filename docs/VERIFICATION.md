@@ -1,4 +1,4 @@
-# MemeverseV2 Verification
+# Memeverse Verification
 
 - Verification entrypoint: `script/harness/gate.sh`
 - Pre-edit classification entrypoint: `bash script/harness/gate.sh --classify-only --planned-files <path> [<path> ...]`

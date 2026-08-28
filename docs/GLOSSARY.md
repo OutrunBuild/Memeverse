@@ -1,4 +1,4 @@
-# MemeverseV2 术语表
+# Memeverse 术语表
 
 - **Verse**：一次 memecoin 启动实例，包含注册信息、生命周期状态和资金账本。
 - **uniqueId / verseId**：verse 的唯一标识；注册中心生成，launcher 作为主键使用。

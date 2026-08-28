@@ -1,4 +1,4 @@
-# MemeverseV2 Traceability
+# Memeverse Traceability
 
 - Machine truth: .harness/policy.json
 - Session contract: .harness/runtime/main-session-contract.md

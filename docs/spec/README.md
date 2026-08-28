@@ -1,4 +1,4 @@
-# MemeverseV2 规格文档索引
+# Memeverse 规格文档索引
 
 本文档是 `docs/spec/` 的入口索引：按 region 列出全部规格文档及其职责，供编辑者快速定位"每类规则在哪个文件"。每条原子规则的权威主页见 §2 OCLPAR canonical-home 表。
 

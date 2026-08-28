@@ -1,4 +1,4 @@
-# MemeverseV2 部署拓扑与初始化事实
+# Memeverse 部署拓扑与初始化事实
 
 ## 1. 说明
 

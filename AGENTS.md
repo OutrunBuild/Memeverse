@@ -1,10 +1,10 @@
 # AGENTS Contract
 
-MemeverseV2 is a pre-deployment Foundry (Solidity) protocol suite — memecoin launcher, Uniswap v4 hook swap, governance, yield vaults, and LayerZero omnichain components — whose repository work is routed through a policy/gate harness (`script/harness/gate.sh` + `.harness/policy.json`). Goal: route repository work through the harness without violating policy, review, or verification rules.
+Memeverse is a pre-deployment Foundry (Solidity) protocol suite — memecoin launcher, Uniswap v4 hook swap, governance, yield vaults, and LayerZero omnichain components — whose repository work is routed through a policy/gate harness (`script/harness/gate.sh` + `.harness/policy.json`). Goal: route repository work through the harness without violating policy, review, or verification rules.
 
 ## Session Entry
 
-- AGENTS.md is the session entry for MemeverseV2.
+- AGENTS.md is the session entry for Memeverse.
 - Load only the files needed for the current task. Control-file read order is fixed:
   1. AGENTS.md
   2. .harness/policy.json

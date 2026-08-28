@@ -1,4 +1,4 @@
-# MemeverseV2 跨链互操作细化说明
+# Memeverse 跨链互操作细化说明
 
 ## 1. 目标
 

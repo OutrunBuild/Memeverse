@@ -1,4 +1,4 @@
-# MemeverseV2 治理与收益细化说明
+# Memeverse 治理与收益细化说明
 
 ## 1. 目标
 

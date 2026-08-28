@@ -1,4 +1,4 @@
-# MemeverseV2
+# Memeverse
 
 Smart-contract development uses Foundry. The destructive-git harness guard
 requires Rust 1.93 or newer; its first hook invocation builds a release helper

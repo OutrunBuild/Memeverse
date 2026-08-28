@@ -1,4 +1,4 @@
-# MemeverseV2 记账与资金语义
+# Memeverse 记账与资金语义
 
 ## 1. 说明与来源边界
 

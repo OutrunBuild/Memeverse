@@ -1,4 +1,4 @@
-# MemeverseV2 公共基础层说明
+# Memeverse 公共基础层说明
 
 ## 1. 目标
 

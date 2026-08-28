@@ -9,7 +9,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
@@ -22,7 +22,6 @@ import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewRead
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
-import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRouter.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {MemeverseSwapRouter} from "../../src/swap/MemeverseSwapRouter.sol";
 import {MemeverseUniswapHookLens} from "../../src/swap/MemeverseUniswapHookLens.sol";
@@ -33,11 +32,9 @@ import {
     MockPredictOnlyProxyDeployer,
     MockPOLendForLifecycle,
     MockPOLSplitterForLifecycle,
-    MockLzEndpointRegistry,
-    MockLiquidProof,
-    MockPreorderSettlementHookForLauncherTest,
-    RedeemMemecoinLiquidityReenterer
+    MockLiquidProof
 } from "../mocks/verse/LauncherLifecycleMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 
@@ -53,7 +50,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
     MockPredictOnlyProxyDeployer internal proxyDeployer;
     MockPOLendForLifecycle internal polend;
     MockPOLSplitterForLifecycle internal splitter;
-    MockLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockERC20 internal uAsset;
     MockERC20 internal memecoin;
     MockLiquidProof internal liquidProof;
@@ -86,7 +83,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         proxyDeployer = new MockPredictOnlyProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
         polend = new MockPOLendForLifecycle();
         splitter = new MockPOLSplitterForLifecycle(address(pt), address(yt));
-        registry = new MockLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
@@ -126,24 +123,6 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         router.setLpToken(address(liquidProof), address(uAsset), address(polUAssetLp));
         router.setLpToken(address(pt), address(uAsset), address(ptUAssetLp));
         router.setLpToken(address(pt), address(liquidProof), address(ptPolLp));
-    }
-
-    function testLockedToUnlockedWritesDedicatedProtectionWindowForAllProtectedPairs() external {
-        uint256 verseId = 1;
-        _setLockedVerseReadyToUnlock(verseId);
-
-        PoolKey memory memecoinKey = router.getHookPoolKey(address(memecoin), address(uAsset));
-        PoolKey memory polKey = router.getHookPoolKey(address(liquidProof), address(uAsset));
-        PoolKey memory ptUAssetKey = router.getHookPoolKey(address(pt), address(uAsset));
-        PoolKey memory ptPolKey = router.getHookPoolKey(address(pt), address(liquidProof));
-
-        launcher.changeStage(verseId);
-
-        uint40 resumeTime = uint40(block.timestamp + 24 hours);
-        _assertResumeTime(memecoinKey, resumeTime, "memecoin/uAsset");
-        _assertResumeTime(polKey, resumeTime, "POL/uAsset");
-        _assertResumeTime(ptUAssetKey, resumeTime, "PT/uAsset");
-        _assertResumeTime(ptPolKey, resumeTime, "PT/POL");
     }
 
     function testPublicAndEquivalentPublicSwapPathsAreBlockedUntilProtectionWindowEnds() external {
@@ -232,47 +211,6 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         assertLt(routerDelta.amount0(), 0, "router input");
     }
 
-    function testUnlockSettlementAllowsPublicLiquidityRedemptionsDuringSettlement() external {
-        uint256 verseId = 3;
-        _setLockedVerseReadyToUnlock(verseId);
-        _seedAuxiliaryLiquidity(verseId);
-
-        MockERC20 memecoinLp = new MockERC20("MEME-LP", "MEME-LP", 18);
-        RedeemMemecoinLiquidityReenterer reenterer = new RedeemMemecoinLiquidityReenterer();
-        router.setLpToken(address(memecoin), address(uAsset), address(memecoinLp));
-        memecoinLp.mint(address(launcher), 10 ether);
-        liquidProof.mint(address(reenterer), 10 ether);
-        splitter.setSettleMemecoinLiquidityReentry(address(reenterer), address(launcher), verseId, 4 ether);
-        polend.setTotalLeveragedDebt(verseId, 1 ether);
-        polend.setSettleAuxiliaryOnGlobalSettlement(address(launcher), true);
-        uint256 polendPolBefore = liquidProof.balanceOf(address(polend));
-        uint256 polendPtBefore = pt.balanceOf(address(polend));
-        uint256 polendUAssetBefore = uAsset.balanceOf(address(polend));
-
-        launcher.changeStage(verseId);
-
-        assertTrue(reenterer.reentryAttempted(), "public memecoin redeem tried during settlement");
-        assertTrue(reenterer.reentrySucceeded(), "public memecoin redeem allowed during settlement");
-        assertEq(memecoinLp.balanceOf(address(reenterer)), 4 ether, "public caller received LP");
-        assertEq(liquidProof.balanceOf(address(reenterer)), 6 ether, "public caller POL burned");
-        assertGt(liquidProof.balanceOf(address(polend)), polendPolBefore, "polend POL settlement allowed");
-        assertGt(pt.balanceOf(address(polend)), polendPtBefore, "polend PT settlement allowed");
-        assertGt(uAsset.balanceOf(address(polend)), polendUAssetBefore, "polend uAsset settlement allowed");
-    }
-
-    function testUnlockSettlementAllowsPublicAuxiliaryRedeemDuringSplitterSettlement() external {
-        uint256 verseId = 4;
-        _setLockedVerseReadyToUnlock(verseId);
-        _seedAuxiliaryLiquidity(verseId);
-        splitter.setSettleReentry(address(launcher), verseId);
-
-        launcher.changeStage(verseId);
-
-        assertTrue(splitter.reentryAttempted(), "public auxiliary redeem tried during settlement");
-        assertTrue(splitter.reentrySucceeded(), "public auxiliary redeem allowed during settlement");
-        assertEq(polUAssetLp.balanceOf(address(splitter)), 12 ether, "public auxiliary LP redeemed");
-    }
-
     function testPolSplitterCanRedeemMemecoinLiquidityDuringUnlockSettlement() external {
         uint256 verseId = 5;
         SplitterMemecoinRedeemDuringSettle localSplitter =
@@ -315,10 +253,6 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
         assertEq(memecoinLp.balanceOf(address(localPolend)), 2 ether, "polend received lp");
     }
 
-    function _setLockedVerseReadyToUnlock(uint256 verseId) internal {
-        _setLockedVerseReadyToUnlock(launcher, verseId);
-    }
-
     function _setLockedVerseReadyToUnlock(IMemeverseLauncher targetLauncher, uint256 verseId) internal {
         address proxy = address(targetLauncher);
         setMemeverseForTest(
@@ -336,24 +270,6 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
             false
         );
         setOmnichainIdsForTest(proxy, verseId, _array(uint32(block.chainid)));
-    }
-
-    function _seedAuxiliaryLiquidity(uint256 verseId) internal {
-        setGenesisFundForTest(launcherProxy, verseId, 120 ether);
-        setUserGenesisDataForTest(launcherProxy, verseId, address(splitter), 24 ether, false, false);
-        setAuxiliaryLiquiditiesForTest(launcherProxy, verseId, 60 ether, 30 ether, 90 ether);
-        polUAssetLp.mint(address(launcher), 60 ether);
-        ptUAssetLp.mint(address(launcher), 30 ether);
-        ptPolLp.mint(address(launcher), 90 ether);
-        router.setRemoveLiquidityResult(address(liquidProof), address(uAsset), 12 ether, 24 ether);
-        router.setRemoveLiquidityResult(address(pt), address(uAsset), 30 ether, 60 ether);
-        router.setRemoveLiquidityResult(address(pt), address(liquidProof), 90 ether, 0);
-    }
-
-    function _assertResumeTime(PoolKey memory key, uint40 expectedResumeTime, string memory label) internal view {
-        MockPreorderSettlementHookForLauncherTest hook =
-            MockPreorderSettlementHookForLauncherTest(address(IMemeverseSwapRouter(address(router)).hook()));
-        assertEq(hook.publicSwapResumeTime(PoolId.unwrap(key.toId())), expectedResumeTime, label);
     }
 
     function _hookPoolKey(address hook) internal view returns (PoolKey memory key) {

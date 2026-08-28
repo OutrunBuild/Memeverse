@@ -4,15 +4,15 @@ pragma solidity ^0.8.35;
 import {IMessagingComposer} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessagingComposer.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
-/// @dev Attacker-controlled plain ERC20 (no OFT machinery) used by the forged-compose regression suites. Needs
+/// @dev Attacker-controlled plain ERC20 (no OFT machinery) used by the forged-compose regression suite. Needs
 ///      the ERC20 surface the staker touches (`allowance`/`approve` via `_safeApprove`), standard
 ///      `transfer`/`transferFrom` so an attacker vault can pull the delivered fake tokens, and a `mint` to fund
 ///      the victim's fake balance. Plus the compose entries that call the endpoint's permissionless `sendCompose`
 ///      — which keys the composeQueue slot by `msg.sender`, exactly like the real OFT's `_lzReceive` →
 ///      `endpoint.sendCompose` call (MessagingComposer.sol), but with `msg.sender` = this forged token.
-///      Single shared definition for StakerExactApproval.t.sol and StakerTokenVaultBinding.t.sol (AGENTS.md:
-///      mocks live in test/mocks/, not co-located with test files): a future change to the write-slot semantics
-///      touches one file, not two diverging copies.
+///      Single definition in test/mocks/ (AGENTS.md: mocks live in test/mocks/, not co-located with test
+///      files), used by StakerTokenVaultBinding.t.sol's forged-compose regression — a future change to the
+///      write-slot semantics touches only this file.
 contract ForgedComposeToken {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;

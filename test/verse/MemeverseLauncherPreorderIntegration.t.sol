@@ -23,11 +23,11 @@ import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 import {
     MockIntegrationLiquidProof,
-    MockLauncherIntegrationLzEndpointRegistry,
     MockLauncherIntegrationProxyDeployer,
     MockPOLendForPreorderIntegration,
     MockPOLSplitterForPreorderIntegration
 } from "../mocks/verse/LauncherPreorderIntegrationMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 
 contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
     address internal constant REGISTRAR = address(0xBEEF);
@@ -41,7 +41,7 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
     MemeverseSwapRouter internal router;
     MemeverseLauncherUpgradeable internal launcher;
     MockLauncherIntegrationProxyDeployer internal proxyDeployer;
-    MockLauncherIntegrationLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockPOLendForPreorderIntegration internal polend;
     MockPOLSplitterForPreorderIntegration internal splitter;
     MockERC20 internal uAsset;
@@ -52,7 +52,7 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
     function setUp() external {
         manager = new MockPoolManagerForRouterTest();
         proxyDeployer = new MockLauncherIntegrationProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
-        registry = new MockLauncherIntegrationLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         uAsset = new MockERC20("UASSET", "UASSET", 18);
         pt = new MockERC20("PT", "PT", 18);
         yt = new MockERC20("YT", "YT", 18);

@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
-import {IOFT, SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import {IOFT, SendParam} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {ICrossChainSendErrors} from "../../src/common/types/ICrossChainSendErrors.sol";
@@ -14,10 +14,10 @@ import {
 import {MemeverseOmnichainInteroperation} from "../../src/interoperation/MemeverseOmnichainInteroperation.sol";
 import {
     MockInteroperationLauncher,
-    MockInteroperationRegistry,
     MockInteroperationYieldVault,
     MockInteroperationOFT
 } from "../mocks/interoperation/InteroperationMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 
 contract MemeverseOmnichainInteroperationTest is Test {
     using OptionsBuilder for bytes;
@@ -29,7 +29,7 @@ contract MemeverseOmnichainInteroperationTest is Test {
     uint32 internal constant REMOTE_EID = 302;
 
     MockInteroperationLauncher internal launcher;
-    MockInteroperationRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockInteroperationYieldVault internal yieldVault;
     MockInteroperationOFT internal memecoin;
     MemeverseOmnichainInteroperation internal interoperation;
@@ -37,7 +37,7 @@ contract MemeverseOmnichainInteroperationTest is Test {
     /// @notice Set up.
     function setUp() external {
         launcher = new MockInteroperationLauncher();
-        registry = new MockInteroperationRegistry();
+        registry = new LzEndpointRegistryMock();
         yieldVault = new MockInteroperationYieldVault();
         memecoin = new MockInteroperationOFT();
         interoperation = new MemeverseOmnichainInteroperation(
@@ -71,11 +71,6 @@ contract MemeverseOmnichainInteroperationTest is Test {
 
         uint256 fee = interoperation.quoteMemecoinStaking(address(memecoin), RECEIVER, 1 ether);
         assertEq(fee, 0);
-    }
-
-    /// @notice Test the endpoint registry dependency getter uses its concrete name.
-    function testEndpointRegistryGetterReturnsRegistry() external {
-        assertEq(interoperation.LZ_ENDPOINT_REGISTRY(), address(registry));
     }
 
     /// @notice Test quote memecoin staking builds remote send param.
@@ -142,31 +137,6 @@ contract MemeverseOmnichainInteroperationTest is Test {
         assertEq(memecoin.lastSendDstEid(), REMOTE_EID);
         assertEq(memecoin.lastSendTo(), bytes32(uint256(uint160(OMNICHAIN_STAKER))));
         assertEq(memecoin.lastSendComposeMsg(), abi.encode(RECEIVER, address(yieldVault)));
-    }
-
-    /// @notice Verifies the OFT mock rejects stale quoted fees and mismatched msg.value.
-    function testMockInteroperationOFTSendRejectsStaleQuotedFee() external {
-        memecoin.mint(address(this), 1 ether);
-
-        SendParam memory sendParam = SendParam({
-            dstEid: REMOTE_EID,
-            to: bytes32(uint256(uint160(OMNICHAIN_STAKER))),
-            amountLD: 1 ether,
-            minAmountLD: 0,
-            extraOptions: "",
-            composeMsg: abi.encode(RECEIVER, address(yieldVault)),
-            oftCmd: abi.encode()
-        });
-        memecoin.setQuoteFee(0.2 ether);
-        MessagingFee memory staleFee = memecoin.quoteSend(sendParam, false);
-        memecoin.setQuoteFee(0.3 ether);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                MockInteroperationOFT.InvalidQuotedSendFee.selector, 0.3 ether, 0, 0.2 ether, 0, 0.2 ether
-            )
-        );
-        memecoin.send{value: staleFee.nativeFee}(sendParam, staleFee, RECEIVER);
     }
 
     /// @notice Verifies remote staking rejects overpayment instead of trapping extra ETH in the interoperation contract.

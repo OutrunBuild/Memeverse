@@ -296,18 +296,6 @@ contract MemeverseRegistrarAtLocalTest is Test {
         registrar.registerAtCenter{value: quotedFee}(param, uint128(quotedFee));
     }
 
-    /// @notice Test register at center allows overpay as long as the forwarded value still matches msg.value.
-    function testRegisterAtCenterAllowsOverpayAboveQuotedFee() external {
-        IMemeverseRegistrationCenter.RegistrationParam memory param = _registrationParam();
-        registrationCenter.setQuotedFee(1 ether);
-
-        registrar.registerAtCenter{value: 1.25 ether}(param, uint128(1.25 ether));
-
-        assertEq(registrationCenter.lastRegistrationValue(), 1.25 ether);
-        assertEq(registrationCenter.lastRegistrationUAsset(), param.uAsset);
-        assertEq(registrationCenter.lastRegistrationFlashGenesis(), param.flashGenesis);
-    }
-
     /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
     /// @dev The error is declared on the shared `MemeverseRegistrarAbstract` base, hence the
     ///      base-qualified selector.

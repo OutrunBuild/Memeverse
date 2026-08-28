@@ -37,12 +37,9 @@ contract FeeMathTest is Test {
         for (uint256 i; i < fees.length; ++i) {
             uint256 protocolFeeBps = FeeMath.protocolFeeBps(fees[i]);
             (uint256 lpFeeBps,) = FeeMath.splitFeeBps(fees[i]);
-            (uint256 splitLpFeeBps, uint256 splitProtocolFeeBps) = FeeMath.splitFeeBps(fees[i]);
             assertEq(protocolFeeBps, FullMath.mulDiv(fees[i], 3_500, 10_000), "protocol split");
             assertEq(lpFeeBps, fees[i] - protocolFeeBps, "lp split");
             assertEq(protocolFeeBps + lpFeeBps, fees[i], "split sums to fee");
-            assertEq(splitProtocolFeeBps, protocolFeeBps, "shared protocol split");
-            assertEq(splitLpFeeBps, lpFeeBps, "shared lp split");
         }
     }
 

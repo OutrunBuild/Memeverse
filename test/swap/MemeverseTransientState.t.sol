@@ -108,7 +108,7 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
     }
 
     // -----------------------------------------------------------------
-    // Per-pool swap-lifecycle lock still uses its own original key (the original four tests below are byte-for-byte).
+    // Per-pool swap-lifecycle lock still uses its own original key (the original three tests below are byte-for-byte).
     // -----------------------------------------------------------------
 
     function test_existingPerPoolReentrancyLockStillUsesItsOriginalKey() external {
@@ -120,11 +120,6 @@ contract MemeverseTransientStateTest is Test, HookStorageHelper {
         assertFalse(alreadyLocked, "first acquire gets the lock");
         assertEq(transientStateHarness.swapContextDepth(), 0, "lock does not touch context depth");
         assertEq(transientStateHarness.activePrincipal(), address(0), "lock does not touch principal");
-    }
-
-    function test_FirstAcquireReturnsFalse() external {
-        bool alreadyLocked = transientStateHarness.acquireOnce(poolId);
-        assertFalse(alreadyLocked, "first acquire gets the lock");
     }
 
     function test_SecondAcquireSamePoolReturnsTrue() external {

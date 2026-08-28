@@ -45,13 +45,6 @@ contract InitialPriceCalculatorTest is Test {
         assertEq(sqrtPriceX96, Q96 / 2);
     }
 
-    /// @notice Verifies the amount-based helper reproduces the legacy memecoin bootstrap ratio when memecoin sorts first.
-    /// @dev The legacy helper semantics were equivalent to passing `(fundBasedAmount, 1)` into the amount-based helper.
-    function testCalculateInitialSqrtPriceX96MatchesLegacyFundBasedRatioWhenMemecoinSortsFirst() external pure {
-        uint160 sqrtPriceX96 = InitialPriceCalculator.calculateInitialSqrtPriceX96(LOWER, HIGHER, 4, 1);
-        assertEq(sqrtPriceX96, Q96 / 2);
-    }
-
     /// @notice Verifies the amount-based helper reproduces the legacy memecoin bootstrap ratio when uAsset sorts first.
     /// @dev Address ordering should still map `(fundBasedAmount, 1)` to the same sorted pool price as the removed helper.
     function testCalculateInitialSqrtPriceX96MatchesLegacyFundBasedRatioWhenUAssetSortsFirst() external pure {
@@ -64,13 +57,6 @@ contract InitialPriceCalculatorTest is Test {
     function testCalculateInitialSqrtPriceX96RevertOnZeroInput() external {
         vm.expectRevert(InitialPriceCalculator.ZeroInput.selector);
         this.calculateInitialSqrtPriceX96External(LOWER, HIGHER, 0, 1 ether);
-    }
-
-    /// @notice Verifies zero desired amount is rejected for the amount-based helper.
-    /// @dev The removed legacy helper required a non-zero `fundBasedAmount`; the replacement path now rejects the same case via `amountADesired`.
-    function testCalculateInitialSqrtPriceX96RevertOnZeroLegacyFundBasedAmount() external {
-        vm.expectRevert(InitialPriceCalculator.ZeroInput.selector);
-        this.calculateInitialSqrtPriceX96External(LOWER, HIGHER, 0, 1);
     }
 
     /// @notice Verifies extremely low price ratios still respect the TickMath lower bound.
@@ -89,14 +75,5 @@ contract InitialPriceCalculatorTest is Test {
             abi.encodeWithSelector(InitialPriceCalculator.PriceRatioTooHigh.selector, uint256(1), uint256(1 << 64))
         );
         this.calculateInitialSqrtPriceX96External(LOWER, HIGHER, 1, 1 << 64);
-    }
-
-    /// @notice Verifies unsupported high legacy fund-based ratios still fail explicitly through the amount-based helper.
-    /// @dev Oversized `(fundBasedAmount, 1)` ratios must fail before reaching `FullMath.mulDiv`.
-    function testCalculateInitialSqrtPriceX96RevertOnUnsupportedHighLegacyFundBasedRatio() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(InitialPriceCalculator.PriceRatioTooHigh.selector, uint256(1), uint256(1 << 64))
-        );
-        this.calculateInitialSqrtPriceX96External(HIGHER, LOWER, 1 << 64, 1);
     }
 }

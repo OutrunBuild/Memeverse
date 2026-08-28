@@ -19,7 +19,6 @@ contract MemeverseDynamicFeeSimulation is Test {
     uint160 internal constant INITIAL_SQRT_PRICE_X96 = 79_228_162_514_264_337_593_543_950;
 
     // Default inputs (raw, decimals=18)
-    uint256 internal constant DEFAULT_ONE_BIG_INPUT_U = 2_000 * U;
     uint256 internal constant DEFAULT_ATTACK_TOTAL_INPUT_U = 2_000 * U;
     uint256 internal constant DEFAULT_VICTIM_INPUT_U = 100 * U;
     uint256 internal constant DEFAULT_HIGH_FREQUENCY_INPUT_U = 100 * U;
@@ -62,19 +61,6 @@ contract MemeverseDynamicFeeSimulation is Test {
         uint256 volLastMoveTs;
         uint256 shortImpactPpm;
         uint256 shortLastTs;
-    }
-
-    struct BatchRatioObservation {
-        uint256 n;
-        uint256 ratioPpm;
-        uint256 oneBigFeeAmount;
-        uint256 oneBigFeeBps;
-        uint256 oneBigImpactBps;
-        uint256 batchFeeAmount;
-        uint256 batchAvgFeeBps;
-        uint256 batchMaxFeeBps;
-        uint256 batchAvgImpactBps;
-        uint256 batchMaxImpactBps;
     }
 
     struct MixedObservation {
@@ -393,92 +379,6 @@ contract MemeverseDynamicFeeSimulation is Test {
         simPrice = post;
     }
 
-    function _observeBatchRatio(uint256 totalInputU, uint256 n, uint256 intervalSec)
-        internal
-        returns (BatchRatioObservation memory out)
-    {
-        require(n > 0, "n=0");
-
-        out.n = n;
-
-        _resetSimulation();
-        (out.oneBigFeeBps, out.oneBigImpactBps, out.oneBigFeeAmount,) =
-            _simulateOneSwap(ADDR_ATTACKER, totalInputU, false);
-
-        _resetSimulation();
-        uint256 basePer = totalInputU / n;
-        uint256 rem = totalInputU % n;
-        uint256 sumFee;
-        uint256 sumImpact;
-
-        for (uint256 i = 1; i <= n; i++) {
-            uint256 thisInput = basePer;
-            if (i == n) thisInput += rem;
-
-            (uint256 feeBps, uint256 impactBps, uint256 feeAmount,) = _simulateOneSwap(ADDR_ATTACKER, thisInput, false);
-            out.batchFeeAmount += feeAmount;
-            sumFee += feeBps;
-            sumImpact += impactBps;
-            if (feeBps > out.batchMaxFeeBps) out.batchMaxFeeBps = feeBps;
-            if (impactBps > out.batchMaxImpactBps) out.batchMaxImpactBps = impactBps;
-            if (intervalSec > 0 && i < n) vm.warp(block.timestamp + intervalSec);
-        }
-
-        out.batchAvgFeeBps = sumFee / n;
-        out.batchAvgImpactBps = sumImpact / n;
-        out.ratioPpm = out.oneBigFeeAmount == 0 ? 0 : (out.batchFeeAmount * PPM_BASE) / out.oneBigFeeAmount;
-    }
-
-    function _simulateMixedScenario(
-        uint256 attackerN,
-        uint256 attackerTotalInputU,
-        uint256 victimInputU,
-        bool perSecond
-    ) internal returns (MixedObservation memory out) {
-        require(attackerN > 0, "attackerN=0");
-
-        out.attackerN = attackerN;
-        out.attackerTotalInputU = attackerTotalInputU;
-        out.attackerPerSwapInputU = attackerTotalInputU / attackerN;
-        out.attackerLastSwapInputU = out.attackerPerSwapInputU + (attackerTotalInputU % attackerN);
-        out.victimInputU = victimInputU;
-
-        _resetSimulation();
-        (out.baselineVictimFeeBps, out.baselineVictimImpactBps,,) = _simulateOneSwap(ADDR_VICTIM, victimInputU, false);
-
-        _resetSimulation();
-        uint256 sumFee;
-        uint256 sumImpact;
-        uint256 totalAttackerFee;
-
-        for (uint256 i = 1; i <= attackerN; i++) {
-            uint256 thisInput = out.attackerPerSwapInputU;
-            if (i == attackerN) thisInput += attackerTotalInputU % attackerN;
-
-            (uint256 feeBps, uint256 impactBps, uint256 feeAmount,) = _simulateOneSwap(ADDR_ATTACKER, thisInput, false);
-            totalAttackerFee += feeAmount;
-            sumFee += feeBps;
-            sumImpact += impactBps;
-            if (feeBps > out.attackerMaxFeeBps) out.attackerMaxFeeBps = feeBps;
-            if (impactBps > out.attackerMaxImpactBps) out.attackerMaxImpactBps = impactBps;
-
-            if (perSecond && i < attackerN) vm.warp(block.timestamp + 1);
-        }
-
-        out.attackerAvgFeeBps = sumFee / attackerN;
-        out.attackerAvgImpactBps = sumImpact / attackerN;
-        out.attackerEffectiveFeeBps = (totalAttackerFee * BPS_BASE) / attackerTotalInputU;
-
-        if (perSecond) vm.warp(block.timestamp + 1);
-        (out.victimFeeWithHistoryBps, out.victimImpactWithHistoryBps,,) =
-            _simulateOneSwap(ADDR_VICTIM, victimInputU, false);
-
-        uint160 preservedPrice = simPrice;
-        _resetSimulation();
-        simPrice = preservedPrice;
-        (out.victimFeeNoHistoryBps, out.victimImpactNoHistoryBps,,) = _simulateOneSwap(ADDR_VICTIM, victimInputU, false);
-    }
-
     function _simulateRetailFlow(
         uint256 durationSec,
         uint256 minTxPerSec,
@@ -544,18 +444,54 @@ contract MemeverseDynamicFeeSimulation is Test {
         out.avgExecutedFeeBps = out.executedTrades == 0 ? 0 : sumExecutedFeeBps / out.executedTrades;
     }
 
-    function _logBatchObservation(BatchRatioObservation memory obs, bool verbose) internal pure {
-        console.log("N:", obs.n);
-        console.log("ratioPpm:", obs.ratioPpm);
-        console.log("oneBigFeeBps:", obs.oneBigFeeBps);
-        console.log("batchAvgFeeBps:", obs.batchAvgFeeBps);
-        console.log("batchMaxFeeBps:", obs.batchMaxFeeBps);
-        if (!verbose) return;
-        console.log("oneBigFeeAmount:", obs.oneBigFeeAmount);
-        console.log("oneBigImpactBps:", obs.oneBigImpactBps);
-        console.log("batchFeeAmount:", obs.batchFeeAmount);
-        console.log("batchAvgImpactBps:", obs.batchAvgImpactBps);
-        console.log("batchMaxImpactBps:", obs.batchMaxImpactBps);
+    function _simulateMixedScenario(
+        uint256 attackerN,
+        uint256 attackerTotalInputU,
+        uint256 victimInputU,
+        bool perSecond
+    ) internal returns (MixedObservation memory out) {
+        require(attackerN > 0, "attackerN=0");
+
+        out.attackerN = attackerN;
+        out.attackerTotalInputU = attackerTotalInputU;
+        out.attackerPerSwapInputU = attackerTotalInputU / attackerN;
+        out.attackerLastSwapInputU = out.attackerPerSwapInputU + (attackerTotalInputU % attackerN);
+        out.victimInputU = victimInputU;
+
+        _resetSimulation();
+        (out.baselineVictimFeeBps, out.baselineVictimImpactBps,,) = _simulateOneSwap(ADDR_VICTIM, victimInputU, false);
+
+        _resetSimulation();
+        uint256 sumFee;
+        uint256 sumImpact;
+        uint256 totalAttackerFee;
+
+        for (uint256 i = 1; i <= attackerN; i++) {
+            uint256 thisInput = out.attackerPerSwapInputU;
+            if (i == attackerN) thisInput += attackerTotalInputU % attackerN;
+
+            (uint256 feeBps, uint256 impactBps, uint256 feeAmount,) = _simulateOneSwap(ADDR_ATTACKER, thisInput, false);
+            totalAttackerFee += feeAmount;
+            sumFee += feeBps;
+            sumImpact += impactBps;
+            if (feeBps > out.attackerMaxFeeBps) out.attackerMaxFeeBps = feeBps;
+            if (impactBps > out.attackerMaxImpactBps) out.attackerMaxImpactBps = impactBps;
+
+            if (perSecond && i < attackerN) vm.warp(block.timestamp + 1);
+        }
+
+        out.attackerAvgFeeBps = sumFee / attackerN;
+        out.attackerAvgImpactBps = sumImpact / attackerN;
+        out.attackerEffectiveFeeBps = (totalAttackerFee * BPS_BASE) / attackerTotalInputU;
+
+        if (perSecond) vm.warp(block.timestamp + 1);
+        (out.victimFeeWithHistoryBps, out.victimImpactWithHistoryBps,,) =
+            _simulateOneSwap(ADDR_VICTIM, victimInputU, false);
+
+        uint160 preservedPrice = simPrice;
+        _resetSimulation();
+        simPrice = preservedPrice;
+        (out.victimFeeNoHistoryBps, out.victimImpactNoHistoryBps,,) = _simulateOneSwap(ADDR_VICTIM, victimInputU, false);
     }
 
     function _logMixedObservation(string memory title, MixedObservation memory obs, bool verbose) internal pure {
@@ -595,24 +531,6 @@ contract MemeverseDynamicFeeSimulation is Test {
         console.log("maxQuotedFeeBps:", obs.maxQuotedFeeBps);
         console.log("lastExecutedFeeBps:", obs.lastExecutedFeeBps);
         console.log("lastExecutedImpactBps:", obs.lastExecutedImpactBps);
-    }
-
-    /// @notice Spec: runs the batch-ratio observation sequentially for every split count from 1 to 100.
-    /// @dev Uses the same total input for every point and warps one second between split swaps.
-    /// @dev Example: forge test --match-test testCPMM_ObserveBatchRatio_Range -vv
-    function testCPMM_ObserveBatchRatio_Range() external {
-        uint256 totalInputU = vm.envOr("ONE_BIG_INPUT_U", uint256(DEFAULT_ONE_BIG_INPUT_U));
-        bool verbose = vm.envOr("LOG_VERBOSE", false);
-        uint256 intervalSec = 1;
-
-        console.log("=== CPMM batch ratio (range) ===");
-        console.log("totalInputU:", totalInputU);
-        console.log("intervalSec:", intervalSec);
-
-        for (uint256 n = 1; n <= 100; n++) {
-            BatchRatioObservation memory obs = _observeBatchRatio(totalInputU, n, intervalSec);
-            _logBatchObservation(obs, verbose);
-        }
     }
 
     /// @notice Spec: measures same-block batch splitting and the fee paid by a small victim swap immediately after.

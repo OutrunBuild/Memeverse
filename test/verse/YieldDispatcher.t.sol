@@ -24,7 +24,11 @@ import {ERC20} from "solmate/tokens/ERC20.sol";
 import {OFTHarness} from "../mocks/infrastructure/OFTHarness.sol";
 import {AttackComposeToken} from "../mocks/verse/AttackComposeToken.sol";
 import {BindingPassingFakeVault} from "../mocks/verse/BindingPassingFakeVault.sol";
-import {YieldDispatcherMockBase} from "../mocks/verse/YieldDispatcherMockBase.sol";
+import {
+    MockDispatcherYieldVault,
+    MockDispatcherGovernor,
+    ReentrantDispatcherVault
+} from "../mocks/verse/DispatcherTestMocks.sol";
 import {MemecoinDaoGovernorUpgradeable} from "../../src/governance/MemecoinDaoGovernorUpgradeable.sol";
 import {GovernanceCycleIncentivizerUpgradeable} from "../../src/governance/GovernanceCycleIncentivizerUpgradeable.sol";
 import {IGovernanceCycleIncentivizer} from "../../src/governance/interfaces/IGovernanceCycleIncentivizer.sol";
@@ -50,83 +54,6 @@ contract MockDispatcherComposeToken is MockERC20, IBurnable {
         require(!burnShouldRevert, "settle failed");
         lastBurnAmount = amount;
         _burn(msg.sender, amount);
-    }
-}
-
-contract MockDispatcherYieldVault is YieldDispatcherMockBase {
-    uint256 public lastAccumulatedAmount;
-    bool public accumulateYieldsCalled;
-
-    constructor(address token_) YieldDispatcherMockBase(token_) {}
-
-    /// @notice Accumulate yields — mirrors the real vault: pull the approved tokens from the caller, then record.
-    /// @param amount See implementation.
-    function accumulateYields(uint256 amount) external {
-        require(!shouldRevert, "settle failed");
-        _checkComposeProbes(token);
-        // Pin "callback entered" separately from the recorded amount: lastAccumulatedAmount cannot distinguish
-        // called-with-0 from never-called, and the real vault early-returns on 0 before recording anything.
-        accumulateYieldsCalled = true;
-        // Mirror MemecoinYieldVault.accumulateYields: pull via transferFrom from msg.sender (the dispatcher).
-        MockERC20(token).transferFrom(msg.sender, address(this), amount);
-        lastAccumulatedAmount = amount;
-    }
-}
-
-contract MockDispatcherGovernor is YieldDispatcherMockBase {
-    address public lastToken;
-    uint256 public lastAmount;
-
-    constructor(address token_) YieldDispatcherMockBase(token_) {}
-
-    /// @notice Receive treasury income — mirrors the real governor: pull the approved tokens from the caller, then record.
-    /// @param token_ See implementation.
-    /// @param amount See implementation.
-    function receiveTreasuryIncome(address token_, uint256 amount) external {
-        require(!shouldRevert, "settle failed");
-        _checkComposeProbes(token_);
-        // Mirror GovernanceCycleIncentivizerUpgradeable.recordTreasuryIncome's ZeroInput guard: production reverts
-        // ZeroInput on amount == 0 unconditionally, so the mock does too — deleting the _settle zero-amount
-        // short-circuit makes this test fail exactly as production would.
-        if (amount == 0) revert IYieldDispatcher.ZeroInput();
-        // Mirror MemecoinDaoGovernorUpgradeable.receiveTreasuryIncome: pull via transferFrom from msg.sender (the dispatcher).
-        MockERC20(token_).transferFrom(msg.sender, address(this), amount);
-        lastToken = token_;
-        lastAmount = amount;
-    }
-}
-
-/// @notice Malicious vault that reenters the dispatcher's `settlePendingCompose` from inside its `accumulateYields`
-///         callback. Used to pin the dispatcher's reentrancy defense on the approve+callback path: unlike the staker's
-///         `_transferOut` path, the dispatcher's `_settleToContract` has no `nonReentrant`, so the defense is the
-///         `composeStates` mutex — a same-guid reentry reverts `AlreadyResolved`, not `ReentrancyGuardReentrantCall`.
-contract ReentrantDispatcherVault {
-    address public token;
-    YieldDispatcherUpgradeable internal immutable dispatcher;
-    address internal reentryToken;
-    bytes32 internal reentryGuid;
-    bytes internal reentryMessage;
-
-    constructor(address token_, address dispatcher_) {
-        token = token_;
-        dispatcher = YieldDispatcherUpgradeable(dispatcher_);
-    }
-
-    /// @notice Arm the reentry attempt with the same (token, guid, message) the outer settle is processing.
-    function armReentry(address token_, bytes32 guid_, bytes memory message_) external {
-        reentryToken = token_;
-        reentryGuid = guid_;
-        reentryMessage = message_;
-    }
-
-    /// @notice The `_settleToContract` callback. Reenters `settlePendingCompose` with the same guid mid-call.
-    function accumulateYields(uint256) external {
-        dispatcher.settlePendingCompose(reentryToken, reentryGuid, reentryMessage);
-    }
-
-    /// @notice Mirrors a MEMECOIN vault's `asset()` so this mock is structurally interchangeable with the vault type.
-    function asset() external view returns (address) {
-        return token;
     }
 }
 
@@ -388,8 +315,8 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     }
 
     /// @notice Test local endpoint path burns the memecoin when the compose payload names an EOA receiver.
-    /// @dev Mirrors testSettlePendingComposeBurnsForEoaReceiver but through the lzCompose entry: an EOA receiver must
-    ///      hit `_settle`'s burn branch and emit OFTProcessed with burnedAtDispatcher=true, with the mutex landing on Settled.
+    /// @dev Through the lzCompose entry, an EOA receiver must hit `_settle`'s burn branch and emit OFTProcessed
+    ///      with burnedAtDispatcher=true, with the mutex landing on Settled.
     function testLzComposeBurnsMemecoinForEoaReceiver() external {
         bytes32 guid = bytes32("compose-eoa-burn");
         uint256 amount = 5 ether;
@@ -727,8 +654,8 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
         // _settleToContract reverts at the binding's asset() probe (the dispatcher implements neither asset() nor
         // a fallback, so the MEMECOIN branch's `receiver.asset() == token` check cannot even execute), so the
-        // Released write rolls back.
-        vm.expectRevert();
+        // Released write rolls back. The probe failure bubbles as empty revert data; pin it exactly.
+        vm.expectRevert(bytes(""));
         dispatcher.settlePendingCompose(address(token), guid, message);
 
         // Nothing was consumed: the guid is still None, no approval was spent, and the funds stay stranded.
@@ -967,36 +894,13 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         assertEq(governor.lastAmount(), amount);
         assertEq(token.balanceOf(address(dispatcher)), 0);
         assertEq(token.balanceOf(address(governor)), amount);
+        // The successful pull consumed the whole approve+pull allowance, so nothing lingers for a later pull.
+        assertEq(token.allowance(address(dispatcher), address(governor)), 0);
         assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
 
         // A replay after success is blocked by the single-resolution mutex.
         vm.expectRevert(IYieldDispatcher.AlreadyResolved.selector);
         dispatcher.settlePendingCompose(address(token), guid, message);
-    }
-
-    /// @notice settlePendingCompose on MEMECOIN->vault approves and calls accumulateYields (pull + accounting), mirroring _settle.
-    function testSettlePendingComposeMemecoinToVaultAccumulatesYield() external {
-        bytes32 guid = bytes32("compose-meme");
-        uint256 amount = 3 ether;
-        token.mint(address(dispatcher), amount);
-
-        // composeFrom(ALICE) + abi.encode(vault, MEMECOIN) — same layout the OFT's _lzReceive composes.
-        bytes memory message =
-            _dispatcherMessage(amount, ALICE, address(yieldVault), IMemeverseOFTEnum.TokenType.MEMECOIN);
-
-        // endpoint.composeQueue(token, dispatcher, guid, 0) = keccak256(message) => delivered, lzCompose not run yet.
-        endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
-
-        vm.expectEmit(true, true, true, true);
-        emit IYieldDispatcher.ComposeSettled(
-            guid, address(token), address(yieldVault), IMemeverseOFTEnum.TokenType.MEMECOIN, amount, false
-        );
-        dispatcher.settlePendingCompose(address(token), guid, message);
-
-        // accumulateYields pulled the tokens into the vault and recorded the amount (no stranded balance).
-        assertEq(token.balanceOf(address(yieldVault)), amount);
-        assertEq(yieldVault.lastAccumulatedAmount(), amount);
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
     }
 
     /// @notice An empty-vault MEMECOIN settle burns the pulled yield inside the REAL vault (no shares exist to
@@ -1050,53 +954,6 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
     }
 
-    /// @notice settlePendingCompose on UASSET->governor pulls funds and records treasury income.
-    function testSettlePendingComposeUAssetToGovernorPullsAndRecords() external {
-        bytes32 guid = bytes32("compose-gov");
-        uint256 amount = 4 ether;
-        token.mint(address(dispatcher), amount);
-
-        bytes memory message = _dispatcherMessage(amount, ALICE, address(governor), IMemeverseOFTEnum.TokenType.UASSET);
-
-        endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
-
-        vm.expectEmit(true, true, true, true);
-        emit IYieldDispatcher.ComposeSettled(
-            guid, address(token), address(governor), IMemeverseOFTEnum.TokenType.UASSET, amount, false
-        );
-        dispatcher.settlePendingCompose(address(token), guid, message);
-
-        assertEq(governor.lastToken(), address(token));
-        assertEq(governor.lastAmount(), amount);
-        // The pull actually moved the funds: the governor holds the amount and the dispatcher's allowance is consumed.
-        assertEq(token.balanceOf(address(governor)), amount);
-        assertEq(token.allowance(address(dispatcher), address(governor)), 0);
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
-    }
-
-    /// @notice settlePendingCompose with an EOA receiver burns the tokens (mirrors `_settle`'s EOA burn branch).
-    function testSettlePendingComposeBurnsForEoaReceiver() external {
-        bytes32 guid = bytes32("compose-eoa");
-        uint256 amount = 3 ether;
-        token.mint(address(dispatcher), amount);
-
-        // ALICE is an EOA (no code), so settlement must burn the tokens instead of pulling into a contract.
-        bytes memory message = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN);
-
-        endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
-
-        vm.expectEmit(true, true, true, true);
-        emit IYieldDispatcher.ComposeSettled(
-            guid, address(token), ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN, amount, true
-        );
-        dispatcher.settlePendingCompose(address(token), guid, message);
-
-        // Burned rather than stranded: the dispatcher balance drops to zero and the burn is recorded.
-        assertEq(token.lastBurnAmount(), amount);
-        assertEq(token.balanceOf(address(dispatcher)), 0);
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
-    }
-
     /// @notice A failed EOA-burn settle rolls back the Released write, leaving the guid retryable; a successful retry
     ///         pins Released and a further replay is blocked.
     /// @dev Mirror of the vault/governor settle-rollback variants through the EOA-burn branch (the third `_settle`
@@ -1104,8 +961,8 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     ///      returns to None and the endpoint queue slot keeps the keccak256(message) delivery proof (retry
     ///      precondition intact), then a successful retry pins Released and a further replay reverts. Closes the
     ///      settle-rollback symmetry gap: lzCompose had all three terminal branches covered (L567 burn, L470 vault,
-    ///      L518 governor), settle had only vault (L614) and governor (L669); the EOA-burn branch had success-only
-    ///      coverage (testSettlePendingComposeBurnsForEoaReceiver). The receiver is an EOA, so (unlike the
+    ///      L518 governor), settle had only vault (L614) and governor (L669); the EOA-burn branch previously had
+    ///      success-only coverage. The receiver is an EOA, so (unlike the
     ///      vault/governor variants) there is no contract callback to run a Released probe — the CEI write order is
     ///      pinned via the pre/post composeStates assertions instead, matching the lzCompose EOA-burn rollback test.
     function testSettlePendingComposeAllowsRetryAfterFailedBurnAndBlocksReplayAfterSuccess() external {
@@ -1165,7 +1022,9 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
         endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
 
-        vm.expectRevert();
+        // The ABI decoder rejects the out-of-range enum before `_settle` runs; the decoder failure bubbles
+        // as empty revert data, pinned exactly.
+        vm.expectRevert(bytes(""));
         dispatcher.settlePendingCompose(address(token), guid, message);
 
         // Nothing was consumed: the guid is still releasable and the funds are still in the dispatcher.
@@ -1324,8 +1183,9 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
         endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
 
-        // Bare expectRevert: the strict decoder's revert carries no data, so no selector is asserted.
-        vm.expectRevert();
+        // The strict decoder's revert carries no data; pin the empty revert payload exactly instead of
+        // accepting any revert.
+        vm.expectRevert(bytes(""));
         dispatcher.settlePendingCompose(address(token), guid, message);
 
         // Nothing was consumed: the guid is still releasable and the funds are still in the dispatcher.
@@ -1524,7 +1384,8 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     /// @notice Regression: a forged compose (fake token from, fresh guid, REAL vault, MEMECOIN) driven through the
     ///         permissionless composer must revert with TokenVaultMismatch at the dispatcher's token↔vault binding —
     ///         before any approval or pull — leaving balances, vault state, and composeStates slots untouched.
-    /// @dev Dispatcher-side mirror of StakerTokenVaultBinding.t.sol's testForgedTokenComposeRevertsTokenVaultMismatch
+    /// @dev Dispatcher-side mirror of StakerTokenVaultBinding.t.sol's
+    ///      testForgedTokenComposeCannotDrainStrandedRealMemecoin
     ///      isolation: a standing max allowance on the REAL memecoin is restored before the forged attempt, so the
     ///      real vault COULD pull real funds if the binding were missing (the forged frame's amountLD is
     ///      attacker-chosen, and the vault's accumulateYields pulls its own stored asset — the real token). The

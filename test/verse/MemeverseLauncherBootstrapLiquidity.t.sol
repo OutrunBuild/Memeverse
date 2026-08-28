@@ -8,7 +8,6 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
-import {DelegatecallOnly} from "../../src/common/access/DelegatecallOnly.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 
@@ -18,9 +17,9 @@ import {
     MockPredictOnlyProxyDeployer,
     MockPOLendForLifecycle,
     MockPOLSplitterForLifecycle,
-    MockOFTDispatcher,
-    MockLzEndpointRegistry
+    MockOFTDispatcher
 } from "../mocks/verse/LauncherLifecycleMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 
 /// @notice Targeted guard tests for the nested launch->liquidity delegatecall chain in `changeStage`.
 /// @dev The facade's `changeStage` delegatecalls the launch sibling, which (in the Genesis->Locked branch)
@@ -35,7 +34,7 @@ contract MemeverseLauncherBootstrapLiquidityTest is Test, MemeverseLauncherTestH
     MockPredictOnlyProxyDeployer internal proxyDeployer;
     MockPOLendForLifecycle internal polend;
     MockPOLSplitterForLifecycle internal splitter;
-    MockLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockERC20 internal uAsset;
     MockERC20 internal memecoin;
     MockLiquidProof internal liquidProof;
@@ -58,7 +57,7 @@ contract MemeverseLauncherBootstrapLiquidityTest is Test, MemeverseLauncherTestH
         proxyDeployer = new MockPredictOnlyProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
         polend = new MockPOLendForLifecycle();
         splitter = new MockPOLSplitterForLifecycle(address(pt), address(yt));
-        registry = new MockLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
@@ -170,22 +169,5 @@ contract MemeverseLauncherBootstrapLiquidityTest is Test, MemeverseLauncherTestH
         // The liquidity sibling records the POL/uAsset LP amount in the facade's auxiliary-liquidity slot.
         (uint256 polUAssetLp,,) = MemeverseLauncherUpgradeable(launcherProxy).auxiliaryLiquidities(verseId);
         assertGt(polUAssetLp, 0, "bootstrap deployed POL/uAsset liquidity");
-    }
-
-    /// @notice A direct (non-delegatecall) invocation of sibling.deployBootstrapLiquidity must revert.
-    /// @dev The sibling inherits `DelegatecallOnly`, so a direct call reverts with `DelegatecallOnlyCall`
-    ///      at the `onlyDelegatecall` guard before any storage access. Locks the
-    ///      "deployBootstrapLiquidity is facade-delegatecall-only" invariant so a future initializer/setter
-    ///      added to the sibling cannot silently break it.
-    function test_directCallToSiblingReverts() external {
-        MemeverseLiquidityImpl sibling = new MemeverseLiquidityImpl();
-        address attacker = makeAddr("attacker");
-
-        // Direct call hits the inherited `onlyDelegatecall` guard and reverts before the body runs.
-        vm.prank(attacker);
-        vm.expectRevert(DelegatecallOnly.DelegatecallOnlyCall.selector);
-        sibling.deployBootstrapLiquidity(
-            1, address(uAsset), address(memecoin), address(liquidProof), 0, address(polend), address(splitter)
-        );
     }
 }

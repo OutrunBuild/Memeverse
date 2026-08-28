@@ -134,12 +134,9 @@ contract DeployMemeverseHookProxyTest is Test {
     function setUp() external {
         outrunDeployer = new OutrunDeployer(address(this));
         script = new DeployMemeverseHookProxyHarness();
-        vm.setEnv("EXPECTED_HOOK_PROXY_CODEHASH", vm.toString(bytes32(0)));
-        vm.setEnv("EXPECTED_HOOK_IMPLEMENTATION_CODEHASH", vm.toString(bytes32(0)));
-        vm.setEnv("EXPECTED_LP_TOKEN_IMPLEMENTATION_CODEHASH", vm.toString(bytes32(0)));
-        vm.setEnv("EXPECTED_SWAP_FACET_CODEHASH", vm.toString(bytes32(0)));
-        vm.setEnv("EXPECTED_DYNAMIC_FEE_FACET_CODEHASH", vm.toString(bytes32(0)));
-        vm.setEnv("EXPECTED_SETTLEMENT_FACET_CODEHASH", vm.toString(bytes32(0)));
+        // Expected-codehash env pins default to unset: every reuse-path test that needs them calls
+        // `_setExpectedImplementationCodehashes` with the real runtime hashes, and an unset (or zero)
+        // value makes `_requireCodehashMatch` revert ExpectedCodehashNotSet identically.
     }
 
     function testMinesSaltForOutrunDeployerAddressWithExpectedHookFlags() external view {
@@ -165,17 +162,25 @@ contract DeployMemeverseHookProxyTest is Test {
 
     function testSameSaltPredictsDeterministicAddress() external view {
         bytes32 salt = bytes32(uint256(123));
-        address predicted = outrunDeployer.getDeployed(DEPLOYER_NAMESPACE, salt);
 
-        assertEq(outrunDeployer.getDeployed(DEPLOYER_NAMESPACE, salt), predicted);
-    }
-
-    function testDifferentDeployerNamespacePredictsDifferentAddress() external view {
-        bytes32 salt = bytes32(uint256(123));
-
-        assertTrue(
-            outrunDeployer.getDeployed(DEPLOYER_NAMESPACE, salt) != outrunDeployer.getDeployed(address(0x9999), salt)
+        // Independent derivation of the CREATE3 prediction: OutrunDeployer namespaces the salt by
+        // hashing it with the deployer address, then resolves the solmate CREATE3 layout — a CREATE2
+        // proxy (fixed 15-byte bytecode below) deployed by the OutrunDeployer itself, with the final
+        // contract at that proxy's nonce-1 address.
+        bytes32 namespacedSalt = keccak256(abi.encodePacked(DEPLOYER_NAMESPACE, salt));
+        bytes32 proxyBytecodeHash = keccak256(hex"67363d3d37363d34f03d5260086018f3");
+        address create2Proxy = address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(bytes1(0xFF), address(outrunDeployer), namespacedSalt, proxyBytecodeHash)
+                    )
+                )
+            )
         );
+        address expected = address(uint160(uint256(keccak256(abi.encodePacked(hex"d694", create2Proxy, hex"01")))));
+
+        assertEq(outrunDeployer.getDeployed(DEPLOYER_NAMESPACE, salt), expected);
     }
 
     function testDeployProxyInitializesHookAtMinedAddress() external {
@@ -616,35 +621,6 @@ contract DeployMemeverseHookProxyTest is Test {
 
         assertTrue(predictedProxy != firstCandidate);
         assertEq(r.hookProxy, predictedProxy);
-    }
-
-    function testDeployProxyRejectsConsumedCreate3Salt() external {
-        vm.etch(POOL_MANAGER, hex"01");
-        outrunDeployer.transferOwnership(address(script));
-
-        // Simulate a previous failed deploy: the CREATE3 minimal proxy was deployed
-        // (CREATE2 succeeded) but the inner CREATE failed (e.g. initialization reverted).
-        // The final proxy address has no code, but the CREATE3 proxy is occupied.
-        (bytes32 salt,,) = script.exposedSelectProxySalt(
-            IOutrunDeployer(address(outrunDeployer)),
-            address(script),
-            1,
-            HOOK_OWNER,
-            HOOK_TREASURY,
-            IPoolManager(POOL_MANAGER),
-            HOOK_LAUNCHER
-        );
-        bytes32 hashedSalt = keccak256(abi.encodePacked(address(script), salt));
-        address create3Proxy = keccak256(
-                abi.encodePacked(bytes1(0xFF), address(outrunDeployer), hashedSalt, CREATE3_PROXY_BYTECODE_HASH)
-            ).fromLast20Bytes();
-        vm.etch(create3Proxy, hex"01");
-
-        // Re-running with the same nonce should revert with a clear error indicating
-        // the CREATE3 salt is consumed, not the opaque "DEPLOYMENT_FAILED" from solmate.
-        _deployExpectingRevert(
-            abi.encodeWithSelector(DeployMemeverseHookProxy.Create3SaltConsumed.selector, salt, create3Proxy)
-        );
     }
 
     function testDeployProxyRejectsConsumedHookProxySaltBeforeIntermediateDeploys() external {

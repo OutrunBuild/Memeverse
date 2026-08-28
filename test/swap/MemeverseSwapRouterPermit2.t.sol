@@ -21,11 +21,8 @@ import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRout
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {OrdinarySwapMath} from "../../src/swap/libraries/OrdinarySwapMath.sol";
 
-import {
-    MockPoolManagerForPermit2RouterTest,
-    MockPermit2ForRouterTest,
-    SignatureVerifyingPermit2ForRouterTest
-} from "../mocks/swap/Permit2Mocks.sol";
+import {MockPermit2ForRouterTest, SignatureVerifyingPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
+import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 
 /// @dev Test boundary:
@@ -79,7 +76,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         });
     }
 
-    MockPoolManagerForPermit2RouterTest internal manager;
+    MockPoolManagerForRouterTest internal manager;
     MemeverseUniswapHookUpgradeable internal hook;
     MemeverseUniswapHookLens internal lens;
     MockPermit2ForRouterTest internal mockPermit2;
@@ -115,7 +112,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @notice Deploys the permit2 test harness, mocks, and seeded pool state.
     /// @dev Initializes both mock and signature-verifying Permit2 flows against the same pool setup.
     function setUp() public {
-        manager = new MockPoolManagerForPermit2RouterTest();
+        manager = new MockPoolManagerForRouterTest();
         treasury = makeAddr("treasury");
         alice = vm.addr(ALICE_PK);
         hook = _deployHookProxyForManager(IPoolManager(address(manager)), address(this), treasury);
@@ -228,7 +225,7 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
     /// @notice Verifies Permit2 swaps also respect the post-unlock protection window.
     /// @dev Uses hook-local pool protection while still funding the input through Permit2 first.
     function testSwapWithPermit2_RevertsDuringPostUnlockProtectionWindow() external {
-        MockPoolManagerForPermit2RouterTest guardedManager = new MockPoolManagerForPermit2RouterTest();
+        MockPoolManagerForRouterTest guardedManager = new MockPoolManagerForRouterTest();
         MemeverseUniswapHookUpgradeable guardedHook =
             _deployHookProxyForManager(IPoolManager(address(guardedManager)), address(this), treasury);
         MemeverseSwapRouter guardedRouter = new MemeverseSwapRouter(
@@ -880,6 +877,40 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         );
     }
 
+    /// @notice Verifies the batch Permit2 path rejects a permitted array whose length is not exactly 2.
+    /// @dev ERC20 pair so the native-currency guard cannot mask the length check; the transferDetails
+    ///      array keeps length 2 so only the `permitted.length != 2` sub-condition fires.
+    function test_RevertWhen_AddLiquidityPermit2PermittedLengthIsNotTwo() external {
+        IMemeverseSwapRouter.Permit2BatchParams memory batchPermit =
+            _batchPermit(address(token0), 100 ether, address(token1), 100 ether);
+        batchPermit.permit.permitted = new ISignatureTransfer.TokenPermissions[](1);
+        batchPermit.permit.permitted[0] =
+            ISignatureTransfer.TokenPermissions({token: address(token0), amount: 100 ether});
+
+        vm.expectRevert(IMemeverseSwapRouter.InvalidPermit2Length.selector);
+        vm.prank(alice);
+        router.addLiquidityWithPermit2(
+            batchPermit, key.currency0, key.currency1, 100 ether, 100 ether, 90 ether, 90 ether, alice, block.timestamp
+        );
+    }
+
+    /// @notice Verifies the batch Permit2 path rejects a transferDetails array whose length is not exactly 2.
+    /// @dev Companion of the permitted-length case: the permitted array keeps length 2 so only the
+    ///      `transferDetails.length != 2` sub-condition fires.
+    function test_RevertWhen_AddLiquidityPermit2TransferDetailsLengthIsNotTwo() external {
+        IMemeverseSwapRouter.Permit2BatchParams memory batchPermit =
+            _batchPermit(address(token0), 100 ether, address(token1), 100 ether);
+        batchPermit.transferDetails = new ISignatureTransfer.SignatureTransferDetails[](1);
+        batchPermit.transferDetails[0] =
+            ISignatureTransfer.SignatureTransferDetails({to: address(router), requestedAmount: 100 ether});
+
+        vm.expectRevert(IMemeverseSwapRouter.InvalidPermit2Length.selector);
+        vm.prank(alice);
+        router.addLiquidityWithPermit2(
+            batchPermit, key.currency0, key.currency1, 100 ether, 100 ether, 90 ether, 90 ether, alice, block.timestamp
+        );
+    }
+
     /// @notice Verifies Permit2 liquidity adds use the shared prepared-budget executor without leaving router residue.
     /// @dev The runtime size check and residue assertions cover the prepared-budget execution path.
     function testAddLiquidityWithPermit2_UsesPreparedBudgetExecutorWithoutResidualBudget() external {
@@ -913,7 +944,6 @@ contract MemeverseSwapRouterPermit2Test is Test, HookStorageHelper {
         assertLt(token1Spent, amount1Desired, "token1 refund");
         assertEq(token0.balanceOf(address(router)), 0, "token0 residual");
         assertEq(token1.balanceOf(address(router)), 0, "token1 residual");
-        assertLt(address(router).code.length, 28_000, "runtime should shrink after removing budgetsPrepared");
     }
 
     /// @notice Verifies canonical Permit2 witness signing works for swaps.

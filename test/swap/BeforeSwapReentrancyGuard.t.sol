@@ -143,27 +143,6 @@ contract BeforeSwapReentrancyGuardTest is Test, HookStorageHelper {
         );
     }
 
-    /// @notice Settlement self-calls (hook as caller) never enter beforeSwapLogic, so the lock neither blocks
-    ///         them nor leaves a stale lock. This is the existing settlement happy path, re-asserted to prove
-    ///         the new lock does not regress settlement economics.
-    function test_SettlementSelfCallUnaffectedByLifecycleLock() public {
-        // A settlement on a pool whose currency0 is the callback token: the settlement self-call is skipped by
-        // v4 (msg.sender == hook), so beforeSwapLogic (where the lock is acquired) is never reached.
-        bool settlementZeroForOne = _isCallbackTokenCurrency0(callbackPoolKey);
-        SwapParams memory params = SwapParams({
-            zeroForOne: settlementZeroForOne,
-            amountSpecified: -int256(10 ether),
-            sqrtPriceLimitX96: settlementZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
-        });
-
-        // No reverter armed — the settlement must complete cleanly under the new lock.
-        hook.executePreorderSettlement(
-            IMemeverseUniswapHook.PreorderSettlementParams({
-                key: callbackPoolKey, params: params, recipient: address(this)
-            })
-        );
-    }
-
     /// @dev Drives a public swap through `poolManager.unlock` so real v4 runs the full beforeSwap → _swap →
     ///      afterSwap lifecycle, capturing revert bytes (empty when the swap succeeds). The test contract acts as
     ///      the unlock-callback caller and closes its own negative deltas. Reverts are captured rather than
@@ -232,10 +211,6 @@ contract BeforeSwapReentrancyGuardTest is Test, HookStorageHelper {
     function _pushToManager(Currency currency, uint256 amount) internal {
         bool ok = MockERC20(Currency.unwrap(currency)).transfer(address(manager), amount);
         require(ok, "transfer to manager failed");
-    }
-
-    function _isCallbackTokenCurrency0(PoolKey memory key) internal view returns (bool) {
-        return Currency.unwrap(key.currency0) == address(callbackToken);
     }
 
     function _dynamicPoolKey(address currencyA, address currencyB) internal view returns (PoolKey memory key) {

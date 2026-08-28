@@ -181,10 +181,9 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         MockYTHookMissingPoolManager missingSelectorHook = new MockYTHookMissingPoolManager();
         // The address passes the zero-address and `code.length == 0` guards (it has code), then the runtime-cast
         // STATICCALL `IImmutableState(address(hook_)).poolManager()` hits an unknown selector with no fallback. The
-        // EVM dispatcher reverts with empty returndata and Solidity's high-level ABI-decode reverts. The revert form
-        // is opaque (no named selector applies), so a bare `vm.expectRevert()` locks the fail-closed behavior without
-        // over-coupling to the opaque revert form.
-        vm.expectRevert();
+        // EVM dispatcher reverts with empty returndata and Solidity's high-level ABI-decode reverts; the empty
+        // revert payload is pinned exactly so any other failure mode fails the test.
+        vm.expectRevert(bytes(""));
         new MemeverseYTFlashSwapRouter(
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(missingSelectorHook)),
@@ -385,13 +384,14 @@ contract MemeverseYTFlashSwapRouterTest is Test {
         hook.setLauncher(address(missingSelectorLauncher));
 
         // Buy path: the STATICCALL reverts before `_runFlashSwap`/swap and before the cost `transferFrom`.
+        // The missing-selector revert bubbles as empty data; pin the empty payload exactly.
         vm.prank(account);
-        vm.expectRevert();
+        vm.expectRevert(bytes(""));
         router.swapPOLForExactYT(VERSE_ID, EXACT_YT, EXACT_YT, PRICE_LIMIT, recipient, block.timestamp, referrer);
 
         // Sell path: the STATICCALL reverts before `_runFlashSwap`/swap and before the payer YT `transferFrom`.
         vm.prank(account);
-        vm.expectRevert();
+        vm.expectRevert(bytes(""));
         router.swapExactYTForPOL(VERSE_ID, EXACT_YT, 0, PRICE_LIMIT, recipient, block.timestamp, referrer);
 
         // No underlying swap ever ran across both cases.

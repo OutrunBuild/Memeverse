@@ -45,7 +45,9 @@ contract DynamicFeeFacetMinRouter layout at erc7201("outrun.storage.MemeverseUni
     // -----------------------------------------------------------------
     // All three forwarders must use OZ `Address.functionDelegateCall` so custom errors bubble raw
     // (same contract as production `MemeverseSwapFeeBase`). Do not hand-roll delegatecall failure handling.
-    // Covered by `DynamicFeeFacetMinRouterRevertTest`.
+    // Raw-error bubbling through the hook+Router chain is covered by
+    // `MemeverseDynamicFeeFacetRevertPropagation.t.sol`; the quote forwarder's error bubbling is
+    // covered by the `minRouter.quote` case in `DynamicFeeFacet.t.sol`.
 
     /// @notice Forwards `IDynamicFeeFacet.prepareSwapFee` into the facet via delegatecall.
     /// @dev Hot path returns the one fee word used by SwapFacet.

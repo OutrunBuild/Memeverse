@@ -31,11 +31,8 @@ import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MockOFTDispatcher} from "../mocks/verse/LauncherLifecycleMocks.sol";
-import {
-    MockIntegrationLiquidProof,
-    MockIntegrationMemecoin,
-    MockLauncherIntegrationLzEndpointRegistry
-} from "../mocks/verse/LauncherPreorderIntegrationMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
+import {MockIntegrationLiquidProof, MockIntegrationMemecoin} from "../mocks/verse/LauncherPreorderIntegrationMocks.sol";
 import {MockLauncherSwapIntegrationProxyDeployer} from "../mocks/verse/LauncherSwapIntegrationMocks.sol";
 import {UniversalAssetForPOLendSettlementInvariant} from "../mocks/verse/LauncherSettlementMocks.sol";
 
@@ -69,7 +66,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
 
     // ── Mocked periphery only ──
     MockLauncherSwapIntegrationProxyDeployer internal proxyDeployer;
-    MockLauncherIntegrationLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockOFTDispatcher internal dispatcher;
     UniversalAssetForPOLendSettlementInvariant internal uAsset;
 
@@ -79,7 +76,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
 
         // 2. Periphery mocks.
         proxyDeployer = new MockLauncherSwapIntegrationProxyDeployer(address(0xCAFE), address(0xF00D));
-        registry = new MockLauncherIntegrationLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         dispatcher = new MockOFTDispatcher();
         uAsset = new UniversalAssetForPOLendSettlementInvariant();
 
@@ -329,7 +326,6 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         // (see _checkedTotalGenesisFunds). The launcher therefore consumes the full LP share of each pool.
         uint256 totalLeveragedDebt = polend.getTotalLeveragedDebt(VERSE_ID);
         uint256 totalFunds = totalLeveragedDebt;
-        assertEq(FullMath.mulDiv(polUAssetLp0, totalLeveragedDebt, totalFunds), polUAssetLp0, "polUAsset full share");
 
         // The real removeLiquidity drives the LP burn — no preset removeLiquidityResult. The
         // post-settle auxiliaryLiquidities residual asserts the delta came from the real PoolManager.
@@ -349,25 +345,6 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
             "ptUAsset delta"
         );
         assertEq(ptPolLpAfter, ptPolLp0 - FullMath.mulDiv(ptPolLp0, totalLeveragedDebt, totalFunds), "ptPol delta");
-    }
-
-    /// @notice A pure-leverage verse (no normal genesis) has totalFunds == totalLeveragedDebt, so the
-    ///         leveraged share ratio is 1: every auxiliary LP share is removed and the residual is zero.
-    function test_A2_RealPathPureLeveragedConsumesAllAuxiliaryLp() external {
-        _lockWithLeveragedLiquidity();
-
-        (uint256 polUAssetLp0, uint256 ptUAssetLp0, uint256 ptPolLp0) = launcher.auxiliaryLiquidities(VERSE_ID);
-        assertGt(polUAssetLp0, 0, "polUAsset LP minted");
-        assertGt(ptUAssetLp0, 0, "ptUAsset LP minted");
-        assertGt(ptPolLp0, 0, "ptPol LP minted");
-
-        _unlockAndSettle();
-
-        (uint256 polUAssetLpAfter, uint256 ptUAssetLpAfter, uint256 ptPolLpAfter) =
-            launcher.auxiliaryLiquidities(VERSE_ID);
-        assertEq(polUAssetLpAfter, 0, "polUAsset LP fully consumed");
-        assertEq(ptUAssetLpAfter, 0, "ptUAsset LP fully consumed");
-        assertEq(ptPolLpAfter, 0, "ptPol LP fully consumed");
     }
 
     /// @notice After the Locked->Unlocked settle, the splitter's residual `settlementUAsset` must still

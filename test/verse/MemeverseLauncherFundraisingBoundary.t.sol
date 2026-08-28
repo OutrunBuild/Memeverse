@@ -24,18 +24,15 @@ import {ConfigurableDebtPOLendStub} from "../mocks/verse/FundraisingBoundaryMock
 import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
-import {
-    MockLauncherIntegrationLzEndpointRegistry,
-    MockLauncherIntegrationProxyDeployer
-} from "../mocks/verse/LauncherPreorderIntegrationMocks.sol";
+import {MockLauncherIntegrationProxyDeployer} from "../mocks/verse/LauncherPreorderIntegrationMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 
 /// @title MemeverseLauncherFundraisingBoundaryTest
 /// @notice Genesis-cap and preorder-capacity boundary properties.
-/// @dev Wiring mirrors MemeverseLauncherPreorderInvariant.t.sol's proven setUp
-///      (full launcher stack + registered verse in Stage.Genesis); the only delta is
-///      the POLend stub, whose leveraged debt is runtime-configurable so the combined
-///      cap normalFunds + debt can be driven to exactly 2^128 - 1.
+/// @dev Wiring uses the shared launcher-stack setUp shape (full stack + registered verse in
+///      Stage.Genesis); the only delta is the POLend stub, whose leveraged debt is
+///      runtime-configurable so the combined cap normalFunds + debt can be driven to exactly 2^128 - 1.
 contract MemeverseLauncherFundraisingBoundaryTest is Test, MemeverseLauncherTestHelper, HookStorageHelper {
     address internal constant REGISTRAR = address(0xBEEF);
     uint32 internal constant REMOTE_GOV_CHAIN_ID = 202;
@@ -50,7 +47,7 @@ contract MemeverseLauncherFundraisingBoundaryTest is Test, MemeverseLauncherTest
     IMemeverseLauncher internal launcher;
     address internal launcherProxy;
     MockLauncherIntegrationProxyDeployer internal proxyDeployer;
-    MockLauncherIntegrationLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     ConfigurableDebtPOLendStub internal polend;
     POLSplitterInvariantStub internal splitter;
     MockERC20 internal uAsset;
@@ -60,7 +57,7 @@ contract MemeverseLauncherFundraisingBoundaryTest is Test, MemeverseLauncherTest
     function setUp() external {
         manager = new MockPoolManagerForRouterTest();
         proxyDeployer = new MockLauncherIntegrationProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
-        registry = new MockLauncherIntegrationLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         uAsset = new MockERC20("UASSET", "UASSET", 18);
         pt = new MockERC20("PT", "PT", 18);
         yt = new MockERC20("YT", "YT", 18);

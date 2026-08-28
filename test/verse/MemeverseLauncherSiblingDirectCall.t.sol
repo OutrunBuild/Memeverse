@@ -17,10 +17,10 @@ import {
     MockPOLendForLifecycle,
     MockPOLSplitterForLifecycle,
     MockOFTDispatcher,
-    MockLzEndpointRegistry,
     MockLiquidProof,
     MockPredictOnlyProxyDeployer
 } from "../mocks/verse/LauncherLifecycleMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 
 /// @title MemeverseLauncherSiblingDirectCall
 /// @notice Verifies the `DelegatecallOnly` guard on the three launcher delegatecall siblings
@@ -53,7 +53,7 @@ contract MemeverseLauncherSiblingDirectCall is Test {
         proxyDeployer = new MockPredictOnlyProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
         polend = new MockPOLendForLifecycle();
         splitter = new MockPOLSplitterForLifecycle(address(pt), address(yt));
-        MockLzEndpointRegistry registry = new MockLzEndpointRegistry();
+        LzEndpointRegistryMock registry = new LzEndpointRegistryMock();
         MockOFTDispatcher dispatcher = new MockOFTDispatcher();
 
         MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();

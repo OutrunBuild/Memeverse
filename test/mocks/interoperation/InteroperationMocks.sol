@@ -182,7 +182,7 @@ contract MockStakerYieldVault {
 ///      `composeStates == None` check is the very first guard in settle, ahead of `verifySettle` and beneficiary).
 ///      This pins the CEI write order as a regression guard: if `Settled` were ever moved after the deposit call, the
 ///      reentry would read `None`, pass that first guard, and proceed — this test would catch the reorder. Symmetric to
-///      ReentrantDispatcherVault (test/verse/YieldDispatcher.t.sol) on the dispatcher settle path.
+///      ReentrantDispatcherVault (test/mocks/verse/DispatcherTestMocks.sol) on the dispatcher settle path.
 contract ReentrantStakerVault {
     OmnichainMemecoinStakerUpgradeable internal immutable staker;
     address internal memecoin;
@@ -235,18 +235,6 @@ contract MockInteroperationLauncher {
             revert IMemeverseLauncher.InvalidVerseId();
         }
         return verse;
-    }
-}
-
-/// @notice Mock registry mapping chain ids to LayerZero endpoint ids.
-contract MockInteroperationRegistry {
-    mapping(uint32 chainId => uint32 endpointId) public lzEndpointIdOfChain;
-
-    /// @notice Set endpoint.
-    /// @param chainId See implementation.
-    /// @param endpointId See implementation.
-    function setEndpoint(uint32 chainId, uint32 endpointId) external {
-        lzEndpointIdOfChain[chainId] = endpointId;
     }
 }
 

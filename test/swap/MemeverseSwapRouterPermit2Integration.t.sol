@@ -7,15 +7,15 @@ import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/Bala
 
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {RealisticSwapIntegrationBase} from "./helpers/RealisticSwapManagerHarness.sol";
-import {MockPermit2ForRouterIntegration} from "../mocks/swap/RealisticSwapMocks.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 
 contract MemeverseSwapRouterPermit2IntegrationTest is RealisticSwapIntegrationBase {
     using BalanceDeltaLibrary for BalanceDelta;
 
-    MockPermit2ForRouterIntegration internal permit2;
+    MockPermit2ForRouterTest internal permit2;
 
     function setUp() public {
-        permit2 = new MockPermit2ForRouterIntegration();
+        permit2 = new MockPermit2ForRouterTest();
         _setUpIntegration(IPermit2(address(permit2)));
 
         vm.prank(alice);

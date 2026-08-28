@@ -150,6 +150,45 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
         staker.upgradeToAndCall(address(shell), "");
     }
 
+    /// @notice Test removeGasDust reverts for a non-owner.
+    function test_RevertWhen_RemoveGasDustCallerIsNotOwner() external {
+        address attacker = address(0xBAD);
+
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, attacker));
+        staker.removeGasDust(RECEIVER);
+    }
+
+    /// @notice Test removeGasDust succeeds with a zero transfer when the staker holds no ETH.
+    /// @dev Observable contract only: a zero-balance sweep does not revert, emits `RemoveGasDust` with
+    ///      dust = 0, and leaves both balances unchanged. The zero-amount early return inside
+    ///      `_transferOut` is NOT claimed as covered here: the receiver is a code-less address, so a
+    ///      low-level `call{value: 0}` would also succeed and the early exit cannot be distinguished
+    ///      from a real zero-value transfer by these observations.
+    function test_RemoveGasDustTransfersZeroWhenStakerBalanceIsZero() external {
+        assertEq(address(staker).balance, 0, "fixture: staker starts with no ETH");
+
+        vm.expectEmit(true, false, false, true);
+        emit IOmnichainMemecoinStaker.RemoveGasDust(RECEIVER, 0);
+        staker.removeGasDust(RECEIVER);
+
+        assertEq(RECEIVER.balance, 0, "receiver balance unchanged");
+        assertEq(address(staker).balance, 0, "staker balance unchanged");
+    }
+
+    /// @notice Test removeGasDust sweeps the staker's entire ETH balance to the receiver.
+    function test_RemoveGasDustSweepsFullBalanceToReceiver() external {
+        uint256 dust = 1 ether;
+        vm.deal(address(staker), dust);
+
+        vm.expectEmit(true, false, false, true);
+        emit IOmnichainMemecoinStaker.RemoveGasDust(RECEIVER, dust);
+        staker.removeGasDust(RECEIVER);
+
+        assertEq(RECEIVER.balance, dust, "receiver got the full dust");
+        assertEq(address(staker).balance, 0, "staker drained");
+    }
+
     /// @notice ERC-7201 base slot of the staker's namespaced storage.
     function _stakerStorageBaseSlot() internal pure returns (bytes32) {
         return keccak256(abi.encode(uint256(keccak256("outrun.storage.OmnichainMemecoinStaker")) - 1))
@@ -365,30 +404,6 @@ contract OmnichainMemecoinStakerTest is ComposerEndpointFixture {
         staker.lzCompose(address(memecoin), guid, message, address(0), "");
 
         // The atomic revert rolled back the CEI `Settled` write, so the guid is still `None`.
-        assertEq(uint256(staker.composeStates(address(memecoin), guid)), uint256(IComposeState.ComposeState.None));
-    }
-
-    /// @notice lzCompose reverts with a named `MalformedComposeMsg` when the frame is shorter than the 76-byte compose
-    ///         header: the `>= 76` header-integrity guard fires before any codec slice can run. This variant's frame
-    ///         is shorter than even the 44-byte amountLD region (extreme short edge); the [44, 76) band is covered by
-    ///         `testLzComposeRevertsOnShortFrameBeforeHeaderComplete`. The CEI `Settled` write rolls back, so the guid
-    ///         stays `None`.
-    /// @dev `OFTComposeMsgCodec.encode` cannot produce a frame shorter than 44 bytes (its header alone is 44), so the
-    ///      frame is hand-built. The guard checks length only, so the byte content is irrelevant.
-    function testLzComposeRevertsOnFrameShorterThanAmountLDOffset() external {
-        bytes32 guid = bytes32("sub-amountLD");
-        // Hand-built 20-byte frame: shorter than the 76-byte header, so the `>= 76` header-integrity guard fires the
-        // named error first; it is also shorter than the 44-byte amountLD end offset, so `amountLD` ([12:44]) would
-        // slice out of bounds only if that guard were removed. Any 20-byte content exercises the length-only guard.
-        bytes memory shortMessage = new bytes(20);
-        for (uint256 i = 0; i < 20; i++) {
-            shortMessage[i] = bytes1("x");
-        }
-
-        vm.prank(LOCAL_ENDPOINT);
-        vm.expectRevert(IComposeState.MalformedComposeMsg.selector);
-        staker.lzCompose(address(memecoin), guid, shortMessage, address(0), "");
-
         assertEq(uint256(staker.composeStates(address(memecoin), guid)), uint256(IComposeState.ComposeState.None));
     }
 

@@ -2,9 +2,10 @@
 pragma solidity ^0.8.35;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
-
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppReceiver.sol";
+import {SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
 import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
 import {IOmnichainMemecoinStaker} from "../../src/interoperation/interfaces/IOmnichainMemecoinStaker.sol";
@@ -14,6 +15,8 @@ import {MemecoinYieldVault} from "../../src/yield/MemecoinYieldVault.sol";
 import {IMemecoinYieldVault} from "../../src/yield/interfaces/IMemecoinYieldVault.sol";
 import {MockMessagingComposerEndpoint} from "../mocks/infrastructure/MockMessagingComposerEndpoint.sol";
 import {ComposerEndpointFixture} from "../mocks/infrastructure/ComposerEndpointFixture.sol";
+import {OFTHarness} from "../mocks/infrastructure/OFTHarness.sol";
+import {MockOFTEndpoint} from "../mocks/common/CommonMocks.sol";
 import {ForgedComposeToken} from "../mocks/interoperation/ForgedComposeToken.sol";
 
 /// @dev Attacker-controlled vault whose `asset()` is attacker-chosen, used to exercise the token-vault binding
@@ -92,18 +95,31 @@ contract PartialPullVault {
 ///      `lzCompose` — reverts at the binding with no fund movement, even when a standing max allowance (the
 ///      pre-fix state) would otherwise let the real vault pull the staker's real memecoin and mint shares to the
 ///      attacker. Genuine (real memecoin, real vault) composes still deposit and mint shares.
+///      The forged-compose regression below merges both defense faces in one test: the binding-layer isolation
+///      (standing max allowance on the REAL vault) and the exact-approval-layer stranded-funds context — the
+///      victim's funds are first stranded through the real source→destination OFT bridge, and the REAL
+///      memecoin's allowance to the attacker-named vault is asserted zero after the reverted path.
 ///      Uses the REAL Memecoin, the REAL MemecoinYieldVault (minimal-proxy clones, matching production deployment),
 ///      the REAL OmnichainMemecoinStakerUpgradeable, and the repo's MessagingComposer endpoint mock — a byte-level behavioral
 ///      mirror of the real LayerZero composer (sendCompose keyed by msg.sender; lzCompose hash-check + RECEIVED
 ///      sentinel + forward with msg.sender=endpoint), which the canonical EndpointV2 inherits without override.
 contract StakerTokenVaultBindingTest is ComposerEndpointFixture {
+    // Source-chain leg of the real OFT bridge (mirrors StakerExactApproval's harness): the src OFT's real `send`
+    // produces the exact wire bytes the destination memecoin's real `_lzReceive` consumes, so bridged funds
+    // travel the genuine cross-chain delivery path instead of being minted in place.
+    uint32 internal constant SRC_EID = 30102;
+    uint32 internal constant DST_EID = 30101;
+
     MockMessagingComposerEndpoint internal endpoint;
     Memecoin internal memecoin;
     MemecoinYieldVault internal vault;
     OmnichainMemecoinStakerUpgradeable internal staker;
     ForgedComposeToken internal fake;
+    MockOFTEndpoint internal srcEndpoint; // source-chain endpoint stub (captures the sent wire bytes)
+    OFTHarness internal srcOft; // source-chain memecoin OFT instance (the victim bridges from here)
 
     address internal constant RECEIVER = address(0xBEEF); // genuine staking beneficiary
+    address internal constant VICTIM = address(0xB0B); // stranded-funds victim (bridges via the real OFT chain)
     address internal attacker;
 
     function setUp() external {
@@ -128,6 +144,15 @@ contract StakerTokenVaultBindingTest is ComposerEndpointFixture {
         staker = _deployStaker(address(this), address(endpoint));
 
         fake = new ForgedComposeToken(address(endpoint));
+
+        // Source-chain OFT leg, mirroring StakerExactApproval's harness: a real `send()` here drives the
+        // destination memecoin's real `_lzReceive`/`_credit`/`sendCompose`, so the merged forged-compose
+        // regression can strand victim funds through the genuine cross-chain delivery path.
+        srcEndpoint = new MockOFTEndpoint();
+        srcOft = OFTHarness(Clones.clone(address(new OFTHarness(address(srcEndpoint)))));
+        srcOft.initialize(address(this), "Memecoin", "MEME", address(this));
+        srcOft.setPeer(DST_EID, bytes32(uint256(uint160(address(memecoin)))));
+        memecoin.setPeer(SRC_EID, bytes32(uint256(uint160(address(srcOft)))));
     }
 
     /// @notice Positive control: a genuine compose (real memecoin from, real vault) still settles through the
@@ -231,41 +256,59 @@ contract StakerTokenVaultBindingTest is ComposerEndpointFixture {
         );
     }
 
-    /// @notice Regression: a forged compose (fake token from, fresh guid, REAL vault, attacker receiver) driven
-    ///         through the permissionless composer must revert with TokenVaultMismatch at the token-vault binding —
-    ///         before any approval or deposit — leaving the staker's balance, the vault's balance/shares, and the
-    ///         composeStates slot untouched. Isolation: a standing max allowance (the pre-fix state) is restored on
-    ///         the REAL memecoin before the forged attempt, so the vault COULD pull real funds if the binding were
-    ///         missing; the binding alone must still revert. No-stranding: a genuine compose afterwards still
-    ///         deposits and mints shares.
-    function testForgedTokenComposeRevertsTokenVaultMismatch() external {
-        uint256 custody = 100 ether; // real memecoin in the staker's custody (in-flight bridged credit)
-        memecoin.mint(address(staker), custody);
+    /// @notice Merged regression — binding-layer isolation + exact-approval-layer stranded context. A forged
+    ///         (fake token, fresh guid) compose driven through the permissionless composer must revert with
+    ///         TokenVaultMismatch at the token-vault binding — before any approval or deposit — on both vault
+    ///         faces: the REAL vault (binding face: a standing max allowance, the pre-fix state, is pre-restored
+    ///         so the vault COULD pull real funds if the binding were missing) and an attacker vault lying that
+    ///         its `asset()` is the real memecoin (exact-approval face: the victim's funds stranded via the real
+    ///         OFT bridge are the drain target, and no allowance may appear on the REAL memecoin). After both
+    ///         failed paths a genuine compose still deposits and mints shares.
+    /// @dev Division of labor: the zero-amount `approve(vault, 0)` stale-allowance wipe regression (a
+    ///      NON-reverting compose path that must erase a pre-seeded residual allowance) lives separately in
+    ///      StakerExactApproval.t.sol::testZeroAmountComposeGrantsNoAllowance; the minimal attacker-vault
+    ///      closure case without the stranded-funds context is testForgedComposeEvilVaultClaimingRealAssetReverts
+    ///      below. This test is the merged superset: both vault faces against stranded real funds.
+    function testForgedTokenComposeCannotDrainStrandedRealMemecoin() external {
+        // ---- Stranded-funds context: the victim's real funds arrive through the REAL OFT chain ----
+        // send() on the source OFT → wire bytes → the destination memecoin's real
+        // _lzReceive/_credit/sendCompose: the amount is credited to the staker and the compose queued under the
+        // memecoin's own key. The victim's lzCompose never runs, so the funds strand in the staker's custody —
+        // exactly the balance (another user's money) a forged compose would target.
+        uint256 stranded = 1 ether;
+        srcOft.mintTest(VICTIM, stranded);
+        _bridgeAndQueue(
+            stranded,
+            abi.encodePacked(OFTComposeMsgCodec.addressToBytes32(VICTIM), abi.encode(VICTIM, address(vault))),
+            bytes32("victim-guid"),
+            VICTIM
+        );
+        assertEq(memecoin.balanceOf(address(staker)), stranded, "victim funds credited to the staker and stranded");
 
-        // ---- Isolation setup: restore the pre-fix standing max allowance on the REAL memecoin ----
+        // ---- Isolation face (binding layer): restore the pre-fix standing max allowance on the REAL memecoin ----
         // The exact-approve is deliberately neutralized: if the token-vault binding were missing, the real
         // vault's deposit pull could consume this allowance and drain the staker's custody balance. The forged
         // pairing must revert at the require anyway, proving the binding alone closes the hole.
         vm.prank(address(staker));
         memecoin.approve(address(vault), type(uint256).max);
 
-        // ---- Step 1: forged token writes its own queue slot (permissionless, keyed by msg.sender) ----
-        bytes memory forgedMsg = _forgeComposeMsg(attacker, custody, address(vault));
-        vm.prank(address(fake));
-        fake.queueCompose(address(staker), bytes32("forged-guid"), forgedMsg);
-
-        // ---- Step 2: attacker drives the endpoint directly — the forged compose must revert ----
-        // lzCompose: hash matches the queue slot, then
+        // ---- Forged attempt 1: fake token + REAL vault (binding-layer face) ----
+        // The fake token writes its own queue slot (permissionless, keyed by msg.sender); amountLD claims the
+        // full stranded custody. lzCompose: hash matches the queue slot, then
         // ILayerZeroComposer(staker).lzCompose(from=fake, guid, forgedMsg, executor=endpoint) — the staker's
         // `msg.sender == localEndpoint` check passes because the ENDPOINT makes the inner call. The deposit
         // branch's binding fires first: vault.asset() (REAL memecoin) != fake token, so the require reverts with
         // TokenVaultMismatch before the approval or deposit; the whole endpoint call — including the
         // RECEIVED-sentinel write — rolls back.
+        bytes memory forgedMsg = _forgeComposeMsg(attacker, stranded, address(vault));
+        vm.prank(address(fake));
+        fake.queueCompose(address(staker), bytes32("forged-guid"), forgedMsg);
+
         vm.expectRevert(IOmnichainMemecoinStaker.TokenVaultMismatch.selector);
         endpoint.lzCompose(address(fake), address(staker), bytes32("forged-guid"), 0, forgedMsg, "");
 
         // ---- Core assertions: the forged pairing moved nothing and consumed nothing ----
-        assertEq(memecoin.balanceOf(address(staker)), custody, "staker custody balance unchanged");
+        assertEq(memecoin.balanceOf(address(staker)), stranded, "staker custody balance unchanged");
         assertEq(memecoin.balanceOf(address(vault)), 0, "vault pulled no real memecoin");
         assertEq(memecoin.balanceOf(attacker), 0, "attacker drained no real memecoin");
         assertEq(vault.balanceOf(attacker), 0, "no vault shares minted to the attacker");
@@ -295,18 +338,40 @@ contract StakerTokenVaultBindingTest is ComposerEndpointFixture {
             "reverted forged compose consumes nothing"
         );
 
+        // ---- Forged attempt 2: fake token + attacker vault claiming `asset() == real memecoin` ----
+        // The vault's lie would pass only if the delivered token were the real memecoin (the case
+        // StakerExactApproval.t.sol::testExactApproveCapsLossToSentAmount caps via the exact approval); against
+        // the delivered FAKE token the binding compares the claimed real asset to the fake delivery and reverts
+        // all the same. Nothing may move and — the exact-approval face — no allowance may ever appear on the
+        // REAL memecoin for the attacker's vault.
+        EvilVault evilVault = new EvilVault(fake, address(memecoin));
+        bytes memory evilMsg = _forgeComposeMsg(attacker, stranded, address(evilVault));
+        vm.prank(address(fake));
+        fake.queueCompose(address(staker), bytes32("fake-guid"), evilMsg);
+
+        vm.expectRevert(IOmnichainMemecoinStaker.TokenVaultMismatch.selector);
+        endpoint.lzCompose(address(fake), address(staker), bytes32("fake-guid"), 0, evilMsg, "");
+
+        assertEq(memecoin.balanceOf(address(staker)), stranded, "real funds untouched by the fake-token compose");
+        assertEq(memecoin.allowance(address(staker), address(evilVault)), 0, "no allowance granted on real memecoin");
+        assertEq(
+            uint256(staker.composeStates(address(fake), bytes32("fake-guid"))),
+            uint256(IComposeState.ComposeState.None),
+            "reverted compose consumes nothing"
+        );
+
         // ---- No-stranding control: a genuine compose after the forged attempts still settles ----
         uint256 genuineStake = 50 ether;
         memecoin.mint(address(staker), genuineStake);
         bytes memory realComposeMsg =
             abi.encodePacked(OFTComposeMsgCodec.addressToBytes32(RECEIVER), abi.encode(RECEIVER, address(vault)));
         bytes memory realMessage = OFTComposeMsgCodec.encode(2, 40106, genuineStake, realComposeMsg);
-        vm.prank(address(memecoin));
+        vm.prank(address(memecoin)); // the OFT writes its own queue slot inside _lzReceive
         endpoint.sendCompose(address(staker), bytes32("real-guid"), 0, realMessage);
         endpoint.lzCompose(address(memecoin), address(staker), bytes32("real-guid"), 0, realMessage, "");
 
         assertEq(memecoin.balanceOf(address(vault)), genuineStake, "genuine deposit executed after forged attempts");
-        assertEq(memecoin.balanceOf(address(staker)), custody, "staker funds intact: only the genuine stake left");
+        assertEq(memecoin.balanceOf(address(staker)), stranded, "stranded funds intact: only the genuine stake left");
         assertEq(vault.balanceOf(RECEIVER), genuineStake, "genuine shares minted to the receiver");
     }
 
@@ -457,6 +522,52 @@ contract StakerTokenVaultBindingTest is ComposerEndpointFixture {
         partialPullVault.attack(address(staker), attacker, custody);
         assertEq(memecoin.balanceOf(address(staker)), custody - 1, "attack drained nothing");
         assertEq(memecoin.balanceOf(attacker), 0, "attacker gained nothing");
+    }
+
+    /// @dev Bridges `amountLD` memecoin from `sender` on the source chain to the staker on the destination chain
+    ///      with `composeMsg`, driving the real OFT send/_lzReceive/sendCompose code (mirroring
+    ///      StakerExactApproval's `bridgeAndQueue`): `send` produces the wire bytes, then the destination
+    ///      memecoin's real `_lzReceive` credits (mints) `amountLD` to the staker and queues the compose under
+    ///      the memecoin's own queue key. Returns the exact queued compose payload, hash-verified against the
+    ///      queue. Uses inbound nonce = 1 (the first message of a fresh guid path).
+    function _bridgeAndQueue(uint256 amountLD, bytes memory composeMsg, bytes32 guid, address sender)
+        internal
+        returns (bytes memory composeMessage)
+    {
+        SendParam memory sendParam = SendParam({
+            dstEid: DST_EID,
+            to: bytes32(uint256(uint160(address(staker)))),
+            amountLD: amountLD,
+            minAmountLD: 0,
+            extraOptions: bytes(""),
+            composeMsg: composeMsg,
+            oftCmd: bytes("")
+        });
+        MessagingFee memory fee = srcOft.quoteSend(sendParam, false);
+        vm.prank(sender);
+        srcOft.send{value: fee.nativeFee}(sendParam, fee, sender);
+
+        // Destination-chain delivery: the destination memecoin's lzReceive consumes the exact message the real
+        // send() produced. `_lzReceive` credits (mints) `amountLD` to the staker and calls
+        // `endpoint.sendCompose(staker, guid, 0, ...)` on this suite's composer mock.
+        // Note: fetch the delivered message BEFORE pranking — an argument-evaluating staticcall would consume it.
+        bytes memory deliveredMessage = srcEndpoint.lastMessage();
+        Origin memory origin = Origin({srcEid: SRC_EID, sender: bytes32(uint256(uint160(address(srcOft)))), nonce: 1});
+        vm.prank(address(endpoint));
+        memecoin.lzReceive(origin, guid, deliveredMessage, address(0), "");
+
+        // Reconstruct the exact compose payload the OFT queued: OFTComposeMsgCodec.encode(nonce, srcEid,
+        // amountLD, [sender word][composeMsg]). `_lzReceive` embeds the source sender (addressToBytes32 of
+        // send()'s msg.sender) in front of the payload and forwards `composeMsg` verbatim, so the queued payload
+        // is [sender][composeMsg]; amountReceivedLD == amountLD for these dust-clean amounts.
+        composeMessage = OFTComposeMsgCodec.encode(
+            1, SRC_EID, amountLD, abi.encodePacked(bytes32(uint256(uint160(sender))), composeMsg)
+        );
+        assertEq(
+            endpoint.composeQueue(address(memecoin), address(staker), guid, 0),
+            keccak256(composeMessage),
+            "queued compose hash matches reconstruction"
+        );
     }
 
     /// @dev Forges the attacker's compose payload: nonce/srcEid are arbitrary (999/999) and never validated;

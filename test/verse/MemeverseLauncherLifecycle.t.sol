@@ -40,9 +40,9 @@ import {
     ClaimNormalFeesReenterer,
     MockPOLSplitterForLifecycle,
     MockOFTDispatcher,
-    MockLzEndpointRegistry,
     MockOFTToken
 } from "../mocks/verse/LauncherLifecycleMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 
 contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
     using PoolIdLibrary for PoolKey;
@@ -58,7 +58,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
     MockPredictOnlyProxyDeployer internal proxyDeployer;
     MockPOLendForLifecycle internal polend;
     MockPOLSplitterForLifecycle internal splitter;
-    MockLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockERC20 internal uAsset;
     MockERC20 internal memecoin;
     MockLiquidProof internal liquidProof;
@@ -100,7 +100,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         proxyDeployer = new MockPredictOnlyProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
         polend = new MockPOLendForLifecycle();
         splitter = new MockPOLSplitterForLifecycle(address(pt), address(yt));
-        registry = new MockLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(
@@ -832,11 +832,12 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         router.setAddLiquidityResult(address(pt), address(uAsset), 20 ether, 10 ether, 5 ether);
         router.setAddLiquidityResult(address(pt), address(liquidProof), 40 ether, 40 ether, 40 ether);
 
-        // Lock the BootstrapUnusedAssetsHandled emit on the real sibling delegatecall path — until now this
-        // emit was only asserted via the forceDeployLiquidity replica (a manual copy), so a param-order bug in
-        // the sibling would have gone undetected. Mock polend settlementDustStates==(0,0) => capacity 0 =>
-        // credited 0, treasuryExcess = full 21 ether unused; main-pool mock consumes the entire memecoin
-        // budget (both amounts 0 => fallback to desired) => burnedMemecoin 0.
+        // Lock the BootstrapUnusedAssetsHandled emit on the real sibling delegatecall path — before the
+        // test-side bootstrap replica was removed, this emit had no production-path assertion, so a
+        // param-order bug in the sibling would have gone undetected. Mock polend
+        // settlementDustStates==(0,0) => capacity 0 => credited 0, treasuryExcess = full 21 ether unused;
+        // main-pool mock consumes the entire memecoin budget (both amounts 0 => fallback to desired)
+        // => burnedMemecoin 0.
         vm.expectEmit(true, true, true, true, address(launcher));
         emit IMemeverseLauncher.BootstrapUnusedAssetsHandled(
             verseId, address(uAsset), address(memecoin), 21 ether, 0, 21 ether, 0
@@ -1148,6 +1149,16 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         IMemeverseLauncher.Memeverse memory verse = launcher.getMemeverseByVerseId(verseId);
         verse.unlockTime = uint128(block.timestamp - 1);
         _writeMemeverse(verseId, verse);
+        // Auxiliary-liquidity seed so the same unlock settlement also unwraps the three auxiliary LP positions.
+        setGenesisFundForTest(launcherProxy, verseId, 120 ether);
+        setUserGenesisDataForTest(launcherProxy, verseId, address(splitter), 24 ether, false, false);
+        setAuxiliaryLiquiditiesForTest(launcherProxy, verseId, 60 ether, 30 ether, 90 ether);
+        polUAssetLp.mint(address(launcher), 60 ether);
+        ptUAssetLp.mint(address(launcher), 30 ether);
+        ptPolLp.mint(address(launcher), 90 ether);
+        router.setRemoveLiquidityResult(address(liquidProof), address(uAsset), 12 ether, 24 ether);
+        router.setRemoveLiquidityResult(address(pt), address(uAsset), 30 ether, 60 ether);
+        router.setRemoveLiquidityResult(address(pt), address(liquidProof), 90 ether, 0);
 
         MockERC20 memecoinLp = new MockERC20("MEME-LP", "MEME-LP", 18);
         RedeemMemecoinLiquidityReenterer reenterer = new RedeemMemecoinLiquidityReenterer();
@@ -1155,6 +1166,13 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         memecoinLp.mint(address(launcher), 10 ether);
         liquidProof.mint(address(reenterer), 10 ether);
         splitter.setSettleMemecoinLiquidityReentry(address(reenterer), address(launcher), verseId, 4 ether);
+        // Leveraged debt plus the settleAuxiliary flag make the unlock settlement forward the unwrapped
+        // auxiliary proceeds to polend.
+        polend.setTotalLeveragedDebt(verseId, 1 ether);
+        polend.setSettleAuxiliaryOnGlobalSettlement(address(launcher), true);
+        uint256 polendPolBefore = liquidProof.balanceOf(address(polend));
+        uint256 polendPtBefore = pt.balanceOf(address(polend));
+        uint256 polendUAssetBefore = uAsset.balanceOf(address(polend));
 
         launcher.changeStage(verseId);
 
@@ -1164,6 +1182,9 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         assertEq(liquidProof.balanceOf(address(reenterer)), 6 ether, "reenterer pol burned");
         assertEq(memecoinLp.balanceOf(address(reenterer)), 4 ether, "reenterer lp");
         assertEq(uint256(launcher.getStageByVerseId(verseId)), uint256(IMemeverseLauncher.Stage.Unlocked), "unlocked");
+        assertGt(liquidProof.balanceOf(address(polend)), polendPolBefore, "polend pol settlement allowed");
+        assertGt(pt.balanceOf(address(polend)), polendPtBefore, "polend pt settlement allowed");
+        assertGt(uAsset.balanceOf(address(polend)), polendUAssetBefore, "polend uAsset settlement allowed");
     }
 
     function testPreviewPreorderCapacityAndClaimNormalYT_SingleFieldAboveOldSplitMax() external {
@@ -2166,6 +2187,32 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         launcher.redeemMemecoinLiquidity(verseId, 1 ether, false, 0, 0, block.timestamp);
     }
 
+    /// @notice The deprecated 3-arg `redeemMemecoinLiquidity` overload rejects `unwrap == true` because its
+    ///         zero-slippage unwrap is sandwichable; the guard fires before any state change.
+    /// @dev The unwrap=false path needs no 3-arg duplicate: it executes through the same liquidity-impl
+    ///      entry as the 6-arg overload, whose unwrap=false coverage lives in the tests above.
+    function test_RevertWhen_RedeemMemecoinLiquidityThreeArgUnwraps() external {
+        uint256 verseId = 1;
+        _setUnlockedVerse(verseId);
+
+        vm.prank(ALICE);
+        vm.expectRevert(IMemeverseLauncher.SlippageProtectionRequired.selector);
+        launcher.redeemMemecoinLiquidity(verseId, 4 ether, true);
+    }
+
+    /// @notice Claiming unlocked preorder memecoin reverts `NoPOLAvailable` when nothing is claimable.
+    /// @dev The caller has no preorder position (and the verse never settled a preorder), so the settlement
+    ///      sibling's computed claimable amount is zero and the named guard fires instead of a silent
+    ///      zero-transfer claim.
+    function test_RevertWhen_ClaimUnlockedPreorderMemecoinHasNoClaimableAmount() external {
+        uint256 verseId = 1;
+        _setUnlockedVerse(verseId);
+
+        vm.prank(ALICE);
+        vm.expectRevert(IMemeverseLauncher.NoPOLAvailable.selector);
+        launcher.claimUnlockedPreorderMemecoin(verseId);
+    }
+
     /// @notice Verifies memecoin LP redemption burns POL and transfers pair LP shares.
     /// @dev Covers the restored router-based pair LP lookup in the happy path.
     function testRedeemMemecoinLiquidity_BurnsPOLAndTransfersMemecoinLp() external {
@@ -2385,25 +2432,6 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         assertEq(polUAssetLpAmount, 12 ether, "lp amount");
         assertEq(polUAssetLp.balanceOf(address(router)), 12 ether, "router lp");
         assertTrue(isRedeemed, "redeemed");
-    }
-
-    function testRedeemAuxiliaryLiquidity_DoesNotCallRouterRemoveLiquidity() external {
-        uint256 verseId = 24;
-        _setUnlockedVerse(verseId);
-        setGenesisFundForTest(launcherProxy, verseId, 120 ether);
-        setUserGenesisDataForTest(launcherProxy, verseId, ALICE, 24 ether, false, false);
-        setAuxiliaryLiquiditiesForTest(launcherProxy, verseId, 60 ether, 30 ether, 90 ether);
-        polUAssetLp.mint(address(launcher), 60 ether);
-        ptUAssetLp.mint(address(launcher), 30 ether);
-        ptPolLp.mint(address(launcher), 90 ether);
-
-        vm.prank(ALICE);
-        (uint256 polUAssetLpAmount,,) = launcher.redeemAuxiliaryLiquidity(verseId);
-
-        assertEq(polUAssetLpAmount, 12 ether, "lp amount");
-        assertEq(
-            uint256(router.lastRemoveLiquidityAmount(address(liquidProof), address(uAsset))), 0, "remove not called"
-        );
     }
 
     /// @notice Verifies auxiliary liquidity remains redeemable during the post-unlock protection window.

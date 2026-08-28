@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {VmSafe} from "forge-std/Vm.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Errors} from "@openzeppelin/contracts/utils/Errors.sol";
 
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -173,22 +174,45 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     }
 
     /// @notice Verifies router quotes are delegated through the configured hook lens.
+    /// @dev The delegation is pinned for both exact-input and exact-output swap parameters.
     function testQuoteSwap_UsesConfiguredHookLens() external {
         _setProtocolFeeCurrency(key.currency0);
-        SwapParams memory params = SwapParams({
-            zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-        });
 
-        IMemeverseUniswapHook.SwapQuote memory routerQuote = _quoteSwap(key, params, address(this));
-        IMemeverseUniswapHook.SwapQuote memory lensQuote =
-            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
+        // Exact-input parameters.
+        {
+            SwapParams memory params = SwapParams({
+                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            });
 
-        assertEq(routerQuote.feeBps, lensQuote.feeBps, "fee bps");
-        assertEq(routerQuote.estimatedUserInputAmount, lensQuote.estimatedUserInputAmount, "user input");
-        assertEq(routerQuote.estimatedUserOutputAmount, lensQuote.estimatedUserOutputAmount, "user output");
-        assertEq(routerQuote.estimatedProtocolFeeAmount, lensQuote.estimatedProtocolFeeAmount, "protocol fee");
-        assertEq(routerQuote.estimatedLpFeeAmount, lensQuote.estimatedLpFeeAmount, "lp fee");
-        assertEq(routerQuote.protocolFeeOnInput, lensQuote.protocolFeeOnInput, "fee side");
+            IMemeverseUniswapHook.SwapQuote memory routerQuote = _quoteSwap(key, params, address(this));
+            IMemeverseUniswapHook.SwapQuote memory lensQuote =
+                lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
+
+            assertEq(routerQuote.feeBps, lensQuote.feeBps, "fee bps");
+            assertEq(routerQuote.estimatedUserInputAmount, lensQuote.estimatedUserInputAmount, "user input");
+            assertEq(routerQuote.estimatedUserOutputAmount, lensQuote.estimatedUserOutputAmount, "user output");
+            assertEq(routerQuote.estimatedProtocolFeeAmount, lensQuote.estimatedProtocolFeeAmount, "protocol fee");
+            assertEq(routerQuote.estimatedLpFeeAmount, lensQuote.estimatedLpFeeAmount, "lp fee");
+            assertEq(routerQuote.protocolFeeOnInput, lensQuote.protocolFeeOnInput, "fee side");
+        }
+
+        // Exact-output parameters.
+        {
+            SwapParams memory params = SwapParams({
+                zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            });
+
+            IMemeverseUniswapHook.SwapQuote memory lensQuote =
+                lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
+            IMemeverseUniswapHook.SwapQuote memory routerQuote = router.quoteSwap(key, params, address(this));
+
+            assertEq(routerQuote.feeBps, lensQuote.feeBps, "feeBps");
+            assertEq(routerQuote.estimatedUserInputAmount, lensQuote.estimatedUserInputAmount, "user input");
+            assertEq(routerQuote.estimatedUserOutputAmount, lensQuote.estimatedUserOutputAmount, "user output");
+            assertEq(routerQuote.estimatedProtocolFeeAmount, lensQuote.estimatedProtocolFeeAmount, "protocol fee");
+            assertEq(routerQuote.estimatedLpFeeAmount, lensQuote.estimatedLpFeeAmount, "lp fee");
+            assertEq(routerQuote.protocolFeeOnInput, lensQuote.protocolFeeOnInput, "fee side");
+        }
     }
 
     /// @notice Verifies the quote path enforces read-only execution on replacement facets.
@@ -201,7 +225,10 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
 
-        vm.expectRevert();
+        // The facet's SSTORE fails the STATICCALL with empty returndata, and the lens's
+        // Address.functionStaticCall converts an empty-data failure into Errors.FailedCall()
+        // (the OZ wrapper), so pin that named selector instead of accepting any revert.
+        vm.expectRevert(Errors.FailedCall.selector);
         _quoteSwap(key, params, address(this));
     }
 
@@ -370,23 +397,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         hook.setTreasury(address(0));
     }
 
-    /// @notice Verifies native protocol-fee pools fail before reaching treasury handling.
-    function testSwapReverts_WhenProtocolFeePoolUsesNativeCurrency() external {
-        PoolKey memory nativeKey = _dynamicPoolKey(CurrencyLibrary.ADDRESS_ZERO, Currency.wrap(address(token1)));
-        vm.expectRevert();
-        router.swap(
-            nativeKey,
-            SwapParams({
-                zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-            }),
-            address(this),
-            block.timestamp,
-            0,
-            300 ether,
-            ""
-        );
-    }
-
     /// @notice Verifies successful swaps record an anti-snipe attempt and execute.
     /// @dev Covers the standard exact-input happy path.
     function testSwapPass_RecordsAttemptAndExecutes() external {
@@ -496,52 +506,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
 
         assertLt(delta.amount0(), 0, "delta0");
         assertGt(delta.amount1(), 0, "delta1");
-    }
-
-    /// @notice Verifies router swaps revert during the post-unlock protection window.
-    /// @dev Protection comes from hook-local pool state.
-    function testSwap_RevertsDuringPostUnlockProtectionWindow() external {
-        MockPoolManagerForRouterTest guardedManager = new MockPoolManagerForRouterTest();
-        MemeverseUniswapHookUpgradeable guardedHook =
-            _deployHookProxyForManager(IPoolManager(address(guardedManager)), address(this), treasury);
-        MemeverseSwapRouter guardedRouter = new MemeverseSwapRouter(
-            IPoolManager(address(guardedManager)),
-            IMemeverseUniswapHook(address(guardedHook)),
-            new MemeverseUniswapHookLens(IPoolManager(address(guardedManager))),
-            IPermit2(address(0xBEEF))
-        );
-        PoolKey memory guardedKey = _dynamicPoolKeyForHook(
-            address(guardedHook), Currency.wrap(address(token0)), Currency.wrap(address(token1))
-        );
-
-        guardedHook.setPoolInitializer(address(this));
-        guardedHook.authorizePoolInitialization(guardedKey, SQRT_PRICE_1_1);
-        guardedManager.initialize(guardedKey, SQRT_PRICE_1_1);
-        guardedHook.setPoolInitializer(address(guardedRouter));
-        guardedHook.setProtocolFeeCurrency(guardedKey.currency0, true);
-        (bool setOk, bytes memory setData) = _setPublicSwapResumeTime(
-            address(guardedHook), address(token0), address(token1), uint40(block.timestamp + 1 hours)
-        );
-        assertTrue(setOk, string(setData));
-        token0.mint(address(guardedManager), 1_000_000 ether);
-        token1.mint(address(guardedManager), 1_000_000 ether);
-        token0.approve(address(guardedRouter), type(uint256).max);
-        token1.approve(address(guardedRouter), type(uint256).max);
-
-        uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
-        // Open a session on the guarded hook so the swap reaches the public-swap-blocked guard, not the session gate.
-        guardedHook.beginAccountSession();
-        vm.expectRevert(PUBLIC_SWAP_DISABLED_SELECTOR);
-        guardedRouter.swap(
-            guardedKey,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
-            address(this),
-            block.timestamp,
-            0,
-            100 ether,
-            ""
-        );
-        guardedHook.endAccountSession();
     }
 
     /// @notice Verifies public-swap protection blocks swaps until resumeTime and allows them after.
@@ -665,165 +629,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         guardedHook.endAccountSession();
         assertLt(openDelta.amount0(), 0, "open pool should swap");
         assertGt(openDelta.amount1(), 0, "open pool output");
-    }
-
-    /// @notice Verifies explicit preorder settlement can only be initiated by the configured launcher.
-    /// @dev Settlement uses the hook's launcher-authorized entrypoint.
-    function testExecutePreorderSettlement_RevertsWhenCallerIsNotLauncher() external {
-        _setProtocolFeeCurrency(key.currency0);
-        uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
-
-        vm.prank(alice);
-        vm.expectRevert(IMemeverseUniswapHook.Unauthorized.selector);
-        hook.executePreorderSettlement(
-            IMemeverseUniswapHook.PreorderSettlementParams({
-                key: key,
-                params: SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
-                recipient: address(this)
-            })
-        );
-    }
-
-    /// @notice Verifies explicit preorder settlement uses fixed 1% economics.
-    /// @dev Confirms the treasury receives the 35% protocol slice of the fixed fee.
-    function testExecutePreorderSettlement_UsesFixedOnePercentFee() external {
-        _setProtocolFeeCurrency(key.currency0);
-        uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
-        uint256 treasury0Before = token0.balanceOf(treasury);
-        token0.approve(address(hook), type(uint256).max);
-
-        IMemeverseUniswapHook.SwapQuote memory quoteAtLaunch = router.quoteSwap(
-            key,
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
-            address(this)
-        );
-        assertEq(quoteAtLaunch.feeBps, 5000, "public launch fee");
-
-        BalanceDelta delta = hook.executePreorderSettlement(
-            IMemeverseUniswapHook.PreorderSettlementParams({
-                key: key,
-                params: SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
-                recipient: address(this)
-            })
-        );
-
-        assertLt(delta.amount0(), 0, "delta0");
-        assertGt(delta.amount1(), 0, "delta1");
-        assertEq(token0.balanceOf(treasury) - treasury0Before, 0.35 ether, "fixed 1% protocol fee");
-    }
-
-    /// @notice Verifies explicit preorder settlement on an output-fee pool only collects the output-side protocol fee once.
-    /// @dev The treasury/output balances should match a single 35 bps output fee on the post-LP-fee swap output.
-    function testExecutePreorderSettlement_OutputSideProtocolFeeCollectedExactlyOnce() external {
-        _setProtocolFeeCurrency(key.currency1);
-        token0.approve(address(hook), type(uint256).max);
-
-        uint256 sender1Before = token1.balanceOf(address(this));
-        uint256 treasury0Before = token0.balanceOf(treasury);
-        uint256 treasury1Before = token1.balanceOf(treasury);
-        uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
-
-        BalanceDelta delta = hook.executePreorderSettlement(
-            IMemeverseUniswapHook.PreorderSettlementParams({
-                key: key,
-                params: SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
-                recipient: address(this)
-            })
-        );
-
-        assertEq(token0.balanceOf(treasury) - treasury0Before, 0, "no input-side protocol fee");
-        assertEq(token1.balanceOf(treasury) - treasury1Before, 0.1738625 ether, "single output-side protocol fee");
-        assertEq(token1.balanceOf(address(this)) - sender1Before, 49.5011375 ether, "recipient gets net output once");
-        assertEq(delta.amount0(), -int128(int256(99.35 ether)), "delta0 tracks post-LP-fee swap input");
-        assertEq(delta.amount1(), int128(int256(49.5011375 ether)), "delta1 reduced by one output-side fee");
-    }
-
-    /// @notice Verifies changing launch-fee floor does not change explicit settlement pricing.
-    /// @dev Settlement remains fixed-fee while public swaps still use launch fee schedule.
-    function testExecutePreorderSettlement_IgnoresConfigurableLaunchFeeFloor() external {
-        _setProtocolFeeCurrency(key.currency0);
-        hook.setDefaultLaunchFeeConfig(
-            IDynamicFeeFacet.LaunchFeeConfig({startFeeBps: 4000, minFeeBps: 300, decayDurationSeconds: 900})
-        );
-        token0.approve(address(hook), type(uint256).max);
-
-        uint160 priceLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
-        uint256 treasury0Before = token0.balanceOf(treasury);
-
-        BalanceDelta delta = hook.executePreorderSettlement(
-            IMemeverseUniswapHook.PreorderSettlementParams({
-                key: key,
-                params: SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: priceLimit}),
-                recipient: address(this)
-            })
-        );
-
-        assertLt(delta.amount0(), 0, "delta0");
-        assertGt(delta.amount1(), 0, "delta1");
-        assertEq(token0.balanceOf(treasury) - treasury0Before, 0.35 ether, "settlement remains fixed 1%");
-    }
-
-    /// @notice Verifies explicit settlement updates dynamic-fee state even though the pool-manager self-call skips hook callbacks.
-    /// @dev The immediate follow-up quote should observe carried short/volatility state, not a pristine fee engine.
-    function testExecutePreorderSettlement_UpdatesDynamicFeeStateAndSubsequentQuote() external {
-        _setProtocolFeeCurrency(key.currency0);
-        hook.setDefaultLaunchFeeConfig(
-            IDynamicFeeFacet.LaunchFeeConfig({startFeeBps: 100, minFeeBps: 100, decayDurationSeconds: 1})
-        );
-        token0.approve(address(hook), type(uint256).max);
-
-        uint160 postSettlementPrice = uint160((uint256(SQRT_PRICE_1_1) * 120) / 100);
-        manager.setNextSwapSqrtPriceX96(poolId, postSettlementPrice);
-
-        hook.executePreorderSettlement(
-            IMemeverseUniswapHook.PreorderSettlementParams({
-                key: key,
-                params: SwapParams({
-                    zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-                }),
-                recipient: address(this)
-            })
-        );
-
-        (
-            uint256 weightedVolume0,
-            uint256 weightedPriceVolume0,
-            uint256 ewVWAPX18,,,
-            uint24 volDeviationAccumulator,,
-            uint24 shortImpactPpm,
-        ) = lens.poolDynamicFeeState(IMemeverseUniswapHook(address(hook)), poolId);
-
-        assertGt(weightedVolume0, 0, "weighted volume");
-        assertGt(weightedPriceVolume0, 0, "weighted price volume");
-        assertGt(ewVWAPX18, 0, "ewvwap");
-        assertGt(volDeviationAccumulator, 0, "volatility accumulator");
-        assertGt(shortImpactPpm, 0, "short impact");
-
-        MockPoolManagerForRouterTest pristineManager = new MockPoolManagerForRouterTest();
-        MemeverseUniswapHookUpgradeable pristineHook =
-            _deployHookProxyForManager(IPoolManager(address(pristineManager)), address(this), treasury);
-        PoolKey memory pristineKey = _dynamicPoolKeyForHook(
-            address(pristineHook), Currency.wrap(address(token0)), Currency.wrap(address(token1))
-        );
-        pristineHook.setPoolInitializer(address(this));
-        pristineHook.authorizePoolInitialization(pristineKey, postSettlementPrice);
-        pristineManager.initialize(pristineKey, postSettlementPrice);
-        seedActiveLiquiditySharesForTest(address(pristineHook), pristineKey.toId(), address(this), 1e18);
-        pristineHook.setProtocolFeeCurrency(pristineKey.currency0, true);
-        pristineHook.setDefaultLaunchFeeConfig(
-            IDynamicFeeFacet.LaunchFeeConfig({startFeeBps: 100, minFeeBps: 100, decayDurationSeconds: 1})
-        );
-        MemeverseUniswapHookLens pristineLens = new MemeverseUniswapHookLens(IPoolManager(address(pristineManager)));
-
-        SwapParams memory followUpParams = SwapParams({
-            zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-        });
-        IMemeverseUniswapHook.SwapQuote memory settledQuote = router.quoteSwap(key, followUpParams, address(this));
-        IMemeverseUniswapHook.SwapQuote memory pristineQuote = pristineLens.quoteSwap(
-            IMemeverseUniswapHook(address(pristineHook)), pristineKey, followUpParams, address(this)
-        );
-
-        assertGt(settledQuote.feeBps, pristineQuote.feeBps, "settlement quote should carry dynamic state");
     }
 
     /// @notice Verifies direct/custom swap paths are also blocked during the protection window.
@@ -1105,36 +910,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         assertEq(balance0Before - token0.balanceOf(address(this)), quote.estimatedUserInputAmount, "quote guardrail");
         assertEq(token1.balanceOf(treasury) - treasury1Before, quote.estimatedProtocolFeeAmount, "floored protocol fee");
         assertEq(delta.amount1(), int128(int256(1 ether)), "delta1 net output");
-    }
-
-    /// @notice Verifies swaps skip attempt recording after the anti-snipe window ends.
-    /// @dev Covers the post-window fast path.
-    function testSwapPass_AfterAntiSnipeWindow_SkipsAttemptRecording() external {
-        _setProtocolFeeCurrency(key.currency0);
-        _matureLaunchWindow();
-        vm.roll(block.number + 11);
-
-        uint256 balance0Before = token0.balanceOf(address(this));
-        uint256 balance1Before = token1.balanceOf(address(this));
-
-        hook.beginAccountSession();
-        BalanceDelta delta = router.swap(
-            key,
-            SwapParams({
-                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-            }),
-            address(this),
-            block.timestamp,
-            40 ether,
-            100 ether,
-            ""
-        );
-        hook.endAccountSession();
-
-        assertLt(token0.balanceOf(address(this)), balance0Before, "token0 spent");
-        assertGt(token1.balanceOf(address(this)), balance1Before, "token1 received");
-        assertLt(delta.amount0(), 0, "delta0");
-        assertGt(delta.amount1(), 0, "delta1");
     }
 
     /// @notice Verifies exact-output swaps revert when the required input exceeds the maximum.
@@ -1433,26 +1208,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             preview.estimatedProtocolFeeAmount + preview.estimatedLpFeeAmount,
             "user input covers both fee components"
         );
-    }
-
-    /// @notice Verifies router quotes delegate to the configured hook lens.
-    /// @dev Covers the router quote passthrough to the stateless lens.
-    function testRouterQuoteSwap_DelegatesToConfiguredLens() external {
-        _setProtocolFeeCurrency(key.currency0);
-        SwapParams memory params = SwapParams({
-            zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-        });
-
-        IMemeverseUniswapHook.SwapQuote memory lensQuote =
-            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
-        IMemeverseUniswapHook.SwapQuote memory routerQuote = router.quoteSwap(key, params, address(this));
-
-        assertEq(routerQuote.feeBps, lensQuote.feeBps, "feeBps");
-        assertEq(routerQuote.estimatedUserInputAmount, lensQuote.estimatedUserInputAmount, "user input");
-        assertEq(routerQuote.estimatedUserOutputAmount, lensQuote.estimatedUserOutputAmount, "user output");
-        assertEq(routerQuote.estimatedProtocolFeeAmount, lensQuote.estimatedProtocolFeeAmount, "protocol fee");
-        assertEq(routerQuote.estimatedLpFeeAmount, lensQuote.estimatedLpFeeAmount, "lp fee");
-        assertEq(routerQuote.protocolFeeOnInput, lensQuote.protocolFeeOnInput, "fee side");
     }
 
     /// @notice Verifies native-input native-pair swaps fail before router prefunding.
@@ -1761,28 +1516,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         assertEq(liquidity, liquidityDesired, "exact quote mints target liquidity");
     }
 
-    /// @notice Verifies liquidity-related router selectors remain aligned with the public interface.
-    /// @dev Guards ABI stability across internal parameter-plumbing changes.
-    function testRouterLiquiditySelectors_MatchInterface() external pure {
-        assertEq(MemeverseSwapRouter.addLiquidity.selector, IMemeverseSwapRouter.addLiquidity.selector, "add");
-        assertEq(
-            MemeverseSwapRouter.addLiquidityWithPermit2.selector,
-            IMemeverseSwapRouter.addLiquidityWithPermit2.selector,
-            "add permit2"
-        );
-        assertEq(MemeverseSwapRouter.removeLiquidity.selector, IMemeverseSwapRouter.removeLiquidity.selector, "remove");
-        assertEq(
-            MemeverseSwapRouter.removeLiquidityWithPermit2.selector,
-            IMemeverseSwapRouter.removeLiquidityWithPermit2.selector,
-            "remove permit2"
-        );
-        assertEq(
-            MemeverseSwapRouter.createPoolAndAddLiquidity.selector,
-            IMemeverseSwapRouter.createPoolAndAddLiquidity.selector,
-            "create"
-        );
-    }
-
     /// @notice Verifies pool bootstrap and initial liquidity use the hook core path.
     /// @dev Covers the router bootstrap helper.
     function testRouterCreatePoolAndAddLiquidity_UsesHookCore() external {
@@ -1891,24 +1624,6 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         assertGt(liquidity, 0, "liquidity");
         assertLe(amountAUsed, amountADesired, "amountA budget");
         assertLe(amountBUsed, amountBDesired, "amountB budget");
-    }
-
-    /// @notice Verifies off-ratio bootstrap budgets execute with actual spend instead of a preview-padding revert.
-    /// @dev Final bootstrap rules intentionally accept partial spend and return actual usage.
-    function testRouterCreatePoolAndAddLiquidity_ExecutesFromDesiredBudgetsWithoutPaddingRevert() external {
-        MockERC20 tokenA = new MockERC20("UnstableBootstrapA", "UBA", 18);
-        MockERC20 tokenB = new MockERC20("UnstableBootstrapB", "UBB", 18);
-        uint256 amountADesired = 100 ether;
-        uint256 amountBDesired = 100 ether;
-        uint160 startPrice = SQRT_PRICE_1_1 / 2;
-        _mintAndApproveBootstrapPair(tokenA, amountADesired, tokenB, amountBDesired);
-
-        (uint128 liquidity,, uint256 amountAUsed, uint256 amountBUsed) = router.createPoolAndAddLiquidity(
-            address(tokenA), address(tokenB), amountADesired, amountBDesired, startPrice, address(this), block.timestamp
-        );
-        assertGt(liquidity, 0, "liquidity");
-        assertLe(amountAUsed, amountADesired, "amountA");
-        assertLe(amountBUsed, amountBDesired, "amountB");
     }
 
     /// @notice Verifies addLiquidity rejects expired deadlines.

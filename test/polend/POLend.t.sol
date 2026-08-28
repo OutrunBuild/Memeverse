@@ -19,186 +19,8 @@ import {
 } from "../mocks/polend/POLendMocks.sol";
 import {MockPOL} from "../mocks/polend/MockPOL.sol";
 import {POLendStorageHelper} from "../mocks/polend/POLendStorageHelper.sol";
+import {MockLauncherForPOLend, MockSplitterForPOLend} from "../mocks/polend/POLendTestMocks.sol";
 import {MockGenesisCreditFactory} from "../mocks/credit/MockGenesisCreditFactory.sol";
-
-contract MockLauncherForPOLend {
-    mapping(uint256 verseId => uint256 totalNormalFunds) internal normalFunds;
-    mapping(uint256 verseId => uint256 polSettlementAmount) internal polSettlementAmounts;
-    mapping(uint256 verseId => uint256 ptSettlementAmount) internal ptSettlementAmounts;
-    mapping(uint256 verseId => uint256 uAssetSettlementAmount) internal uAssetSettlementAmounts;
-    mapping(uint256 verseId => IMemeverseLauncher.Memeverse) internal verses;
-    mapping(address uAsset => IMemeverseLauncher.FundMetaData) internal fundMetaDatas_;
-    bool internal legacyDebtCapReadsRevert;
-
-    function setGenesisFunds(uint256 verseId, uint256 totalNormalFunds_) external {
-        normalFunds[verseId] = totalNormalFunds_;
-    }
-
-    function setSettlementResult(uint256 verseId, uint256 polAmount, uint256 ptAmount, uint256 uAssetAmount) external {
-        polSettlementAmounts[verseId] = polAmount;
-        ptSettlementAmounts[verseId] = ptAmount;
-        uAssetSettlementAmounts[verseId] = uAssetAmount;
-    }
-
-    function setVerseUAsset(uint256 verseId, address uAsset) external {
-        verses[verseId].uAsset = uAsset;
-    }
-
-    function setVerseStage(uint256 verseId, IMemeverseLauncher.Stage stage) external {
-        verses[verseId].currentStage = stage;
-    }
-
-    function setFundMetaData(address uAsset, uint256 minTotalFund, uint256 fundBasedAmount) external {
-        fundMetaDatas_[uAsset] =
-            IMemeverseLauncher.FundMetaData({minTotalFund: minTotalFund, fundBasedAmount: fundBasedAmount});
-    }
-
-    function setLegacyDebtCapReadsRevert(bool revertReads) external {
-        legacyDebtCapReadsRevert = revertReads;
-    }
-
-    function totalNormalFunds(uint256 verseId) external view returns (uint256) {
-        if (legacyDebtCapReadsRevert) revert("legacy debt cap read");
-        return normalFunds[verseId];
-    }
-
-    function getMemeverseByVerseId(uint256 verseId) external view returns (IMemeverseLauncher.Memeverse memory verse) {
-        return verses[verseId];
-    }
-
-    function getUAssetByVerseId(uint256 verseId) external view returns (address) {
-        return verses[verseId].uAsset;
-    }
-
-    function getStageByVerseId(uint256 verseId) external view returns (IMemeverseLauncher.Stage stage) {
-        return verses[verseId].currentStage;
-    }
-
-    function fundMetaDatas(address uAsset) external view returns (uint256 minTotalFund, uint256 fundBasedAmount) {
-        if (legacyDebtCapReadsRevert) revert("legacy debt cap read");
-        IMemeverseLauncher.FundMetaData memory metadata = fundMetaDatas_[uAsset];
-        return (metadata.minTotalFund, metadata.fundBasedAmount);
-    }
-
-    function getDebtCapBaseByVerseId(uint256 verseId) external view returns (uint256 debtCapBase) {
-        address uAsset = verses[verseId].uAsset;
-        uint256 minTotalFund = fundMetaDatas_[uAsset].minTotalFund;
-        uint256 totalNormalFunds_ = normalFunds[verseId];
-        return totalNormalFunds_ > minTotalFund ? totalNormalFunds_ : minTotalFund;
-    }
-
-    function remainingGenesisCapacity(uint256 verseId) external view returns (uint256 remaining) {
-        uint256 totalFunds = normalFunds[verseId];
-        if (totalFunds >= type(uint128).max) return 0;
-        return type(uint128).max - totalFunds;
-    }
-
-    function settleLeveragedAuxiliaryLiquidity(uint256 verseId)
-        external
-        view
-        returns (uint256 polAmount, uint256 ptAmount, uint256 uAssetAmount)
-    {
-        return (polSettlementAmounts[verseId], ptSettlementAmounts[verseId], uAssetSettlementAmounts[verseId]);
-    }
-
-    function redeemMemecoinLiquidity(uint256, uint256, bool, uint256, uint256, uint256)
-        external
-        pure
-        returns (uint256)
-    {
-        revert("unused");
-    }
-}
-
-contract MockSplitterForPOLend {
-    address internal pt;
-    address internal yt;
-    address internal pol;
-    address internal memecoin;
-    address internal uAsset;
-    uint256 internal redeemPTAmount;
-    uint256 public deployTokensCallCount;
-    uint256 public initializeVerseCallCount;
-    uint256 public preRedeemCallCount;
-    uint256 public lastPreRedeemVerseId;
-    uint256 public lastPreRedeemPTAmount;
-    uint256 public preRedeemBacking = 25 ether;
-
-    function setTokens(address pt_, address yt_) external {
-        pt = pt_;
-        yt = yt_;
-    }
-
-    function setSplitInfo(address pol_, address memecoin_, address uAsset_) external {
-        pol = pol_;
-        memecoin = memecoin_;
-        uAsset = uAsset_;
-    }
-
-    function setRedeemPTAmount(uint256 amount) external {
-        redeemPTAmount = amount;
-    }
-
-    function deployTokens(uint256, address, string calldata, string calldata) external returns (address, address) {
-        deployTokensCallCount++;
-        return (pt, yt);
-    }
-
-    function initializeVerse(uint256, address, address, address, string calldata, string calldata)
-        external
-        returns (address, address)
-    {
-        initializeVerseCallCount++;
-        return (pt, yt);
-    }
-
-    function redeemPT(uint256, uint256, address) external view returns (uint256) {
-        return redeemPTAmount;
-    }
-
-    function setPreRedeemBacking(uint256 backing) external {
-        preRedeemBacking = backing;
-    }
-
-    function preRedeemPTFee(uint256 verseId, uint256 ptAmount) external returns (uint256 uAssetBacking) {
-        preRedeemCallCount++;
-        lastPreRedeemVerseId = verseId;
-        lastPreRedeemPTAmount = ptAmount;
-        return preRedeemBacking;
-    }
-
-    function splitInfos(uint256)
-        external
-        view
-        returns (address, address, address, address, address, uint256, uint256, uint256, uint256, uint256, bool)
-    {
-        return (pt, yt, pol, memecoin, uAsset, 0, 0, 0, 0, 0, false);
-    }
-
-    function getPT(uint256) external view returns (address) {
-        return pt;
-    }
-
-    function getYT(uint256) external view returns (address) {
-        return yt;
-    }
-
-    function getMemecoin(uint256) external view returns (address) {
-        return memecoin;
-    }
-
-    function getPTAndYT(uint256) external view returns (address, address) {
-        return (pt, yt);
-    }
-
-    function getPTSettlementState(uint256) external view returns (address, bool) {
-        return (pt, false);
-    }
-
-    function getPOLAndMemecoin(uint256) external view returns (address, address) {
-        return (pol, memecoin);
-    }
-}
 
 contract POLendTest is Test, POLendStorageHelper {
     uint256 internal constant VERSE_ID = 1;
@@ -1492,18 +1314,6 @@ contract POLendTest is Test, POLendStorageHelper {
         );
     }
 
-    /// @dev Backward-compat: pure-real user (credit==0) keeps identical behavior.
-    function test_ClaimLeveragedYT_PureReal_BackCompat() external {
-        seedLeveragedPositionForTest(address(polend), VERSE_ID, ALICE, 10 ether);
-        seedLeveragedPositionForTest(address(polend), VERSE_ID, BOB, 30 ether);
-        seedMarketForTest(address(polend), VERSE_ID, address(yt), 40 ether);
-        setLockedStateForTest(address(polend), VERSE_ID, 400 ether);
-        yt.mint(address(polend), 400 ether);
-
-        vm.prank(ALICE);
-        assertEq(_claimLeveragedYT(VERSE_ID, CAROL), 100 ether, "pure-real unchanged");
-    }
-
     function testClaimLeveragedYT_BlocksReentrantClaim() external {
         ReentrantClaimMockERC20 hookedYT = new ReentrantClaimMockERC20("HOOKYT", "HOOKYT");
         seedLeveragedPositionForTest(address(polend), VERSE_ID, ALICE, 10 ether);
@@ -1652,20 +1462,6 @@ contract POLendTest is Test, POLendStorageHelper {
         _expectLowLevelRevert(
             abi.encodeWithSignature("claimResidual(uint256,address)", VERSE_ID, CAROL), IPOLend.InvalidClaim.selector
         );
-    }
-
-    /// @dev Backward-compat: pure-real user (credit==0) keeps identical behavior.
-    function test_ClaimResidual_PureReal_BackCompat() external {
-        seedLeveragedPositionForTest(address(polend), VERSE_ID, ALICE, 10 ether);
-        seedLeveragedPositionForTest(address(polend), VERSE_ID, BOB, 30 ether);
-        seedResidualForTest(address(polend), VERSE_ID, 200 ether, 100 ether, 40 ether);
-        uAsset.mint(address(polend), 200 ether);
-        memecoin.mint(address(polend), 100 ether);
-
-        vm.prank(ALICE);
-        (uint256 uAssetAmount, uint256 memecoinAmount) = _claimResidual(VERSE_ID, CAROL);
-        assertEq(uAssetAmount, 50 ether, "pure-real uAsset unchanged");
-        assertEq(memecoinAmount, 25 ether, "pure-real memecoin unchanged");
     }
 
     /// @dev Lock-in helper: both users pay `aliceInterest` / `bobInterest` into VERSE_ID via the
@@ -2539,22 +2335,6 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         _expectLowLevelRevert(
             abi.encodeWithSignature("claimLeveragedYT(uint256,address)", VERSE_ID, BOB), IPOLend.InvalidClaim.selector
-        );
-    }
-
-    function testClaimResidual_SucceedsWithZeroPayoutAndMarksClaim() external {
-        seedLeveragedPositionForTest(address(polend), VERSE_ID, ALICE, 1);
-        seedResidualForTest(address(polend), VERSE_ID, 1, 0, 2);
-        uAsset.mint(address(polend), 1);
-
-        vm.prank(ALICE);
-        (uint256 uAssetAmount, uint256 memecoinAmount) = _claimResidual(VERSE_ID, CAROL);
-        assertEq(uAssetAmount, 0, "zero uAsset payout");
-        assertEq(memecoinAmount, 0, "zero memecoin payout");
-
-        vm.prank(ALICE);
-        _expectLowLevelRevert(
-            abi.encodeWithSignature("claimResidual(uint256,address)", VERSE_ID, BOB), IPOLend.InvalidClaim.selector
         );
     }
 

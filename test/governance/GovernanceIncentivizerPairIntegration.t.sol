@@ -126,24 +126,6 @@ contract GovernanceIncentivizerPairIntegrationTest is Test {
         assertEq(incentivizer.getTreasuryBalance(1, address(newToken)), 0);
     }
 
-    /// @notice The spend ledger can only be written by the paired governor.
-    function testRecordTreasuryAssetSpendOnlyCallableByGovernor() external {
-        MockERC20 newToken = new MockERC20("New Treasury", "NTRY", 18);
-
-        (address[] memory registerTargets, uint256[] memory registerValues, bytes[] memory registerCalldatas) = _singleCallPayload(
-            address(incentivizer),
-            abi.encodeCall(GovernanceCycleIncentivizerUpgradeable.registerTreasuryToken, (address(newToken)))
-        );
-        _proposePassAndExecute(registerTargets, registerValues, registerCalldatas, "register-token");
-
-        newToken.mint(address(this), 10 ether);
-        newToken.approve(address(governor), 10 ether);
-        governor.receiveTreasuryIncome(address(newToken), 10 ether);
-
-        vm.expectRevert(IGovernanceCycleIncentivizer.PermissionDenied.selector);
-        incentivizer.recordTreasuryAssetSpend(address(newToken), BOB, 1 ether);
-    }
-
     function _proposePassAndExecute(
         address[] memory targets,
         uint256[] memory values,

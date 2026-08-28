@@ -644,8 +644,4 @@ contract YTFlashSwapRouterHarness is MemeverseYTFlashSwapRouter {
     {
         return _deltasForPTAndPOL(d, ptIsCurrency0);
     }
-
-    function exposed_hookData(address referrer) external pure returns (bytes memory) {
-        return _hookData(referrer);
-    }
 }

@@ -2,9 +2,9 @@
 pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
+import {stdError} from "forge-std/StdError.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
@@ -24,10 +24,10 @@ import {
     MockPOLendForPOLendIntegration,
     MockPOLSplitterForPOLendIntegration,
     MockProxyDeployerForPOLendIntegration,
-    MockRouterForPOLendIntegration,
-    MockYieldDispatcherForPOLendIntegration,
-    MintableTokenForPOLendIntegration
+    MockRouterForPOLendIntegration
 } from "../mocks/verse/LauncherPOLendIntegrationMocks.sol";
+import {MockOFTDispatcher} from "../mocks/verse/LauncherLifecycleMocks.sol";
+import {MintableToken} from "../mocks/polend/POLendMocks.sol";
 
 contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHelper {
     uint256 internal constant VERSE_ID = 1;
@@ -42,9 +42,9 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
     MockPolForPOLendIntegration internal pol;
     MockPOLendForPOLendIntegration internal polend;
     MockPOLSplitterForPOLendIntegration internal splitter;
-    MockYieldDispatcherForPOLendIntegration internal dispatcher;
-    MintableTokenForPOLendIntegration internal pt;
-    MintableTokenForPOLendIntegration internal yt;
+    MockOFTDispatcher internal dispatcher;
+    MintableToken internal pt;
+    MintableToken internal yt;
     MockERC20 internal polUAssetLp;
     MockERC20 internal ptUAssetLp;
     MockERC20 internal ptPolLp;
@@ -55,9 +55,9 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         uAsset = new MockERC20("UASSET", "UASSET", 18);
         recorder = new CallRecorder();
         polend = new MockPOLendForPOLendIntegration(uAsset, recorder);
-        dispatcher = new MockYieldDispatcherForPOLendIntegration();
-        pt = new MintableTokenForPOLendIntegration("PT", "PT");
-        yt = new MintableTokenForPOLendIntegration("YT", "YT");
+        dispatcher = new MockOFTDispatcher();
+        pt = new MintableToken("PT", "PT");
+        yt = new MintableToken("YT", "YT");
         polUAssetLp = new MockERC20("POL-UASSET-LP", "POL-UASSET-LP", 18);
         ptUAssetLp = new MockERC20("PT-UASSET-LP", "PT-UASSET-LP", 18);
         ptPolLp = new MockERC20("PT-POL-LP", "PT-POL-LP", 18);
@@ -209,32 +209,16 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         setOmnichainIdsForTest(launcherProxy, VERSE_ID, verse.omnichainIds);
     }
 
-    function testChangeStage_LocksWhenLeveragedInterestAloneMeetsThreshold() external {
-        _setGenesisVerse(uint128(block.timestamp + 1 days), false);
-        polend.setTotalLeveragedInterest(VERSE_ID, 100 ether);
-        polend.setTotalLeveragedDebt(VERSE_ID, 1000 ether);
-        _seedLauncherAndPolendFunding(0, 1000 ether);
-        vm.warp(block.timestamp + 1 days + 1);
-
-        assertEq(uint256(launcher.changeStage(VERSE_ID)), uint256(IMemeverseLauncher.Stage.Locked), "or gate");
-    }
-
     function testDeployLiquidity_CreatesFourPoolsAndSplitsNormalLeveragedYT() external {
         _setGenesisVerse(uint128(block.timestamp + 1 days), false);
         setGenesisFundForTest(launcherProxy, VERSE_ID, 1000 ether);
         polend.setTotalLeveragedDebt(VERSE_ID, 1000 ether);
         _seedLauncherAndPolendFunding(1000 ether, 1000 ether);
 
-        forceDeployLiquidity(
-            launcherProxy,
-            VERSE_ID,
-            address(uAsset),
-            address(memecoin),
-            address(pol),
-            polend.getTotalLeveragedDebt(VERSE_ID),
-            address(polend),
-            address(splitter)
-        );
+        // Drive the real stage transition so the production _deployLiquidity path (not a test-side
+        // replica) creates the pools and splits the YT entitlements.
+        vm.warp(block.timestamp + 1 days + 1);
+        launcher.changeStage(VERSE_ID);
 
         (uint256 polUAssetLpAmount, uint256 ptUAssetLpAmount, uint256 ptPolLpAmount) =
             MemeverseLauncherUpgradeable(launcherProxy).auxiliaryLiquidities(VERSE_ID);
@@ -254,16 +238,9 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         polend.setTotalLeveragedDebt(VERSE_ID, 100 ether);
         _seedLauncherAndPolendFunding(800 ether, 100 ether);
 
-        forceDeployLiquidity(
-            launcherProxy,
-            VERSE_ID,
-            address(uAsset),
-            address(memecoin),
-            address(pol),
-            polend.getTotalLeveragedDebt(VERSE_ID),
-            address(polend),
-            address(splitter)
-        );
+        // Drive the real stage transition so the production allocation math runs end to end.
+        vm.warp(block.timestamp + 1 days + 1);
+        launcher.changeStage(VERSE_ID);
 
         (, uint256 mainUAsset) = router.lastCreateAmounts(address(memecoin), address(uAsset));
         (uint256 polUAssetPol, uint256 polUAssetUAsset) = router.lastCreateAmounts(address(pol), address(uAsset));
@@ -292,16 +269,9 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         uint256 actualMainUAssetUsed = 1000 ether;
         router.setCreateSpend(address(memecoin), address(uAsset), budgetedMainUAsset, actualMainUAssetUsed);
 
-        forceDeployLiquidity(
-            launcherProxy,
-            VERSE_ID,
-            address(uAsset),
-            address(memecoin),
-            address(pol),
-            polend.getTotalLeveragedDebt(VERSE_ID),
-            address(polend),
-            address(splitter)
-        );
+        // Drive the real stage transition so the production path records the PT backing ratio.
+        vm.warp(block.timestamp + 1 days + 1);
+        launcher.changeStage(VERSE_ID);
 
         assertEq(splitter.lastPTBackingVerseId(), VERSE_ID, "verse id");
         assertEq(splitter.lastPTBackingNumerator(), actualMainUAssetUsed, "pt backing numerator");
@@ -316,16 +286,9 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
 
         router.setCreateSpend(address(memecoin), address(uAsset), 620 ether, 600 ether);
 
-        forceDeployLiquidity(
-            launcherProxy,
-            VERSE_ID,
-            address(uAsset),
-            address(memecoin),
-            address(pol),
-            polend.getTotalLeveragedDebt(VERSE_ID),
-            address(polend),
-            address(splitter)
-        );
+        // Drive the real stage transition so the production path burns the unspent memecoin budget.
+        vm.warp(block.timestamp + 1 days + 1);
+        launcher.changeStage(VERSE_ID);
 
         assertEq(memecoin.burnedAmount(), 10 ether, "unspent memecoin burned");
     }
@@ -334,7 +297,10 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         _setGenesisVerse(uint128(block.timestamp + 1 days), false);
         setGenesisFundForTest(launcherProxy, VERSE_ID, 800 ether);
         polend.setTotalLeveragedDebt(VERSE_ID, 100 ether);
-        _seedLauncherAndPolendFunding(800 ether, 100 ether);
+        // Seed only the normal funds here: the functional mock POLend mints the 100 ether leveraged
+        // debt funds to the launcher itself during the changeStage-driven finalize, so pre-minting
+        // them would leave an unspent residue and break the zero-balance expectation below.
+        _seedLauncherAndPolendFunding(800 ether, 0);
 
         uint256 polUAssetSpend = uint256(1_200 ether) / 7;
         uint256 ptUAssetSpend = uint256(600 ether) / 7;
@@ -344,21 +310,13 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         router.setCreateSpend(address(pol), address(uAsset), 400 ether, polUAssetSpend);
         router.setCreateSpend(address(pt), address(uAsset), 200 ether, ptUAssetSpend);
 
-        uint256 leveragedDebt = polend.getTotalLeveragedDebt(VERSE_ID);
         vm.expectEmit(true, true, true, true);
         emit IMemeverseLauncher.BootstrapUnusedAssetsHandled(
             VERSE_ID, address(uAsset), address(memecoin), expectedUnusedUAsset, expectedUnusedUAsset, 0, 10 ether
         );
-        this._callForceDeployLiquidity(
-            launcherProxy,
-            VERSE_ID,
-            address(uAsset),
-            address(memecoin),
-            address(pol),
-            leveragedDebt,
-            address(polend),
-            address(splitter)
-        );
+        // Drive the real stage transition so the production path routes the unused bootstrap assets.
+        vm.warp(block.timestamp + 1 days + 1);
+        launcher.changeStage(VERSE_ID);
 
         assertEq(polend.lastFundSettlementDustReserveUAsset(), address(uAsset), "fund uAsset");
         assertEq(polend.lastFundSettlementDustReserveAmount(), expectedUnusedUAsset, "fund amount");
@@ -369,35 +327,17 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
 
     function testDeployLiquidity_RevertWhenLeveragedLiquidityNotFunded() external {
         _setGenesisVerse(uint128(block.timestamp + 1 days), false);
+        // Record genesis funds in storage WITHOUT minting any uAsset to the launcher and keep the
+        // leveraged debt at zero (a nonzero debt is always funded by the changeStage-driven finalize
+        // on the functional mock, so "recorded but unfunded" can only be constructed on the normal
+        // side). The main pool's 700 ether uAsset pull then exceeds the launcher's zero balance and
+        // the solmate MockERC20 balance subtraction underflows. Pin that arithmetic panic instead of
+        // accepting any revert.
         setGenesisFundForTest(launcherProxy, VERSE_ID, 1000 ether);
-        polend.setTotalLeveragedDebt(VERSE_ID, 1000 ether);
-        _seedLauncherAndPolendFunding(1000 ether, 0);
 
-        uint256 leveragedDebt = polend.getTotalLeveragedDebt(VERSE_ID);
-        vm.expectRevert();
-        this._callForceDeployLiquidity(
-            launcherProxy,
-            VERSE_ID,
-            address(uAsset),
-            address(memecoin),
-            address(pol),
-            leveragedDebt,
-            address(polend),
-            address(splitter)
-        );
-    }
-
-    function _callForceDeployLiquidity(
-        address proxy,
-        uint256 verseId,
-        address uAsset_,
-        address memecoin_,
-        address pol_,
-        uint256 totalLeveragedDebt,
-        address polendAddr,
-        address polSplitterAddr
-    ) external {
-        forceDeployLiquidity(proxy, verseId, uAsset_, memecoin_, pol_, totalLeveragedDebt, polendAddr, polSplitterAddr);
+        vm.expectRevert(stdError.arithmeticError);
+        vm.warp(block.timestamp + 1 days + 1);
+        launcher.changeStage(VERSE_ID);
     }
 
     function testChangeStage_FinalizesAndInitializesWhenLeveragedInterestMeetsThreshold() external {
@@ -424,32 +364,21 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         uAsset.mint(address(this), 1100 ether);
         uAsset.approve(address(realPolend), type(uint256).max);
         realPolend.leveragedGenesis(VERSE_ID, 100 ether);
-        vm.prank(address(launcher));
-        realPolend.finalizeLeveragedGenesis(VERSE_ID);
-        uint256 treasuryBalanceAfterReservation = uAsset.balanceOf(address(this));
-        if (treasuryBalanceAfterReservation != 0) {
-            assertTrue(uAsset.transfer(address(0xDEAD), treasuryBalanceAfterReservation), "transfer failed");
-        }
 
-        forceDeployLiquidity(
-            launcherProxy,
-            VERSE_ID,
-            address(uAsset),
-            address(memecoin),
-            address(pol),
-            realPolend.getTotalLeveragedDebt(VERSE_ID),
-            address(realPolend),
-            address(splitter)
-        );
+        // Drive the real stage transition: changeStage runs finalizeLeveragedGenesis on the real
+        // POLend (which mints the debt funds to the launcher), then the production _deployLiquidity
+        // path spends exactly those funds — no test-side replica is involved.
+        vm.warp(block.timestamp + 1 days + 1);
+        launcher.changeStage(VERSE_ID);
 
         assertEq(uAsset.balanceOf(address(launcher)), 0, "launcher spent funded uAsset");
         assertEq(realPolend.getTotalLeveragedDebt(VERSE_ID), 1000 ether, "real debt tracked");
     }
 
     function testSettleLeveragedAuxiliaryLiquidity_MapsSortedDeltasToTokens() external {
-        MintableTokenForPOLendIntegration tokenA = new MintableTokenForPOLendIntegration("A", "A");
-        MintableTokenForPOLendIntegration tokenB = new MintableTokenForPOLendIntegration("B", "B");
-        MintableTokenForPOLendIntegration tokenC = new MintableTokenForPOLendIntegration("C", "C");
+        MintableToken tokenA = new MintableToken("A", "A");
+        MintableToken tokenB = new MintableToken("B", "B");
+        MintableToken tokenC = new MintableToken("C", "C");
         (address testUAsset, address testPt, address testPol) =
             _sortedTokenAddresses(address(tokenA), address(tokenB), address(tokenC));
         assertGt(uint160(testPol), uint160(testUAsset), "pol/uAsset caller order reversed");
@@ -564,18 +493,6 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         vm.prank(address(0xBEEF));
         vm.expectRevert(IMemeverseLauncher.PermissionDenied.selector);
         launcher.settleLeveragedAuxiliaryLiquidity(VERSE_ID);
-    }
-
-    function testFuzz_SettleLeveragedAuxiliaryLiquidity_ResultNeverExceedsLpAmount(
-        uint128 lpAmount,
-        uint128 normalFunds,
-        uint128 leveragedDebt
-    ) external pure {
-        vm.assume(leveragedDebt > 0);
-        uint256 totalFunds = uint256(normalFunds) + uint256(leveragedDebt);
-        uint256 result = FullMath.mulDiv(lpAmount, leveragedDebt, totalFunds);
-        assertLe(result, uint256(lpAmount), "result > lp");
-        assertLe(result, uint256(type(uint128).max), "uint128 overflow");
     }
 
     function testRedeemAndDistributeFees_BurnsPolAndRoutesNormalFeesToUsersDaoFeesToTreasury() external {

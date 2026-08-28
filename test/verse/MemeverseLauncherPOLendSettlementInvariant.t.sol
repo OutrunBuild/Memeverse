@@ -14,9 +14,9 @@ import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.
 import {
     MockMemecoinForPOLendIntegration,
     MockPolForPOLendIntegration,
-    MockProxyDeployerForPOLendIntegration,
-    MockYieldDispatcherForPOLendIntegration
+    MockProxyDeployerForPOLendIntegration
 } from "../mocks/verse/LauncherPOLendIntegrationMocks.sol";
+import {MockOFTDispatcher} from "../mocks/verse/LauncherLifecycleMocks.sol";
 import {
     HookForPOLendSettlementInvariant,
     LPTokenForPOLendSettlementInvariant,
@@ -52,7 +52,7 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
     POLSplitterUpgradeable internal splitter;
     RouterForPOLendSettlementInvariant internal router;
     HookForPOLendSettlementInvariant internal hook;
-    MockYieldDispatcherForPOLendIntegration internal dispatcher;
+    MockOFTDispatcher internal dispatcher;
     LPTokenForPOLendSettlementInvariant internal mainLp;
     LPTokenForPOLendSettlementInvariant internal polUAssetLp;
 
@@ -88,7 +88,7 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
         pol = new MockPolForPOLendIntegration(launcherProxy, address(memecoin));
         hook = new HookForPOLendSettlementInvariant(launcherProxy);
         router = new RouterForPOLendSettlementInvariant(address(hook));
-        dispatcher = new MockYieldDispatcherForPOLendIntegration();
+        dispatcher = new MockOFTDispatcher();
 
         address predictedSplitter = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 3);
         polend = _deployPOLend(predictedSplitter);
@@ -552,7 +552,7 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
     MockPolForPOLendIntegration internal pol;
     HookForPOLendSettlementInvariant internal hook;
     RouterForPOLendSettlementInvariant internal router;
-    MockYieldDispatcherForPOLendIntegration internal dispatcher;
+    MockOFTDispatcher internal dispatcher;
     POLSplitterUpgradeable internal splitter;
     POLendUpgradeable internal polend;
 
@@ -563,7 +563,7 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
         pol = new MockPolForPOLendIntegration(launcherProxy, address(memecoin));
         hook = new HookForPOLendSettlementInvariant(launcherProxy);
         router = new RouterForPOLendSettlementInvariant(address(hook));
-        dispatcher = new MockYieldDispatcherForPOLendIntegration();
+        dispatcher = new MockOFTDispatcher();
         splitter = _deploySplitter(launcherProxy);
         polend = _deployPOLend(launcherProxy, splitter);
 
@@ -813,7 +813,7 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
         address launcher_,
         RouterForPOLendSettlementInvariant router_,
         HookForPOLendSettlementInvariant hook_,
-        MockYieldDispatcherForPOLendIntegration dispatcher_,
+        MockOFTDispatcher dispatcher_,
         POLSplitterUpgradeable splitter_,
         POLendUpgradeable polend_
     ) internal {

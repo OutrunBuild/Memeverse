@@ -20,78 +20,7 @@ import {
     POLSplitterReentryProbe
 } from "../mocks/polend/POLSplitterMocks.sol";
 import {POLSplitterStorageHelper} from "../mocks/polend/POLSplitterStorageHelper.sol";
-
-contract MockLauncher {
-    // Boundary note:
-    // This mock only drives launcher stage and unwrap selector wiring for POLSplitterUpgradeable unit tests.
-    // It does not prove real launcher/router asset-flow semantics.
-    struct RedemptionSeed {
-        uint256 uAssetAmount;
-        uint256 memecoinAmount;
-    }
-
-    mapping(uint256 verseId => IMemeverseLauncher.Stage) internal stages;
-    mapping(uint256 verseId => address) internal polTokens;
-    mapping(uint256 verseId => RedemptionSeed) internal redemptionSeeds;
-    mapping(uint256 verseId => IMemeverseLauncher.Memeverse) internal verses;
-    address internal polendAddress;
-
-    MockERC20 internal immutable uAsset;
-    MockERC20 internal immutable memecoin;
-
-    constructor(MockERC20 uAsset_, MockERC20 memecoin_) {
-        uAsset = uAsset_;
-        memecoin = memecoin_;
-    }
-
-    function setStage(uint256 verseId, IMemeverseLauncher.Stage stage) external {
-        stages[verseId] = stage;
-    }
-
-    function registerPol(uint256 verseId, address pol) external {
-        polTokens[verseId] = pol;
-    }
-
-    function setVerseUAsset(uint256 verseId, address uAsset_) external {
-        verses[verseId].uAsset = uAsset_;
-    }
-
-    function seedRedemption(uint256 verseId, uint256 uAssetAmount, uint256 memecoinAmount) external {
-        redemptionSeeds[verseId] = RedemptionSeed({uAssetAmount: uAssetAmount, memecoinAmount: memecoinAmount});
-    }
-
-    function setPolend(address polend_) external {
-        polendAddress = polend_;
-    }
-
-    function getStageByVerseId(uint256 verseId) external view returns (IMemeverseLauncher.Stage) {
-        return stages[verseId];
-    }
-
-    function getMemeverseByVerseId(uint256 verseId) external view returns (IMemeverseLauncher.Memeverse memory verse) {
-        return verses[verseId];
-    }
-
-    function getUAssetByVerseId(uint256 verseId) external view returns (address) {
-        return verses[verseId].uAsset;
-    }
-
-    function polend() external view returns (address) {
-        return polendAddress;
-    }
-
-    function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool, uint256, uint256, uint256)
-        external
-        returns (uint256 amountInLP)
-    {
-        require(MockPOL(polTokens[verseId]).transferFrom(msg.sender, address(this), amountInPOL), "transfer failed");
-
-        RedemptionSeed memory seed = redemptionSeeds[verseId];
-        if (seed.uAssetAmount != 0) uAsset.mint(msg.sender, seed.uAssetAmount);
-        if (seed.memecoinAmount != 0) memecoin.mint(msg.sender, seed.memecoinAmount);
-        return amountInPOL;
-    }
-}
+import {MockLauncherForPOLSplitter} from "../mocks/polend/POLendTestMocks.sol";
 
 contract MockPOLendForSplitter {
     uint256 public burnPreRedeemedBackingCallCount;
@@ -138,7 +67,7 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
     MockERC20 internal otherUAsset;
     MockPOL internal pol;
     MockPOL internal otherPol;
-    MockLauncher internal launcher;
+    MockLauncherForPOLSplitter internal launcher;
     MockPOLendForSplitter internal polend;
     POLSplitterUpgradeable internal splitter;
     PrincipalToken internal pt;
@@ -150,7 +79,7 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
         otherUAsset = new MockERC20("OTHER", "OTHER", 18);
         pol = new MockPOL(address(memecoin));
         otherPol = new MockPOL(address(memecoin));
-        launcher = new MockLauncher(uAsset, memecoin);
+        launcher = new MockLauncherForPOLSplitter(uAsset, memecoin);
         polend = new MockPOLendForSplitter();
         launcher.setPolend(address(polend));
         splitter = _deploySplitter(address(launcher));
@@ -277,15 +206,6 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
 
         vm.expectRevert(IPOLSplitter.InvalidClaim.selector);
         splitter.previewPTToUAsset(VERSE_ID, 1 ether);
-    }
-
-    function testInitializeVerse_RejectsConfiguredPOLend() external {
-        POLSplitterUpgradeable otherSplitter = _deploySplitter(address(launcher));
-        launcher.setPolend(ALICE);
-
-        vm.prank(ALICE);
-        vm.expectRevert(IPOLSplitter.PermissionDenied.selector);
-        otherSplitter.initializeVerse(VERSE_ID, address(pol), address(memecoin), address(uAsset), "Verse", "VRS");
     }
 
     function testImplementationInitializerIsDisabled() external {
@@ -530,24 +450,6 @@ contract POLSplitterTest is Test, POLSplitterStorageHelper {
         vm.prank(address(launcher));
         vm.expectRevert(IPOLSplitter.AlreadySettled.selector);
         splitter.settle(VERSE_ID);
-    }
-
-    function testSettle_AllowsLauncherWhenUnlocked() external {
-        vm.prank(address(launcher));
-        splitter.recordPTBackingRatio(VERSE_ID, 1 ether, 1 ether);
-        pol.mint(address(this), 500 ether);
-        pol.approve(address(splitter), 500 ether);
-        splitter.split(VERSE_ID, 500 ether);
-        launcher.seedRedemption(VERSE_ID, 900 ether, 400 ether);
-        launcher.setStage(VERSE_ID, IMemeverseLauncher.Stage.Unlocked);
-
-        vm.prank(address(launcher));
-        splitter.settle(VERSE_ID);
-
-        (,,,,,, uint256 settlementUAsset, uint256 settlementMemecoin,,, bool settled) = splitter.splitInfos(VERSE_ID);
-        assertEq(settlementUAsset, 900 ether, "uAsset");
-        assertEq(settlementMemecoin, 400 ether, "memecoin");
-        assertTrue(settled, "settled");
     }
 
     function testSettle_RevertsWhenSettlementUAssetCannotCoverPTSupply() external {

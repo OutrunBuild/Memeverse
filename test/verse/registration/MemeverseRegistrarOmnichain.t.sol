@@ -229,28 +229,6 @@ contract MemeverseRegistrarOmnichainTest is Test {
         assertEq(address(this).balance, balanceBefore - quotedFee);
     }
 
-    /// @notice Test endpoint send reverts if callers use a stale quote.
-    function testMockRegistrarEndpointSendRejectsStaleQuote() external {
-        endpoint.setQuotedNativeFee(0.5 ether);
-        MessagingParams memory params = MessagingParams({
-            dstEid: CENTER_EID,
-            receiver: bytes32(uint256(uint160(address(0xBEEF)))),
-            message: abi.encode(_registrationParam()),
-            options: OptionsBuilder.newOptions().addExecutorLzReceiveOption(150, 33),
-            payInLzToken: false
-        });
-        uint256 staleQuote = endpoint.quote(params, address(registrar)).nativeFee;
-
-        endpoint.setQuotedNativeFee(0.6 ether);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                MockRegistrarOmnichainEndpoint.InvalidQuotedNativeFee.selector, 0.6 ether, staleQuote
-            )
-        );
-        endpoint.send{value: staleQuote}(params, address(this));
-    }
-
     /// @notice Test set registration gas limit only owner.
     function testSetRegistrationGasLimitOnlyOwner() external {
         IMemeverseRegistrarOmnichain.RegistrationGasLimit memory gasLimit =

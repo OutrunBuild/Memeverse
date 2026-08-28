@@ -218,34 +218,9 @@ contract MemeverseAccountSessionTest is Test, HookStorageHelper {
     // Task 3 plan-named scenario mappings (lifecycle subset)
     // -----------------------------------------------------------------
     // The plan enumerates several scenarios by exact name that are already fully exercised by the Task 2
-    // lifecycle tests above. Rather than duplicate the attack path, each mapping below delegates to the
-    // already-passing case so the plan's exact test names exist without weakening the coverage.
-
-    /// @notice Plan name for the plain-EOA-begin attack path; reuses the Task 2 lifecycle assertion.
-    function test_plainEoaBeginReverts() external {
-        // Delegate to the full Task 2 lifecycle case so there is exactly one implementation of this path.
-        this.test_RevertIf_PlainEoaBegin();
-    }
-
-    /// @notice Plan name for the deployed-contract-account begin path; reuses the Task 2 lifecycle assertion.
-    function test_deployedContractAccountCanBegin() external {
-        this.test_DeployedContractAccountCanBegin();
-    }
-
-    /// @notice Plan name for the nested-begin guard; reuses the Task 2 lifecycle assertion.
-    function test_nestedBeginRevertsWithoutOverwritingPrincipal() external {
-        this.test_RevertIf_RepeatedBeginDoesNotOverwrite();
-    }
-
-    /// @notice Plan name for the non-principal-end guard; reuses the Task 2 lifecycle assertion.
-    function test_nonPrincipalEndReverts() external {
-        this.test_RevertIf_NonPrincipalEnd();
-    }
-
-    /// @notice Plan name for the pending-context-end guard; reuses the Task 2 lifecycle assertion.
-    function test_pendingContextEndReverts() external {
-        this.test_RevertIf_PendingContextEnd();
-    }
+    // lifecycle tests above; their pure alias wrappers were removed as redundant. The single mapping below
+    // is kept because its after-half branch (afterSwap rejection with no active session) has no Task 2
+    // counterpart.
 
     /// @notice Plan name for the combined before/after-without-session revert pair. Both callbacks must
     ///         reject when no session is active; the before-half is the Task 2 case, the after-half is
@@ -262,11 +237,6 @@ contract MemeverseAccountSessionTest is Test, HookStorageHelper {
         vm.prank(address(mockManager));
         vm.expectRevert(IMemeverseUniswapHook.AccountSessionNotActive.selector);
         hook.afterSwap(address(this), key, params, delta, bytes(""));
-    }
-
-    /// @notice Plan name for the no-matching-context afterSwap guard; reuses the Task 2 lifecycle assertion.
-    function test_afterWithoutMatchingContextReverts() external {
-        this.test_RevertIf_AfterSwapWithoutMatchingContext();
     }
 
     function _deployHookProxy(address owner_, address treasury_) internal returns (MemeverseUniswapHookUpgradeable) {

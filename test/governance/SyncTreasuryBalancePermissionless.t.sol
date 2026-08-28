@@ -5,13 +5,12 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
-import {IGovernanceCycleIncentivizer} from "../../src/governance/interfaces/IGovernanceCycleIncentivizer.sol";
 import {GovernanceCycleIncentivizerUpgradeable} from "../../src/governance/GovernanceCycleIncentivizerUpgradeable.sol";
 import {MockIncentivizerGovernor} from "../mocks/governance/GovernanceMocks.sol";
 
 /// @title SyncTreasuryBalancePermissionlessTest
-/// @notice Verifies `syncTreasuryBalance` is permissionless yet still truthfully reconciles the ledger
-/// and preserves its token-validation guards.
+/// @notice Verifies `syncTreasuryBalance` is permissionless yet still truthfully reconciles the ledger.
+/// Token-validation guards (zero address, unregistered token) are covered by the main incentivizer suite.
 contract SyncTreasuryBalancePermissionlessTest is Test {
     // Unprivileged caller: not the governor, the incentivizer, or any admin.
     address internal constant ATTACKER = address(0xBAD);
@@ -20,13 +19,11 @@ contract SyncTreasuryBalancePermissionlessTest is Test {
     GovernanceCycleIncentivizerUpgradeable internal incentivizer;
     MockIncentivizerGovernor internal governor;
     MockERC20 internal tokenA;
-    MockERC20 internal tokenB;
 
     function setUp() external {
         implementation = new GovernanceCycleIncentivizerUpgradeable();
         governor = new MockIncentivizerGovernor();
         tokenA = new MockERC20("TokenA", "TKA", 18);
-        tokenB = new MockERC20("TokenB", "TKB", 18);
 
         incentivizer = _deployIncentivizer(address(governor), address(tokenA));
         governor.setIncentivizer(address(incentivizer));
@@ -82,20 +79,5 @@ contract SyncTreasuryBalancePermissionlessTest is Test {
         incentivizer.syncTreasuryBalance(address(tokenA));
 
         assertEq(incentivizer.getTreasuryBalance(2, address(tokenA)), 155 ether);
-    }
-
-    /// @notice Permissionless sync still rejects tokens that are not registered as treasury tokens.
-    function test_RevertWhen_PermissionlessSyncTargetsUnregisteredToken() external {
-        // Permissionless access must not bypass token-registration validation.
-        vm.prank(ATTACKER);
-        vm.expectRevert(IGovernanceCycleIncentivizer.NonTreasuryToken.selector);
-        incentivizer.syncTreasuryBalance(address(tokenB));
-    }
-
-    /// @notice Permissionless sync still rejects a zero address argument.
-    function test_RevertWhen_PermissionlessSyncTargetsZeroAddress() external {
-        vm.prank(ATTACKER);
-        vm.expectRevert(IGovernanceCycleIncentivizer.ZeroInput.selector);
-        incentivizer.syncTreasuryBalance(address(0));
     }
 }

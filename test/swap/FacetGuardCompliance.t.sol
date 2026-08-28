@@ -7,18 +7,11 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
-import {SwapFacet} from "../../src/swap/SwapFacet.sol";
-import {DynamicFeeFacet} from "../../src/swap/DynamicFeeFacet.sol";
-import {SettlementFacet} from "../../src/swap/SettlementFacet.sol";
 import {FacetGuard} from "../../src/swap/FacetGuard.sol";
 import {ISettlementFacet} from "../../src/swap/interfaces/ISettlementFacet.sol";
-import {ISwapFacet} from "../../src/swap/interfaces/ISwapFacet.sol";
-import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
-import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
 
@@ -32,8 +25,9 @@ import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.
 ///           `layout at` repetition is language-forced, so a typo compiles to an orphan slot — this file
 ///           pins the invariant at source level, mirroring HookStorageLayout.t.sol's ERC-7201 literal check.
 ///        2. Runtime direct-call revert: every facet external entry must revert `DirectFacetCallForbidden`
-///           on a direct CALL and succeed via Router delegatecall (covered by MemeverseDiamondFacets.t.sol;
-///           this file re-asserts the runtime property on the live Hook instance for redundancy).
+///           on a direct CALL and succeed via Router delegatecall. The primary logic entries are covered
+///           by MemeverseDiamondFacets.t.sol; this file pins the remaining `settlementUnlockCallback`
+///           entry on the live Hook instance.
 ///      CI fails immediately if a replacement facet is added without `FacetGuard`/ `onlyViaRouter`.
 contract FacetGuardComplianceTest is Test, HookStorageHelper {
     MockPoolManagerForHookLiquidity internal mockManager;
@@ -57,12 +51,6 @@ contract FacetGuardComplianceTest is Test, HookStorageHelper {
             // Must contain the guard modifier on entries; at least 2 occurrences per facet
             uint256 guardOccurrences = _countOccurrences(content, "onlyViaRouter");
             assertGe(guardOccurrences, 2, string.concat("onlyViaRouter too few in: ", facets[i]));
-            // Must contain the error selector literal (proves guard is the canonical one)
-            assertTrue(
-                _contains(content, "DirectFacetCallForbidden")
-                    || _contains(vm.readFile("src/swap/FacetGuard.sol"), "DirectFacetCallForbidden"),
-                "FacetGuard.DirectFacetCallForbidden missing"
-            );
         }
         // FacetGuard itself must declare the guard and the error
         string memory guard = vm.readFile("src/swap/FacetGuard.sol");
@@ -71,38 +59,13 @@ contract FacetGuardComplianceTest is Test, HookStorageHelper {
         assertTrue(_contains(guard, "__self"), "FacetGuard must declare __self immutable");
     }
 
-    /// @notice Direct CALL to each facet's primary entry must revert DirectFacetCallForbidden (runtime pin).
-    function test_DirectCallToEachFacetReverts() external {
-        // SwapFacet.beforeSwapLogic
-        _assertDirectReverts(
-            hook.swapFacet(),
-            abi.encodeCall(ISwapFacet.beforeSwapLogic, (address(this), _dummyKey(), _dummySwapParams(), bytes("")))
-        );
-        // DynamicFeeFacet.prepareSwapFee
-        _assertDirectReverts(hook.dynamicFeeFacet(), abi.encodeCall(IDynamicFeeFacet.prepareSwapFee, (_dummyPrepare())));
-        // SettlementFacet.executeSettlementLogic
-        _assertDirectReverts(
-            hook.settlementFacet(), abi.encodeCall(ISettlementFacet.executeSettlementLogic, (_dummySettlement()))
-        );
-        // SettlementFacet.settlementUnlockCallback also guarded (plus inner msg.sender == poolManager)
+    /// @notice Direct CALL to `settlementUnlockCallback` must revert `DirectFacetCallForbidden` (runtime pin).
+    /// @dev The primary facet logic entries' direct-call reverts are covered by MemeverseDiamondFacets.t.sol;
+    ///      this callback entry has no counterpart there, so it is pinned on the live Hook instance.
+    ///      The onlyViaRouter guard fires before the inner `msg.sender == poolManager` check.
+    function test_SettlementUnlockCallbackDirectCallReverts() external {
         _assertDirectReverts(
             hook.settlementFacet(), abi.encodeCall(ISettlementFacet.settlementUnlockCallback, (_dummyCallback()))
-        );
-    }
-
-    /// @notice A replacement facet (fresh deployment with same poolManager) must also inherit the guard.
-    function test_ReplacementFacetStillGuards() external {
-        SwapFacet newSwap = new SwapFacet(IPoolManager(address(mockManager)));
-        DynamicFeeFacet newDyn = new DynamicFeeFacet(IPoolManager(address(mockManager)));
-        SettlementFacet newSettle = new SettlementFacet(IPoolManager(address(mockManager)));
-
-        _assertDirectReverts(
-            address(newSwap),
-            abi.encodeCall(ISwapFacet.beforeSwapLogic, (address(this), _dummyKey(), _dummySwapParams(), bytes("")))
-        );
-        _assertDirectReverts(address(newDyn), abi.encodeCall(IDynamicFeeFacet.prepareSwapFee, (_dummyPrepare())));
-        _assertDirectReverts(
-            address(newSettle), abi.encodeCall(ISettlementFacet.executeSettlementLogic, (_dummySettlement()))
         );
     }
 
@@ -126,25 +89,6 @@ contract FacetGuardComplianceTest is Test, HookStorageHelper {
     function _dummySwapParams() internal pure returns (SwapParams memory) {
         return
             SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1});
-    }
-
-    function _dummyPrepare() internal view returns (IDynamicFeeFacet.PrepareSwapFeeParams memory) {
-        return IDynamicFeeFacet.PrepareSwapFeeParams({
-            poolId: PoolId.wrap(bytes32(0)),
-            zeroForOne: true,
-            amountSpecified: -100 ether,
-            trader: address(this),
-            preSqrtPriceX96: 0,
-            liquidity: 0,
-            protocolFeeOnInput: false,
-            sqrtPriceLimitX96: 0
-        });
-    }
-
-    function _dummySettlement() internal view returns (IMemeverseUniswapHook.PreorderSettlementParams memory) {
-        return IMemeverseUniswapHook.PreorderSettlementParams({
-            key: _dummyKey(), params: _dummySwapParams(), recipient: address(this)
-        });
     }
 
     function _dummyCallback() internal view returns (ISettlementFacet.SettlementCallbackData memory) {

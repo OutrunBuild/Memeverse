@@ -11,10 +11,8 @@ import {SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfac
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
 import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
-import {IOmnichainMemecoinStaker} from "../../src/interoperation/interfaces/IOmnichainMemecoinStaker.sol";
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
 import {MockStakerYieldVault} from "../mocks/interoperation/InteroperationMocks.sol";
-import {ForgedComposeToken} from "../mocks/interoperation/ForgedComposeToken.sol";
 import {ComposerEndpointFixture} from "../mocks/infrastructure/ComposerEndpointFixture.sol";
 import {MockMessagingComposerEndpoint} from "../mocks/infrastructure/MockMessagingComposerEndpoint.sol";
 import {MockOFTEndpoint} from "../mocks/common/CommonMocks.sol";
@@ -307,46 +305,6 @@ contract StakerExactApprovalTest is ComposerEndpointFixture {
             uint256(staker.composeStates(address(memecoin), attackGuid)),
             uint256(IComposeState.ComposeState.Settled),
             "zero-amount compose settled"
-        );
-    }
-
-    /// @notice Negative control (devil's advocate), complementary to StakerTokenVaultBinding's
-    ///         `testForgedTokenComposeRevertsTokenVaultMismatch`: a compose queued under a NON-memecoin `from`
-    ///         (attacker's fake token) is intercepted at the binding layer — the vault's reported `asset()`
-    ///         (real memecoin) != delivered token (fake) → TokenVaultMismatch, before any approval or deposit. The
-    ///         drain of the REAL memecoin requires a genuine bridge through the memecoin OFT (which the attacker
-    ///         obtains at negligible cost — a small base fee on real chains, zero only in this mock — see the
-    ///         zero-amount test). Where StakerTokenVaultBinding proves the intercept with
-    ///         the REAL MemecoinYieldVault, this file's mock proves it with its own vault.
-    function testForgedComposeCannotDrainRealMemecoin() external {
-        // Strand some real funds first.
-        uint256 stranded = 1 ether;
-        srcOft.mintTest(VICTIM, stranded);
-        bridgeAndQueue(stranded, abi.encode(VICTIM, address(legitVault)), bytes32("victim-guid-nc"), VICTIM);
-        assertEq(memecoin.balanceOf(address(staker)), stranded);
-
-        // Attacker queues a compose under its own fake token (sendCompose is keyed by msg.sender, so any contract
-        // can write its own slot — but the slot's `from` is the fake token, NOT the memecoin).
-        ForgedComposeToken fake = new ForgedComposeToken(address(composer));
-        bytes32 fakeGuid = bytes32("fake-guid");
-        bytes memory fakeMessage =
-            fake.queueComposeEncoded(SRC_EID, address(staker), fakeGuid, abi.encode(ATTACKER, address(evilVault)));
-
-        // Permissionless execution: staker.lzCompose(fakeToken, ...) passes the endpoint check, then the
-        // binding fires BEFORE any approval or deposit: the evil vault's reported asset() is the REAL memecoin
-        // while the delivered token is the fake, so the pairing reverts with TokenVaultMismatch — the allowance
-        // path (which would land on the fake token anyway) is never even reached.
-        vm.prank(ATTACKER);
-        vm.expectRevert(IOmnichainMemecoinStaker.TokenVaultMismatch.selector);
-        composer.lzCompose(address(fake), address(staker), fakeGuid, 0, fakeMessage, bytes(""));
-
-        // Nothing moved: the real memecoin balance and allowance are untouched, and the fake guid is unresolved.
-        assertEq(memecoin.balanceOf(address(staker)), stranded, "real funds untouched by the fake-token compose");
-        assertEq(memecoin.allowance(address(staker), address(evilVault)), 0, "no allowance granted on real memecoin");
-        assertEq(
-            uint256(staker.composeStates(address(fake), fakeGuid)),
-            uint256(IComposeState.ComposeState.None),
-            "reverted compose consumes nothing"
         );
     }
 

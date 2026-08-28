@@ -27,7 +27,7 @@ import {IPOLend} from "../../src/polend/interfaces/IPOLend.sol";
 
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MockOFTDispatcher} from "../mocks/verse/LauncherLifecycleMocks.sol";
-import {MockLauncherIntegrationLzEndpointRegistry} from "../mocks/verse/LauncherPreorderIntegrationMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 import {MockLauncherSwapIntegrationProxyDeployer} from "../mocks/verse/LauncherSwapIntegrationMocks.sol";
 import {UniversalAssetForPOLendSettlementInvariant} from "../mocks/verse/LauncherSettlementMocks.sol";
 import {BurnableMockERC20} from "../mocks/polend/POLendMocks.sol";
@@ -67,7 +67,7 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
 
     // ── Mocked periphery only ──
     MockLauncherSwapIntegrationProxyDeployer internal proxyDeployer;
-    MockLauncherIntegrationLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockOFTDispatcher internal dispatcher;
     UniversalAssetForPOLendSettlementInvariant internal uAsset;
 
@@ -81,7 +81,7 @@ contract MemeverseLauncherTripleAbsentSettlementTest is Test, MemeverseLauncherT
 
         // 2. Periphery mocks.
         proxyDeployer = new MockLauncherSwapIntegrationProxyDeployer(address(0xCAFE), address(0xF00D));
-        registry = new MockLauncherIntegrationLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         dispatcher = new MockOFTDispatcher();
         uAsset = new UniversalAssetForPOLendSettlementInvariant();
 

@@ -27,10 +27,10 @@ import {MemeverseFeePreviewReader} from "../../src/verse/MemeverseFeePreviewRead
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {MockOFTDispatcher} from "../mocks/verse/LauncherLifecycleMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 import {
     MockIntegrationLiquidProof,
     MockIntegrationMemecoin,
-    MockLauncherIntegrationLzEndpointRegistry,
     MockPOLendForPreorderIntegration,
     MockPOLSplitterForPreorderIntegration
 } from "../mocks/verse/LauncherPreorderIntegrationMocks.sol";
@@ -74,7 +74,7 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
     IMemeverseLauncher internal launcher;
     address internal launcherProxy;
     MockLauncherSwapIntegrationProxyDeployer internal proxyDeployer;
-    MockLauncherIntegrationLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockOFTDispatcher internal dispatcher;
     MockERC20 internal uAsset;
     MockERC20 internal pt;
@@ -85,7 +85,7 @@ contract MemeverseLauncherSwapIntegrationTest is Test, MemeverseLauncherTestHelp
     function setUp() external {
         manager = new RealisticSwapManagerHarness();
         proxyDeployer = new MockLauncherSwapIntegrationProxyDeployer(address(0xCAFE), address(0xF00D));
-        registry = new MockLauncherIntegrationLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         dispatcher = new MockOFTDispatcher();
         uAsset = new MockERC20("UASSET", "UASSET", 18);
         pt = new MockERC20("PT", "PT", 18);

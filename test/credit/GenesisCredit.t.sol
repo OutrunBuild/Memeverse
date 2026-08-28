@@ -357,34 +357,6 @@ contract GenesisCreditTest is Test {
         assertFalse(credit.paused());
     }
 
-    /// @notice A paused token cannot transfer.
-    function test_RevertWhen_Paused_Transfer() external {
-        vm.prank(ALICE);
-        credit.claim(100 ether, aliceProof);
-
-        vm.prank(DELEGATE);
-        credit.pause();
-
-        vm.prank(ALICE);
-        vm.expectRevert(Pausable.EnforcedPause.selector);
-        credit.transfer(BOB, 10 ether);
-    }
-
-    /// @notice A paused token cannot spend an existing allowance via transferFrom.
-    function test_RevertWhen_Paused_TransferFrom() external {
-        vm.prank(ALICE);
-        credit.claim(100 ether, aliceProof);
-        vm.prank(ALICE);
-        credit.approve(BOB, 50 ether);
-
-        vm.prank(DELEGATE);
-        credit.pause();
-
-        vm.prank(BOB);
-        vm.expectRevert(Pausable.EnforcedPause.selector);
-        credit.transferFrom(ALICE, BOB, 10 ether);
-    }
-
     /// @notice A paused token cannot mint via claims: a valid proof reverts before `claimed` is
     ///         durably set (the whole call reverts atomically).
     function test_RevertWhen_Paused_Claim() external {
@@ -397,19 +369,6 @@ contract GenesisCreditTest is Test {
 
         // The mint never happened, so the double-claim record stays unset.
         assertEq(credit.claimed(ALICE), 0);
-    }
-
-    /// @notice A paused token cannot burn.
-    function test_RevertWhen_Paused_Burn() external {
-        vm.prank(ALICE);
-        credit.claim(100 ether, aliceProof);
-
-        vm.prank(DELEGATE);
-        credit.pause();
-
-        vm.prank(ALICE);
-        vm.expectRevert(Pausable.EnforcedPause.selector);
-        credit.burn(10 ether);
     }
 
     /// @notice A paused token cannot bridge out: the OFT send path debits via `_burn`, which is

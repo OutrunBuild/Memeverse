@@ -496,8 +496,12 @@ contract MemeverseRegistrationCenterTest is Test {
         assertEq(historyNonce, 1);
     }
 
-    /// @notice Test registration rejects invalid params and stores prior registration in history.
-    function testRegistrationRejectsInvalidParamsAndStoresPriorRegistrationInHistory() external {
+    /// @notice Test registration rejects invalid params, then rejects reusing a symbol whose current
+    ///         registration has not reached its unlock time yet.
+    /// @dev The nonce/unique-id rotation and symbolHistory storage behind the double registration are
+    ///      covered by testRegistrationIncrementsNonceAndChangesUniqueIdOnReregistration; here the second
+    ///      term only prepares the still-locked state the early-unlock rejection below asserts against.
+    function testRegistrationRejectsInvalidParamsAndEarlySymbolUnlock() external {
         endpoint.setQuotedNativeFee(0.5 ether);
         IMemeverseRegistrationCenter.RegistrationParam memory param = _registrationParam();
 
@@ -537,20 +541,10 @@ contract MemeverseRegistrationCenterTest is Test {
 
         param = _registrationParam();
         center.registration{value: 0.5 ether}(param);
-        (uint256 firstUniqueId, uint64 firstEndTime, uint192 firstNonce) = center.symbolRegistry(param.symbol);
-        assertEq(firstNonce, 1);
+        (, uint64 firstEndTime,) = center.symbolRegistry(param.symbol);
 
         vm.warp(firstEndTime + 1);
         center.registration{value: 0.5 ether}(param);
-
-        (uint256 currentUniqueId,,) = center.symbolRegistry(param.symbol);
-        (uint256 historyUniqueId, uint64 historyEndTime, uint192 historyNonce) =
-            center.symbolHistory(param.symbol, firstUniqueId);
-        assertTrue(currentUniqueId != 0);
-        assertTrue(currentUniqueId != firstUniqueId);
-        assertEq(historyUniqueId, firstUniqueId);
-        assertEq(historyEndTime, firstEndTime);
-        assertEq(historyNonce, 1);
 
         (, uint64 currentEndTime,) = center.symbolRegistry(param.symbol);
         vm.expectRevert(

@@ -7,7 +7,6 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
-import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
@@ -117,19 +116,6 @@ contract MemeverseLauncherSettlementTest is Test, MemeverseLauncherTestHelper {
             uint256(IMemeverseLauncher.Stage.Locked),
             "stage unchanged after guard revert"
         );
-    }
-
-    /// @notice A direct (non-delegatecall) invocation of the settlement sibling must revert.
-    /// @dev The sibling shares no storage with the proxy; its own `memeverseLauncherStorage` is permanently
-    ///      uninitialized, so `collectAndDistributeFees` reads an empty verse/hook and reverts on the resulting
-    ///      call to address(0). Locks the "collectAndDistributeFees is facade-delegatecall-only" invariant.
-    function test_directCallToDistributorReverts() external {
-        MemeverseSettlementImpl sibling = new MemeverseSettlementImpl();
-        address attacker = makeAddr("attacker");
-
-        vm.prank(attacker);
-        vm.expectRevert();
-        sibling.collectAndDistributeFees(1, makeAddr("reward"), address(splitter));
     }
 
     /// @notice `setSettlementImpl` rejects a zero address and unauthorized callers.

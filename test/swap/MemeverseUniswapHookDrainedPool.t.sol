@@ -43,39 +43,18 @@ contract MemeverseUniswapHookDrainedPoolTest is RealisticSwapIntegrationBase {
         assertEq(hook.cachedLpTotalSupply(poolId), 0, "drained: cached LP supply is zero");
     }
 
-    function testQuoteSwap_DrainedPool_ExactOutput_OutputFee_Reverts() external {
-        hook.setProtocolFeeCurrency(key.currency1, true);
+    /// @notice Quotes against a drained pool must revert for every direction and protocol-fee side.
+    /// @dev All branches reach the same active-liquidity guard before fee-side or direction math can
+    ///      matter; fuzzing the bool pair covers the exact-input/exact-output × input-fee/output-fee matrix.
+    function test_RevertWhen_QuoteSwapOnDrainedPool(bool feeOnCurrency0, bool exactInput) external {
+        hook.setProtocolFeeCurrency(feeOnCurrency0 ? key.currency0 : key.currency1, true);
         _matureLaunchWindow();
         _drainPool();
 
         SwapParams memory params = SwapParams({
-            zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-        });
-
-        vm.expectRevert(OrdinarySwapMath.InvalidActiveLiquidity.selector);
-        lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
-    }
-
-    function testQuoteSwap_DrainedPool_ExactOutput_InputFee_Reverts() external {
-        hook.setProtocolFeeCurrency(key.currency0, true);
-        _matureLaunchWindow();
-        _drainPool();
-
-        SwapParams memory params = SwapParams({
-            zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-        });
-
-        vm.expectRevert(OrdinarySwapMath.InvalidActiveLiquidity.selector);
-        lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
-    }
-
-    function testQuoteSwap_DrainedPool_ExactInput_OutputFee_Reverts() external {
-        hook.setProtocolFeeCurrency(key.currency1, true);
-        _matureLaunchWindow();
-        _drainPool();
-
-        SwapParams memory params = SwapParams({
-            zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+            zeroForOne: true,
+            amountSpecified: exactInput ? -int256(1 ether) : int256(1 ether),
+            sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
 
         vm.expectRevert(OrdinarySwapMath.InvalidActiveLiquidity.selector);

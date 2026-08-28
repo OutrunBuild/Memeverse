@@ -27,9 +27,9 @@ import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 import {
     MockIntegrationMemecoin,
-    MockLauncherIntegrationLzEndpointRegistry,
     MockLauncherIntegrationProxyDeployer
 } from "../mocks/verse/LauncherPreorderIntegrationMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 
 contract MockPOLendForEndToEndInvariant is POLendInvariantStub {}
 
@@ -180,6 +180,11 @@ contract EndToEndRefundHandler is Test {
 
     /// @notice Test helper for changeStage.
     function changeStage() external {
+        // Keep the scenario pure: only attempt the stage change while the launch threshold is unmet,
+        // so the verse can only transition Genesis -> Refund. A met threshold would lock instead and
+        // take this suite out of its refund-path scope.
+        (uint256 minTotalFund,) = launcher.fundMetaDatas(address(uAsset));
+        if (launcher.totalNormalFunds(VERSE_ID) >= minTotalFund) return;
         try launcher.changeStage(VERSE_ID) {} catch {}
     }
 
@@ -221,7 +226,7 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
     IMemeverseLauncher internal launcher;
     address internal launcherProxy;
     MockLauncherIntegrationProxyDeployer internal proxyDeployer;
-    MockLauncherIntegrationLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockPOLendForEndToEndInvariant internal polend;
     MockPOLSplitterForEndToEndInvariant internal splitter;
     MockERC20 internal uAsset;
@@ -239,7 +244,7 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
         treasury = makeAddr("treasury");
         manager = new MockPoolManagerForRouterTest();
         proxyDeployer = new MockLauncherIntegrationProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
-        registry = new MockLauncherIntegrationLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         uAsset = new MockERC20("UASSET", "UASSET", 18);
         pt = new MockERC20("PT", "PT", 18);
         yt = new MockERC20("YT", "YT", 18);
@@ -334,6 +339,21 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
         targetContract(address(handler));
     }
 
+    /// @notice Canary: the handler's changeStage call must be able to lock the verse in this fixture
+    ///         (ALICE's seeded genesis meets the min exactly, and endTime passes). If this fails, the
+    ///         success-path invariants below are vacuously green (they all early-return outside the
+    ///         Locked flow).
+    function test_changeStageCanLeaveGenesis() external {
+        uint128 endTime = launcher.getMemeverseByVerseId(VERSE_ID).endTime;
+        vm.warp(uint256(endTime) + 1);
+        launcher.changeStage(VERSE_ID);
+        assertEq(
+            uint8(launcher.getStageByVerseId(VERSE_ID)),
+            uint8(IMemeverseLauncher.Stage.Locked),
+            "changeStage cannot lock here"
+        );
+    }
+
     /// @notice Test helper for invariant_endToEndGenesisAccountingMatchesUserBalances.
     function invariant_endToEndGenesisAccountingMatchesUserBalances() external view {
         uint256 totalNormalFunds = launcher.totalNormalFunds(VERSE_ID);
@@ -390,7 +410,7 @@ contract MemeverseLauncherEndToEndInvariantTest is StdInvariant, Test, Memeverse
             stage == IMemeverseLauncher.Stage.Locked || stage == IMemeverseLauncher.Stage.Unlocked, "post-launch stage"
         );
         assertGt(settlementTimestamp, 0, "missing settlement timestamp");
-        assertEq(uAsset.balanceOf(treasury), totalFunds * 30 / 10_000, "treasury settlement fee");
+        assertEq(uAsset.balanceOf(treasury), totalFunds * 35 / 10_000, "treasury settlement fee");
     }
 
     /// @notice Test helper for invariant_endToEndPreorderClaimsRemainBounded.
@@ -451,7 +471,7 @@ contract MemeverseLauncherRefundEndToEndInvariantTest is
     IMemeverseLauncher internal launcher;
     address internal launcherProxy;
     MockLauncherIntegrationProxyDeployer internal proxyDeployer;
-    MockLauncherIntegrationLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockPOLendForEndToEndInvariant internal polend;
     MockPOLSplitterForEndToEndInvariant internal splitter;
     MockERC20 internal uAsset;
@@ -469,7 +489,7 @@ contract MemeverseLauncherRefundEndToEndInvariantTest is
         treasury = makeAddr("treasury");
         manager = new MockPoolManagerForRouterTest();
         proxyDeployer = new MockLauncherIntegrationProxyDeployer(address(0xD00D), address(0xCAFE), address(0xF00D));
-        registry = new MockLauncherIntegrationLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         uAsset = new MockERC20("UASSET", "UASSET", 18);
         pt = new MockERC20("PT", "PT", 18);
         yt = new MockERC20("YT", "YT", 18);

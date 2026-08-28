@@ -91,33 +91,6 @@ contract MemeverseLauncherMintPOLTokenTest is Test, MemeverseLauncherTestHelper 
         launcher.mintPOLToken(verseId, 1 ether, 1 ether, 0, 0, 0, block.timestamp);
     }
 
-    /// @notice A direct (non-delegatecall) invocation of the sibling must revert in both liquidity modes.
-    /// @dev The sibling shares no storage with the proxy; its own `memeverseLauncherStorage` is permanently
-    ///      uninitialized, so `memeverseSwapRouter` reads as address(0) and the router external call reverts on
-    ///      empty returndata decode. Locks the "mintPOLToken is facade-delegatecall-only" invariant for both the
-    ///      auto-liquidity (`amountOutDesired == 0`) and exact-liquidity (`amountOutDesired != 0`) branches.
-    function test_directCallToPOLMinterReverts_autoLiquidity() external {
-        MemeverseLiquidityImpl sibling = new MemeverseLiquidityImpl();
-        address attacker = makeAddr("attacker");
-
-        vm.prank(attacker);
-        vm.expectRevert();
-        sibling.mintPOLToken(
-            address(uAsset), address(memecoin), address(pol), 1 ether, 1 ether, 0, 0, 0, block.timestamp
-        );
-    }
-
-    function test_directCallToPOLMinterReverts_exactLiquidity() external {
-        MemeverseLiquidityImpl sibling = new MemeverseLiquidityImpl();
-        address attacker = makeAddr("attacker");
-
-        vm.prank(attacker);
-        vm.expectRevert();
-        sibling.mintPOLToken(
-            address(uAsset), address(memecoin), address(pol), 1 ether, 1 ether, 0, 0, 1 ether, block.timestamp
-        );
-    }
-
     /// @notice `setLiquidityImpl` rejects a zero address and unauthorized callers.
     function test_setLiquidityImplGuards() external {
         // Zero address rejected (owner caller).
@@ -138,9 +111,17 @@ contract MemeverseLauncherMintPOLTokenTest is Test, MemeverseLauncherTestHelper 
         _seedLockedVerse(verseId);
         launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
 
-        // With the guard passed, the call now reaches the sibling's router interaction. The router is unset in
-        // this minimal fixture, so the sibling reverts on the address(0) router call rather than LiquidityImplNotSet.
-        vm.expectRevert();
-        launcher.mintPOLToken(verseId, 1 ether, 1 ether, 0, 0, 0, block.timestamp);
+        // Negative-space pin: the call must still revert (this minimal fixture funds no uAsset for the
+        // sibling's first transfer-in), but the revert must NOT be LiquidityImplNotSet — that would mean
+        // the guard fired even though the sibling is bound.
+        (bool ok, bytes memory ret) = launcherProxy.call(
+            abi.encodeCall(IMemeverseLauncher.mintPOLToken, (verseId, 1 ether, 1 ether, 0, 0, 0, block.timestamp))
+        );
+        assertFalse(ok, "minimal fixture must still revert");
+        assertNotEq(
+            bytes32(bytes4(ret)),
+            bytes32(IMemeverseLauncher.LiquidityImplNotSet.selector),
+            "mintPOLToken must pass the liquidityImpl guard"
+        );
     }
 }

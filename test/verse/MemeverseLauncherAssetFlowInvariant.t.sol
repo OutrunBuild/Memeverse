@@ -7,37 +7,28 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLiquidityImpl} from "../../src/verse/MemeverseLiquidityImpl.sol";
+import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
 import {MemeverseLauncherTestHelper} from "../mocks/verse/MemeverseLauncherTestHelper.sol";
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {
     MockLiquidProof,
-    MockLzEndpointRegistry,
     MockOFTDispatcher,
     MockPredictOnlyProxyDeployer,
     MockSwapRouter
 } from "../mocks/verse/LauncherLifecycleMocks.sol";
+import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 
 contract AssetFlowHandler is Test {
     uint256 internal constant VERSE_ID = 1;
 
     IMemeverseLauncher internal immutable launcher;
     MockLiquidProof internal immutable liquidProof;
-    MockERC20 internal immutable memecoinLp;
-    MockERC20 internal immutable polLp;
     address[] internal actors;
 
-    constructor(
-        IMemeverseLauncher _launcher,
-        MockLiquidProof _liquidProof,
-        MockERC20 _memecoinLp,
-        MockERC20 _polLp,
-        address[] memory _actors
-    ) {
+    constructor(IMemeverseLauncher _launcher, MockLiquidProof _liquidProof, address[] memory _actors) {
         launcher = _launcher;
         liquidProof = _liquidProof;
-        memecoinLp = _memecoinLp;
-        polLp = _polLp;
         actors = _actors;
     }
 
@@ -60,15 +51,6 @@ contract AssetFlowHandler is Test {
         uint256 amount = bound(amountSeed, 1, polBalance);
         vm.prank(actor);
         try launcher.redeemMemecoinLiquidity(VERSE_ID, amount, false, 0, 0, block.timestamp) {} catch {}
-    }
-
-    /// @notice Test helper for touchBalances.
-    function touchBalances() external view {
-        for (uint256 i; i < actors.length; ++i) {
-            liquidProof.balanceOf(actors[i]);
-            memecoinLp.balanceOf(actors[i]);
-            polLp.balanceOf(actors[i]);
-        }
     }
 }
 
@@ -191,7 +173,7 @@ contract MemeverseLauncherClaimRedeemInvariantTest is StdInvariant, Test, Memeve
     MockSwapRouter internal router;
     MockOFTDispatcher internal dispatcher;
     MockPredictOnlyProxyDeployer internal proxyDeployer;
-    MockLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockERC20 internal uAsset;
     MockERC20 internal memecoin;
     MockLiquidProof internal liquidProof;
@@ -243,7 +225,7 @@ contract MemeverseLauncherClaimRedeemInvariantTest is StdInvariant, Test, Memeve
         actors.push(BOB);
         actors.push(CHARLIE);
 
-        registry = new MockLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         launcher = _deployLauncher(address(0x10), address(0x11), 25, 115_000, 135_000, 2_500, 7 days);
         router = new MockSwapRouter(address(launcher));
         dispatcher = new MockOFTDispatcher();
@@ -258,6 +240,11 @@ contract MemeverseLauncherClaimRedeemInvariantTest is StdInvariant, Test, Memeve
         launcher.setMemeverseSwapRouter(address(router));
         launcher.setYieldDispatcher(address(dispatcher));
         launcher.setMemeverseProxyDeployer(address(proxyDeployer));
+        // Bind the sibling implementations so the claim/redeem handlers exercise the real settlement
+        // and liquidity paths; without them every handler call reverts on the unbound-impl guard and
+        // the invariants below only re-read the seeded setUp state.
+        launcher.setSettlementImpl(address(new MemeverseSettlementImpl()));
+        launcher.setLiquidityImpl(address(new MemeverseLiquidityImpl()));
 
         IMemeverseLauncher.Memeverse memory verse;
         verse.uAsset = address(uAsset);
@@ -294,8 +281,22 @@ contract MemeverseLauncherClaimRedeemInvariantTest is StdInvariant, Test, Memeve
         memecoinLp.mint(address(launcher), INITIAL_MEMECOIN_LP);
         polLp.mint(address(launcher), INITIAL_POL_LP);
 
-        handler = new AssetFlowHandler(launcher, liquidProof, memecoinLp, polLp, actors);
+        handler = new AssetFlowHandler(launcher, liquidProof, actors);
         targetContract(address(handler));
+    }
+
+    /// @notice Canary: claimNormalYT must actually execute in this fixture. If it reverts silently in
+    ///         every handler call, the invariants below only re-read the seeded setUp state.
+    /// @dev totalNormalClaimableYT is not seeded, so the claim is a zero-amount execution: it proves
+    ///      the flag commit through the real settlement impl but not a value-carrying YT transfer.
+    function test_claimNormalYTExecutes() external {
+        address alice = actors[0];
+        vm.prank(alice);
+        launcher.claimNormalYT(VERSE_ID);
+        // The first call must have committed the claim flag: a second call now reverts InvalidClaim.
+        vm.prank(alice);
+        vm.expectRevert(IMemeverseLauncher.InvalidClaim.selector);
+        launcher.claimNormalYT(VERSE_ID);
     }
 
     /// @notice Test helper for invariant_polTokenClaimAndBurnConserveSupply.
@@ -356,7 +357,7 @@ contract MemeverseLauncherMintPOLInvariantTest is StdInvariant, Test, MemeverseL
     MockSwapRouter internal router;
     MockOFTDispatcher internal dispatcher;
     MockPredictOnlyProxyDeployer internal proxyDeployer;
-    MockLzEndpointRegistry internal registry;
+    LzEndpointRegistryMock internal registry;
     MockERC20 internal uAsset;
     MockERC20 internal memecoin;
     MockLiquidProof internal liquidProof;
@@ -371,7 +372,7 @@ contract MemeverseLauncherMintPOLInvariantTest is StdInvariant, Test, MemeverseL
         actors.push(BOB);
         actors.push(CHARLIE);
 
-        registry = new MockLzEndpointRegistry();
+        registry = new LzEndpointRegistryMock();
         MemeverseLauncherUpgradeable impl = new MemeverseLauncherUpgradeable();
         launcherProxy = address(
             new ERC1967Proxy(

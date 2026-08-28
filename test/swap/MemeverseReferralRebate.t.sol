@@ -11,6 +11,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {FeeMath} from "../../src/swap/libraries/FeeMath.sol";
+import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
 
 import {RealisticSwapIntegrationBase} from "./helpers/RealisticSwapManagerHarness.sol";
 
@@ -65,8 +66,9 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
 
     /// @notice Non-owner cannot change the rate.
     function testSetReferrerRebateBps_RevertsWhenNotOwner() external {
-        vm.prank(makeAddr("stranger"));
-        vm.expectRevert(); // hook `onlyOwner` bubbles the engine's OwnableUnauthorizedAccount
+        address stranger = makeAddr("stranger");
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, stranger));
         hook.setReferrerRebateBps(500);
     }
 

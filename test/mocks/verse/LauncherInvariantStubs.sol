@@ -37,6 +37,12 @@ abstract contract POLendInvariantStub {
     function recordLeveragedYT(uint256, address, uint256) external {}
     function markRefundable(uint256) external {}
     function executeGlobalSettlement(uint256) external {}
+
+    function settlementDustStates(address) external pure returns (uint128, uint128) {
+        return (0, 0);
+    }
+
+    function fundSettlementDustReserve(address, uint256) external {}
 }
 
 /// @notice Shared no-op splitter stub with deterministic pt/yt addresses.
@@ -114,4 +120,6 @@ contract POLSplitterInvariantStub {
     function previewRedeemYTUAsset(uint256, uint256) external pure returns (uint256 uAssetAmount) {
         return 0;
     }
+
+    function recordPTBackingRatio(uint256, uint256, uint256) external {}
 }

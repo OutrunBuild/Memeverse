@@ -210,15 +210,6 @@ contract OutrunOAppPreCrimeSimulatorInitTest is Test {
         vm.stopPrank();
     }
 
-    /// @notice `isPeer` delegates to the configured trust table (adapter mirrors `OutrunOFTCoreInit.isPeer` ->
-    ///         `peers`). Trusted/untrusted/unknown-eid must resolve correctly.
-    function testIsPeerReflectsTrustTable() external {
-        harness.setTrustedPeer(SRC_EID, PEER);
-        assertTrue(harness.isPeer(SRC_EID, PEER));
-        assertFalse(harness.isPeer(SRC_EID, UNTRUSTED_SENDER));
-        assertFalse(harness.isPeer(SRC_EID + 1, PEER));
-    }
-
     // ----------------------------------------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------------------------------------

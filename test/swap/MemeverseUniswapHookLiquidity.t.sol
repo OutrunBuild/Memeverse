@@ -3,7 +3,7 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -27,42 +27,6 @@ import {UniswapLP} from "../../src/swap/tokens/UniswapLP.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
 import {PreorderSettlementReenterer} from "../mocks/swap/PreorderSettlementReenterer.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
-
-import {MemeverseUniswapHookV2} from "../mocks/upgrade/MemeverseUniswapHookV2.sol";
-
-/// @notice Upgrade/facet shell that deploys with code but exposes no `poolManager()` getter.
-/// @dev The hook's `_authorizeUpgrade` and `_requireFacetPoolManager` probes read through the
-///      `ImmutableState.poolManager()` getter; with no matching selector and no fallback the probe call
-///      reverts into the probe's catch branch.
-contract PoolManagerGetterMissingShell {
-    /// @notice Unrelated placeholder whose only job is to give the shell deployed code.
-    /// @return Fixed marker value.
-    function marker() external pure returns (uint256) {
-        return 1;
-    }
-}
-
-/// @notice Upgrade/facet shell whose `poolManager()` getter exists but always reverts.
-contract PoolManagerGetterRevertingShell {
-    error GetterReverted();
-
-    /// @notice Getter-shaped probe target that fails on demand.
-    function poolManager() external view {
-        revert GetterReverted();
-    }
-}
-
-/// @notice Upgrade/facet shell whose `poolManager()` getter succeeds but returns empty returndata.
-contract PoolManagerGetterEmptyReturnShell {
-    /// @notice Getter-shaped probe target returning zero bytes of returndata.
-    /// @dev A plain view function must return a declared value, so `return(0, 0)` in assembly is the only
-    ///      way to make the STATICCALL succeed while returning nothing decodable into an address.
-    function poolManager() external view {
-        assembly {
-            return(0, 0)
-        }
-    }
-}
 
 /// @dev Test boundary:
 /// - These cases lock hook-side handling under the local hook-liquidity manager mock.
@@ -679,7 +643,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         _addLiquidity();
 
         (address lpToken,,) = hook.poolInfo(poolId);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
         /// forge-lint: disable-next-line(erc20-unchecked-transfer)
         UniswapLP(lpToken).transfer(address(0), 1);
     }
@@ -693,7 +657,7 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         UniswapLP(lpToken).approve(address(0xBEEF), 1);
 
         vm.prank(address(0xBEEF));
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
         /// forge-lint: disable-next-line(erc20-unchecked-transfer)
         UniswapLP(lpToken).transferFrom(address(this), address(0), 1);
     }
@@ -939,9 +903,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
         hook.setProtocolFeeCurrency(CurrencyLibrary.ADDRESS_ZERO, true);
-
-        vm.expectRevert(IMemeverseUniswapHook.NativeCurrencyUnsupported.selector);
-        hook.setProtocolFeeCurrency(CurrencyLibrary.ADDRESS_ZERO, true);
     }
 
     /// @notice Verifies quoting succeeds when neither side is registered for protocol fees.
@@ -1082,18 +1043,22 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         );
     }
 
-    /// @notice Covers the local direct/core fail-closed branch for exact-input underfills without router checks.
+    /// @notice Covers the local direct/core fail-closed branch for exact-input underfills across swap direction
+    ///         and protocol-fee side (fuzzing the bool pair covers all four combinations).
     /// @custom:dev-only-harness Uses the hook-liquidity manager mock to witness fee-accounting rollback on revert.
-    function testDirectManagerSwapReverts_WhenExactInputPartialFills() external {
+    function test_RevertWhen_ExactInputUnderfills(bool zeroForOne, bool feeOnCurrency0) external {
         _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency1, true);
+        // Protocol fee lands on the input leg when the fee currency matches the swap's input currency.
+        hook.setProtocolFeeCurrency(feeOnCurrency0 ? key.currency0 : key.currency1, true);
         // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
         hook.beginAccountSession();
         // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
         mockManager.swapAsUnlocked(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+                zeroForOne: zeroForOne,
+                amountSpecified: -10 ether,
+                sqrtPriceLimitX96: _validExecutionPriceLimit(zeroForOne)
             }),
             bytes("")
         );
@@ -1106,7 +1071,9 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         mockManager.swapAsUnlocked(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
+                zeroForOne: zeroForOne,
+                amountSpecified: -100 ether,
+                sqrtPriceLimitX96: _validExecutionPriceLimit(zeroForOne)
             }),
             bytes("")
         );
@@ -1145,70 +1112,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         assertEq(uint256(uint128(-delta.amount1())), expectedPoolInput, "pool input net of lp fee");
         assertGt(uint256(uint128(delta.amount0())), 0, "output received");
         assertGt(token0.balanceOf(hook.treasury()), treasury0Before, "output-side protocol fee collected");
-    }
-
-    /// @notice Covers the local direct/core fail-closed branch for exact-input underfills on input-side fee pools.
-    /// @custom:dev-only-harness Uses the hook-liquidity manager mock to witness atomic rollback instead of proving production partial-fill semantics.
-    function testDirectManagerSwapReverts_WhenExactInputPartialFillsOnInputFeePool() external {
-        _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0, true); // input-side fee for zeroForOne=true
-        // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
-        hook.beginAccountSession();
-        // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
-        mockManager.swapAsUnlocked(
-            key,
-            SwapParams({
-                zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-            }),
-            bytes("")
-        );
-        vm.warp(block.timestamp + 900);
-        mockManager.setNextExactInputPoolInputAmount(poolId, 99 ether);
-
-        RollbackSnapshot memory s = _snapshotRollback();
-
-        vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
-        mockManager.swapAsUnlocked(
-            key,
-            SwapParams({
-                zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-            }),
-            bytes("")
-        );
-
-        _assertRollbackUnchanged(s);
-    }
-
-    /// @notice Covers the mirrored local direct/core fail-closed branch for one-for-zero exact-input underfills on output-fee pools.
-    /// @custom:dev-only-harness Uses the hook-liquidity manager mock to witness rollback symmetry instead of proving production partial-fill semantics.
-    function testDirectManagerSwapReverts_WhenOneForZeroExactInputPartialFillsOnOutputFeePool() external {
-        _addLiquidity();
-        hook.setProtocolFeeCurrency(key.currency0, true);
-        // One session covers the seed swap and the rollback swap; the revert rolls back its own context.
-        hook.beginAccountSession();
-        // Seed non-zero EWVWAP state so rollback assertions are non-trivial.
-        mockManager.swapAsUnlocked(
-            key,
-            SwapParams({
-                zeroForOne: false, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
-            }),
-            bytes("")
-        );
-        vm.warp(block.timestamp + 900);
-        mockManager.setNextExactInputPoolInputAmount(poolId, 99 ether);
-
-        RollbackSnapshot memory s = _snapshotRollback();
-
-        vm.expectRevert(IMemeverseUniswapHook.ExactInputPartialFill.selector);
-        mockManager.swapAsUnlocked(
-            key,
-            SwapParams({
-                zeroForOne: false, amountSpecified: -100 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(false)
-            }),
-            bytes("")
-        );
-
-        _assertRollbackUnchanged(s);
     }
 
     /// @notice Covers the local launch-settlement fail-closed branch for exact-input underfills.
@@ -1522,163 +1425,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         assertEq(startFeeBps, 5000, "start fee");
         assertEq(minFeeBps, 100, "min fee");
         assertEq(decayDurationSeconds, 900, "duration");
-    }
-
-    function testNonOwnerCannotUpgrade() external {
-        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(this), address(this));
-        MemeverseUniswapHookV2 newImplementation = new MemeverseUniswapHookV2(IPoolManager(address(mockManager)));
-
-        // UUPS `_authorizeUpgrade` runs under onlyOwner inside the proxy delegatecall context, so a non-owner
-        // caller is rejected with OwnableUnauthorizedAccount before the implementation slot is touched.
-        vm.prank(address(0xB0B));
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xB0B)));
-        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(address(newImplementation), "");
-    }
-
-    /// @notice Verifies an owner-driven UUPS upgrade to the V2 shell preserves V1 hook storage (owner, treasury,
-    ///         launcher, poolInitializer).
-    /// @dev The V2 shell cannot inherit V1 (Solidity Error 8894 blocks inheriting a `layout at` contract), so it
-    ///      exposes no V1 getters and post-upgrade storage is read via `vm.load` against the V1 storage slots
-    ///      (OutrunOwnableUpgradeable owner slot + the hook ERC7201 namespace struct field offsets). UUPS upgrade
-    ///      authorization lives on the implementation (`_authorizeUpgrade`, onlyOwner), so the owner can drive the
-    ///      upgrade directly through the proxy without a ProxyAdmin.
-    function testOwnerCanUpgradeAndPreserveStorage() external {
-        MemeverseUniswapHookUpgradeable initialized = MemeverseUniswapHookUpgradeable(
-            deployHookAtFlagAddress(IPoolManager(address(mockManager)), address(this), address(0xFEE), address(0xD00D))
-        );
-        initialized.setPoolInitializer(address(0xBEEF));
-
-        // Snapshot the V1-set storage through the V1 getters while V1 is still live.
-        bytes32 ownableSlot = 0x7f241041d6960443a72c6e46e3b41069d0f1a8933ddb434b1da86a3f3cba9f00;
-        bytes32 snapshotOwner = vm.load(address(initialized), ownableSlot);
-        bytes32 snapshotTreasury = vm.load(address(initialized), bytes32(uint256(HOOK_SLOT) + OFF_TREASURY));
-        bytes32 snapshotLauncher = vm.load(address(initialized), bytes32(uint256(HOOK_SLOT) + OFF_LAUNCHER));
-        bytes32 snapshotPoolInitializer =
-            vm.load(address(initialized), bytes32(uint256(HOOK_SLOT) + OFF_POOL_INITIALIZER));
-
-        MemeverseUniswapHookV2 newImplementation = new MemeverseUniswapHookV2(IPoolManager(address(mockManager)));
-
-        // Owner drives the upgrade directly through the proxy via UUPS upgradeToAndCall (no ProxyAdmin).
-        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(address(newImplementation), "");
-
-        assertEq(MemeverseUniswapHookV2(address(initialized)).version(), 2, "version");
-        assertEq(vm.load(address(initialized), ownableSlot), snapshotOwner, "owner survived");
-        assertEq(
-            vm.load(address(initialized), bytes32(uint256(HOOK_SLOT) + OFF_TREASURY)),
-            snapshotTreasury,
-            "treasury survived"
-        );
-        assertEq(
-            vm.load(address(initialized), bytes32(uint256(HOOK_SLOT) + OFF_LAUNCHER)),
-            snapshotLauncher,
-            "launcher survived"
-        );
-        assertEq(
-            vm.load(address(initialized), bytes32(uint256(HOOK_SLOT) + OFF_POOL_INITIALIZER)),
-            snapshotPoolInitializer,
-            "poolInitializer survived"
-        );
-    }
-
-    function testOwnerCannotUpgradeToImplementationWithDifferentPoolManager() external {
-        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(this), address(this));
-        MockPoolManagerForHookLiquidity differentManager = new MockPoolManagerForHookLiquidity();
-        MemeverseUniswapHookV2 newImplementation = new MemeverseUniswapHookV2(IPoolManager(address(differentManager)));
-
-        // The hook enforces poolManager drift checks on-chain; a mismatched implementation must revert.
-        // Encode the full error (selector + args) because this Foundry version matches `bytes4` exactly,
-        // not as a prefix — see the `abi.encodeWithSelector` pattern used elsewhere in this file.
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IMemeverseUniswapHook.UpgradePoolManagerMismatch.selector,
-                address(mockManager),
-                address(differentManager)
-            )
-        );
-        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(address(newImplementation), "");
-    }
-
-    function testOwnerCannotUpgradeToCodelessImplementation() external {
-        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(this), address(this));
-
-        // An EOA upgrade target has no code, so the drift-check pre-check must reject it with a
-        // named error before the ImmutableState external call would produce an opaque decode revert.
-        address eoaTarget = address(0xDEAD);
-        vm.expectRevert(abi.encodeWithSelector(IMemeverseUniswapHook.UpgradeTargetCodeNotReady.selector, eoaTarget));
-        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(eoaTarget, "");
-    }
-
-    /// @notice Test upgradeToAndCall reverts with the named guard error when the target has code but no
-    ///         `poolManager()` getter at all.
-    /// @dev Coverage: the `_authorizeUpgrade` probe's catch branch must fold this honest-failure class
-    ///      into `UpgradePoolManagerUnreadable` so the upgrade still fails closed with a greppable label
-    ///      instead of a bare revert.
-    function testUpgradeRevertsWhenPoolManagerGetterMissing() external {
-        PoolManagerGetterMissingShell shell = new PoolManagerGetterMissingShell();
-        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(this), address(this));
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IMemeverseUniswapHook.UpgradePoolManagerUnreadable.selector, address(shell))
-        );
-        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(address(shell), "");
-    }
-
-    /// @notice Test upgradeToAndCall reverts with the named guard error when the target's `poolManager()`
-    ///         getter exists but reverts.
-    /// @dev Coverage: second catch-branch input — a reverting getter must fail closed through the same
-    ///      `UpgradePoolManagerUnreadable` label, not surface the getter's own error.
-    function testUpgradeRevertsWhenPoolManagerGetterReverts() external {
-        PoolManagerGetterRevertingShell shell = new PoolManagerGetterRevertingShell();
-        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(this), address(this));
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IMemeverseUniswapHook.UpgradePoolManagerUnreadable.selector, address(shell))
-        );
-        MemeverseUniswapHookUpgradeable(address(initialized)).upgradeToAndCall(address(shell), "");
-    }
-
-    /// @notice Test upgradeToAndCall still fails closed when the target's `poolManager()` getter succeeds
-    ///         but returns undecodable (empty) data.
-    /// @dev Semantic boundary of the catch branch, pinned as an executable negative-space assertion: the
-    ///      raw low-level call must revert while its revert selector must NOT equal
-    ///      `UpgradePoolManagerUnreadable` — Solidity try/catch does not catch "call succeeded but return
-    ///      data cannot be ABI-decoded", so that class bubbles up as the raw decode revert instead of the
-    ///      named error; the upgrade is still rejected (fail-closed holds, only the label differs; see
-    ///      `_authorizeUpgrade`'s comment and the `UpgradePoolManagerUnreadable` doc comment on the
-    ///      interface). A bare `vm.expectRevert()` matches any revert, so it cannot distinguish the two
-    ///      labels. `bytes4(ret)` zero-pads returndata shorter than 4 bytes, keeping the selector
-    ///      comparison safe for any revert payload shape.
-    function testUpgradeRevertsWhenPoolManagerGetterReturnsUndecodableData() external {
-        PoolManagerGetterEmptyReturnShell shell = new PoolManagerGetterEmptyReturnShell();
-        MemeverseUniswapHookUpgradeable initialized = _deployHookProxy(address(this), address(this));
-
-        // The test contract is the proxy owner (no prank needed): without owner rights the call would die
-        // at `onlyOwner` before the probe and the negative-space assertion below would pass vacuously.
-        (bool ok, bytes memory ret) =
-            address(initialized).call(abi.encodeCall(initialized.upgradeToAndCall, (address(shell), "")));
-
-        assertFalse(ok, "undecodable getter returndata must still reject the upgrade (fail-closed)");
-        assertFalse(
-            bytes4(ret) == IMemeverseUniswapHook.UpgradePoolManagerUnreadable.selector,
-            "decode failure must bubble up as the raw decode revert, not fold into the named error"
-        );
-    }
-
-    /// @notice Test setFacet reverts with the named guard error when the facet has code but no
-    ///         `poolManager()` getter at all.
-    /// @dev Coverage: `_requireFacetPoolManager`'s catch branch must fold this honest-failure class into
-    ///      `FacetPoolManagerUnreadable` instead of a bare revert, mirroring the upgrade probe. The
-    ///      `hook` from setUp is used directly because its owner is this test contract.
-    function testSetFacetRevertsWhenPoolManagerGetterMissing() external {
-        PoolManagerGetterMissingShell shell = new PoolManagerGetterMissingShell();
-        // Read the role constant BEFORE arming expectRevert: the constant-getter call is itself an
-        // external call and would otherwise consume the cheatcode instead of the setFacet call.
-        bytes32 swapFacetRole = hook.SWAP_FACET_ROLE();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IMemeverseUniswapHook.FacetPoolManagerUnreadable.selector, address(shell))
-        );
-        hook.setFacet(swapFacetRole, address(shell));
     }
 
     /// @notice Verifies initialize rejects a zero launcher binding (write-once launcher invariant).

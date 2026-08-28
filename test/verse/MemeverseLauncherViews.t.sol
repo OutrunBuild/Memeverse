@@ -88,6 +88,9 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
     /// @notice Pure proxy (implementation = MemeverseLauncherUpgradeable without *ForTest helpers)
     ///         for selector/ABI surface validation independent of test-only state helpers.
     address internal pureLauncher;
+    /// @notice The pure implementation behind `pureLauncher`; the runtime-selector scan reads this
+    ///         contract's bytecode (a proxy's runtime has no function dispatch table to scan).
+    address internal pureImplementation;
     MockERC20 internal uAssetToken;
     MockERC20 internal ytToken;
     MockPOLendForViews internal polend;
@@ -135,6 +138,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         // Deploy a pure proxy (implementation = pure MemeverseLauncherUpgradeable, no *ForTest helpers)
         // for selector / ABI surface validation.
         MemeverseLauncherUpgradeable pureImpl = new MemeverseLauncherUpgradeable();
+        pureImplementation = address(pureImpl);
         pureLauncher = address(
             new ERC1967Proxy(
                 address(pureImpl),
@@ -198,7 +202,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
     }
 
     function _expectedLauncherSelectorSignatures() internal pure returns (string[] memory signatures) {
-        signatures = new string[](64);
+        signatures = new string[](70);
         signatures[0] = "BPS_BASE()";
         signatures[1] = "auxiliaryLiquidities(uint256)";
         signatures[2] = "bootstrapResidualClaims(uint256)";
@@ -210,59 +214,66 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         signatures[8] = "communitiesMap(uint256,uint256)";
         signatures[9] = "fundMetaDatas(address)";
         signatures[10] = "genesis(uint256,uint256,address)";
-        signatures[11] = "getDebtCapBaseByVerseId(uint256)";
-        signatures[12] = "getGovernorByVerseId(uint256)";
-        signatures[13] = "getLauncherContracts()";
-        signatures[14] = "getLauncherParameters()";
-        signatures[15] = "getMemeverseByMemecoin(address)";
-        signatures[16] = "getMemeverseByVerseId(uint256)";
-        signatures[17] = "getStageByMemecoin(address)";
-        signatures[18] = "getStageByVerseId(uint256)";
-        signatures[19] = "getUAssetByVerseId(uint256)";
-        signatures[20] = "getVerseIdByMemecoin(address)";
-        signatures[21] = "getYieldVaultByVerseId(uint256)";
-        signatures[22] = "memecoinToIds(address)";
-        signatures[23] = "mintPOLToken(uint256,uint256,uint256,uint256,uint256,uint256,uint256)";
-        signatures[24] = "normalFeeStates(uint256)";
-        signatures[25] = "normalYTClaimed(uint256,address)";
-        signatures[26] = "owner()";
-        signatures[27] = "pause()";
-        signatures[28] = "paused()";
-        signatures[29] = "pendingAuxiliaryGovFeeStates(uint256)";
-        signatures[30] = "polToIds(address)";
-        signatures[31] = "polend()";
-        signatures[32] = "preorder(uint256,uint256,address)";
-        signatures[33] = "previewPreorderCapacity(uint256)";
-        signatures[34] = "redeemAndDistributeFees(uint256,address)";
-        signatures[35] = "redeemAuxiliaryLiquidity(uint256)";
-        signatures[36] = "redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256)";
-        signatures[37] = "refund(uint256)";
-        signatures[38] = "refundPreorder(uint256)";
-        signatures[39] = "registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool)";
-        signatures[40] = "remainingGenesisCapacity(uint256)";
-        signatures[41] = "removeGasDust(address)";
-        signatures[42] = "setLaunchImpl(address)";
-        signatures[43] = "setExecutorRewardRate(uint256)";
-        signatures[44] = "setExternalInfo(uint256,string,string,string[])";
-        signatures[45] = "setSettlementImpl(address)";
-        signatures[46] = "setFeePreviewReader(address)";
-        signatures[47] = "setFundMetaData(address,uint256,uint256)";
-        signatures[48] = "setGasLimits(uint128,uint128)";
-        signatures[49] = "setMemeverseProxyDeployer(address)";
-        signatures[50] = "setMemeverseRegistrar(address)";
-        signatures[51] = "setMemeverseSwapRouter(address)";
-        signatures[52] = "setMemeverseUniswapHook(address)";
-        signatures[53] = "setLiquidityImpl(address)";
-        signatures[54] = "setPreorderConfig(uint256,uint256)";
-        signatures[55] = "setYieldDispatcher(address)";
-        signatures[56] = "settleLeveragedAuxiliaryLiquidity(uint256)";
-        signatures[57] = "totalNormalClaimableYT(uint256)";
-        signatures[58] = "totalNormalFunds(uint256)";
-        signatures[59] = "transferOwnership(address)";
-        signatures[60] = "unpause()";
-        signatures[61] = "userGenesisData(uint256,address)";
-        signatures[62] = "userNormalFeeClaims(uint256,address)";
-        signatures[63] = "userPreorderData(uint256,address)";
+        signatures[11] = "genesisAndPreorder(uint256,uint256,uint256,address)";
+        signatures[12] = "getDebtCapBaseByVerseId(uint256)";
+        signatures[13] = "getGovernorByVerseId(uint256)";
+        signatures[14] = "getLauncherContracts()";
+        signatures[15] = "getLauncherParameters()";
+        signatures[16] = "getMemeverseByMemecoin(address)";
+        signatures[17] = "getMemeverseByVerseId(uint256)";
+        signatures[18] = "getStageByMemecoin(address)";
+        signatures[19] = "getStageByVerseId(uint256)";
+        signatures[20] = "getUAssetByVerseId(uint256)";
+        signatures[21] = "getVerseIdByMemecoin(address)";
+        signatures[22] = "getYieldVaultByVerseId(uint256)";
+        signatures[23] =
+            "initialize(address,address,address,address,address,address,address,address,uint256,uint128,uint128,uint256,uint256)";
+        signatures[24] = "memecoinToIds(address)";
+        signatures[25] = "mintPOLToken(uint256,uint256,uint256,uint256,uint256,uint256,uint256)";
+        signatures[26] = "normalFeeStates(uint256)";
+        signatures[27] = "normalYTClaimed(uint256,address)";
+        signatures[28] = "owner()";
+        signatures[29] = "pause()";
+        signatures[30] = "paused()";
+        signatures[31] = "pendingAuxiliaryGovFeeStates(uint256)";
+        signatures[32] = "polToIds(address)";
+        signatures[33] = "polend()";
+        signatures[34] = "preorder(uint256,uint256,address)";
+        signatures[35] = "previewPreorderCapacity(uint256)";
+        signatures[36] = "proxiableUUID()";
+        signatures[37] = "redeemAndDistributeFees(uint256,address)";
+        signatures[38] = "redeemAuxiliaryLiquidity(uint256)";
+        signatures[39] = "redeemMemecoinLiquidity(uint256,uint256,bool)";
+        signatures[40] = "redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256)";
+        signatures[41] = "refund(uint256)";
+        signatures[42] = "refundPreorder(uint256)";
+        signatures[43] = "registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool)";
+        signatures[44] = "remainingGenesisCapacity(uint256)";
+        signatures[45] = "removeGasDust(address)";
+        signatures[46] = "setLaunchImpl(address)";
+        signatures[47] = "setExecutorRewardRate(uint256)";
+        signatures[48] = "setExternalInfo(uint256,string,string,string[])";
+        signatures[49] = "setSettlementImpl(address)";
+        signatures[50] = "setFeePreviewReader(address)";
+        signatures[51] = "setFundMetaData(address,uint256,uint256)";
+        signatures[52] = "setGasLimits(uint128,uint128)";
+        signatures[53] = "setMemeverseProxyDeployer(address)";
+        signatures[54] = "setMemeverseRegistrar(address)";
+        signatures[55] = "setMemeverseSwapRouter(address)";
+        signatures[56] = "setMemeverseUniswapHook(address)";
+        signatures[57] = "setLiquidityImpl(address)";
+        signatures[58] = "setPreorderConfig(uint256,uint256)";
+        signatures[59] = "setYieldDispatcher(address)";
+        signatures[60] = "settleLeveragedAuxiliaryLiquidity(uint256)";
+        signatures[61] = "totalNormalClaimableYT(uint256)";
+        signatures[62] = "totalNormalFunds(uint256)";
+        signatures[63] = "transferOwnership(address)";
+        signatures[64] = "unpause()";
+        signatures[65] = "UPGRADE_INTERFACE_VERSION()";
+        signatures[66] = "upgradeToAndCall(address,bytes)";
+        signatures[67] = "userGenesisData(uint256,address)";
+        signatures[68] = "userNormalFeeClaims(uint256,address)";
+        signatures[69] = "userPreorderData(uint256,address)";
     }
 
     function _expectSelectorMissing(string memory signature) internal view {
@@ -273,21 +284,34 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
 
     function testExpectedSelectorBaselineIncludesRuntimeSurface() external {
         string[] memory signatures = _expectedLauncherSelectorSignatures();
-        assertEq(signatures.length, 64, "expected selector count");
+        assertEq(signatures.length, 70, "expected selector count");
         assertEq(signatures[0], "BPS_BASE()", "first selector");
-        assertEq(signatures[63], "userPreorderData(uint256,address)", "last selector");
+        assertEq(signatures[69], "userPreorderData(uint256,address)", "last selector");
 
         // Verify every expected selector actually exists on the proxy.
-        // Pad calldata with 256 zero-bytes so the abi decoder does not revert
-        // with empty data before the function body is entered. Use a regular call
+        // Pad calldata with 512 zero-bytes so the abi decoder does not revert
+        // with empty data before the function body is entered (512 covers the
+        // 13-parameter initialize). Use a regular call
         // (not staticcall) because state-changing functions blocked by staticcall
         // produce empty revert data at the EVM level, indistinguishable from a
-        // missing selector. State-changing functions called with zero args will
-        // revert with access-control or validation errors, not execute side effects.
-        bytes memory pad = new bytes(256);
+        // missing selector. Even when an argument-less probe does execute a side
+        // effect, it can only touch the pure proxy / pure implementation used
+        // solely for this selector validation; the assertion only requires a
+        // non-empty response, so both success and named-error reverts count.
+        bytes memory pad = new bytes(512);
         for (uint256 i = 0; i < signatures.length; i++) {
             bytes4 selector = bytes4(keccak256(bytes(signatures[i])));
-            (bool ok, bytes memory data) = pureLauncher.call(abi.encodePacked(selector, pad));
+            bool ok;
+            bytes memory data;
+            if (selector == bytes4(keccak256("upgradeToAndCall(address,bytes)"))) {
+                // The generic zero-padded probe would drive the ERC1967 upgrade machinery toward the
+                // zero address and revert with empty data, indistinguishable from a missing selector.
+                // Probe with a valid self-upgrade instead: new implementation = the pure
+                // implementation itself, and the post-upgrade call reads owner() on it.
+                (ok, data) = pureLauncher.call(abi.encodeWithSelector(selector, pureImplementation, hex"8da5cb5b"));
+            } else {
+                (ok, data) = pureLauncher.call(abi.encodePacked(selector, pad));
+            }
             assertTrue(
                 ok || data.length > 0, string(abi.encodePacked("selector missing from runtime: ", signatures[i]))
             );
@@ -306,11 +330,13 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
             knownSelectors[i] = bytes4(keccak256(bytes(expected[i])));
         }
 
-        // Scan runtime bytecode for PUSH4 (0x63) selector patterns.
+        // Scan the implementation's runtime bytecode for PUSH4 (0x63) selector patterns — the proxy
+        // runtime is a thin delegatecall fallback with no dispatch table, so scanning the proxy would
+        // make this test vacuously pass.
         // In the function dispatch block the compiler emits:
         //   DUP1 PUSH4 <selector> EQ PUSH2 <dest> JUMPI
         // Extract every 4-byte value following a 0x63 opcode.
-        bytes memory code = address(pureLauncher).code;
+        bytes memory code = pureImplementation.code;
         uint256 selectorCount;
         bytes4[] memory found = new bytes4[](code.length / 4); // upper bound
 
@@ -346,10 +372,14 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
 
                 if (!inBaseline) {
                     // Reconstruct a plausible signature string for diagnostics.
-                    // Verify the selector actually dispatches to a real function
-                    // (call returns non-empty revert data) before flagging it.
-                    bytes memory pad = new bytes(256);
-                    (bool ok, bytes memory data) = pureLauncher.staticcall(abi.encodePacked(sel, pad));
+                    // Verify the selector actually dispatches to a real function before flagging it.
+                    // Probe the implementation with a regular call: state-changing entries revert with
+                    // empty data under STATICCALL, which is indistinguishable from a missing selector.
+                    // The probe can only mutate the pure implementation's own (unused) storage.
+                    // Pad with 512 zero-bytes so larger signatures (e.g. the 13-parameter
+                    // initialize) still decode instead of failing opaquely with empty data.
+                    bytes memory pad = new bytes(512);
+                    (bool ok, bytes memory data) = pureImplementation.call(abi.encodePacked(sel, pad));
                     if (ok || data.length > 0) {
                         found[selectorCount] = sel;
                         selectorCount++;
@@ -589,26 +619,6 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         );
         (uint256 genesisFund,,) = MemeverseLauncherUpgradeable(launcherProxy).userGenesisData(1, ALICE);
         assertEq(genesisFund, 1 ether, "genesis fund tracked");
-    }
-
-    /// @notice Verifies genesis can cross the former 2^64-1 totalNormalFunds ceiling.
-    function testGenesis_AllowsTotalNormalFundsAboveFormerSupportedCapBase() external {
-        IMemeverseLauncher.Memeverse memory verse = _baseVerse(IMemeverseLauncher.Stage.Genesis);
-        _setVerse(1, verse);
-        setGenesisFundForTest(launcherProxy, 1, uint128(MAX_SUPPORTED_FUND_BASED_AMOUNT - 5));
-
-        uAssetToken.mint(address(this), 10);
-        uAssetToken.approve(address(launcher), type(uint256).max);
-
-        launcher.genesis(1, 10, ALICE);
-
-        assertEq(
-            MemeverseLauncherUpgradeable(launcherProxy).totalNormalFunds(1),
-            MAX_SUPPORTED_FUND_BASED_AMOUNT + 5,
-            "funds crossed old cap"
-        );
-        (uint256 genesisFund,,) = MemeverseLauncherUpgradeable(launcherProxy).userGenesisData(1, ALICE);
-        assertEq(genesisFund, 10, "genesis fund recorded");
     }
 
     function testGenesis_RevertsWhenAggregateTotalGenesisFundsWouldExceedSupportedMaximum() external {

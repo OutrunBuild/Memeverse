@@ -222,4 +222,67 @@ abstract contract MemeverseSwapForkBase is Test, HookStorageHelper {
         delta = router.swap(k, params, address(this), block.timestamp, amountOutMinimum, amountInMaximum, hookData);
         _hook().endAccountSession();
     }
+
+    // ── Wrapped-revert capture helpers (deployed mainnet V4 wraps hook errors) ──
+
+    /// @dev Runs the router swap inside a try/catch so the reverted bytes are inspectable. Required
+    ///      because a `vm.expectRevert()` with no selector matches any revert (including a regressed
+    ///      Panic 0x11); the caller asserts on the captured bytes instead. The catch body needs an
+    ///      external call (forge-std cheatcode rule), so the runner is `external` and only invoked
+    ///      from the test. Mirrors the pattern in test/swap/BeforeSwapReentrancyGuard.t.sol
+    ///      (`_swapViaUnlockCapturingRevert`).
+    function _swapCapturingRevert(
+        PoolKey memory swapKey,
+        SwapParams memory params,
+        address recipient,
+        uint256 inputBudget
+    ) internal returns (bytes memory revertData) {
+        try this._runSwapReverting(swapKey, params, recipient, inputBudget) {
+            revert("expected reverting swap to revert");
+        } catch (bytes memory reason) {
+            return reason;
+        }
+    }
+
+    /// @notice External swap runner used only by `_swapCapturingRevert` so the revert can be caught.
+    function _runSwapReverting(PoolKey memory swapKey, SwapParams memory params, address recipient, uint256 inputBudget)
+        external
+    {
+        // Open a session so the swap reaches the guarded path, not the session gate.
+        // `beginAccountSession` and the reverting swap run in THIS external self-call frame, so when the
+        // swap reverts the frame rolls back the session's transient `activePrincipal` write (EIP-1153
+        // transient storage reverts with its frame). `_swapCapturingRevert` catches the revert in the
+        // parent frame, where `activePrincipal` is already `address(0)`: the session is discarded, not
+        // left open, so no `endAccountSession` is needed or valid (it would revert
+        // `AccountSessionNotActive`). Contrast test/swap/BeforeSwapReentrancyGuard.t.sol, where
+        // begin/end live in the test frame and the session survives the swap-revert catch.
+        _hook().beginAccountSession();
+        router.swap(swapKey, params, recipient, block.timestamp, 0, inputBudget, "");
+    }
+
+    /// @dev Decodes the fixed head and nested reason of `WrappedError(address,bytes4,bytes,bytes)`.
+    function _wrappedReason(bytes memory wrapped)
+        internal
+        pure
+        returns (address target, bytes4 callbackSelector, uint256 reasonLength, bytes4 reasonSelector)
+    {
+        require(wrapped.length >= 132, "wrapped error too short");
+
+        uint256 reasonOffset;
+        assembly ("memory-safe") {
+            target := mload(add(wrapped, 0x24))
+            callbackSelector := mload(add(wrapped, 0x44))
+            reasonOffset := mload(add(wrapped, 0x64))
+        }
+
+        require(reasonOffset <= wrapped.length - 68, "wrapped reason out of bounds");
+        uint256 reasonLengthPosition = 0x24 + reasonOffset;
+        assembly ("memory-safe") {
+            reasonLength := mload(add(wrapped, reasonLengthPosition))
+        }
+        require(reasonLength >= 4, "wrapped reason too short");
+        assembly ("memory-safe") {
+            reasonSelector := mload(add(wrapped, add(reasonLengthPosition, 0x20)))
+        }
+    }
 }

@@ -3,13 +3,19 @@ pragma solidity ^0.8.35;
 
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 import {IMemeverseUniswapHook} from "../../../src/swap/interfaces/IMemeverseUniswapHook.sol";
+import {OrdinarySwapMath} from "../../../src/swap/libraries/OrdinarySwapMath.sol";
 import {MemeverseSwapForkBase} from "./MemeverseSwapForkBase.sol";
 
-/// @notice Fork tests covering the hook's partial-fill guards (ExactInputPartialFill /
-///         ExactOutputPartialFill) against the deployed mainnet V4 singleton. The pool holds
-///         100 token0 / 100 token1 of liquidity, so both tests intentionally over-trade that budget.
+/// @notice Fork tests covering the hook's pre-swap executability guard against the deployed
+///         mainnet V4 singleton: over-trading the pool's 100 token0 / 100 token1 liquidity within
+///         a tight price limit reverts FinalTargetNotExecutable (wrapped by V4). The
+///         ExactInput/OutputPartialFill rollback guards are covered by the mock-injected underfill
+///         tests in test/swap/MemeverseSwapRouter.t.sol — on the deployed V4 the hook's planner
+///         always rejects an unachievable target first.
 contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
     function setUp() public {
         // No Permit2 needed: tests do not sign any EIP-3009 / Permit2 flow.
@@ -17,21 +23,29 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
     }
 
     /// @dev Tighten sqrtPriceLimitX96 to just below 1.0 so a -100 ether input cannot fully fill:
-    ///      actual pool input < net input -> hook reverts ExactInputPartialFill (wrapped by mainnet
-    ///      V4, hence expectRevert() with no selector). State must roll back fully.
-    function testExactInput_PriceLimitExhaustion_RevertsAndRollsBack() external {
+    ///      the hook's pre-swap executability check rejects the
+    ///      unachievable target and reverts FinalTargetNotExecutable, which the deployed mainnet V4
+    ///      wraps as WrappedError(hook, beforeSwap, FinalTargetNotExecutable) — assert the exact
+    ///      nested selector instead of accepting any revert. (The ExactInputPartialFill rollback
+    ///      guard itself is covered by the mock-injected underfill tests in MemeverseSwapRouter.t.sol;
+    ///      on the deployed V4 the hook's planner always rejects first.) State must roll back fully.
+    function testExactInput_TargetNotExecutable_RevertsAndRollsBack() external {
         _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
-        uint160 tightLimit = SQRT_PRICE_1_1 - 1;
+        uint160 roomyLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
         SwapParams memory params =
-            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: tightLimit});
+            SwapParams({zeroForOne: true, amountSpecified: -100 ether, sqrtPriceLimitX96: roomyLimit});
 
         RollbackSnapshot memory before_ = _rollbackSnapshot(address(this));
-        // Open a session so the swap reaches the partial-fill guard, not the session gate.
-        _hook().beginAccountSession();
-        vm.expectRevert();
-        router.swap(key, params, address(this), block.timestamp, 0, 100 ether, "");
+        bytes memory revertData = _swapCapturingRevert(key, params, address(this), 100 ether);
+        assertEq(bytes4(revertData), CustomRevert.WrappedError.selector, "outer selector");
+        (address target, bytes4 callbackSelector, uint256 reasonLength, bytes4 reasonSelector) =
+            _wrappedReason(revertData);
+        assertEq(target, address(key.hooks), "wrapped target");
+        assertEq(callbackSelector, IHooks.beforeSwap.selector, "wrapped callback");
+        assertEq(reasonLength, 4, "nested reason length");
+        assertEq(reasonSelector, OrdinarySwapMath.FinalTargetNotExecutable.selector, "nested reason selector");
         _assertRollback(address(this), before_);
     }
 
@@ -77,21 +91,29 @@ contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
 
     /// @dev Tight price limit blocks a 10 ether exact-output request before the pool can deliver the
     ///      requested output. The router pulls a finite budget the test account owns, so the swap reaches
-    ///      V4/hook and exercises ExactOutputPartialFill instead of failing during router pre-funding.
-    function testExactOutput_InsufficientLiquidity_RevertsAndRollsBack() external {
+    ///      V4/hook, whose pre-swap executability check rejects the undeliverable output with
+    ///      FinalTargetNotExecutable, wrapped by the deployed mainnet V4 as
+    ///      WrappedError(hook, beforeSwap, FinalTargetNotExecutable) — assert the exact nested
+    ///      selector instead of accepting any revert. (The ExactOutputPartialFill rollback guard
+    ///      itself is covered by the mock-injected underfill tests in MemeverseSwapRouter.t.sol.)
+    function testExactOutput_TargetNotExecutable_RevertsAndRollsBack() external {
         _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
 
-        uint160 tightLimit = SQRT_PRICE_1_1 - 1;
+        uint160 roomyLimit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
         SwapParams memory params =
-            SwapParams({zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: tightLimit});
+            SwapParams({zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: roomyLimit});
 
         uint256 inputBudget = token0.balanceOf(address(this));
         RollbackSnapshot memory before_ = _rollbackSnapshot(address(this));
-        // Open a session so the swap reaches the partial-fill guard, not the session gate.
-        _hook().beginAccountSession();
-        vm.expectRevert();
-        router.swap(key, params, address(this), block.timestamp, 0, inputBudget, "");
+        bytes memory revertData = _swapCapturingRevert(key, params, address(this), inputBudget);
+        assertEq(bytes4(revertData), CustomRevert.WrappedError.selector, "outer selector");
+        (address target, bytes4 callbackSelector, uint256 reasonLength, bytes4 reasonSelector) =
+            _wrappedReason(revertData);
+        assertEq(target, address(key.hooks), "wrapped target");
+        assertEq(callbackSelector, IHooks.beforeSwap.selector, "wrapped callback");
+        assertEq(reasonLength, 4, "nested reason length");
+        assertEq(reasonSelector, OrdinarySwapMath.FinalTargetNotExecutable.selector, "nested reason selector");
         _assertRollback(address(this), before_);
     }
 }

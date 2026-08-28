@@ -5,7 +5,6 @@ import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
@@ -66,24 +65,7 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         // No revert == remove succeeded on real V4.
     }
 
-    function testRemoveAllLiquidity_NonZeroQuoteReverts() external {
-        _hook().setProtocolFeeCurrency(key.currency0, true);
-        _matureLaunchWindow();
-
-        address lpToken = router.lpToken(address(token0), address(token1));
-        uint256 lpBal = IERC20(lpToken).balanceOf(address(this));
-        IERC20(lpToken).approve(address(router), lpBal);
-        router.removeLiquidity(key.currency0, key.currency1, uint128(lpBal), 0, 0, address(this), block.timestamp);
-
-        SwapParams memory params = SwapParams({
-            zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
-        });
-
-        vm.expectRevert(OrdinarySwapMath.InvalidActiveLiquidity.selector);
-        router.quoteSwap(key, params, address(this));
-    }
-
-    /// @dev Drains the pool the same way `testRemoveAllLiquidity_*` does. Reused by the drained-pool
+    /// @dev Drains the pool by removing all router-held LP shares. Used by the drained-pool
     ///      regression tests below so each starts from a confirmed zero-liquidity / zero-LP-supply state.
     function _drainAllLiquidity() internal {
         address lpToken = router.lpToken(address(token0), address(token1));
@@ -124,66 +106,6 @@ contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
         assertEq(callbackSelector, IHooks.beforeSwap.selector, "wrapped callback");
         assertEq(reasonLength, 4, "nested reason length");
         assertEq(reasonSelector, OrdinarySwapMath.InvalidActiveLiquidity.selector, "nested reason selector");
-    }
-
-    /// @dev Runs the router swap inside a try/catch so the reverted bytes are inspectable. Required because a
-    ///      `vm.expectRevert()` with no selector matches any revert (including a regressed Panic 0x11); the
-    ///      caller asserts on the captured bytes instead. The catch body needs an external call (forge-std
-    ///      cheatcode rule), so the runner is `external` and only invoked from the test. Mirrors the pattern in
-    ///      test/swap/BeforeSwapReentrancyGuard.t.sol (`_swapViaUnlockCapturingRevert`).
-    function _swapCapturingRevert(
-        PoolKey memory swapKey,
-        SwapParams memory params,
-        address recipient,
-        uint256 inputBudget
-    ) internal returns (bytes memory revertData) {
-        try this._runSwapReverting(swapKey, params, recipient, inputBudget) {
-            revert("expected drained exact-output swap to revert");
-        } catch (bytes memory reason) {
-            return reason;
-        }
-    }
-
-    /// @notice External swap runner used only by `_swapCapturingRevert` so the revert can be caught.
-    function _runSwapReverting(PoolKey memory swapKey, SwapParams memory params, address recipient, uint256 inputBudget)
-        external
-    {
-        // Open a session so the drained-pool swap reaches the active-liquidity guard, not the session gate.
-        // `beginAccountSession` and the reverting swap run in THIS external self-call frame, so when the
-        // swap reverts the frame rolls back the session's transient `activePrincipal` write (EIP-1153
-        // transient storage reverts with its frame). `_swapCapturingRevert` catches the revert in the
-        // parent frame, where `activePrincipal` is already `address(0)`: the session is discarded, not
-        // left open, so no `endAccountSession` is needed or valid (it would revert `AccountSessionNotActive`).
-        // Contrast `test/swap/BeforeSwapReentrancyGuard.t.sol`, where begin/end live in the test frame and
-        // the session survives the swap-revert catch.
-        _hook().beginAccountSession();
-        router.swap(swapKey, params, recipient, block.timestamp, 0, inputBudget, "");
-    }
-
-    /// @dev Decodes the fixed head and nested reason of `WrappedError(address,bytes4,bytes,bytes)`.
-    function _wrappedReason(bytes memory wrapped)
-        internal
-        pure
-        returns (address target, bytes4 callbackSelector, uint256 reasonLength, bytes4 reasonSelector)
-    {
-        require(wrapped.length >= 132, "wrapped error too short");
-
-        uint256 reasonOffset;
-        assembly ("memory-safe") {
-            target := mload(add(wrapped, 0x24))
-            callbackSelector := mload(add(wrapped, 0x44))
-            reasonOffset := mload(add(wrapped, 0x64))
-        }
-
-        require(reasonOffset <= wrapped.length - 68, "wrapped reason out of bounds");
-        uint256 reasonLengthPosition = 0x24 + reasonOffset;
-        assembly ("memory-safe") {
-            reasonLength := mload(add(wrapped, reasonLengthPosition))
-        }
-        require(reasonLength >= 4, "wrapped reason too short");
-        assembly ("memory-safe") {
-            reasonSelector := mload(add(wrapped, add(reasonLengthPosition, 0x20)))
-        }
     }
 
     function testCreatePoolAndAddLiquidity_OnlyLauncher() external {

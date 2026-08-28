@@ -3,6 +3,8 @@ pragma solidity ^0.8.35;
 
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -37,26 +39,11 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         _assertQuoteMatchesActual(false, false, key.currency0);
     }
 
-    function testExactOutput_ZeroForOne_InputFee_QuoteMatchesActual() external {
-        _assertQuoteMatchesActual(true, true, key.currency0);
-    }
-
-    function testExactOutput_ZeroForOne_OutputFee_QuoteMatchesActual() external {
-        _assertQuoteMatchesActual(true, true, key.currency1);
-    }
-
-    function testExactOutput_OneForZero_InputFee_QuoteMatchesActual() external {
-        _assertQuoteMatchesActual(false, true, key.currency1);
-    }
-
-    function testExactOutput_OneForZero_OutputFee_QuoteMatchesActual() external {
-        _assertQuoteMatchesActual(false, true, key.currency0);
-    }
-
-    /// @dev Unified quote==actual assertion across all 8 combinations of
-    ///      (zeroForOne × exactInput/exactOutput × input-side/output-side fee). Validates the
-    ///      router's quote formula against real V4 swap math on every token flow: user input
+    /// @dev Unified quote==actual assertion for the four exact-input combinations of
+    ///      (zeroForOne × input-side/output-side fee). Validates the router's quote
+    ///      formula against real V4 swap math on every token flow: user input
     ///      spend, user output, treasury protocol fee, LP fee-per-share growth, and BalanceDelta.
+    ///      The exact-output half of the matrix is covered by MemeverseSwapForkFuzz.t.sol.
     function _assertQuoteMatchesActual(bool zeroForOne, bool exactOutput, Currency feeCurrency) internal {
         _hook().setProtocolFeeCurrency(feeCurrency, true);
         _matureLaunchWindow();
@@ -147,13 +134,17 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         SwapParams memory params = SwapParams({
             zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: _validExecutionPriceLimit(true)
         });
-        // PublicSwapDisabled fires in hook beforeSwap. Open a session so the swap reaches the public-swap
-        // gate, not the session gate. The deployed mainnet V4 (fork block) wraps hook reverts with a selector
-        // that differs from the lib v4-core build, so expectRevert() validates the protection fires (setUp
-        // isolates PublicSwapDisabled as the only revert cause here).
-        _hook().beginAccountSession();
-        vm.expectRevert();
-        router.swap(key, params, address(this), block.timestamp, 0, 10 ether, "");
+        // PublicSwapDisabled fires in hook beforeSwap; the deployed mainnet V4 wraps it with the same
+        // CustomRevert.WrappedError selector as the lib build (verified live against the fork block),
+        // so pin the exact nested reason instead of accepting any revert.
+        bytes memory revertData = _swapCapturingRevert(key, params, address(this), 10 ether);
+        assertEq(bytes4(revertData), CustomRevert.WrappedError.selector, "outer selector");
+        (address target, bytes4 callbackSelector, uint256 reasonLength, bytes4 reasonSelector) =
+            _wrappedReason(revertData);
+        assertEq(target, address(key.hooks), "wrapped target");
+        assertEq(callbackSelector, IHooks.beforeSwap.selector, "wrapped callback");
+        assertEq(reasonLength, 4, "nested reason length");
+        assertEq(reasonSelector, IMemeverseUniswapHook.PublicSwapDisabled.selector, "nested reason selector");
     }
 
     function testPublicSwapResumes_AfterResumeTime() external {

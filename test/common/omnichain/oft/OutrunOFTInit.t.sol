@@ -12,8 +12,11 @@ import {OFTMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol
 import {SendParam, OFTReceipt, IOFT} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {MockOFTEndpoint} from "../../../mocks/common/CommonMocks.sol";
 import {OFTHarness} from "../../../mocks/infrastructure/OFTHarness.sol";
+import {OutrunOwnable} from "../../../../src/common/access/OutrunOwnable.sol";
 
 error AmountSDOverflowed(uint256 amountSD);
+
+event MsgInspectorSet(address inspector);
 
 contract OutrunOFTInitTest is Test {
     using Clones for address;
@@ -49,6 +52,17 @@ contract OutrunOFTInitTest is Test {
         assertFalse(oft.approvalRequired());
         assertEq(oft.sharedDecimals(), 6);
         assertEq(oft.decimalConversionRate(), 1e12);
+    }
+
+    /// @notice Test isPeer resolves exactly the configured peer per eid.
+    /// @dev Exercises the real `OutrunOFTCoreInit.isPeer` -> `peers` mapping on the initialized clone:
+    ///      the configured (eid, peer) pair is trusted, while a different peer value for the configured
+    ///      eid and the configured peer under another eid are both untrusted.
+    function testIsPeerReflectsConfiguredPeers() external view {
+        bytes32 peer = bytes32(uint256(uint160(address(0xBEEF))));
+        assertTrue(oft.isPeer(DST_EID, peer), "configured peer must be trusted");
+        assertFalse(oft.isPeer(DST_EID, bytes32(uint256(uint160(address(0xCAFE))))), "other peer untrusted");
+        assertFalse(oft.isPeer(DST_EID + 1, peer), "unconfigured eid untrusted");
     }
 
     /// @notice Test quote send and send use peer and burn sender balance.
@@ -312,5 +326,40 @@ contract OutrunOFTInitTest is Test {
         assertEq(receipt.amountSentLD, rate, "amountSentLD at boundary is non-zero");
         assertEq(receipt.amountReceivedLD, rate, "amountReceivedLD at boundary is non-zero");
         assertEq(oft.balanceOf(address(this)), 0, "full amount burned at boundary");
+    }
+
+    /// @notice The owner can set the outbound message inspector, which is readable via the getter.
+    /// @dev `MsgInspectorSet` is non-indexed, so only the data word is matched.
+    function test_SetMsgInspectorStoresInspectorAndEmitsEvent() external {
+        vm.expectEmit(false, false, false, true);
+        emit MsgInspectorSet(ATTACKER);
+
+        vm.prank(OWNER);
+        oft.setMsgInspector(ATTACKER);
+
+        assertEq(oft.msgInspector(), ATTACKER, "inspector stored");
+    }
+
+    /// @notice The zero address is an accepted inspector value: the setter has no zero-address guard
+    ///         because address(0) is the documented "inspection disabled" state.
+    /// @dev Pinning the `MsgInspectorSet(address(0))` emit proves the zero write actually executes the
+    ///      full setter body (storage update plus event), not just a stale-storage coincidence.
+    function test_SetMsgInspectorAcceptsZeroAddressToDisableInspection() external {
+        vm.expectEmit(false, false, false, true);
+        emit MsgInspectorSet(address(0));
+
+        vm.prank(OWNER);
+        oft.setMsgInspector(address(0));
+
+        assertEq(oft.msgInspector(), address(0), "zero inspector accepted (inspection disabled)");
+    }
+
+    /// @notice A non-owner caller cannot change the inspector.
+    function test_RevertWhen_SetMsgInspectorCallerIsNotOwner() external {
+        vm.prank(ATTACKER);
+        vm.expectRevert(abi.encodeWithSelector(OutrunOwnable.OwnableUnauthorizedAccount.selector, ATTACKER));
+        oft.setMsgInspector(BENEFICIARY);
+
+        assertEq(oft.msgInspector(), address(0), "inspector unchanged after the rejected call");
     }
 }

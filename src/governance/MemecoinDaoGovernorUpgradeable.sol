@@ -309,12 +309,12 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         IERC20(_token).safeTransfer(_to, _amount);
     }
 
-    /// @dev Rejects nested execution and records the operation count so registration confirmation can be limited to
-    ///      a one-operation execution. The registered token list is read up front and this Governor's balances are
-    ///      snapshotted before operations run. Any operation approving a registered treasury token may name only the
-    ///      vote token (the paired yield vault, whose deposit path pulls treasury funds) as spender; any other spender
-    ///      reverts the whole execution. Afterward, only tokens with `pre > 0` and `post < pre` are checked:
-    ///      `spent = pre - post` and `limit = pre * maxTreasurySpendRatio / 10000`.
+    /// @dev Rejects nested execution and records the operation count so registration confirmation can be limited to a
+    ///      one-operation execution. Execution also enforces an upgrade-supermajority gate whenever any operation
+    ///      targets this Governor or the incentivizer. The registered treasury token list is fetched once by the
+    ///      treasury-allowance guard and this Governor's balances are snapshotted before operations run. Afterward,
+    ///      only tokens with `pre > 0` and `post < pre` are checked: `spent = pre - post` and
+    ///      `limit = pre * maxTreasurySpendRatio / 10000`.
     // slither-disable-next-line dead-code
     function _executeOperations(
         uint256 proposalId,
@@ -326,49 +326,12 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
         if (memecoinDaoGovernorStorage._executionActive) revert NestedExecution();
 
         memecoinDaoGovernorStorage._executionActive = true;
-        uint256 targetsLength = targets.length;
-        memecoinDaoGovernorStorage._executionOperationCount = targetsLength;
+        memecoinDaoGovernorStorage._executionOperationCount = targets.length;
 
-        // Layer 4: a governor self-call OR an incentivizer target both require the upgrade supermajority. The
-        // incentivizer is gated because a swapped implementation can move governor treasury via disburseReward,
-        // bypassing the per-execution treasury cap that only runs inside this function.
-        address incentivizer = address(memecoinDaoGovernorStorage._governanceCycleIncentivizer);
-        bool requiresUpgradeSupermajority = false;
-        for (uint256 i = 0; i < targetsLength; ++i) {
-            if (targets[i] == address(this) || targets[i] == incentivizer) {
-                requiresUpgradeSupermajority = true;
-                break;
-            }
-        }
-        if (requiresUpgradeSupermajority) {
-            (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = proposalVotes(proposalId);
-            uint256 totalVotes = forVotes + againstVotes + abstainVotes;
-            require(
-                forVotes * 10000 >= totalVotes * memecoinDaoGovernorStorage._upgradeSupermajorityRatio,
-                UpgradeSupermajorityRequired(
-                    forVotes, totalVotes, memecoinDaoGovernorStorage._upgradeSupermajorityRatio
-                )
-            );
-        }
+        _enforceUpgradeSupermajority(proposalId, targets);
 
-        // Registered treasury token list, read once for both the allowance guard and the balance snapshot.
-        (,,, address[] memory treasuryTokens,) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData();
+        address[] memory treasuryTokens = _enforceTreasuryAllowanceGuard(targets, calldatas);
         uint256 treasuryTokenLength = treasuryTokens.length;
-
-        // Allowance-dimension guard: an approve on a registered treasury token prepares a future balance outflow
-        // that the post-execution balance delta cannot see (the allowance moves no balance until a transferFrom
-        // spends it outside any execution check). Only the vote token — the paired yield vault that pulls treasury
-        // funds for its deposit path — is a sanctioned spender; any other spender reverts the whole execution.
-        // Payloads shorter than a full approve call are left to the token's own argument decoding, which reverts.
-        address voteToken = address(token());
-        for (uint256 i = 0; i < targetsLength; ++i) {
-            bytes memory operationCalldata = calldatas[i];
-            // Calldata-shape filter first: only approve-shaped payloads pay the O(N) registration scan.
-            if (operationCalldata.length < 68 || bytes4(operationCalldata) != IERC20.approve.selector) continue;
-            if (!_isRegisteredTreasuryToken(treasuryTokens, targets[i])) continue;
-            (address spender,) = abi.decode(Bytes.slice(operationCalldata, 4, 68), (address, uint256));
-            if (spender != voteToken) revert UnauthorizedTreasuryAllowance(targets[i], spender);
-        }
 
         // Snapshot registered treasury balances before any proposal action can move them.
         uint256[] memory preBalances = new uint256[](treasuryTokenLength);
@@ -390,6 +353,61 @@ contract MemecoinDaoGovernorUpgradeable layout at erc7201("outrun.storage.Memeco
 
         memecoinDaoGovernorStorage._executionActive = false;
         memecoinDaoGovernorStorage._executionOperationCount = 0;
+    }
+
+    /// @dev Enforces the upgrade-supermajority gate: when any operation targets this Governor itself or the paired
+    ///      incentivizer, the proposal's for-votes must reach at least `_upgradeSupermajorityRatio` basis points of
+    ///      all cast votes, or execution reverts with `UpgradeSupermajorityRequired`.
+    // slither-disable-next-line dead-code
+    function _enforceUpgradeSupermajority(uint256 proposalId, address[] memory targets) private {
+        // Layer 4: a governor self-call OR an incentivizer target both require the upgrade supermajority. The
+        // incentivizer is gated because a swapped implementation can move governor treasury via disburseReward,
+        // bypassing the per-execution treasury cap that only runs inside `_executeOperations`.
+        address incentivizer = address(memecoinDaoGovernorStorage._governanceCycleIncentivizer);
+        bool requiresUpgradeSupermajority = false;
+        uint256 targetsLength = targets.length;
+        for (uint256 i = 0; i < targetsLength; ++i) {
+            if (targets[i] == address(this) || targets[i] == incentivizer) {
+                requiresUpgradeSupermajority = true;
+                break;
+            }
+        }
+        if (requiresUpgradeSupermajority) {
+            (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = proposalVotes(proposalId);
+            uint256 totalVotes = forVotes + againstVotes + abstainVotes;
+            require(
+                forVotes * 10000 >= totalVotes * memecoinDaoGovernorStorage._upgradeSupermajorityRatio,
+                UpgradeSupermajorityRequired(
+                    forVotes, totalVotes, memecoinDaoGovernorStorage._upgradeSupermajorityRatio
+                )
+            );
+        }
+    }
+
+    /// @dev Allowance-dimension guard: an approve on a registered treasury token prepares a future balance outflow
+    ///      that the post-execution balance delta cannot see (the allowance moves no balance until a transferFrom
+    ///      spends it outside any execution check). Only the vote token — the paired yield vault that pulls treasury
+    ///      funds for its deposit path — is a sanctioned spender; any other spender reverts the whole execution.
+    ///      Payloads shorter than a full approve call are left to the token's own argument decoding, which reverts.
+    /// @return treasuryTokens The registered treasury token list, read once here so the caller can snapshot balances
+    ///         without a second `metaData()` read.
+    // slither-disable-next-line dead-code
+    function _enforceTreasuryAllowanceGuard(address[] memory targets, bytes[] memory calldatas)
+        private
+        returns (address[] memory treasuryTokens)
+    {
+        (,,, treasuryTokens,) = memecoinDaoGovernorStorage._governanceCycleIncentivizer.metaData();
+
+        address voteToken = address(token());
+        uint256 targetsLength = targets.length;
+        for (uint256 i = 0; i < targetsLength; ++i) {
+            bytes memory operationCalldata = calldatas[i];
+            // Calldata-shape filter first: only approve-shaped payloads pay the O(N) registration scan.
+            if (operationCalldata.length < 68 || bytes4(operationCalldata) != IERC20.approve.selector) continue;
+            if (!_isRegisteredTreasuryToken(treasuryTokens, targets[i])) continue;
+            (address spender,) = abi.decode(Bytes.slice(operationCalldata, 4, 68), (address, uint256));
+            if (spender != voteToken) revert UnauthorizedTreasuryAllowance(targets[i], spender);
+        }
     }
 
     // slither-disable-next-line dead-code

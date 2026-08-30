@@ -5,6 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {IMemeverseRegistrar} from "../interfaces/IMemeverseRegistrar.sol";
 import {IMemeverseLauncher} from "../interfaces/IMemeverseLauncher.sol";
+import {IMemeverseRegistrarAtLocal} from "../interfaces/IMemeverseRegistrarAtLocal.sol";
 
 /**
  * @title MemeverseRegistrar Abstract Contract
@@ -18,6 +19,13 @@ abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
     error OwnershipRenounceDisabled();
 
     constructor(address _owner, address _memeverseLauncher, address _lzEndpointRegistry) Ownable(_owner) {
+        // Reuses the existing `IMemeverseRegistrarAtLocal.ZeroAddress()` declaration instead of declaring a
+        // duplicate here: the local leaf inherits both this contract and that interface, and Solidity rejects
+        // the same error name declared in two base contracts. Selector is identical to the repo-wide guards.
+        require(
+            _memeverseLauncher != address(0) && _lzEndpointRegistry != address(0),
+            IMemeverseRegistrarAtLocal.ZeroAddress()
+        );
         MEMEVERSE_LAUNCHER = _memeverseLauncher;
         LZ_ENDPOINT_REGISTRY = _lzEndpointRegistry;
     }

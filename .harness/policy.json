@@ -44,7 +44,7 @@
   },
   "repo": "Memeverse",
   "risk_rules": {
-    "slither_exclude_detectors": "naming-convention,too-many-digits,unindexed-event-address,immutable-states,unimplemented-functions",
+    "slither_exclude_detectors": "naming-convention,too-many-digits,unindexed-event-address,immutable-states,unimplemented-functions,encode-packed-collision,uninitialized-local",
     "slither_filter_paths": "lib|test|script|node_modules"
   },
   "surfaces": {
@@ -73,6 +73,7 @@
       "^\\.gitmodules$",
       "^\\.gitignore$",
       "^\\.env\\.example$",
+      "^\\.harness/forge-lint-baseline\\.json$",
       "^\\.harness/policy\\.json$",
       "^\\.harness/runtime/.*$",
       "^\\.harness/schemas/.*$",

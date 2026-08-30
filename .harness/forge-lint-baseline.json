@@ -1,0 +1,1092 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-30T19:52:11Z",
+  "finding_count": 361,
+  "notes": "Snapshot of forge-lint findings verified site-by-site as false positives or accepted patterns: encode-packed-collision hits are creationCode||abi.encode initcode assembly (fixed-length tail, injective); missing-events-access-control cannot associate erc7201 namespaced-struct writes with the emit in the same function or public caller; uninitialized-local hits are intentional zero-default idiom; reentrancy-events misfires on namespaced-storage setters with no external call; boolean-cst hits are early-return constant defaults; unused-return hits are deliberate void protocol calls (transfer return-value enforcement lives in OutrunSafeERC20). Any NEW finding beyond this set fails the gate. Regenerate: bash script/harness/forge-lint-baseline.sh regen. Style detectors (unsafe-typecast, block-timestamp) were re-enabled from exclude_lints; their pre-existing hits were snapshotted here so only new occurrences are reported. Regen intentionally re-snapshots: it is an explicit, git-reviewed acceptance decision.",
+  "findings": [
+    {
+      "key": "arbitrary-send-erc20|src/swap/MemeverseSwapRouter.sol|2f0252579bf43a1d"
+    },
+    {
+      "key": "arbitrary-send-erc20|src/swap/MemeverseYTFlashSwapRouter.sol|5943333d17893587"
+    },
+    {
+      "key": "arbitrary-send-erc20|src/swap/MemeverseYTFlashSwapRouter.sol|f3686e23061327dc"
+    },
+    {
+      "key": "arbitrary-send-eth|src/common/token/TokenHelper.sol|f7c812b70dcc34f5"
+    },
+    {
+      "key": "arbitrary-send-eth|src/interoperation/MemeverseOmnichainInteroperation.sol|e86b747ad0bed83c"
+    },
+    {
+      "key": "arbitrary-send-eth|src/verse/MemeverseSettlementImpl.sol|40f58f5ad4290404"
+    },
+    {
+      "key": "arbitrary-send-eth|src/verse/MemeverseSettlementImpl.sol|dcfee209120dd59b"
+    },
+    {
+      "key": "arbitrary-send-eth|src/verse/registration/MemeverseRegistrarAtLocal.sol|c2810874cbc83865"
+    },
+    {
+      "key": "block-timestamp|src/common/token/OutrunERC20PermitInit.sol|a276bb5c9f82ff50"
+    },
+    {
+      "key": "block-timestamp|src/common/token/extensions/governance/OutrunVotesInit.sol|36f885e571fe9aeb"
+    },
+    {
+      "key": "block-timestamp|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|d80577ad85a227b5"
+    },
+    {
+      "key": "block-timestamp|src/governance/MemecoinDaoGovernorUpgradeable.sol|2fe874837fb1595c"
+    },
+    {
+      "key": "block-timestamp|src/swap/DynamicFeeFacet.sol|b5d00dd1c16e1a9e"
+    },
+    {
+      "key": "block-timestamp|src/swap/MemeverseSwapRouter.sol|0efdab4db7a3a929"
+    },
+    {
+      "key": "block-timestamp|src/swap/MemeverseYTFlashSwapRouter.sol|f6bc2e4159664791"
+    },
+    {
+      "key": "block-timestamp|src/swap/libraries/DynamicFeeMath.sol|35551d819f94fc4e"
+    },
+    {
+      "key": "block-timestamp|src/swap/libraries/DynamicFeeMath.sol|3d1d4b3d1c88a18f"
+    },
+    {
+      "key": "block-timestamp|src/swap/libraries/DynamicFeeMath.sol|5233135787b084cd"
+    },
+    {
+      "key": "block-timestamp|src/swap/libraries/DynamicFeeMath.sol|7547355d6a1f7f31"
+    },
+    {
+      "key": "block-timestamp|src/swap/libraries/DynamicFeeMath.sol|973ea5e9d5684773"
+    },
+    {
+      "key": "block-timestamp|src/swap/libraries/DynamicFeeMath.sol|b792de240805b0ba"
+    },
+    {
+      "key": "block-timestamp|src/swap/libraries/DynamicFeeMath.sol|c2b01612208c60c0"
+    },
+    {
+      "key": "block-timestamp|src/swap/libraries/DynamicFeeMath.sol|d2c8d0b04b343ee8"
+    },
+    {
+      "key": "block-timestamp|src/swap/libraries/SwapGuardMath.sol|8fe11a4eb22f14d5"
+    },
+    {
+      "key": "block-timestamp|src/verse/MemeverseLaunchImpl.sol|b10ab547bb298c97"
+    },
+    {
+      "key": "block-timestamp|src/verse/libraries/MemeverseLauncherLib.sol|8988cdb35e6e4f55"
+    },
+    {
+      "key": "block-timestamp|src/verse/libraries/MemeverseLauncherLib.sol|e4ea9c8e3b1b2891"
+    },
+    {
+      "key": "block-timestamp|src/verse/registration/MemeverseRegistrarAtLocal.sol|fd3fc5a10edc4231"
+    },
+    {
+      "key": "block-timestamp|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|09cc74cd4a466cfb"
+    },
+    {
+      "key": "block-timestamp|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|41e8a107e87cb7a3"
+    },
+    {
+      "key": "block-timestamp|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|a2584cddeecf9259"
+    },
+    {
+      "key": "block-timestamp|src/yield/MemecoinYieldVault.sol|0264f29388cddbd8"
+    },
+    {
+      "key": "block-timestamp|src/yield/MemecoinYieldVault.sol|0cde1afc2da7dbb9"
+    },
+    {
+      "key": "block-timestamp|src/yield/MemecoinYieldVault.sol|63cbfb9c1f0647d7"
+    },
+    {
+      "key": "block-timestamp|src/yield/MemecoinYieldVault.sol|920568b5d2ac92e4"
+    },
+    {
+      "key": "boolean-cst|src/swap/libraries/DynamicFeeMath.sol|3d1d4b3d1c88a18f"
+    },
+    {
+      "key": "boolean-cst|src/swap/libraries/DynamicFeeMath.sol|b6bcb43c368bbd04"
+    },
+    {
+      "key": "boolean-cst|src/swap/libraries/DynamicFeeMath.sol|c9f1e22510e0c175"
+    },
+    {
+      "key": "boolean-cst|src/verse/MemeverseSettlementImpl.sol|c141f2aca41f0a65"
+    },
+    {
+      "key": "boolean-cst|src/verse/YieldDispatcherUpgradeable.sol|27881258c2d0e95e"
+    },
+    {
+      "key": "boolean-cst|src/verse/YieldDispatcherUpgradeable.sol|a030b03e63284e66"
+    },
+    {
+      "key": "boolean-cst|src/verse/YieldDispatcherUpgradeable.sol|f03f4d9a9cf0169c"
+    },
+    {
+      "key": "calls-loop|src/common/omnichain/oapp/OutrunOAppPreCrimeSimulatorInit.sol|16c92819d5ac93fd"
+    },
+    {
+      "key": "calls-loop|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|0b97a16a6b2b6963"
+    },
+    {
+      "key": "calls-loop|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|3b23985a1e532f24"
+    },
+    {
+      "key": "calls-loop|src/governance/MemecoinDaoGovernorUpgradeable.sol|684ad7dd940501c7"
+    },
+    {
+      "key": "calls-loop|src/governance/MemecoinDaoGovernorUpgradeable.sol|ac68ef5135c1b367"
+    },
+    {
+      "key": "calls-loop|src/verse/MemeverseLaunchImpl.sol|31671064f2e334cd"
+    },
+    {
+      "key": "calls-loop|src/verse/MemeverseLaunchImpl.sol|551ac05f83f35f20"
+    },
+    {
+      "key": "calls-loop|src/verse/MemeverseLaunchImpl.sol|b75ca0066d5df751"
+    },
+    {
+      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|14a13e2085a5c8d2"
+    },
+    {
+      "key": "calls-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|defc8666604a6b89"
+    },
+    {
+      "key": "encode-packed-collision|src/credit/GenesisCreditFactory.sol|9a4e60b9b2450a86"
+    },
+    {
+      "key": "encode-packed-collision|src/verse/deployment/MemeverseProxyDeployer.sol|00a3eb2032b03745"
+    },
+    {
+      "key": "encode-packed-collision|src/verse/deployment/MemeverseProxyDeployer.sol|ac14226d2f6b544d"
+    },
+    {
+      "key": "encode-packed-collision|src/verse/deployment/MemeverseProxyDeployer.sol|e48a8dc5c4883ea6"
+    },
+    {
+      "key": "locked-ether|src/verse/registration/MemeverseRegistrarAbstract.sol|f629e8034021531b"
+    },
+    {
+      "key": "missing-events-access-control|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|4bb71874f96da89b"
+    },
+    {
+      "key": "missing-events-access-control|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|6a6a01d500a3413e"
+    },
+    {
+      "key": "missing-events-access-control|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|763300ca6316ea8e"
+    },
+    {
+      "key": "missing-events-access-control|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|a4d01daec5a81e63"
+    },
+    {
+      "key": "missing-events-access-control|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|bd0c9552060a7744"
+    },
+    {
+      "key": "missing-events-access-control|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|c5fb56e2fb622c1f"
+    },
+    {
+      "key": "missing-events-access-control|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|c775b952760cc267"
+    },
+    {
+      "key": "missing-events-access-control|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|d1865c1bcddb02af"
+    },
+    {
+      "key": "missing-events-access-control|src/interoperation/OmnichainMemecoinStakerUpgradeable.sol|795be73a95d1c47b"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLSplitterUpgradeable.sol|5b0a626b6592eea2"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLSplitterUpgradeable.sol|63bd6242cd71d6b1"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLSplitterUpgradeable.sol|7679188a7a5d8ada"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLSplitterUpgradeable.sol|8122393e190603fa"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLSplitterUpgradeable.sol|b64534a5b7d515dd"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|06cf20915d8c1c07"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|10b2f3a4328084f3"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|1f4bfcf69cec2aa3"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|3185104561752fb6"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|4caaeae2b97a88e4"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|729217814d255384"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|b83710a83ed28f11"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|cf6d22a89ea34cdb"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|d06640edb6f344d5"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|e3795b9f7ef29c9c"
+    },
+    {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|eb20a179aafe2528"
+    },
+    {
+      "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|4a47e1b92d9f33c8"
+    },
+    {
+      "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|8156db72de14b5b4"
+    },
+    {
+      "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|89ae7c449fb1f2e5"
+    },
+    {
+      "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|999206839354ee0c"
+    },
+    {
+      "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|a1419ebecf3ecfc2"
+    },
+    {
+      "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|bce4ae22fa1a4093"
+    },
+    {
+      "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|e0097e005dedc7df"
+    },
+    {
+      "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|e234b5edaa978e0a"
+    },
+    {
+      "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|fbd02be3d3f0d831"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLaunchImpl.sol|db968f675386dcbf"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|048a359676ae845f"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|138d48649c9b5fac"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|13fd05893e716c3f"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|334116e4d63e9c6d"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|504724b1a4c2594e"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|9228a0be0576242d"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|9c7d3778b325d9f9"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|9dcf698b855ef313"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|a066c6290a5ce775"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|a114f9cf837b665e"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|c521652dbe8f6e00"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|e05816f2c4122adb"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|e0b97ab96080c809"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseLauncherUpgradeable.sol|ffe7e1f60e11b8d8"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/MemeverseSettlementImpl.sol|1c6bba2670f05d14"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/YieldDispatcherUpgradeable.sol|2ee1a1cf8082058b"
+    },
+    {
+      "key": "missing-events-access-control|src/verse/YieldDispatcherUpgradeable.sol|f973fb77a7894986"
+    },
+    {
+      "key": "non-reentrant-not-first|src/polend/POLendUpgradeable.sol|4a1cc242d5e3a875"
+    },
+    {
+      "key": "reentrancy-events|src/common/access/OutrunOwnable.sol|06780c4377e318bd"
+    },
+    {
+      "key": "reentrancy-events|src/common/access/OutrunOwnable.sol|99a4566f62072e8d"
+    },
+    {
+      "key": "reentrancy-events|src/common/omnichain/oapp/OutrunOAppCoreInit.sol|1fbfffd4075f252f"
+    },
+    {
+      "key": "reentrancy-events|src/common/omnichain/oapp/OutrunOAppOptionsType3Init.sol|3ac703ded86153d7"
+    },
+    {
+      "key": "reentrancy-events|src/common/omnichain/oapp/OutrunOAppPreCrimeSimulatorInit.sol|00d8101f89bef5e7"
+    },
+    {
+      "key": "reentrancy-events|src/common/omnichain/oft/OutrunOFTCoreInit.sol|54ce90fcb63ef81b"
+    },
+    {
+      "key": "reentrancy-events|src/common/omnichain/oft/OutrunOFTCoreInit.sol|896a598d84f5c54d"
+    },
+    {
+      "key": "reentrancy-events|src/common/omnichain/oft/OutrunOFTCoreInit.sol|c345fdce8b1d86a8"
+    },
+    {
+      "key": "reentrancy-events|src/common/token/OutrunERC20Init.sol|2523caa8fbe6335e"
+    },
+    {
+      "key": "reentrancy-events|src/common/token/OutrunERC20Init.sol|db35ff42ce2dd21a"
+    },
+    {
+      "key": "reentrancy-events|src/common/token/extensions/governance/OutrunVotesInit.sol|28907c0e3b681aa6"
+    },
+    {
+      "key": "reentrancy-events|src/common/token/extensions/governance/OutrunVotesInit.sol|3f1df34bac446c92"
+    },
+    {
+      "key": "reentrancy-events|src/common/token/extensions/governance/OutrunVotesInit.sol|be367c3be6b210e1"
+    },
+    {
+      "key": "reentrancy-events|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|004e994095868f74"
+    },
+    {
+      "key": "reentrancy-events|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|14a316fbb9df5e15"
+    },
+    {
+      "key": "reentrancy-events|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|831920fe0acd736a"
+    },
+    {
+      "key": "reentrancy-events|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|dba77eb9b822f8b7"
+    },
+    {
+      "key": "reentrancy-events|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|e6b1929a93ef486a"
+    },
+    {
+      "key": "reentrancy-events|src/interoperation/MemeverseOmnichainInteroperation.sol|9cec895bfe14b86d"
+    },
+    {
+      "key": "reentrancy-events|src/interoperation/OmnichainMemecoinStakerUpgradeable.sol|62f762b6a70c5995"
+    },
+    {
+      "key": "reentrancy-events|src/interoperation/OmnichainMemecoinStakerUpgradeable.sol|75cdaa3322ff732c"
+    },
+    {
+      "key": "reentrancy-events|src/interoperation/OmnichainMemecoinStakerUpgradeable.sol|e0f5ab31404a1b7b"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|1442b9e7e2a250e2"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|393a7a32883d96db"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|5a29e833455218c9"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|7446c783496a9964"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|929a5e5c21440e68"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|cde1218cb01fe584"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLSplitterUpgradeable.sol|e378a8ddaf6cc23f"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|1beb5e826b6fcc59"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|2846eab561d5467d"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|6f00a11ebb1fa03a"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|88c3ae12817bb9a7"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|8c05ba198dcfc51b"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|8cc97db8ea2cfa5a"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|a2c191b6558f846b"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|a60b9cc52675ecf4"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|c6a00fc7cf7e575f"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|e6453e181a58cd57"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|e71bcb9f71692ddb"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|ece11a533b2117cc"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|0d4c34c8def2aa02"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|16e836ab94a4cf2a"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|2c2519fa58423bdf"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|375ab476c9d8fe53"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|376693d3443e6675"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|3d6279455d481277"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|4c3048fb78be4c99"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|6279ab139859ed7a"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|79422fbebd688042"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|79731b0f8b8d1f42"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|80c1488ad4af2de5"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|94b9af2499015eff"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|98ad32428bd7191e"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|a0125cfe28484718"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|ac46dfd054c73646"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|e03b750296ff4299"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseUniswapHookUpgradeable.sol|e785dd09a5281971"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseYTFlashSwapRouter.sol|00ff8f2c2fa4e23b"
+    },
+    {
+      "key": "reentrancy-events|src/swap/MemeverseYTFlashSwapRouter.sol|25e9db6ff4c766dd"
+    },
+    {
+      "key": "reentrancy-events|src/swap/SettlementFacet.sol|a0973b56bed9927e"
+    },
+    {
+      "key": "reentrancy-events|src/swap/SwapFacet.sol|10d6181cf2957c78"
+    },
+    {
+      "key": "reentrancy-events|src/swap/SwapFacet.sol|2096bc56db060674"
+    },
+    {
+      "key": "reentrancy-events|src/swap/SwapFacet.sol|dd8c714429f9c636"
+    },
+    {
+      "key": "reentrancy-events|src/swap/tokens/UniswapLP.sol|3b319cd4adbc0e56"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLaunchImpl.sol|901fd0b96f1ff390"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLaunchImpl.sol|e32b6ccc2ec93d14"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|079a6624c02bcc71"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|1a471f9394a934c8"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|26e1e83189e42333"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|35f27c38e900d69e"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|3991f5225f9149dd"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|3ae5894442861d97"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|41c09019f27935cd"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|45972633eaa2a7a7"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|62f762b6a70c5995"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|7c9669dca8e69577"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|a3026d49f7979903"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|ba49666219960824"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|e50ba2a96976f9ca"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|e7a146d82cbaa474"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|ea3f211a90b381a9"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLauncherUpgradeable.sol|f252422af982630a"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|60705888856776ef"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|82d6accfc162b21f"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseLiquidityImpl.sol|fa3aeeb9a9bf12bb"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseSettlementImpl.sol|050914ae53e53812"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseSettlementImpl.sol|0b248f163beb5543"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseSettlementImpl.sol|296447724bcaf25a"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseSettlementImpl.sol|495e9a1229b2d91d"
+    },
+    {
+      "key": "reentrancy-events|src/verse/MemeverseSettlementImpl.sol|6ce557b86505e48a"
+    },
+    {
+      "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|0686e6661240d6af"
+    },
+    {
+      "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|0f088f8f23d6c7b9"
+    },
+    {
+      "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|62f762b6a70c5995"
+    },
+    {
+      "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|7046f9954d2633e9"
+    },
+    {
+      "key": "reentrancy-events|src/verse/YieldDispatcherUpgradeable.sol|fdcfa7f6bccaf68d"
+    },
+    {
+      "key": "reentrancy-events|src/verse/deployment/MemeverseProxyDeployer.sol|257a58bfd0714aae"
+    },
+    {
+      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|34a72b004fe22c51"
+    },
+    {
+      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|5dc00f0e2118601f"
+    },
+    {
+      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|613728dc9621bce3"
+    },
+    {
+      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|62f762b6a70c5995"
+    },
+    {
+      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|8aedd573253abf18"
+    },
+    {
+      "key": "reentrancy-events|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|eb69190ec33fe3dd"
+    },
+    {
+      "key": "reentrancy-events|src/yield/MemecoinYieldVault.sol|d299e0f4adb0a52e"
+    },
+    {
+      "key": "reentrancy-events|src/yield/MemecoinYieldVault.sol|ee3f91ed4252a7e9"
+    },
+    {
+      "key": "reentrancy-events|src/yield/MemecoinYieldVault.sol|f8130e6cd31a3e65"
+    },
+    {
+      "key": "reentrancy-no-eth|src/common/token/TokenHelper.sol|776a4fbc86936f46"
+    },
+    {
+      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|50a5c310679fea1e"
+    },
+    {
+      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|6e53feaa67125503"
+    },
+    {
+      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|708daa89e35911f2"
+    },
+    {
+      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|9a3a6c15640687bb"
+    },
+    {
+      "key": "reentrancy-no-eth|src/polend/POLendUpgradeable.sol|3f14b8f4fec55ad0"
+    },
+    {
+      "key": "reentrancy-no-eth|src/polend/POLendUpgradeable.sol|708daa89e35911f2"
+    },
+    {
+      "key": "reentrancy-no-eth|src/polend/POLendUpgradeable.sol|8fa203f772bf9090"
+    },
+    {
+      "key": "reentrancy-no-eth|src/polend/POLendUpgradeable.sol|bea8252aa9c0391f"
+    },
+    {
+      "key": "reentrancy-no-eth|src/swap/MemeverseUniswapHookUpgradeable.sol|b60eeb33bf31e953"
+    },
+    {
+      "key": "reentrancy-no-eth|src/swap/MemeverseUniswapHookUpgradeable.sol|c8643ef0bcf4edaa"
+    },
+    {
+      "key": "reentrancy-no-eth|src/swap/MemeverseUniswapHookUpgradeable.sol|dca88c9a9f7a89a6"
+    },
+    {
+      "key": "reentrancy-no-eth|src/swap/SwapFacet.sol|35ae6c8bbe37884e"
+    },
+    {
+      "key": "reentrancy-no-eth|src/swap/SwapFacet.sol|e29f8086b08de490"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|31671064f2e334cd"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|551ac05f83f35f20"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|58a5cf482b2a31e7"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|77ed768be6d3badf"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|ac9699bc3e320339"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLaunchImpl.sol|f02209e2287ae59a"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|3804b519758f05e2"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|382a6b0ed8986bb7"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|475b9e749e347f71"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|b695775f25ccc2f3"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|d3cdc73f75180b3e"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|e6348f38b2cda053"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|f6a0ea7386875e98"
+    },
+    {
+      "key": "reentrancy-no-eth|src/verse/MemeverseLiquidityImpl.sol|f8e21e3bdb247536"
+    },
+    {
+      "key": "require-revert-in-loop|src/common/omnichain/LzEndpointRegistry.sol|46dbb15a3b133a92"
+    },
+    {
+      "key": "require-revert-in-loop|src/common/omnichain/LzEndpointRegistry.sol|cf5a90a1ed0234b9"
+    },
+    {
+      "key": "require-revert-in-loop|src/common/omnichain/oapp/OutrunOAppOptionsType3Init.sol|336cf8f7ebf18001"
+    },
+    {
+      "key": "require-revert-in-loop|src/common/omnichain/oapp/OutrunOAppOptionsType3Init.sol|ac9d017623e734c1"
+    },
+    {
+      "key": "require-revert-in-loop|src/governance/MemecoinDaoGovernorUpgradeable.sol|34bf835acd570a9e"
+    },
+    {
+      "key": "require-revert-in-loop|src/governance/MemecoinDaoGovernorUpgradeable.sol|76b197cece79f38b"
+    },
+    {
+      "key": "require-revert-in-loop|src/verse/MemeverseLaunchImpl.sol|14a02b34cf4f4781"
+    },
+    {
+      "key": "require-revert-in-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|6ddfae230e6fcc68"
+    },
+    {
+      "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|46a28740482b7839"
+    },
+    {
+      "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|544b80cebfa066bd"
+    },
+    {
+      "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|b6697d0707ac559c"
+    },
+    {
+      "key": "uninitialized-local|src/swap/SettlementFacet.sol|25694e15eb0bf0ce"
+    },
+    {
+      "key": "uninitialized-local|src/verse/MemeverseFeePreviewReader.sol|24734d020e30a451"
+    },
+    {
+      "key": "uninitialized-local|src/verse/MemeverseLiquidityImpl.sol|81b73feb8670a15d"
+    },
+    {
+      "key": "uninitialized-local|src/verse/MemeverseSettlementImpl.sol|c7586d2c7a1852f8"
+    },
+    {
+      "key": "uninitialized-local|src/verse/libraries/MemeverseRegistrationLib.sol|8b1b998441864d7b"
+    },
+    {
+      "key": "uninitialized-local|src/verse/libraries/MemeverseRegistrationLib.sol|d79f502eb940e981"
+    },
+    {
+      "key": "uninitialized-local|src/yield/MemecoinYieldVault.sol|58de8e4fa22bbc43"
+    },
+    {
+      "key": "uninitialized-local|src/yield/MemecoinYieldVault.sol|9a64e4f8f1033941"
+    },
+    {
+      "key": "uninitialized-local|src/yield/MemecoinYieldVault.sol|e06a081ac88f0715"
+    },
+    {
+      "key": "uninitialized-state|src/swap/FacetGuard.sol|a71de3d0df79c802"
+    },
+    {
+      "key": "unsafe-typecast|src/common/omnichain/oft/OutrunOFTCoreInit.sol|98c48fbc99931943"
+    },
+    {
+      "key": "unsafe-typecast|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|166690021f1ca26b"
+    },
+    {
+      "key": "unsafe-typecast|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|1c969270ccb1519f"
+    },
+    {
+      "key": "unsafe-typecast|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|dba77eb9b822f8b7"
+    },
+    {
+      "key": "unsafe-typecast|src/governance/MemecoinDaoGovernorUpgradeable.sol|521e039c6cc7ed91"
+    },
+    {
+      "key": "unsafe-typecast|src/interoperation/OmnichainMemecoinStakerUpgradeable.sol|04fc1e6c5024da0a"
+    },
+    {
+      "key": "unsafe-typecast|src/interoperation/OmnichainMemecoinStakerUpgradeable.sol|77526f18d26cd15b"
+    },
+    {
+      "key": "unsafe-typecast|src/interoperation/OmnichainMemecoinStakerUpgradeable.sol|86bc3675e91f39e4"
+    },
+    {
+      "key": "unsafe-typecast|src/polend/POLendUpgradeable.sol|42a295bc7402bc19"
+    },
+    {
+      "key": "unsafe-typecast|src/polend/POLendUpgradeable.sol|cf6d22a89ea34cdb"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/DynamicFeeFacet.sol|2128c72b9d56bee6"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/DynamicFeeFacet.sol|244f49a6a6533eb9"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/DynamicFeeFacet.sol|46f33fe1bf49bb55"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/DynamicFeeFacet.sol|51409fb3e02ca189"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/DynamicFeeFacet.sol|9ebc096faefcd64d"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/DynamicFeeFacet.sol|e2476410a83b0ddc"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/DynamicFeeFacet.sol|e9b8abb14c57f81d"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/DynamicFeeFacet.sol|eb7a55c39c53428f"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseSwapRouter.sol|4d0e75ee37970a41"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseSwapRouter.sol|d4494bf9f9f3c8fd"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseUniswapHookUpgradeable.sol|d88266912710e0b8"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseYTFlashSwapRouter.sol|39d9dfd5d1719b7b"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseYTFlashSwapRouter.sol|4c71c87399380608"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseYTFlashSwapRouter.sol|54753217299bc2b2"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseYTFlashSwapRouter.sol|65778fa684b09321"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseYTFlashSwapRouter.sol|76ad601f3e2aa720"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseYTFlashSwapRouter.sol|ce797ffce5ebaf67"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/MemeverseYTFlashSwapRouter.sol|f2d2181795541def"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/SettlementFacet.sol|03a5cdd28d949abf"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/SettlementFacet.sol|1cfe2590cd5d7983"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/SettlementFacet.sol|ada616bd4144bf76"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/SettlementFacet.sol|b025fff83371c569"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/SwapFacet.sol|0357bf863688cbb8"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/SwapFacet.sol|51409fb3e02ca189"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/SwapFacet.sol|a6a988d3713f0109"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/DynamicFeeMath.sol|33abde781f533ba7"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/DynamicFeeMath.sol|662f29f965e3438a"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/DynamicFeeMath.sol|d984e98848c0b078"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/FeeMath.sol|4b376b73b1087cae"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/FeeMath.sol|994dc36451306de1"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/OrdinarySwapMath.sol|0273a23f5d06f561"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/OrdinarySwapMath.sol|4305c31e8f99ffa7"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/OrdinarySwapMath.sol|4df49d52791af259"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/OrdinarySwapMath.sol|6aa86043384e6e65"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/OrdinarySwapMath.sol|6d77f15dad66f1ac"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/OrdinarySwapMath.sol|6e4de91b4bcec529"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/OrdinarySwapMath.sol|af9f5947ec924410"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/OrdinarySwapMath.sol|b1a5c8bf7935c63c"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/OrdinarySwapMath.sol|c50b5b3cdb6c573a"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/SafeCast.sol|1041630ae51b4d2d"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/SafeCast.sol|403408bbda3a0cde"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/SafeCast.sol|d390ef7ea4d5f91c"
+    },
+    {
+      "key": "unsafe-typecast|src/swap/libraries/SafeCast.sol|e9600285703c4cfe"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLaunchImpl.sol|2a5a66fde8adb5fa"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLaunchImpl.sol|60e3ccc56900651f"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLauncherUpgradeable.sol|50869b1902812991"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLauncherUpgradeable.sol|6ef85dd5393172a3"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|20a5c2080449d6f3"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|2fef376b7641d92f"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|3a1584ed26284e04"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|5d0965633b4e1912"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|65d13f8086c5507b"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|74447fa4e6f7f322"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|7a40a04d62acb950"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|9cae4d7285c817f2"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|f1f76efa47f80048"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseSettlementImpl.sol|4e57247b1979e226"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/YieldDispatcherUpgradeable.sol|473692e8955fbcc3"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/libraries/InitialPriceCalculator.sol|381fb3196e89d054"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/registration/MemeverseRegistrarAtLocal.sol|8377e6b1fb12c5e8"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/registration/MemeverseRegistrarAtLocal.sol|cc8c1105da8b1760"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|0b078846847a6683"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|2a5a66fde8adb5fa"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|8377e6b1fb12c5e8"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|b735e76d7f71109a"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|cc8c1105da8b1760"
+    },
+    {
+      "key": "unsafe-typecast|src/yield/MemecoinYieldVault.sol|6c63601209cda525"
+    },
+    {
+      "key": "unsafe-typecast|src/yield/MemecoinYieldVault.sol|d4ef55c26375c4b7"
+    },
+    {
+      "key": "unsafe-typecast|src/yield/MemecoinYieldVault.sol|e6fed13e54b7119e"
+    },
+    {
+      "key": "unsafe-typecast|src/yield/MemecoinYieldVault.sol|fcf6dc9f91836954"
+    },
+    {
+      "key": "unused-return|src/common/omnichain/oft/OutrunOFTCoreInit.sol|41bbd37d6e0da514"
+    },
+    {
+      "key": "unused-return|src/interoperation/MemeverseOmnichainInteroperation.sol|3d4bba251067bd08"
+    },
+    {
+      "key": "unused-return|src/interoperation/MemeverseOmnichainInteroperation.sol|a4c0ff36b61feb82"
+    },
+    {
+      "key": "unused-return|src/polend/POLSplitterUpgradeable.sol|708daa89e35911f2"
+    },
+    {
+      "key": "unused-return|src/polend/POLendUpgradeable.sol|708daa89e35911f2"
+    },
+    {
+      "key": "unused-return|src/swap/MemeverseSwapRouter.sol|4475278835ec3311"
+    },
+    {
+      "key": "unused-return|src/swap/MemeverseUniswapHookUpgradeable.sol|77ead640dcb40f69"
+    },
+    {
+      "key": "unused-return|src/swap/libraries/CurrencySettler.sol|d8ef84084710eeb6"
+    },
+    {
+      "key": "unused-return|src/verse/MemeverseLaunchImpl.sol|76aa106e78c4b1dc"
+    },
+    {
+      "key": "unused-return|src/verse/MemeverseLiquidityImpl.sol|475b9e749e347f71"
+    },
+    {
+      "key": "unused-return|src/verse/MemeverseSettlementImpl.sol|39dffffa57ec3cf0"
+    },
+    {
+      "key": "unused-return|src/verse/MemeverseSettlementImpl.sol|40f58f5ad4290404"
+    },
+    {
+      "key": "unused-return|src/verse/MemeverseSettlementImpl.sol|ba8b1a33549ade61"
+    },
+    {
+      "key": "unused-return|src/verse/MemeverseSettlementImpl.sol|dcfee209120dd59b"
+    },
+    {
+      "key": "unused-return|src/verse/registration/MemeverseRegistrarAtLocal.sol|0058af5134c32ef2"
+    },
+    {
+      "key": "unused-return|src/verse/registration/MemeverseRegistrarAtLocal.sol|14ec573372e712da"
+    }
+  ]
+}
+

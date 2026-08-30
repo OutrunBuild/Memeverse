@@ -68,7 +68,7 @@ Prefer custom errors: `error InsufficientBalance();` + `revert InsufficientBalan
 
 ## Project specifics
 - Compiler: Solidity `0.8.35`, `via_ir = true`, `optimizer_runs = 200`, `evm_version = prague`. Verify deployments use exactly these settings.
-- `foundry.toml` `[lint]` excludes many naming lints (`mixed-case-variable`, `mixed-case-function`, `screaming-snake-case-const`/`-immutable`, `pascal-case-struct`, …), so the linter will **not** flag naming — apply the table above yourself.
+- The linter runs all detectors; pre-existing accepted findings are snapshotted in `.harness/forge-lint-baseline.json`, and only NEW findings fail the gate (`script/harness/forge-lint-baseline.sh`). The naming table above stays the style reference — new code violating it surfaces as a new baseline finding.
 - "Stack too deep": pack variables into structs, split large functions, or rely on `via_ir` (already enabled) as a last resort.
 - On surgical edits, follow the file's existing conventions; do not rename or reorder unrelated code.
 - Before you ship: `forge test -vvvv`, `forge lint`, `forge fmt --check`; `forge taint src/<Contract>.sol` for untrusted-data flows; production keys in keystore/HW (never plaintext, never Anvil defaults); keep `.env` out of VCS.

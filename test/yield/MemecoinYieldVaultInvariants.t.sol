@@ -223,7 +223,7 @@ contract YieldVaultHandler is Test {
         }
         uint256 amount = bound(assetsSeed, 1, maxOut);
         vm.startPrank(who);
-        try vault.withdraw(amount, who, who) returns (uint256 shares) {
+        try vault.withdraw(amount, who, who) returns (uint256) {
             ghostPayoutsOut[who] += amount;
             ghostQueuePaid += amount;
         } catch {}

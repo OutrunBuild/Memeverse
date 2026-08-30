@@ -147,37 +147,37 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
             requestTimes[i] = e.requestTime;
         }
         uint256 remaining = assets;
-        uint256 i = 0;
-        while (i < len && remaining > 0) {
-            if (block.timestamp < uint256(requestTimes[i]) + REDEEM_DELAY) {
+        uint256 j = 0;
+        while (j < len && remaining > 0) {
+            if (block.timestamp < uint256(requestTimes[j]) + REDEEM_DELAY) {
                 unchecked {
-                    ++i;
+                    ++j;
                 }
                 continue;
             }
-            uint256 takeAssets = remaining < lockedAssets[i] ? remaining : uint256(lockedAssets[i]);
+            uint256 takeAssets = remaining < lockedAssets[j] ? remaining : uint256(lockedAssets[j]);
             uint256 takeShares =
-                Math.mulDiv(takeAssets + 1, shares[i], uint256(lockedAssets[i]), Math.Rounding.Ceil) - 1;
+                Math.mulDiv(takeAssets + 1, shares[j], uint256(lockedAssets[j]), Math.Rounding.Ceil) - 1;
             if (takeShares == 0) {
                 unchecked {
-                    ++i;
+                    ++j;
                 }
                 continue;
             }
-            uint256 payout = Math.mulDiv(takeShares, uint256(lockedAssets[i]), shares[i]);
-            shares[i] -= takeShares;
-            lockedAssets[i] -= uint192(payout);
+            uint256 payout = Math.mulDiv(takeShares, uint256(lockedAssets[j]), shares[j]);
+            shares[j] -= takeShares;
+            lockedAssets[j] -= uint192(payout);
             remaining -= payout;
-            if (shares[i] == 0) {
-                if (i != len - 1) {
-                    lockedAssets[i] = lockedAssets[len - 1];
-                    shares[i] = shares[len - 1];
-                    requestTimes[i] = requestTimes[len - 1];
+            if (shares[j] == 0) {
+                if (j != len - 1) {
+                    lockedAssets[j] = lockedAssets[len - 1];
+                    shares[j] = shares[len - 1];
+                    requestTimes[j] = requestTimes[len - 1];
                 }
                 --len;
             } else {
                 unchecked {
-                    ++i;
+                    ++j;
                 }
             }
         }

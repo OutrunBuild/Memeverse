@@ -338,7 +338,7 @@ contract StrictDecodeToken {
     /// @notice With no approve function declared, every approve-shaped call lands here, so the strict length
     ///         check runs before any argument decoding — a declared approve body could never fire on short
     ///         calldata because the compiler-generated argument decoder reverts first.
-    fallback() external payable {
+    fallback() external {
         if (msg.sig != IERC20.approve.selector || msg.data.length != 68) revert TokenArgumentDecodeFailed();
         (address spender, uint256 amount) = abi.decode(msg.data[4:], (address, uint256));
         allowances[msg.sender][spender] = amount;

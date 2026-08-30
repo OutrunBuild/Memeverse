@@ -149,7 +149,7 @@ contract POLSplitterHandler is Test {
         uint256 amount = bound(amountSeed, 1, launcherBalance);
         (uint256 n, uint256 d) = _ratio();
         vm.prank(address(polendMock));
-        try splitter.preRedeemPTFee(VERSE_ID, amount) returns (uint256 backing) {
+        try splitter.preRedeemPTFee(VERSE_ID, amount) returns (uint256) {
             ghostPreRedeemedBackingFloorSum += Math.mulDiv(amount, n, d);
             ++ghostPreRedeemCalls;
         } catch {}

@@ -62,6 +62,8 @@ collect_findings_tsv() {
     local stderr_file="$tmp_dir/lint.stderr.log"
     local exit_code
     set +e
+    # Anchor to the repo root: forge lint resolves the project from cwd, and an inherited foreign cwd silently lints the wrong project (or nothing).
+    cd "$repo_root"
     forge lint --json > "$stdout_file" 2> "$stderr_file"
     exit_code=$?
     set -e

@@ -11,6 +11,9 @@ via_ir = true
 build_info = true
 evm_version = "prague"
 dynamic_test_linking = false
+# Forge 1.8+ runs tests in isolate mode by default (each top-level call in its own EVM
+# context), which breaks the cross-call account-session test model; keep pre-1.8 behavior.
+isolate = false
 eth_rpc_timeout = 120
 extra_output = ["storageLayout"]
 gas_reports = ["*"]

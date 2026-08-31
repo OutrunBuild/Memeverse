@@ -29,7 +29,6 @@ contract MockIncentivizerGovernor {
         lastRewardToken = token;
         lastRewardTo = to;
         lastRewardAmount = amount;
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         MockERC20(token).transfer(to, amount);
     }
 

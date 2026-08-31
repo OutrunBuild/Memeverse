@@ -403,7 +403,6 @@ contract GovernanceCycleIncentivizerUpgradeableTest is Test {
 
         // The governor spends custody down to 20 ether, below the 25 ether unclaimed reward reserve.
         vm.prank(address(governor));
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         tokenA.transfer(OTHER, 80 ether);
 
         vm.prank(address(governor));

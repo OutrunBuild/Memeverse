@@ -644,7 +644,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         (address lpToken,,) = hook.poolInfo(poolId);
         vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
-        /// forge-lint: disable-next-line(erc20-unchecked-transfer)
         UniswapLP(lpToken).transfer(address(0), 1);
     }
 
@@ -658,7 +657,6 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
 
         vm.prank(address(0xBEEF));
         vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
-        /// forge-lint: disable-next-line(erc20-unchecked-transfer)
         UniswapLP(lpToken).transferFrom(address(this), address(0), 1);
     }
 

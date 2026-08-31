@@ -350,7 +350,6 @@ abstract contract OutrunOFTCoreInit is
      *      this via `DustAmount()` and refunds non-zero remainders, but the generic OFT path does not.
      */
     function _removeDust(uint256 _amountLD) internal view virtual returns (uint256 amountLD) {
-        // forge-lint: disable-next-line(divide-before-multiply)
         return (_amountLD / decimalConversionRate) * decimalConversionRate;
     }
 

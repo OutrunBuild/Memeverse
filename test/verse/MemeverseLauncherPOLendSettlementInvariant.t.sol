@@ -389,7 +389,6 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
         pol.approve(address(splitter), polAmount);
         splitter.split(VERSE_ID, polAmount);
         // solhint-disable-next-line erc20-unchecked-transfer
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         MockERC20(pt).transfer(address(hook), ptFee);
         vm.stopPrank();
 

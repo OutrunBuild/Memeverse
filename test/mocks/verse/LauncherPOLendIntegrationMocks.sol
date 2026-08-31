@@ -601,7 +601,6 @@ contract MockPOLSplitterForPOLendIntegration is IPOLSplitter {
     }
 
     function split(uint256, uint256 polAmount) external returns (uint256 ptAmount, uint256 ytAmount) {
-        /// forge-lint: disable-next-line(erc20-unchecked-transfer)
         MockERC20(pol).transferFrom(msg.sender, address(this), polAmount);
         MintableToken(pt).mint(msg.sender, polAmount);
         MintableToken(yt).mint(msg.sender, polAmount);

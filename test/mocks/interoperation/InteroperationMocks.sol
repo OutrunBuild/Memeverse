@@ -322,7 +322,6 @@ contract MockInteroperationOFT is MockERC20, IOFT {
     {
         uint256 rate = 10 ** (this.decimals() - this.sharedDecimals());
         // Intentional LayerZero `_removeDust` truncation — see the `_debit` mirror below.
-        // forge-lint: disable-next-line(divide-before-multiply)
         uint256 amountSentLD = (sendParam.amountLD / rate) * rate;
         return (OFTLimit(0, type(uint64).max), new OFTFeeDetail[](0), OFTReceipt(amountSentLD, amountSentLD));
     }
@@ -372,7 +371,6 @@ contract MockInteroperationOFT is MockERC20, IOFT {
         // the raw `amountLD` here (as an earlier version did) would mask the refund behavior under test.
         uint256 rate = 10 ** (this.decimals() - this.sharedDecimals());
         // Intentional LayerZero `_removeDust` truncation — mirrors the real OFT `_debit` burn.
-        // forge-lint: disable-next-line(divide-before-multiply)
         uint256 amountSentLD = (sendParam.amountLD / rate) * rate;
         _burn(msg.sender, amountSentLD);
 

@@ -189,7 +189,6 @@ contract SignatureVerifyingPermit2ForRouterTest {
     function _useUnorderedNonce(address from, uint256 nonce) private {
         uint256 wordPos = uint248(nonce >> 8);
         uint256 bitPos = uint8(nonce);
-        // forge-lint: disable-next-line(incorrect-shift)
         uint256 bit = 1 << bitPos;
         uint256 flipped = nonceBitmap[from][wordPos] ^= bit;
         if (flipped & bit == 0) revert InvalidNonce();

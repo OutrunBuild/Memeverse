@@ -1738,7 +1738,8 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         // must carry them verbatim. Literal gas limits (matching the setUp `initialize` args 10/11) are asserted
         // instead of storage getters: reading the getters would silently follow a re-wiring to the wrong storage
         // slot, defeating the anchor.
-        bytes memory expectedOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(115_000, 0)
+        bytes memory expectedOptions = OptionsBuilder.newOptions()
+            .addExecutorLzReceiveOption(115_000, 0)
             .addExecutorLzComposeOption(0, 135_000, 0);
         assertEq(remoteUAsset.lastSendOptions(), expectedOptions, "uAsset send must carry executor options");
         assertEq(remoteMemecoin.lastSendOptions(), expectedOptions, "memecoin send must carry executor options");

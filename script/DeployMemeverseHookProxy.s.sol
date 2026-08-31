@@ -712,7 +712,8 @@ contract DeployMemeverseHookProxy is BaseScript {
         bytes32 hashedSalt = keccak256(abi.encodePacked(deployerNamespace, salt));
         create3Proxy = keccak256(
                 abi.encodePacked(bytes1(0xFF), address(outrunDeployer), hashedSalt, CREATE3_PROXY_BYTECODE_HASH)
-            ).fromLast20Bytes();
+            )
+            .fromLast20Bytes();
     }
 
     /// @dev Each facet binds the PoolManager immutably via `ImmutableState`; under delegatecall the facet

@@ -448,12 +448,14 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         BalanceDelta delta = IMemeverseUniswapHook(hookAddress)
             .executePreorderSettlement(
                 IMemeverseUniswapHook.PreorderSettlementParams({
-                key: poolKey,
-                params: SwapParams({
-                zeroForOne: zeroForOne, amountSpecified: -int256(totalFunds), sqrtPriceLimitX96: sqrtPriceLimitX96
-            }),
-                recipient: address(this)
-            })
+                    key: poolKey,
+                    params: SwapParams({
+                        zeroForOne: zeroForOne,
+                        amountSpecified: -int256(totalFunds),
+                        sqrtPriceLimitX96: sqrtPriceLimitX96
+                    }),
+                    recipient: address(this)
+                })
             );
         // Clear exact hook allowance after settlement (no-op if reverted).
         if (uAsset != NATIVE) _safeApprove(uAsset, hookAddress, 0);

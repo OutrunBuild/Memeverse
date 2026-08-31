@@ -78,7 +78,8 @@ contract MemeverseOmnichainInteroperationTest is Test {
         _setRemoteVerse(address(yieldVault));
         memecoin.setQuoteFee(0.25 ether);
 
-        bytes memory expectedOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(115_000, 0)
+        bytes memory expectedOptions = OptionsBuilder.newOptions()
+            .addExecutorLzReceiveOption(115_000, 0)
             .addExecutorLzComposeOption(0, 135_000, 0);
 
         vm.expectCall(

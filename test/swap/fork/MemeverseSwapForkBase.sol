@@ -118,12 +118,12 @@ abstract contract MemeverseSwapForkBase is Test, HookStorageHelper {
         (liquidity,) = _hook()
             .addLiquidityCore(
                 IMemeverseUniswapHook.AddLiquidityCoreParams({
-                currency0: key.currency0,
-                currency1: key.currency1,
-                amount0Desired: 100 ether,
-                amount1Desired: 100 ether,
-                to: recipient
-            })
+                    currency0: key.currency0,
+                    currency1: key.currency1,
+                    amount0Desired: 100 ether,
+                    amount1Desired: 100 ether,
+                    to: recipient
+                })
             );
     }
 

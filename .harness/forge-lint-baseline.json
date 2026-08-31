@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-08-30T20:29:52Z",
+  "generated_at": "2026-08-31T04:49:40Z",
   "finding_count": 362,
   "notes": "Snapshot of forge-lint findings verified site-by-site as false positives or accepted patterns: encode-packed-collision hits are creationCode||abi.encode initcode assembly (fixed-length tail, injective); missing-events-access-control cannot associate erc7201 namespaced-struct writes with the emit in the same function or public caller; uninitialized-local hits are intentional zero-default idiom; reentrancy-events misfires on namespaced-storage setters with no external call; boolean-cst hits are early-return constant defaults; unused-return hits are deliberate void protocol calls (transfer return-value enforcement lives in OutrunSafeERC20). Any NEW finding beyond this set fails the gate. Regenerate: bash script/harness/forge-lint-baseline.sh regen. Style detectors (unsafe-typecast, block-timestamp) were re-enabled from exclude_lints; their pre-existing hits were snapshotted here so only new occurrences are reported. Regen intentionally re-snapshots: it is an explicit, git-reviewed acceptance decision.",
   "findings": [
@@ -989,13 +989,13 @@
       "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|65d13f8086c5507b"
     },
     {
-      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|74447fa4e6f7f322"
-    },
-    {
       "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|7a40a04d62acb950"
     },
     {
       "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|9cae4d7285c817f2"
+    },
+    {
+      "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|c58e8da9bdc5b6e2"
     },
     {
       "key": "unsafe-typecast|src/verse/MemeverseLiquidityImpl.sol|f1f76efa47f80048"

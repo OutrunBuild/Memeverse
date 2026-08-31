@@ -58,12 +58,12 @@ contract MemeverseSwapForkFuzzLargeInputTest is MemeverseSwapForkBase {
         _hook()
             .addLiquidityCore(
                 IMemeverseUniswapHook.AddLiquidityCoreParams({
-                currency0: key.currency0,
-                currency1: key.currency1,
-                amount0Desired: EXTRA_LIQUIDITY_AMOUNT,
-                amount1Desired: EXTRA_LIQUIDITY_AMOUNT,
-                to: address(this)
-            })
+                    currency0: key.currency0,
+                    currency1: key.currency1,
+                    amount0Desired: EXTRA_LIQUIDITY_AMOUNT,
+                    amount1Desired: EXTRA_LIQUIDITY_AMOUNT,
+                    to: address(this)
+                })
             );
     }
 }

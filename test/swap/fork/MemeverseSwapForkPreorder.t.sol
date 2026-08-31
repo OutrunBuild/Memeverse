@@ -45,14 +45,14 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
         BalanceDelta delta = _hook()
             .executePreorderSettlement(
                 IMemeverseUniswapHook.PreorderSettlementParams({
-                key: key,
-                params: SwapParams({
-                zeroForOne: zeroForOne,
-                amountSpecified: -10 ether,
-                sqrtPriceLimitX96: _validExecutionPriceLimit(zeroForOne)
-            }),
-                recipient: address(this)
-            })
+                    key: key,
+                    params: SwapParams({
+                        zeroForOne: zeroForOne,
+                        amountSpecified: -10 ether,
+                        sqrtPriceLimitX96: _validExecutionPriceLimit(zeroForOne)
+                    }),
+                    recipient: address(this)
+                })
             );
 
         if (zeroForOne) {
@@ -123,8 +123,8 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
         _hook()
             .executePreorderSettlement(
                 IMemeverseUniswapHook.PreorderSettlementParams({
-                key: key, params: preorderParams, recipient: address(this)
-            })
+                    key: key, params: preorderParams, recipient: address(this)
+                })
             );
 
         SwapParams memory publicParams = SwapParams({
@@ -156,8 +156,8 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
         _hook()
             .executePreorderSettlement(
                 IMemeverseUniswapHook.PreorderSettlementParams({
-                key: key, params: preorderParams, recipient: address(this)
-            })
+                    key: key, params: preorderParams, recipient: address(this)
+                })
             );
 
         _swapInSession(key, publicParams, 0, 10 ether, "");

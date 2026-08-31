@@ -611,7 +611,7 @@ set -euo pipefail
 capture_dir="${HARNESS_CAPTURE_DIR:?}"
 printf '%s\n' "$*" >>"$capture_dir/forge_calls"
 
-if [ "${1-}" = "fmt" ] || [ "${1-}" = "build" ]; then
+if [ "${1-}" = "fmt" ] || [ "${1-}" = "build" ] || [ "${1-}" = "lint" ]; then
     exit 0
 fi
 
@@ -973,6 +973,7 @@ jq -e '
 ' "$contract_fast_record" >/dev/null
 grep -Fqx "test --list --match-path test/polend/POLSplitter.t.sol" "$contract_fast_capture/forge_calls"
 grep -Fqx "test --list --match-path test/polend/POLend.t.sol" "$contract_fast_capture/forge_calls"
+grep -Fqx "lint --json" "$contract_fast_capture/forge_calls"
 grep -Eq '^test --match-contract ' "$contract_fast_capture/forge_calls"
 if grep -Eq '^test --match-path ' "$contract_fast_capture/forge_calls"; then
     echo "fast targeted tests should execute through --match-contract when validation succeeds" >&2

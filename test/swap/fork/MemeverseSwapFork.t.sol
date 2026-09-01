@@ -196,10 +196,10 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
         // interleave with the ProtocolFeeCollected match.
         _hook().beginAccountSession();
         // Expect the protocol fee to be collected on the input leg (currency0). Match indexed poolId
-        // (topic1) and currency (topic2) only; amount/blockNumber are unchecked. The hook emits this
+        // (topic1) and currency (topic2) only; amount is unchecked. The hook emits this
         // event directly (not V4-wrapped), so the selector is verbatim.
         vm.expectEmit(true, true, false, false, address(_hook()));
-        emit IMemeverseUniswapHook.ProtocolFeeCollected(key.toId(), key.currency0, address(0), 0, 0);
+        emit IMemeverseUniswapHook.ProtocolFeeCollected(key.toId(), key.currency0, address(0), 0);
 
         // Snapshot treasury balances BEFORE the swap so the post-swap assertions tie the emitted fee to
         // a real ERC20 transfer (defeats a zero-amount emit or a duplicate event masking a missing fee)

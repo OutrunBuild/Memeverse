@@ -193,7 +193,7 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
         if (expectedProtocolFeeOutputAmount > 0) {
             Currency outputCurrency = params.params.zeroForOne ? params.key.currency1 : params.key.currency0;
             emit IMemeverseUniswapHook.ProtocolFeeCollected(
-                poolId, outputCurrency, treasury_, expectedProtocolFeeOutputAmount, block.number
+                poolId, outputCurrency, treasury_, expectedProtocolFeeOutputAmount
             );
         }
 
@@ -331,9 +331,7 @@ contract SettlementFacet layout at erc7201("outrun.storage.MemeverseUniswapHook"
             _accrueLpFee(poolId, ctx.currencyIn, ctx.inputIsCurrency0, lpFeeInputAmount, effectiveSupply);
         }
         if (protocolFeeInputAmount > 0) {
-            emit IMemeverseUniswapHook.ProtocolFeeCollected(
-                poolId, ctx.currencyIn, treasury_, protocolFeeInputAmount, block.number
-            );
+            emit IMemeverseUniswapHook.ProtocolFeeCollected(poolId, ctx.currencyIn, treasury_, protocolFeeInputAmount);
         }
         // Interactions last: pull the protocol fee straight to treasury. The LP fee token pull is
         // deliberately NOT done here — it is coalesced with the net swap input pull in

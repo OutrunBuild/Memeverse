@@ -104,12 +104,12 @@ contract IncentivizerUpgradeTreasuryDrainTest is Test {
     ) internal returns (uint256 proposalId) {
         vm.prank(ALICE);
         proposalId = governor.propose(targets, values, calldatas, description);
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
         vm.prank(ALICE);
         governor.castVote(proposalId, 1); // For
         vm.prank(BOB);
         governor.castVote(proposalId, 0); // Against
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        vm.warp(block.timestamp + governor.votingPeriod() + 1);
     }
 
     /// @notice Propose (as ALICE), advance past snapshot, cast unanimous For votes, advance past deadline.
@@ -123,12 +123,12 @@ contract IncentivizerUpgradeTreasuryDrainTest is Test {
     ) internal returns (uint256 proposalId) {
         vm.prank(ALICE);
         proposalId = governor.propose(targets, values, calldatas, description);
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
         vm.prank(ALICE);
         governor.castVote(proposalId, 1); // For
         vm.prank(BOB);
         governor.castVote(proposalId, 1); // For (unanimous -> meets 60% supermajority)
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        vm.warp(block.timestamp + governor.votingPeriod() + 1);
     }
 
     // ---------------------------------------------------------------------------------------------

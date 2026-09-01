@@ -5,6 +5,7 @@ import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
@@ -668,6 +669,18 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
         // The execution swap enters beforeSwapLogic, which requires an active session. Open one so the eight
         // direction/request/fee-leg cases all reach execution.
         hook.beginAccountSession();
+        // Anchor the full LPFeeCollected payload for every matrix case: an ordinary swap accrues its whole
+        // LP fee on the input currency in one event (fee0PerShare for zeroForOne, fee1PerShare otherwise),
+        // and the event carries the cumulative per-share after the accrual.
+        Currency lpFeeCurrency = params.zeroForOne ? key.currency0 : key.currency1;
+        uint256 expectedLpFeeGrowth = _expectedLpFeeGrowth(lensQuote.estimatedLpFeeAmount);
+        uint256 expectedCumulativeFeePerShare = params.zeroForOne
+            ? beforeSwap.fee0PerShare + expectedLpFeeGrowth
+            : beforeSwap.fee1PerShare + expectedLpFeeGrowth;
+        vm.expectEmit(true, true, true, true, address(hook));
+        emit IMemeverseUniswapHook.LPFeeCollected(
+            poolId, lpFeeCurrency, lensQuote.estimatedLpFeeAmount, expectedCumulativeFeePerShare
+        );
         BalanceDelta delta = integrator.swap(key, params, address(this), abi.encodePacked(referrer));
         hook.endAccountSession();
         ExecutionAccountingSnapshot memory afterSwap = _executionAccountingSnapshot(referrer);

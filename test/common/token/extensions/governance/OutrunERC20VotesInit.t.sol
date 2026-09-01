@@ -4,9 +4,15 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
+import {ERC6372Utils} from "@openzeppelin/contracts/utils/ERC6372Utils.sol";
 
+import {OutrunVotesInit} from "../../../../../src/common/token/extensions/governance/OutrunVotesInit.sol";
 import {OutrunERC20VotesInit} from "../../../../../src/common/token/extensions/governance/OutrunERC20VotesInit.sol";
-import {VotesHarness, CappedVotesHarness} from "../../../../mocks/infrastructure/VotesHarness.sol";
+import {
+    VotesHarness,
+    CappedVotesHarness,
+    BlockNumberClockVotesHarness
+} from "../../../../mocks/infrastructure/VotesHarness.sol";
 
 contract OutrunERC20VotesInitTest is Test {
     using Clones for address;
@@ -79,23 +85,23 @@ contract OutrunERC20VotesInitTest is Test {
 
     /// @notice Test transfer after delegation updates past votes.
     function testTransferAfterDelegationUpdatesPastVotes() external {
-        vm.roll(10);
+        vm.warp(10);
         token.mintTest(ALICE, 10 ether);
 
-        vm.roll(11);
+        vm.warp(11);
         vm.prank(ALICE);
         token.delegate(ALICE);
 
-        uint256 snapshotBlock = 11;
-        vm.roll(12);
+        uint256 snapshotTime = 11;
+        vm.warp(12);
 
         vm.prank(ALICE);
         assertTrue(token.transfer(BOB, 4 ether));
 
-        vm.roll(13);
+        vm.warp(13);
         assertEq(token.getVotes(ALICE), 6 ether);
-        assertEq(token.getPastVotes(ALICE, snapshotBlock), 10 ether);
-        assertEq(token.getPastTotalSupply(snapshotBlock), 10 ether);
+        assertEq(token.getPastVotes(ALICE, snapshotTime), 10 ether);
+        assertEq(token.getPastTotalSupply(snapshotTime), 10 ether);
     }
 
     /// @notice Test delegate by sig consumes nonce and assigns votes.
@@ -115,8 +121,63 @@ contract OutrunERC20VotesInitTest is Test {
 
     /// @notice Test get past votes rejects future lookup.
     function testGetPastVotesRejectsFutureLookup() external {
-        vm.expectRevert();
-        token.getPastVotes(ALICE, block.number);
+        vm.expectRevert(
+            abi.encodeWithSelector(OutrunVotesInit.ERC5805FutureLookup.selector, block.timestamp, token.clock())
+        );
+        token.getPastVotes(ALICE, block.timestamp);
+    }
+
+    /// @notice Test same-second mutations merge into the last checkpoint instead of appending.
+    /// @dev The timestamp clock is non-decreasing but not strictly increasing: consecutive fast blocks can
+    ///      share a second, and a checkpoint write at an already-recorded timepoint updates the last
+    ///      checkpoint in place (equal-key merge) rather than growing the trace.
+    function testSameSecondMutationsMergeIntoLastCheckpoint() external {
+        vm.warp(10);
+        token.mintTest(ALICE, 10 ether);
+
+        vm.warp(11);
+        vm.prank(ALICE);
+        token.delegate(ALICE);
+        assertEq(token.numCheckpoints(ALICE), 1);
+
+        // Two transfers inside the same second (12): the second write lands on an equal checkpoint key.
+        vm.warp(12);
+        vm.prank(ALICE);
+        assertTrue(token.transfer(BOB, 4 ether));
+        assertEq(token.numCheckpoints(ALICE), 2);
+        vm.prank(ALICE);
+        assertTrue(token.transfer(BOB, 2 ether));
+        assertEq(token.numCheckpoints(ALICE), 2, "same-second write merges in place");
+
+        Checkpoints.Checkpoint208 memory merged = token.checkpoints(ALICE, 1);
+        assertEq(merged._key, 12);
+        assertEq(merged._value, 4 ether);
+
+        // Same-second mints exercise the identical equal-key merge on the total-supply trace.
+        token.mintTest(BOB, 1 ether);
+        token.mintTest(BOB, 2 ether);
+
+        vm.warp(13);
+        assertEq(token.getPastVotes(ALICE, 12), 4 ether);
+        assertEq(token.getPastTotalSupply(12), 13 ether);
+    }
+
+    /// @notice Test CLOCK_MODE returns the exact timestamp mode string without reverting.
+    function testClockModeReturnsTimestampMode() external view {
+        assertEq(token.CLOCK_MODE(), "mode=timestamp");
+    }
+
+    /// @notice Test the base CLOCK_MODE guard rejects a block-number clock override.
+    /// @dev The guard lives in the vendored ERC6372Utils helper: a clock that no longer matches the
+    ///      timestamp expectation must revert before any mode string is returned. Foundry starts with
+    ///      block.number == block.timestamp == 1, where the comparison cannot distinguish the domains, so
+    ///      the block number is rolled away from the timestamp to make the mismatch observable.
+    function testClockModeRevertsOnBlockNumberClockOverride() external {
+        BlockNumberClockVotesHarness blockClock = new BlockNumberClockVotesHarness();
+
+        vm.roll(2);
+        vm.expectRevert(ERC6372Utils.ERC6372InconsistentClock.selector);
+        blockClock.CLOCK_MODE();
     }
 
     /// @notice Test mint respects safe supply cap override.

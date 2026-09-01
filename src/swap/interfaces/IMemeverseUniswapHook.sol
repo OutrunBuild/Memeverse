@@ -368,16 +368,14 @@ interface IMemeverseUniswapHook is IImmutableState {
 
     /// @dev `amount` is the portion received by `treasury`. When a swap carries a referrer, the rebate
     ///      carved out of the protocol fee is emitted separately as `ReferralRebateAccrued` on the hook
-    ///      (via `SwapFacet._collectProtocolFee`),
+    ///      (via `SwapFacet._settleProtocolFee`),
     ///      so `ProtocolFeeCollected.amount + rebate == totalProtocolFee`. Indexers summing protocol
     ///      revenue must read both events on referral swaps.
     event ProtocolFeeCollected(
-        PoolId indexed poolId, Currency indexed currency, address indexed treasury, uint256 amount, uint256 blockNumber
+        PoolId indexed poolId, Currency indexed currency, address indexed treasury, uint256 amount
     );
 
-    event LPFeeCollected(
-        PoolId indexed poolId, Currency indexed currency, uint256 amount, uint256 feePerShare, uint256 blockNumber
-    );
+    event LPFeeCollected(PoolId indexed poolId, Currency indexed currency, uint256 amount, uint256 feePerShare);
 
     event LiquidityAdded(
         PoolId indexed poolId,

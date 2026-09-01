@@ -132,12 +132,7 @@ contract GovernanceIncentivizerPairIntegrationTest is Test {
         bytes[] memory calldatas,
         string memory description
     ) internal returns (uint256 proposalId) {
-        vm.prank(ALICE);
-        proposalId = governor.propose(targets, values, calldatas, description);
-        vm.roll(block.number + 1);
-        vm.prank(ALICE);
-        governor.castVote(proposalId, 1);
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        proposalId = _proposeAndPassForExpectedRevert(targets, values, calldatas, description);
         governor.execute(targets, values, calldatas, keccak256(bytes(description)));
     }
 
@@ -149,10 +144,10 @@ contract GovernanceIncentivizerPairIntegrationTest is Test {
     ) internal returns (uint256 proposalId) {
         vm.prank(ALICE);
         proposalId = governor.propose(targets, values, calldatas, description);
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
         vm.prank(ALICE);
         governor.castVote(proposalId, 1);
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        vm.warp(block.timestamp + governor.votingPeriod() + 1);
     }
 
     function _singleCallPayload(address target, bytes memory data)

@@ -95,7 +95,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         vm.expectRevert(IMemecoinDaoGovernor.UserHasUnfinalizedProposal.selector);
         governor.propose(targets, values, calldatas, "proposal-2");
 
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        vm.warp(block.timestamp + governor.votingPeriod() + 1);
         assertEq(uint8(governor.state(firstProposalId)), uint8(IGovernor.ProposalState.Defeated));
 
         vm.prank(ALICE);
@@ -107,14 +107,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
     function testProposeAllowsNewProposalAfterSucceededState() external {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _proposalPayload();
 
-        vm.prank(ALICE);
-        uint256 firstProposalId = governor.propose(targets, values, calldatas, "proposal-1");
-
-        // Vote and pass the proposal → Succeeded state
-        vm.roll(block.number + 1);
-        vm.prank(ALICE);
-        governor.castVote(firstProposalId, 1);
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        uint256 firstProposalId = _proposeAndPassForExpectedRevert(targets, values, calldatas, "proposal-1", ALICE);
         assertEq(uint8(governor.state(firstProposalId)), uint8(IGovernor.ProposalState.Succeeded));
 
         // Proposer should be able to submit a new proposal while the first is still Succeeded
@@ -127,12 +120,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
     function testExecutePreservesNewerUnfinalizedProposalMarker() external {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _proposalPayload();
 
-        vm.prank(ALICE);
-        uint256 firstProposalId = governor.propose(targets, values, calldatas, "proposal-1");
-        vm.roll(block.number + 1);
-        vm.prank(ALICE);
-        governor.castVote(firstProposalId, 1);
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        uint256 firstProposalId = _proposeAndPassForExpectedRevert(targets, values, calldatas, "proposal-1", ALICE);
         assertEq(uint8(governor.state(firstProposalId)), uint8(IGovernor.ProposalState.Succeeded));
 
         vm.prank(ALICE);
@@ -153,12 +141,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
     function testCancelSucceededProposalRevertsAndPreservesOutstandingMarker() external {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _proposalPayload();
 
-        vm.prank(ALICE);
-        uint256 firstProposalId = governor.propose(targets, values, calldatas, "proposal-1");
-        vm.roll(block.number + 1);
-        vm.prank(ALICE);
-        governor.castVote(firstProposalId, 1);
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        uint256 firstProposalId = _proposeAndPassForExpectedRevert(targets, values, calldatas, "proposal-1", ALICE);
         assertEq(uint8(governor.state(firstProposalId)), uint8(IGovernor.ProposalState.Succeeded));
 
         vm.prank(ALICE);
@@ -180,7 +163,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         vm.prank(ALICE);
         uint256 proposalId = governor.propose(targets, values, calldatas, "vote-proposal");
 
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
         vm.prank(BOB);
         governor.castVote(proposalId, 1);
 
@@ -282,7 +265,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
     function testQuorumReturnsMaxOfStakedQuorumAndMinQuorumFloor() external view {
         // Mock token getPastTotalSupply returns 1000 ether, quorumNumerator = 10 → staked quorum = 100 ether
         // minQuorum = 0 (from setUp) → staked quorum is larger
-        assertEq(governor.quorum(block.number), 100 ether);
+        assertEq(governor.quorum(block.timestamp), 100 ether);
     }
 
     /// @notice Test quorum floor takes effect when staked quorum is low.
@@ -310,7 +293,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         );
         MemecoinDaoGovernorUpgradeable floorGovernor = MemecoinDaoGovernorUpgradeable(payable(address(floorProxy)));
 
-        assertEq(floorGovernor.quorum(block.number), 50 ether);
+        assertEq(floorGovernor.quorum(block.timestamp), 50 ether);
     }
 
     function _proposalPayload()
@@ -333,28 +316,29 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         string memory description,
         address voter
     ) internal returns (uint256 proposalId) {
-        vm.prank(voter);
-        proposalId = governor.propose(targets, values, calldatas, description);
-        vm.roll(block.number + 1);
-        vm.prank(voter);
-        governor.castVote(proposalId, 1);
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        proposalId = _proposeAndPassForExpectedRevert(targets, values, calldatas, description, voter);
         governor.execute(targets, values, calldatas, keccak256(bytes(description)));
     }
 
+    /// @notice Creates the proposal, advances past its snapshot, casts a For vote, then advances past the
+    ///         proposal deadline, leaving the proposal Succeeded without executing it.
+    /// @dev Warps are anchored to the governor's proposal snapshot and deadline rather than
+    ///      `block.timestamp` arithmetic: both anchors are read through external calls, so consecutive
+    ///      cycles keep advancing forward even if the optimizer inlines this helper and caches block-level
+    ///      state across `vm.warp` calls.
     function _proposeAndPassForExpectedRevert(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description,
         address voter
-    ) internal {
+    ) internal returns (uint256 proposalId) {
         vm.prank(voter);
-        uint256 proposalId = governor.propose(targets, values, calldatas, description);
-        vm.roll(block.number + 1);
+        proposalId = governor.propose(targets, values, calldatas, description);
+        vm.warp(governor.proposalSnapshot(proposalId) + 1);
         vm.prank(voter);
         governor.castVote(proposalId, 1);
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        vm.warp(governor.proposalDeadline(proposalId) + 1);
     }
 
     function _transferPayload(address token, address to, uint256 amount)
@@ -520,12 +504,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         innerCalldatas[0] = abi.encodeCall(MockGovernorIncentivizer.registerTreasuryToken, (address(nestedToken)));
         string memory innerDescription = "nested-register";
 
-        vm.prank(ALICE);
-        uint256 innerProposalId = governor.propose(innerTargets, innerValues, innerCalldatas, innerDescription);
-        vm.roll(vm.getBlockNumber() + 1);
-        vm.prank(ALICE);
-        governor.castVote(innerProposalId, 1);
-        vm.roll(vm.getBlockNumber() + governor.votingPeriod() + 1);
+        _proposeAndPassForExpectedRevert(innerTargets, innerValues, innerCalldatas, innerDescription, ALICE);
 
         address[] memory outerTargets = new address[](1);
         uint256[] memory outerValues = new uint256[](1);
@@ -537,12 +516,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         );
         string memory outerDescription = "nested-execution";
 
-        vm.prank(ALICE);
-        uint256 outerProposalId = governor.propose(outerTargets, outerValues, outerCalldatas, outerDescription);
-        vm.roll(vm.getBlockNumber() + 1);
-        vm.prank(ALICE);
-        governor.castVote(outerProposalId, 1);
-        vm.roll(vm.getBlockNumber() + governor.votingPeriod() + 1);
+        _proposeAndPassForExpectedRevert(outerTargets, outerValues, outerCalldatas, outerDescription, ALICE);
 
         vm.expectRevert(IMemecoinDaoGovernor.NestedExecution.selector);
         governor.execute(outerTargets, outerValues, outerCalldatas, keccak256(bytes(outerDescription)));
@@ -562,14 +536,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _transferPayload(address(treasuryToken), BOB, 200 ether);
 
-        vm.prank(ALICE);
-        uint256 proposalId = governor.propose(targets, values, calldatas, "spend-over-limit");
-
-        vm.roll(block.number + 1);
-        vm.prank(ALICE);
-        governor.castVote(proposalId, 1);
-
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        _proposeAndPassForExpectedRevert(targets, values, calldatas, "spend-over-limit", ALICE);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IMemecoinDaoGovernor.TreasurySpendExceedsLimit.selector, address(treasuryToken), 200 ether, 100 ether
@@ -586,13 +553,13 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         vm.prank(ALICE);
         uint256 proposalId = governor.propose(targets, values, calldatas, "upgrade-no-super");
 
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
         vm.prank(ALICE);
         governor.castVote(proposalId, 1); // For
         vm.prank(BOB);
         governor.castVote(proposalId, 0); // Against
 
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        vm.warp(block.timestamp + governor.votingPeriod() + 1);
         // forVotes=100, totalVotes=180, required=100*10000 >= 180*6000 → 1000000 < 1080000
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -615,13 +582,13 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         vm.prank(ALICE);
         uint256 proposalId = governor.propose(targets, values, calldatas, "upgrade-super");
 
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
         vm.prank(ALICE);
         governor.castVote(proposalId, 1);
         vm.prank(BOB);
         governor.castVote(proposalId, 1);
 
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        vm.warp(block.timestamp + governor.votingPeriod() + 1);
         governor.execute(targets, values, calldatas, keccak256("upgrade-super"));
     }
 
@@ -678,14 +645,7 @@ contract MemecoinDaoGovernorUpgradeableTest is Test {
         values[1] = 0;
         calldatas[1] = abi.encodeCall(IERC20.transfer, (BOB, 100 ether));
 
-        vm.prank(ALICE);
-        uint256 proposalId = governor.propose(targets, values, calldatas, "multi-token");
-
-        vm.roll(block.number + 1);
-        vm.prank(ALICE);
-        governor.castVote(proposalId, 1);
-
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        _proposeAndPassForExpectedRevert(targets, values, calldatas, "multi-token", ALICE);
         // limit for tokenB = 500 * 1000/10000 = 50, spent = 100
         vm.expectRevert(
             abi.encodeWithSelector(

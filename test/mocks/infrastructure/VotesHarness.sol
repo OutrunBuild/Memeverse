@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
+import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
+
 import {OutrunERC20VotesInit} from "../../../src/common/token/extensions/governance/OutrunERC20VotesInit.sol";
 
 contract VotesHarness is OutrunERC20VotesInit {
@@ -42,5 +44,17 @@ contract VotesHarness is OutrunERC20VotesInit {
 contract CappedVotesHarness is VotesHarness {
     function _maxSupply() internal pure override returns (uint256) {
         return 10 ether;
+    }
+}
+
+/// @title BlockNumberClockVotesHarness
+/// @notice Votes harness whose governance clock runs in the block-number domain.
+/// @dev Overrides only `clock()` so the inherited base `CLOCK_MODE()` consistency guard sees a clock that no
+///      longer matches its timestamp expectation; used to pin that guard's revert behavior.
+contract BlockNumberClockVotesHarness is VotesHarness {
+    /// @notice Read the governance clock from the block-number domain.
+    /// @return Current block number cast into the ERC-6372 clock domain.
+    function clock() public view override returns (uint48) {
+        return Time.blockNumber();
     }
 }

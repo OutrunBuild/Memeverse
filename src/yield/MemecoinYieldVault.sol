@@ -65,7 +65,8 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @notice Exposes the timepoint source used by the votes extension.
-    /// @dev The vault uses block timestamps rather than block numbers.
+    /// @dev Matches the votes-base default (timestamp clock); kept as an explicit pin so a future base-class
+    ///      clock-domain change surfaces at the vault instead of silently shifting its checkpoint domain.
     /// @return Current timestamp cast into the ERC-6372 clock domain.
     function clock() public view override returns (uint48) {
         return uint48(block.timestamp);
@@ -73,7 +74,8 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
 
     // solhint-disable-next-line func-name-mixedcase
     /// @notice Exposes the ERC-6372 clock mode string.
-    /// @dev Advertises timestamp-based governance checkpoints.
+    /// @dev Deliberately bypasses the base's clock-consistency guard (pure, no live `clock()` comparison)
+    ///      while pinning the advertised mode to the vault's fixed timestamp domain.
     /// @return Clock mode descriptor.
     function CLOCK_MODE() public pure override returns (string memory) {
         return "mode=timestamp";

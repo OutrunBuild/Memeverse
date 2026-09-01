@@ -91,8 +91,8 @@
 | `PoolInitialized(PoolId indexed poolId, address indexed liquidityToken, Currency indexed currency0, Currency currency1)` | `MemeverseUniswapHookUpgradeable` | 池初始化 | poolId 与 LP token 建档 |
 | `LiquidityAdded(PoolId indexed poolId, address indexed provider, address indexed to, uint128 liquidity, uint256 amount0, uint256 amount1)` | `MemeverseUniswapHookUpgradeable` | Core 加减池 | LP 头寸变动 |
 | `LiquidityRemoved(PoolId indexed poolId, address indexed provider, uint128 liquidity, uint256 amount0, uint256 amount1)` | `MemeverseUniswapHookUpgradeable` | Core 加减池 | LP 头寸变动 |
-| `LPFeeCollected(PoolId indexed poolId, Currency indexed currency, uint256 amount, uint256 feePerShare, uint256 blockNumber)` | `MemeverseUniswapHookUpgradeable` | fee 归集时 | LP 每份额费用累计跟踪。可按 pool/currency 直接 filter |
-| `ProtocolFeeCollected(PoolId indexed poolId, Currency indexed currency, address indexed treasury, uint256 amount, uint256 blockNumber)` | `MemeverseUniswapHookUpgradeable` | fee 归集时 | 协议费归集跟踪。可按 treasury 直接 filter 做 per-treasury 对账 |
+| `LPFeeCollected(PoolId indexed poolId, Currency indexed currency, uint256 amount, uint256 feePerShare)` | `MemeverseUniswapHookUpgradeable` | fee 归集时 | LP 每份额费用累计跟踪。可按 pool/currency 直接 filter |
+| `ProtocolFeeCollected(PoolId indexed poolId, Currency indexed currency, address indexed treasury, uint256 amount)` | `MemeverseUniswapHookUpgradeable` | fee 归集时 | 协议费归集跟踪。可按 treasury 直接 filter 做 per-treasury 对账 |
 | `FeesClaimed(PoolId indexed poolId, address indexed user, Currency indexed currency0, Currency currency1, uint256 fee0Amount, uint256 fee1Amount)` | `MemeverseUniswapHookUpgradeable` | LP 提取收益时 | 已领取 fee 对账 |
 | `PublicSwapResumeTimeUpdated(PoolId indexed poolId, uint40 oldResumeTime, uint40 newResumeTime)` | `MemeverseUniswapHookUpgradeable` | pool-level 公开 swap 恢复时间更新 | unlock 后公开 swap 保护窗口可观测性 |
 | `ReferralRebateAccrued(address indexed referrer, Currency indexed currency, uint256 amount)` | `MemeverseUniswapHookUpgradeable`(Router，经 `SwapFacet::_settleProtocolFee` 内联 emit；`_collectProtocolFee` 与 beforeSwap 主路径均调它) | 普通 swap 携带非零 referrer 且 `amount > 0` 时 | 返佣累计。可按 referrer/currency 直接 filter |

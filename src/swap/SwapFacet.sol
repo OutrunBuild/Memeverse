@@ -401,7 +401,7 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         // for indexer continuity (toTreasury may be 0 when rebateBps == PROTOCOL_FEE_SHARE_BPS).
         // _takeToTreasury with amount 0 is a no-op take.
         address treasury_ = _takeToTreasury(feeCurrency, toTreasury);
-        emit IMemeverseUniswapHook.ProtocolFeeCollected(poolId, feeCurrency, treasury_, toTreasury, block.number);
+        emit IMemeverseUniswapHook.ProtocolFeeCollected(poolId, feeCurrency, treasury_, toTreasury);
     }
 
     /// @dev Rebate custody remains on the hook proxy: `poolManager.take(feeCurrency, address(this), rebate)`.

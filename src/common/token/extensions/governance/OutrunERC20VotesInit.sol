@@ -70,7 +70,7 @@ abstract contract OutrunERC20VotesInit is OutrunERC20Init, OutrunVotesInit {
     }
 
     /// @notice Reads how many vote checkpoints are stored for `account`.
-    /// @dev Each checkpoint records delegated voting power at a block.
+    /// @dev Each checkpoint records delegated voting power at a clock timepoint (timestamp domain).
     /// @param account Account to query.
     /// @return count Number of checkpoints stored for `account`.
     function numCheckpoints(address account) public view virtual returns (uint32) {

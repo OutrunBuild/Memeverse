@@ -2133,15 +2133,16 @@ contract YieldDispatcherRealGovernorIntegrationTest is ComposerEndpointFixture {
         bytes[] memory calldatas,
         string memory description
     ) internal {
-        // Compresses the propose→vote→execute cycle into a few blocks via vm.roll. The governor has no
-        // timelock, so there is no queue step to wait through; this helper does not model the production
-        // votingDelay(1 days)+votingPeriod(1 weeks) latency — see setUp comment.
+        // Compresses the propose→vote→execute cycle into a few seconds via vm.warp (the governor follows
+        // the votes token's timestamp clock). The governor has no timelock, so there is no queue step to
+        // wait through; this helper does not model the production votingDelay(1 days)+votingPeriod(1 weeks)
+        // latency — see setUp comment.
         vm.prank(ALICE);
         uint256 proposalId = governor.propose(targets, values, calldatas, description);
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
         vm.prank(ALICE);
         governor.castVote(proposalId, 1);
-        vm.roll(block.number + governor.votingPeriod() + 1);
+        vm.warp(block.timestamp + governor.votingPeriod() + 1);
         governor.execute(targets, values, calldatas, keccak256(bytes(description)));
     }
 

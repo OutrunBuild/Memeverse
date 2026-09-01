@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-08-31T04:49:40Z",
+  "generated_at": "2026-09-01T17:51:06Z",
   "finding_count": 362,
   "notes": "Snapshot of forge-lint findings verified site-by-site as false positives or accepted patterns: encode-packed-collision hits are creationCode||abi.encode initcode assembly (fixed-length tail, injective); missing-events-access-control cannot associate erc7201 namespaced-struct writes with the emit in the same function or public caller; uninitialized-local hits are intentional zero-default idiom; reentrancy-events misfires on namespaced-storage setters with no external call; boolean-cst hits are early-return constant defaults; unused-return hits are deliberate void protocol calls (transfer return-value enforcement lives in OutrunSafeERC20). Any NEW finding beyond this set fails the gate. Regenerate: bash script/harness/forge-lint-baseline.sh regen. Style detectors (unsafe-typecast, block-timestamp) were re-enabled from exclude_lints; their pre-existing hits were snapshotted here so only new occurrences are reported. Regen intentionally re-snapshots: it is an explicit, git-reviewed acceptance decision.",
   "findings": [
@@ -518,13 +518,13 @@
       "key": "reentrancy-events|src/swap/MemeverseYTFlashSwapRouter.sol|25e9db6ff4c766dd"
     },
     {
-      "key": "reentrancy-events|src/swap/SettlementFacet.sol|a0973b56bed9927e"
-    },
-    {
-      "key": "reentrancy-events|src/swap/SwapFacet.sol|10d6181cf2957c78"
+      "key": "reentrancy-events|src/swap/SettlementFacet.sol|1578f138d7def79b"
     },
     {
       "key": "reentrancy-events|src/swap/SwapFacet.sol|2096bc56db060674"
+    },
+    {
+      "key": "reentrancy-events|src/swap/SwapFacet.sol|8cea6fd362d5eb26"
     },
     {
       "key": "reentrancy-events|src/swap/SwapFacet.sol|dd8c714429f9c636"

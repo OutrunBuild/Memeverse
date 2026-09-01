@@ -109,15 +109,17 @@ contract MockGovernorVotesToken is IVotes {
     }
 
     /// @notice Clock.
+    /// @dev Timestamp domain, matching the production votes clock so governor tests drive the same
+    ///      ERC-6372 timepoint semantics the real governance token uses.
     /// @return See implementation.
     function clock() external view returns (uint48) {
-        return uint48(block.number);
+        return uint48(block.timestamp);
     }
 
     /// @notice Clock mode.
     /// @return See implementation.
     function CLOCK_MODE() external pure returns (string memory) {
-        return "mode=blocknumber&from=default";
+        return "mode=timestamp";
     }
 }
 

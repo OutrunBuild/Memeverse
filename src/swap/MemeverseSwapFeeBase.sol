@@ -47,11 +47,11 @@ abstract contract MemeverseSwapFeeBase is FacetGuard {
         if (feeCurrencyIsCurrency0) {
             uint256 newFee0PerShare = pool.fee0PerShare + feePerShareDelta;
             pool.fee0PerShare = newFee0PerShare;
-            emit IMemeverseUniswapHook.LPFeeCollected(poolId, feeCurrency, lpFeeAmount, newFee0PerShare, block.number);
+            emit IMemeverseUniswapHook.LPFeeCollected(poolId, feeCurrency, lpFeeAmount, newFee0PerShare);
         } else {
             uint256 newFee1PerShare = pool.fee1PerShare + feePerShareDelta;
             pool.fee1PerShare = newFee1PerShare;
-            emit IMemeverseUniswapHook.LPFeeCollected(poolId, feeCurrency, lpFeeAmount, newFee1PerShare, block.number);
+            emit IMemeverseUniswapHook.LPFeeCollected(poolId, feeCurrency, lpFeeAmount, newFee1PerShare);
         }
     }
 

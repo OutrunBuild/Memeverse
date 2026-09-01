@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0
 // OpenZeppelin Contracts (last updated v5.2.0) (governance/utils/Votes.sol)
+//
+// Divergence from upstream (preserve when syncing): this vendored port deliberately defaults the governance
+// clock to timestamps (`Time.timestamp()`); upstream Votes defaults to the block number. Once deployed, the
+// checkpoint keys are timestamp-domain values, so regressing the clock to block numbers makes every new key
+// smaller than the last recorded one and `Checkpoints` reverts `CheckpointUnorderedInsertion` — bricking
+// each mint/burn/delegate/transfer that writes a checkpoint until the block number outgrows the recorded
+// timestamps (practically never within uint48 range).
 pragma solidity ^0.8.35;
 
 import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+import {ERC6372Utils} from "@openzeppelin/contracts/utils/ERC6372Utils.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
@@ -23,7 +31,7 @@ import {OutrunEIP712Init} from "../../../cryptography/OutrunEIP712Init.sol";
  * example, see {ERC721Votes}.
  *
  * The full history of delegate votes is tracked on-chain so that governance protocols can consider votes as distributed
- * at a particular block number to protect against flash loans and double voting. The opt-in delegate system makes the
+ * at a particular timepoint to protect against flash loans and double voting. The opt-in delegate system makes the
  * cost of this history tracking optional.
  *
  * When using this module the derived contract must implement {_getVotingUnits} (for example, make it return
@@ -85,11 +93,6 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
     }
 
     /**
-     * @dev The clock was incorrectly modified.
-     */
-    error ERC6372InconsistentClock();
-
-    /**
      * @dev Lookup to future votes is not available.
      */
     error ERC5805FutureLookup(uint256 timepoint, uint48 clock);
@@ -97,10 +100,16 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
     function __OutrunVotes_init() internal onlyInitializing {}
 
     /// @notice Exposes the governance clock used for vote checkpoints.
-    /// @dev Uses block numbers as defined by ERC-6372.
-    /// @return currentTimepoint Current block-number timepoint.
+    /// @dev Uses timestamps as defined by ERC-6372. Timestamp is the safe default: on chains where BLOCKNUMBER
+    ///      returns the L1 (Ethereum) block number (Arbitrum Nitro/Orbit chains), a block-number clock does not
+    ///      advance within the same L1 height and can regress on an L1 reorg, breaking ERC5805 checkpoint
+    ///      monotonicity; a timestamp clock never decreases. It is not strictly increasing either — consecutive
+    ///      fast blocks can share the same second-granularity timestamp — so checkpoint keys are non-decreasing
+    ///      rather than strictly increasing: a write at an already-recorded timepoint merges into the last
+    ///      checkpoint in place (equal-key update) instead of appending.
+    /// @return currentTimepoint Current timestamp timepoint.
     function clock() public view virtual returns (uint48) {
-        return Time.blockNumber();
+        return Time.timestamp();
     }
 
     /**
@@ -111,11 +120,7 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
     /// @dev Reverts if a child contract changed `clock()` semantics.
     /// @return mode ERC-6372 clock mode descriptor string.
     function CLOCK_MODE() public view virtual returns (string memory) {
-        // Check that the clock was not modified
-        if (clock() != Time.blockNumber()) {
-            revert ERC6372InconsistentClock();
-        }
-        return "mode=blocknumber&from=default";
+        return ERC6372Utils.timestampClockMode(clock());
     }
 
     /**
@@ -139,7 +144,7 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
     /// @notice Reads the voting power delegated to `account` at a past timepoint.
     /// @dev Reverts when querying the current/future timepoint.
     /// @param account Account whose historical votes are requested.
-    /// @param timepoint Past block-number timepoint to query.
+    /// @param timepoint Past timestamp timepoint to query.
     /// @return votes Voting power recorded at `timepoint`.
     function getPastVotes(address account, uint256 timepoint) public view virtual returns (uint256) {
         VotesStorage storage $ = _getVotesStorage();
@@ -153,7 +158,7 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
 
     /// @notice Reads total tracked voting units at a past timepoint.
     /// @dev Reverts when querying the current/future timepoint.
-    /// @param timepoint Past block-number timepoint to query.
+    /// @param timepoint Past timestamp timepoint to query.
     /// @return totalSupply Voting-unit supply recorded at `timepoint`.
     function getPastTotalSupply(uint256 timepoint) public view virtual returns (uint256) {
         VotesStorage storage $ = _getVotesStorage();

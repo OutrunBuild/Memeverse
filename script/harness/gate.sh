@@ -123,6 +123,9 @@ cleanup() {
 }
 
 trap cleanup EXIT
+# SIGTERM/SIGINT bypass EXIT-only traps: run the same cleanup explicitly so a
+# killed gate does not leak its scratch output files.
+trap 'cleanup; trap - EXIT; exit 143' INT TERM
 
 json_array_from_values() {
     if [ "$#" -eq 0 ]; then
@@ -1113,6 +1116,10 @@ command -v node >/dev/null 2>&1 || die "node is required"
 original_cwd="$(pwd)"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
+# Sweep stale scratch output files from gate runs killed with SIGKILL: INT/TERM
+# exit through the cleanup trap, but SIGKILL runs no trap, so those files would
+# otherwise accumulate forever. Recent files are kept for debugging.
+find "$repo_root/.harness/tmp" -maxdepth 1 -type f \( -name 'cmd.*' -o -name 'gate.*' -o -name 'sync-docs.*' -o -name 'slither.*.json' \) -mtime +7 -delete 2>/dev/null || true
 cd "$repo_root"
 
 harness_schema_root="$(resolve_harness_schema_root)"

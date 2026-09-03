@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import "forge-std/Script.sol";
+import {Script} from "forge-std/Script.sol";
 
 abstract contract BaseScript is Script {
     uint256 internal privateKey;

@@ -48,7 +48,7 @@ Production Solidity semantic changes never downgrade by static allowlist and nev
 | Command | fast | full / ci | Condition |
 |---|---|---|---|
 | `forge fmt --check` | yes | yes | changed Solidity files |
-| `npx solhint` | yes | yes | changed Solidity files |
+| `npx solhint` | yes | yes | changed Solidity files (`src/**` with `solhint.config.js`; `script/**` with `solhint-script.config.js`; `test/**` with `solhint-test.config.js`) |
 | `forge build` | yes | yes | always |
 | `forge test --match-path` | yes | no | changed/mapped targeted tests |
 | `forge test -vvv` | no | yes | full / ci |

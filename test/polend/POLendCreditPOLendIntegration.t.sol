@@ -281,13 +281,13 @@ contract GenesisCreditPOLendIntegration is Test {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         credit.mint(BOB, 5 ether);
         vm.prank(BOB);
         credit.approve(address(polend), 5 ether);
         vm.prank(BOB);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 5 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 5 ether, BOB);
 
         assertEq(polend.getTotalLeveragedInterest(VERSE_ID), 15 ether, "aggregate interest");
         assertEq(polend.getTotalCreditInterest(VERSE_ID), 5 ether, "credit interest tally");
@@ -370,7 +370,7 @@ contract GenesisCreditPOLendIntegration is Test {
         vm.prank(BOB);
         credit.approve(address(polend), 15 ether);
         vm.prank(BOB);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 15 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 15 ether, BOB);
 
         assertEq(polend.getTotalLeveragedInterest(VERSE_ID), 15 ether, "credit-only interest");
         assertEq(polend.getTotalCreditInterest(VERSE_ID), 15 ether, "all interest is credit");
@@ -441,7 +441,7 @@ contract GenesisCreditPOLendIntegration is Test {
         vm.prank(BOB);
         credit.approve(address(polend), 50 ether);
         vm.prank(BOB);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 50 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 50 ether, BOB);
 
         assertEq(launcher.totalNormalFunds(VERSE_ID), 0, "no normal funds");
         assertEq(polend.getTotalLeveragedInterest(VERSE_ID), 50 ether, "partial credit interest");
@@ -457,7 +457,7 @@ contract GenesisCreditPOLendIntegration is Test {
         vm.prank(ALICE);
         credit.approve(address(polend), 100 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 100 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 100 ether, ALICE);
 
         assertEq(polend.getTotalLeveragedInterest(VERSE_ID), minTotalFund, "credit fills minTotalFund");
         assertEq(polend.getTotalCreditInterest(VERSE_ID), minTotalFund, "all interest is credit");
@@ -525,13 +525,13 @@ contract GenesisCreditPOLendIntegration is Test {
         vm.prank(ALICE);
         credit.approve(address(polend), aliceCredit);
         vm.prank(ALICE);
-        polend.leveragedGenesisWithCredit(verseA, aliceCredit);
+        polend.leveragedGenesisWithCredit(verseA, aliceCredit, ALICE);
 
         credit.mint(BOB, bobCredit);
         vm.prank(BOB);
         credit.approve(address(polend), bobCredit);
         vm.prank(BOB);
-        polend.leveragedGenesisWithCredit(verseB, bobCredit);
+        polend.leveragedGenesisWithCredit(verseB, bobCredit, BOB);
 
         assertEq(polend.getTotalCreditInterest(verseA), aliceCredit, "verse A credit interest tally");
         assertEq(polend.getTotalCreditInterest(verseB), bobCredit, "verse B credit interest tally");
@@ -583,7 +583,7 @@ contract GenesisCreditPOLendIntegration is Test {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         // Arm the credit allowance BEFORE pausing: like OZ ERC20Pausable, only token moves are gated.
         credit.mint(BOB, 5 ether);
@@ -596,7 +596,7 @@ contract GenesisCreditPOLendIntegration is Test {
         // Credit entry reverts with the credit token's own pause error, bubbled through safeTransferFrom.
         vm.prank(BOB);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 5 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 5 ether, BOB);
 
         // The failed call's CEI writes all rolled back: no credit interest, no aggregate bump, no escrow.
         assertEq(polend.getTotalLeveragedInterest(VERSE_ID), 10 ether, "aggregate interest unchanged");
@@ -612,7 +612,7 @@ contract GenesisCreditPOLendIntegration is Test {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 2 ether);
         vm.prank(ALICE);
-        uint256 borrowed = polend.leveragedGenesis(VERSE_ID, 2 ether);
+        uint256 borrowed = polend.leveragedGenesis(VERSE_ID, 2 ether, ALICE);
 
         assertEq(borrowed, 20 ether, "real path borrows while credit paused");
         assertEq(polend.getTotalLeveragedInterest(VERSE_ID), 12 ether, "real interest accrues");
@@ -632,19 +632,19 @@ contract GenesisCreditPOLendIntegration is Test {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         // Mixed participant: both ledgers non-zero (10 real + 5 credit).
         uAsset.mint(BOB, 10 ether);
         vm.prank(BOB);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(BOB);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, BOB);
         credit.mint(BOB, 5 ether);
         vm.prank(BOB);
         credit.approve(address(polend), 5 ether);
         vm.prank(BOB);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 5 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 5 ether, BOB);
 
         assertEq(credit.balanceOf(address(polend)), 5 ether, "credit escrowed");
 
@@ -707,7 +707,7 @@ contract GenesisCreditPOLendIntegration is Test {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(verse2, 10 ether);
+        polend.leveragedGenesis(verse2, 10 ether, ALICE);
         assertEq(polend.getTotalCreditInterest(verse2), 0, "no credit on verse 2");
 
         vm.prank(CREDIT_OWNER);

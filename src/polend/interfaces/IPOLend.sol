@@ -66,7 +66,9 @@ interface IPOLend {
     event ProtocolTreasuryChanged(address indexed oldTreasury, address indexed newTreasury);
     event DefaultInterestRateChanged(uint256 oldRate, uint256 newRate);
     event LeveragedDebtFactorChanged(uint256 oldFactor, uint256 newFactor);
-    event LeveragedGenesis(uint256 indexed verseId, address indexed user, uint256 interestAmount);
+    event LeveragedGenesis(
+        uint256 indexed verseId, address indexed payer, address indexed user, uint256 interestAmount
+    );
     event PreRedeemPTFee(
         uint256 indexed verseId, address indexed uAsset, uint256 ptAmount, uint256 uAssetBacking, address mintTo
     );
@@ -107,7 +109,9 @@ interface IPOLend {
     ///         GenesisCredit (instead of the raw uAsset) as interest.
     /// @dev Escrow only — the credit is not burned here. It is burned later in
     ///      `finalizeLeveragedGenesis` (`CreditBurned`), or returned on the refund path (`claimRefund`, `CreditRefunded`).
-    event LeveragedGenesisWithCredit(uint256 indexed verseId, address indexed user, uint256 creditAmount);
+    event LeveragedGenesisWithCredit(
+        uint256 indexed verseId, address indexed payer, address indexed user, uint256 creditAmount
+    );
 
     /// @notice Emitted when a verse's lend market is registered by the launcher.
     /// @param verseId Verse identifier the market was registered for.
@@ -148,14 +152,27 @@ interface IPOLend {
 
     function registerLendMarket(uint256 verseId) external;
 
-    function leveragedGenesis(uint256 verseId, uint256 interestAmount) external returns (uint256 borrowedAmount);
+    /// @notice Open or top up a leveraged-genesis position by paying real-uAsset interest.
+    ///         Pulls `interestAmount` of uAsset from the payer (`msg.sender`) and credits the
+    ///         leveraged position to `user`.
+    /// @param verseId Memeverse identifier.
+    /// @param interestAmount uAsset interest to pay (must be > 0).
+    /// @param user Address credited with the leveraged position (may differ from the payer).
+    /// @return borrowedAmount uAsset-denominated debt minted against this interest.
+    function leveragedGenesis(uint256 verseId, uint256 interestAmount, address user)
+        external
+        returns (uint256 borrowedAmount);
 
     /// @notice Open or add to a leveraged-genesis position by paying interest in GenesisCredit
     ///         instead of the verse's uAsset. The credit token is escrowed (not burned) by POLendUpgradeable.
+    ///         Pulled from the payer (`msg.sender`); the position is credited to `user`.
     /// @param verseId Memeverse identifier.
     /// @param creditAmount Amount of GenesisCredit to escrow as interest.
+    /// @param user Address credited with the leveraged position (may differ from the payer).
     /// @return borrowedAmount uAsset-denominated debt minted against this interest.
-    function leveragedGenesisWithCredit(uint256 verseId, uint256 creditAmount) external returns (uint256 borrowedAmount);
+    function leveragedGenesisWithCredit(uint256 verseId, uint256 creditAmount, address user)
+        external
+        returns (uint256 borrowedAmount);
 
     function markRefundable(uint256 verseId) external;
 

@@ -363,7 +363,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
 
         uAsset.mint(address(this), 1100 ether);
         uAsset.approve(address(realPolend), type(uint256).max);
-        realPolend.leveragedGenesis(VERSE_ID, 100 ether);
+        realPolend.leveragedGenesis(VERSE_ID, 100 ether, address(this));
 
         // Drive the real stage transition: changeStage runs finalizeLeveragedGenesis on the real
         // POLend (which mints the debt funds to the launcher), then the production _deployLiquidity
@@ -537,7 +537,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         realPolend.registerLendMarket(VERSE_ID);
         uAsset.mint(address(this), 0.1 ether);
         uAsset.approve(address(realPolend), type(uint256).max);
-        realPolend.leveragedGenesis(VERSE_ID, 0.1 ether);
+        realPolend.leveragedGenesis(VERSE_ID, 0.1 ether, address(this));
         vm.prank(address(launcher));
         realPolend.finalizeLeveragedGenesis(VERSE_ID);
 
@@ -722,7 +722,7 @@ contract MemeverseLauncherPOLendIntegrationTest is Test, MemeverseLauncherTestHe
         vm.prank(caller);
         uAsset.approve(address(realPolend), 10 ether);
         vm.prank(caller);
-        realPolend.leveragedGenesis(VERSE_ID, 10 ether);
+        realPolend.leveragedGenesis(VERSE_ID, 10 ether, caller);
         assertEq(realPolend.getTotalLeveragedDebt(VERSE_ID), 100 ether, "leveraged debt");
 
         uint256 capacityAfter = launcher.previewPreorderCapacity(VERSE_ID);

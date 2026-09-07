@@ -466,7 +466,7 @@ contract MemeverseLauncherPOLendSettlementInvariantTest is Test, MemeverseLaunch
         uAsset.mint(LEVERAGED_USER, interestAmount);
         vm.startPrank(LEVERAGED_USER);
         uAsset.approve(address(polend), interestAmount);
-        polend.leveragedGenesis(VERSE_ID, interestAmount);
+        polend.leveragedGenesis(VERSE_ID, interestAmount, LEVERAGED_USER);
         vm.stopPrank();
     }
 
@@ -909,7 +909,7 @@ contract SettlementDustInvariantHandler is Test, MemeverseLauncherTestHelper {
         uAsset_.mint(user, interestAmount);
         vm.startPrank(user);
         uAsset_.approve(address(polend_), interestAmount);
-        polend_.leveragedGenesis(verseId, interestAmount);
+        polend_.leveragedGenesis(verseId, interestAmount, user);
         vm.stopPrank();
     }
 }

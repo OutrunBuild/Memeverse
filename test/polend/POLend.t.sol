@@ -35,7 +35,9 @@ contract POLendTest is Test, POLendStorageHelper {
     event ProtocolTreasuryChanged(address indexed oldTreasury, address indexed newTreasury);
     event DefaultInterestRateChanged(uint256 oldRate, uint256 newRate);
     event LeveragedDebtFactorChanged(uint256 oldFactor, uint256 newFactor);
-    event LeveragedGenesis(uint256 indexed verseId, address indexed user, uint256 interestAmount);
+    event LeveragedGenesis(
+        uint256 indexed verseId, address indexed payer, address indexed user, uint256 interestAmount
+    );
     event PreRedeemPTFee(
         uint256 indexed verseId, address indexed uAsset, uint256 ptAmount, uint256 uAssetBacking, address mintTo
     );
@@ -56,7 +58,9 @@ contract POLendTest is Test, POLendStorageHelper {
         uint256 residualUAsset,
         uint256 residualMemecoin
     );
-    event LeveragedGenesisWithCredit(uint256 indexed verseId, address indexed user, uint256 creditAmount);
+    event LeveragedGenesisWithCredit(
+        uint256 indexed verseId, address indexed payer, address indexed user, uint256 creditAmount
+    );
     event CreditBurned(uint256 indexed verseId, address indexed uAsset, uint256 totalCreditInterest);
     event LendMarketRegistered(uint256 indexed verseId, address indexed uAsset, uint256 interestRate);
     event MarketRefundable(uint256 indexed verseId);
@@ -268,7 +272,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.approve(address(polend), 10 ether);
 
         vm.prank(ALICE);
-        uint256 borrowed = polend.leveragedGenesis(VERSE_ID, 10 ether);
+        uint256 borrowed = polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
         assertEq(borrowed, 100 ether, "borrowed");
 
         uint256 interestPaid = polend.totalInterestPaid(VERSE_ID, ALICE);
@@ -283,10 +287,10 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
 
-        vm.expectEmit(true, true, false, true);
-        emit LeveragedGenesis(VERSE_ID, ALICE, 10 ether);
+        vm.expectEmit(true, true, true, true);
+        emit LeveragedGenesis(VERSE_ID, ALICE, ALICE, 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
     }
 
     function testLeveragedGenesis_ReentrantTransferKeepsAccumulatedInterest() external {
@@ -302,7 +306,7 @@ contract POLendTest is Test, POLendStorageHelper {
         hookedUAsset.enableLeveragedGenesisReentry(address(polend), VERSE_ID, 5 ether);
 
         vm.prank(ALICE);
-        uint256 borrowed = polend.leveragedGenesis(VERSE_ID, 10 ether);
+        uint256 borrowed = polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         assertEq(borrowed, 100 ether, "borrowed");
         assertEq(hookedUAsset.balanceOf(address(polend)), 15 ether, "transferred");
@@ -328,7 +332,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.approve(address(localPolend), largeInterest);
 
         vm.prank(ALICE);
-        uint256 borrowed = localPolend.leveragedGenesis(verseId, largeInterest);
+        uint256 borrowed = localPolend.leveragedGenesis(verseId, largeInterest, ALICE);
 
         assertEq(borrowed, largeInterest, "borrowed");
         assertEq(localPolend.getUserLeveragedDebt(verseId, ALICE), largeInterest, "user debt");
@@ -344,7 +348,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.InvalidState.selector);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         IPOLend.LendMarket memory market = polend.getLendMarket(VERSE_ID);
         assertEq(uAsset.balanceOf(address(polend)), 0, "no transfer");
@@ -362,11 +366,11 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.approve(address(polend), 1_001 ether);
 
         vm.prank(ALICE);
-        assertEq(polend.leveragedGenesis(VERSE_ID, 1_000 ether), 10_000 ether, "within cap");
+        assertEq(polend.leveragedGenesis(VERSE_ID, 1_000 ether, ALICE), 10_000 ether, "within cap");
 
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.DebtCapExceeded.selector);
-        polend.leveragedGenesis(VERSE_ID, 1 ether);
+        polend.leveragedGenesis(VERSE_ID, 1 ether, ALICE);
     }
 
     // --- leveragedGenesisWithCredit ---
@@ -389,10 +393,10 @@ contract POLendTest is Test, POLendStorageHelper {
     function test_LeveragedGenesisWithCredit_TransfersCreditAndAccumulates() external {
         (BurnableMockERC20 credit,) = _setupCreditPath(ALICE, 10 ether);
 
-        vm.expectEmit(true, true, false, true);
-        emit LeveragedGenesisWithCredit(VERSE_ID, ALICE, 10 ether);
+        vm.expectEmit(true, true, true, true);
+        emit LeveragedGenesisWithCredit(VERSE_ID, ALICE, ALICE, 10 ether);
         vm.prank(ALICE);
-        uint256 borrowed = polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+        uint256 borrowed = polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, ALICE);
 
         assertEq(borrowed, 100 ether, "borrowed");
         assertEq(credit.balanceOf(address(polend)), 10 ether, "polend escrows credit");
@@ -413,7 +417,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.NoCreditForUAsset.selector);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, ALICE);
     }
 
     function test_RevertWhen_LeveragedGenesisWithCredit_ZeroAmount() external {
@@ -421,7 +425,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.ZeroInput.selector);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 0);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 0, ALICE);
     }
 
     function test_RevertWhen_LeveragedGenesisWithCredit_NotGenesisStage() external {
@@ -430,7 +434,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.InvalidState.selector);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, ALICE);
     }
 
     /// @dev GenesisCredit is fixed at 18 decimals, so a 6-dec uAsset must not enter the credit path:
@@ -456,7 +460,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.prank(ALICE);
         vm.expectRevert(abi.encodeWithSelector(IPOLend.CreditDecimalsMismatch.selector, uint8(6), uint8(18)));
-        polend.leveragedGenesisWithCredit(verseId, 10 ether);
+        polend.leveragedGenesisWithCredit(verseId, 10 ether, ALICE);
     }
 
     function test_LeveragedGenesisWithCredit_RespectsDebtCap() external {
@@ -483,12 +487,12 @@ contract POLendTest is Test, POLendStorageHelper {
 
         // 200 credit interest => previewDebt = 200 == cap, accepted.
         vm.prank(ALICE);
-        localPolend.leveragedGenesisWithCredit(verseId, 200);
+        localPolend.leveragedGenesisWithCredit(verseId, 200, ALICE);
 
         // 1 more credit => previewDebt = 201 > 200 => DebtCapExceeded.
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.DebtCapExceeded.selector);
-        localPolend.leveragedGenesisWithCredit(verseId, 1);
+        localPolend.leveragedGenesisWithCredit(verseId, 1, ALICE);
     }
 
     function test_LeveragedGenesisWithCredit_RevertsWhenAggregateTotalGenesisFundsWouldExceedSupportedMaximum()
@@ -521,7 +525,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.InvalidConfig.selector);
-        localPolend.leveragedGenesisWithCredit(verseId, 1);
+        localPolend.leveragedGenesisWithCredit(verseId, 1, ALICE);
     }
 
     function test_LeveragedGenesisWithCredit_RevertsWhenCumulativeAggregateTotalGenesisFundsWouldExceedSupportedMaximum()
@@ -554,12 +558,12 @@ contract POLendTest is Test, POLendStorageHelper {
 
         // First credit(10): previewDebt 10 == aggregate cap 10, accepted.
         vm.prank(ALICE);
-        localPolend.leveragedGenesisWithCredit(verseId, 10);
+        localPolend.leveragedGenesisWithCredit(verseId, 10, ALICE);
 
         // Second credit(1): cumulative previewDebt 11 > aggregate cap 10 => InvalidConfig.
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.InvalidConfig.selector);
-        localPolend.leveragedGenesisWithCredit(verseId, 1);
+        localPolend.leveragedGenesisWithCredit(verseId, 1, ALICE);
     }
 
     function test_LeveragedGenesisWithCredit_MixedWithRealGenesis() external {
@@ -568,12 +572,12 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         // Then credit-funded leveraged genesis for the same verse & user.
         (BurnableMockERC20 credit,) = _setupCreditPath(BOB, 4 ether);
         vm.prank(BOB);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 4 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 4 ether, BOB);
 
         IPOLend.LendMarket memory market = polend.getLendMarket(VERSE_ID);
         assertEq(market.totalLeveragedInterest, 14 ether, "aggregate interest");
@@ -722,7 +726,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.approve(address(localPolend), 1);
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.InvalidConfig.selector);
-        localPolend.leveragedGenesis(verseId, 1);
+        localPolend.leveragedGenesis(verseId, 1, ALICE);
     }
 
     function testLeveragedGenesis_RevertsWhenCumulativeAggregateTotalGenesisFundsWouldExceedSupportedMaximum()
@@ -744,12 +748,12 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.approve(address(localPolend), 11);
 
         vm.prank(ALICE);
-        assertEq(localPolend.leveragedGenesis(verseId, 10), 10, "first debt");
+        assertEq(localPolend.leveragedGenesis(verseId, 10, ALICE), 10, "first debt");
         assertEq(localPolend.getTotalLeveragedDebt(verseId), 10, "total debt");
 
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.InvalidConfig.selector);
-        localPolend.leveragedGenesis(verseId, 1);
+        localPolend.leveragedGenesis(verseId, 1, ALICE);
     }
 
     /// @notice Verifies leveragedGenesis reverts with DebtCapExceeded when interest pushes debt exactly 1 unit over the debt cap.
@@ -779,12 +783,12 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         uAsset.approve(address(localPolend), 200);
         vm.prank(ALICE);
-        localPolend.leveragedGenesis(verseId, 200);
+        localPolend.leveragedGenesis(verseId, 200, ALICE);
 
         // Borrow 1 more => previewTotalDebt = 201 > 200 => revert
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.DebtCapExceeded.selector);
-        localPolend.leveragedGenesis(verseId, 1);
+        localPolend.leveragedGenesis(verseId, 1, ALICE);
     }
 
     function testGetLeveragedDebtInfo_UsesCeilDerivedRemainingInterestCapacity() external {
@@ -823,7 +827,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.approve(address(polend), 10 ether);
 
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         uint256 treasuryBefore = uAsset.balanceOf(address(this));
         vm.prank(address(launcher));
@@ -841,7 +845,7 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
         uint256 treasuryBefore = uAsset.balanceOf(address(this));
 
         vm.prank(address(launcher));
@@ -864,11 +868,11 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 100 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 100 ether);
+        polend.leveragedGenesis(VERSE_ID, 100 ether, ALICE);
 
         (BurnableMockERC20 credit,) = _setupCreditPath(BOB, 50 ether);
         vm.prank(BOB);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 50 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 50 ether, BOB);
 
         uint256 treasuryBefore = uAsset.balanceOf(address(this));
         uint256 polendCreditBefore = credit.balanceOf(address(polend));
@@ -900,7 +904,7 @@ contract POLendTest is Test, POLendStorageHelper {
         // First entry locks the cache to creditA.
         (BurnableMockERC20 creditA,) = _setupCreditPath(ALICE, 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, ALICE);
 
         // Swap the factory mapping to a different token for the same uAsset.
         MockGenesisCreditFactory factoryB = new MockGenesisCreditFactory();
@@ -915,7 +919,7 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.startPrank(BOB);
         creditA.approve(address(polend), 10 ether);
         creditB.approve(address(polend), 10 ether);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, BOB);
         vm.stopPrank();
 
         // Second entry must escrow into the cached creditA, not re-resolve to creditB.
@@ -928,7 +932,7 @@ contract POLendTest is Test, POLendStorageHelper {
     function test_Finalize_ReadsCachedCreditTokenAfterFactoryChange() external {
         (BurnableMockERC20 creditA,) = _setupCreditPath(ALICE, 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, ALICE);
 
         MockGenesisCreditFactory factoryB = new MockGenesisCreditFactory();
         BurnableMockERC20 creditB = new BurnableMockERC20("CREDIT_B", "CREDIT_B");
@@ -957,7 +961,7 @@ contract POLendTest is Test, POLendStorageHelper {
     function test_Finalize_PureCredit_NoReserveTreasury_OnlyBurn() external {
         (BurnableMockERC20 credit,) = _setupCreditPath(ALICE, 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, ALICE);
 
         uint256 treasuryBefore = uAsset.balanceOf(address(this));
         (uint128 reserveBefore,) = polend.settlementDustStates(address(uAsset));
@@ -987,7 +991,7 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         uint256 creditSupplyBefore = credit.totalSupply();
         uint256 polendCreditBefore = credit.balanceOf(address(polend));
@@ -1102,7 +1106,7 @@ contract POLendTest is Test, POLendStorageHelper {
     function test_ClaimRefund_ReadsCachedCreditTokenAfterFactoryChange() external {
         (BurnableMockERC20 creditA,) = _setupCreditPath(ALICE, 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, ALICE);
 
         MockGenesisCreditFactory factoryB = new MockGenesisCreditFactory();
         BurnableMockERC20 creditB = new BurnableMockERC20("CREDIT_B", "CREDIT_B");
@@ -1471,13 +1475,13 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.mint(ALICE, aliceInterest);
         vm.startPrank(ALICE);
         uAsset.approve(address(polend), aliceInterest);
-        polend.leveragedGenesis(VERSE_ID, aliceInterest);
+        polend.leveragedGenesis(VERSE_ID, aliceInterest, ALICE);
         vm.stopPrank();
 
         uAsset.mint(BOB, bobInterest);
         vm.startPrank(BOB);
         uAsset.approve(address(polend), bobInterest);
-        polend.leveragedGenesis(VERSE_ID, bobInterest);
+        polend.leveragedGenesis(VERSE_ID, bobInterest, BOB);
         vm.stopPrank();
 
         vm.prank(address(launcher));
@@ -1770,7 +1774,7 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         uAsset.approve(address(localPolend), 1_500 ether);
         vm.prank(ALICE);
-        localPolend.leveragedGenesis(verseId, 1_500 ether);
+        localPolend.leveragedGenesis(verseId, 1_500 ether, ALICE);
 
         // Lower debtFactor from 2e18 to 1e18 → new debtCap = 1_000 ether
         // minDebtFactor = 1e36 / 1e18 = 1e18,  1e18 >= 1e18 ✔
@@ -1781,7 +1785,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.mint(ALICE, 1 ether);
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.DebtCapExceeded.selector);
-        localPolend.leveragedGenesis(verseId, 1 ether);
+        localPolend.leveragedGenesis(verseId, 1 ether, ALICE);
 
         // New market registered after lowering uses the new factor
         uint256 newVerseId = 201;
@@ -1839,7 +1843,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.prank(ALICE);
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
     }
 
     function testDebtByUAssetTracksFinalizePreRedeemBackingAndSettlement() external {
@@ -1849,7 +1853,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.approve(address(polend), 10 ether);
 
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
@@ -1891,7 +1895,7 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         (totalInterest, totalDebt, rate, debtCap, remaining) = _getLeveragedDebtInfo(VERSE_ID);
         assertEq(totalInterest, 10 ether, "genesis interest");
@@ -2256,7 +2260,7 @@ contract POLendTest is Test, POLendStorageHelper {
         otherUAsset.approve(address(polend), 10 ether);
 
         vm.prank(ALICE);
-        polend.leveragedGenesis(OTHER_VERSE_ID, 10 ether);
+        polend.leveragedGenesis(OTHER_VERSE_ID, 10 ether, ALICE);
 
         assertEq(otherUAsset.balanceOf(address(polend)), 10 ether, "other verse interest escrowed in its own asset");
         assertEq(uAsset.balanceOf(address(polend)), 0, "default uAsset untouched");
@@ -2269,7 +2273,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.approve(address(polend), 10 ether);
 
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         vm.expectEmit(true, false, false, true);
         emit MarketRefundable(VERSE_ID);
@@ -2288,7 +2292,7 @@ contract POLendTest is Test, POLendStorageHelper {
         uAsset.approve(address(polend), 10 ether);
 
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
 
@@ -2312,7 +2316,7 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         uAsset.approve(address(polend), 10 ether);
         vm.prank(ALICE);
-        polend.leveragedGenesis(VERSE_ID, 10 ether);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, ALICE);
 
         vm.prank(address(launcher));
         polend.finalizeLeveragedGenesis(VERSE_ID);
@@ -2458,7 +2462,7 @@ contract POLendTest is Test, POLendStorageHelper {
 
         vm.prank(ALICE);
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, ALICE);
     }
 
     /// @notice When the launcher over-funds a reserve already at capacity, `capacity == 0` so

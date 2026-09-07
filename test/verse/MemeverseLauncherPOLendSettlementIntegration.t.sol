@@ -210,7 +210,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
         uAsset.mint(LEVERAGED_USER, 2 ether);
         vm.startPrank(LEVERAGED_USER);
         uAsset.approve(address(polend), 1 ether);
-        polend.leveragedGenesis(VERSE_ID, 1 ether);
+        polend.leveragedGenesis(VERSE_ID, 1 ether, LEVERAGED_USER);
         vm.stopPrank();
 
         assertEq(uint256(launcher.changeStage(VERSE_ID)), uint256(IMemeverseLauncher.Stage.Locked), "locked stage");

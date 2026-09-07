@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-09-01T17:51:06Z",
+  "generated_at": "2026-09-07T11:00:37Z",
   "finding_count": 362,
   "notes": "Snapshot of forge-lint findings verified site-by-site as false positives or accepted patterns: encode-packed-collision hits are creationCode||abi.encode initcode assembly (fixed-length tail, injective); missing-events-access-control cannot associate erc7201 namespaced-struct writes with the emit in the same function or public caller; uninitialized-local hits are intentional zero-default idiom; reentrancy-events misfires on namespaced-storage setters with no external call; boolean-cst hits are early-return constant defaults; unused-return hits are deliberate void protocol calls (transfer return-value enforcement lives in OutrunSafeERC20). Any NEW finding beyond this set fails the gate. Regenerate: bash script/harness/forge-lint-baseline.sh regen. Style detectors (unsafe-typecast, block-timestamp) were re-enabled from exclude_lints; their pre-existing hits were snapshotted here so only new occurrences are reported. Regen intentionally re-snapshots: it is an explicit, git-reviewed acceptance decision.",
   "findings": [
@@ -431,9 +431,6 @@
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|2846eab561d5467d"
     },
     {
-      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|6f00a11ebb1fa03a"
-    },
-    {
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|88c3ae12817bb9a7"
     },
     {
@@ -443,13 +440,16 @@
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|8cc97db8ea2cfa5a"
     },
     {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|90a4345b7c012798"
+    },
+    {
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|a2c191b6558f846b"
     },
     {
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|a60b9cc52675ecf4"
     },
     {
-      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|c6a00fc7cf7e575f"
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|bc5d405331ba59d8"
     },
     {
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|e6453e181a58cd57"

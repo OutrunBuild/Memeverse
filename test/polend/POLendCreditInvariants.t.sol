@@ -180,7 +180,7 @@ contract CreditAccountingHandler is Test {
         vm.prank(actor);
         credit.approve(address(polend), amount);
         vm.prank(actor);
-        try polend.leveragedGenesisWithCredit(verseId, amount) {} catch {}
+        try polend.leveragedGenesisWithCredit(verseId, amount, actor) {} catch {}
     }
 
     /// @dev Add real-uAsset leveraged interest to a fuzzed verse. Same None||Genesis guard as
@@ -196,7 +196,7 @@ contract CreditAccountingHandler is Test {
         vm.prank(actor);
         uAsset.approve(address(polend), amount);
         vm.prank(actor);
-        try polend.leveragedGenesis(verseId, amount) {} catch {}
+        try polend.leveragedGenesis(verseId, amount, actor) {} catch {}
     }
 
     /// @dev Finalize a fuzzed verse (Genesis -> Locked), burning its totalCreditInterest. Skips if

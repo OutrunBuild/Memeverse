@@ -71,7 +71,7 @@ contract HookedBurnableMockERC20 is BurnableMockERC20 {
     function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
         if (hookMode == HookMode.ReenterLeveragedGenesis) {
             hookMode = HookMode.None;
-            POLendUpgradeable(hookPOLend).leveragedGenesis(hookVerseId, reentryInterestAmount);
+            POLendUpgradeable(hookPOLend).leveragedGenesis(hookVerseId, reentryInterestAmount, address(this));
         }
         return super.transferFrom(from, to, amount);
     }

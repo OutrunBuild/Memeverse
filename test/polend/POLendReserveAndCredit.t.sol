@@ -280,12 +280,12 @@ contract POLendMixedCreditPathFuzz is POLendSharedReserveFixture {
         vm.startPrank(BOB);
         uAsset.approve(address(polend), realAmount);
         if (realAmount > 0) {
-            polend.leveragedGenesis(VERSE_A, realAmount);
+            polend.leveragedGenesis(VERSE_A, realAmount, BOB);
         }
         vm.stopPrank();
         if (creditAmount > 0) {
             vm.prank(CAROL);
-            polend.leveragedGenesisWithCredit(VERSE_A, creditAmount);
+            polend.leveragedGenesisWithCredit(VERSE_A, creditAmount, CAROL);
         }
 
         uint256 treasuryBefore = uAsset.balanceOf(address(this));

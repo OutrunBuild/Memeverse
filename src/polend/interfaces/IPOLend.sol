@@ -209,4 +209,9 @@ interface IPOLend {
     function getTotalCreditInterest(uint256 verseId) external view returns (uint256);
 
     function getLendMarket(uint256 verseId) external view returns (LendMarket memory market);
+
+    /// @notice Returns the verse uAsset bound to the market at registration.
+    /// @param verseId Verse identifier.
+    /// @return uAsset Address of the market's bound uAsset; address(0) when unregistered.
+    function marketUAsset(uint256 verseId) external view returns (address);
 }

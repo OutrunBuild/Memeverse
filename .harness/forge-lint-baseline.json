@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-09-07T11:00:37Z",
+  "generated_at": "2026-09-07T20:04:24Z",
   "finding_count": 362,
   "notes": "Snapshot of forge-lint findings verified site-by-site as false positives or accepted patterns: encode-packed-collision hits are creationCode||abi.encode initcode assembly (fixed-length tail, injective); missing-events-access-control cannot associate erc7201 namespaced-struct writes with the emit in the same function or public caller; uninitialized-local hits are intentional zero-default idiom; reentrancy-events misfires on namespaced-storage setters with no external call; boolean-cst hits are early-return constant defaults; unused-return hits are deliberate void protocol calls (transfer return-value enforcement lives in OutrunSafeERC20). Any NEW finding beyond this set fails the gate. Regenerate: bash script/harness/forge-lint-baseline.sh regen. Style detectors (unsafe-typecast, block-timestamp) were re-enabled from exclude_lints; their pre-existing hits were snapshotted here so only new occurrences are reported. Regen intentionally re-snapshots: it is an explicit, git-reviewed acceptance decision.",
   "findings": [
@@ -224,19 +224,19 @@
       "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|06cf20915d8c1c07"
     },
     {
-      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|10b2f3a4328084f3"
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|0d1a3c8827016383"
     },
     {
-      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|1f4bfcf69cec2aa3"
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|10b2f3a4328084f3"
     },
     {
       "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|3185104561752fb6"
     },
     {
-      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|4caaeae2b97a88e4"
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|374383d489f5311d"
     },
     {
-      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|729217814d255384"
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|4caaeae2b97a88e4"
     },
     {
       "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|b83710a83ed28f11"
@@ -428,19 +428,22 @@
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|1beb5e826b6fcc59"
     },
     {
-      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|2846eab561d5467d"
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|31d9267e9a1fe4a9"
     },
     {
-      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|88c3ae12817bb9a7"
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|74287837722a05d5"
     },
     {
-      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|8c05ba198dcfc51b"
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|86b521cca91b3fee"
     },
     {
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|8cc97db8ea2cfa5a"
     },
     {
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|90a4345b7c012798"
+    },
+    {
+      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|92dbe466607a59dd"
     },
     {
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|a2c191b6558f846b"
@@ -450,9 +453,6 @@
     },
     {
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|bc5d405331ba59d8"
-    },
-    {
-      "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|e6453e181a58cd57"
     },
     {
       "key": "reentrancy-events|src/polend/POLendUpgradeable.sol|e71bcb9f71692ddb"

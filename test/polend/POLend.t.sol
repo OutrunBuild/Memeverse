@@ -373,6 +373,34 @@ contract POLendTest is Test, POLendStorageHelper {
         polend.leveragedGenesis(VERSE_ID, 1 ether, ALICE);
     }
 
+    function testMarketUAsset_ReturnsBoundUAsset() external {
+        assertEq(polend.marketUAsset(VERSE_ID), address(uAsset));
+    }
+
+    /// @notice The leveraged ledger is keyed by `user`, not by the payer: a payer distinct from
+    ///         `user` funds the interest, the position accrues to `user`, and the payer keeps no
+    ///         ledger entry and receives no uAsset.
+    function testLeveragedGenesis_CreditsUserWhenPayerDiffers() external {
+        uAsset.mint(ALICE, 10 ether);
+        vm.prank(ALICE);
+        uAsset.approve(address(polend), 10 ether);
+
+        vm.prank(ALICE);
+        uint256 borrowed = polend.leveragedGenesis(VERSE_ID, 10 ether, BOB);
+
+        assertEq(borrowed, 100 ether, "borrowed");
+        assertEq(polend.getUserLeveragedDebt(VERSE_ID, BOB), 100 ether, "ledger keyed by user");
+        assertEq(polend.getUserLeveragedDebt(VERSE_ID, ALICE), 0, "payer carries no ledger");
+        assertEq(uAsset.balanceOf(ALICE), 0, "interest pulled from payer");
+        assertEq(uAsset.balanceOf(BOB), 0, "user receives no funds at entry");
+    }
+
+    function testLeveragedGenesis_RevertsWhenUserZero() external {
+        vm.prank(ALICE);
+        vm.expectRevert(IPOLend.ZeroInput.selector);
+        polend.leveragedGenesis(VERSE_ID, 10 ether, address(0));
+    }
+
     // --- leveragedGenesisWithCredit ---
 
     /// @dev Stand up a fresh MockGenesisCreditFactory + credit token, register the
@@ -426,6 +454,25 @@ contract POLendTest is Test, POLendStorageHelper {
         vm.prank(ALICE);
         vm.expectRevert(IPOLend.ZeroInput.selector);
         polend.leveragedGenesisWithCredit(VERSE_ID, 0, ALICE);
+    }
+
+    /// @notice The credit ledger is keyed by `user`, not by the payer: credit escrowed by a payer
+    ///         distinct from `user` accrues the position to `user` only.
+    function testLeveragedGenesisWithCredit_CreditsUserWhenPayerDiffers() external {
+        (BurnableMockERC20 credit,) = _setupCreditPath(ALICE, 5 ether);
+
+        vm.prank(ALICE);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 5 ether, BOB);
+
+        assertEq(polend.getUserLeveragedDebt(VERSE_ID, BOB), 50 ether, "credit ledger keyed by user");
+        assertEq(polend.getUserLeveragedDebt(VERSE_ID, ALICE), 0, "payer carries no credit ledger");
+        assertEq(credit.balanceOf(address(polend)), 5 ether, "credit escrowed from payer");
+    }
+
+    function testLeveragedGenesisWithCredit_RevertsWhenUserZero() external {
+        vm.prank(ALICE);
+        vm.expectRevert(IPOLend.ZeroInput.selector);
+        polend.leveragedGenesisWithCredit(VERSE_ID, 10 ether, address(0));
     }
 
     function test_RevertWhen_LeveragedGenesisWithCredit_NotGenesisStage() external {

@@ -602,8 +602,7 @@ contract GenesisCreditPOLendIntegration is Test {
         assertEq(polend.getTotalLeveragedInterest(VERSE_ID), 10 ether, "aggregate interest unchanged");
         assertEq(polend.getTotalCreditInterest(VERSE_ID), 0, "credit interest unchanged");
         // Bob's per-user credit ledger is implied by the verse-level zero above (he is this test's only
-        // credit participant); the per-user getter is mid-rename in an uncommitted change, so it is not
-        // anchored here.
+        // credit participant).
         assertEq(credit.balanceOf(address(polend)), 0, "credit escrow unchanged");
         assertEq(credit.balanceOf(BOB), 5 ether, "bob credit balance unchanged");
 

@@ -223,7 +223,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         uint256 rate = market.interestRate;
         if (rate == 0) revert InvalidState();
         if (currentState != MarketState.None && currentState != MarketState.Genesis) revert InvalidState();
-        address marketUAsset = market.uAsset;
+        address marketUAsset_ = market.uAsset;
         address launcher_ = polendStorage.launcher;
         if (IMemeverseLauncher(launcher_).getStageByVerseId(verseId) != IMemeverseLauncher.Stage.Genesis) {
             revert InvalidState();
@@ -241,7 +241,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         polendStorage.leveragedInterestPaid[verseId][user] += interestAmount;
         market.totalLeveragedInterest = nextTotalInterest;
         if (currentState == MarketState.None) market.state = MarketState.Genesis;
-        IERC20(marketUAsset).safeTransferFrom(msg.sender, address(this), interestAmount);
+        IERC20(marketUAsset_).safeTransferFrom(msg.sender, address(this), interestAmount);
         emit LeveragedGenesis(verseId, msg.sender, user, interestAmount);
     }
 
@@ -286,13 +286,13 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
             // creditOf and runs the 18-decimals guard. Declared inside the block rather than at
             // the function top so the warm path — which skips this block — does not pay a cold
             // SLOAD of market.uAsset (slot 0) it would never use.
-            address marketUAsset = market.uAsset;
-            credit = IGenesisCreditFactory(polendStorage.creditFactory).creditOf(marketUAsset);
+            address marketUAsset_ = market.uAsset;
+            credit = IGenesisCreditFactory(polendStorage.creditFactory).creditOf(marketUAsset_);
             if (credit == address(0)) revert NoCreditForUAsset();
             // 18-decimals invariant: see `CreditDecimalsMismatch`'s @dev in IPOLend. A replaceable
             // creditFactory pointer could map a non-18-dec uAsset to an 18-dec credit, so guard at
             // the use boundary too, before caching. Runs once per verse, on first entry.
-            uint8 uAssetDecimals = IERC20Metadata(marketUAsset).decimals();
+            uint8 uAssetDecimals = IERC20Metadata(marketUAsset_).decimals();
             uint8 creditDecimals = IERC20Metadata(credit).decimals();
             if (uAssetDecimals != 18 || creditDecimals != 18) {
                 revert CreditDecimalsMismatch(uAssetDecimals, creditDecimals);
@@ -341,22 +341,22 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         uint256 debt = _totalLeveragedDebt(market);
         if (debt == 0) revert InvalidState();
 
-        address marketUAsset = market.uAsset;
+        address marketUAsset_ = market.uAsset;
         uint256 totalLeveragedInterest = market.totalLeveragedInterest;
         uint256 totalCredit = market.totalCreditInterest;
-        // Only the real-uAsset slice was actually escrowed in this contract as `marketUAsset`;
+        // Only the real-uAsset slice was actually escrowed in this contract as `marketUAsset_`;
         // sweep it in full to the treasury. Credit-funded interest has no uAsset inflow and is
         // burned below. (Settlement-dust reserve funding sources: see the @dev above.)
         uint256 realInterest = totalLeveragedInterest - totalCredit;
 
         market.state = MarketState.Locked;
-        polendStorage.globalDebtByUAsset[marketUAsset] += debt;
+        polendStorage.globalDebtByUAsset[marketUAsset_] += debt;
 
         // Debt minting uses the aggregate (real + credit) interest via `_totalLeveragedDebt`, so
         // credit interest still backs `debt` for the launcher — the only behavioral change is that
         // the real-uAsset slice now sweeps entirely to treasury instead of being split reserve/treasury.
-        IUniversalAssets(marketUAsset).mint(polendStorage.launcher, debt);
-        if (realInterest != 0) IERC20(marketUAsset).safeTransfer(polendStorage.treasury, realInterest);
+        IUniversalAssets(marketUAsset_).mint(polendStorage.launcher, debt);
+        if (realInterest != 0) IERC20(marketUAsset_).safeTransfer(polendStorage.treasury, realInterest);
 
         // Burn the escrowed GenesisCredit so the credit-funded portion exits supply at finalize
         // time. Per-verse `totalCreditInterest` is exclusive of other verses (state machine
@@ -369,9 +369,9 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
             address credit = market.creditToken;
             if (credit == address(0)) revert NoCreditForUAsset();
             IGenesisCredit(credit).burn(totalCredit);
-            emit CreditBurned(verseId, marketUAsset, totalCredit);
+            emit CreditBurned(verseId, marketUAsset_, totalCredit);
         }
-        emit LeveragedGenesisFinalized(verseId, marketUAsset, debt, realInterest, totalCredit);
+        emit LeveragedGenesisFinalized(verseId, marketUAsset_, debt, realInterest, totalCredit);
     }
 
     /// @notice Record the YT token and its total supply for a locked verse (onlyLauncher). Enables
@@ -396,7 +396,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
     function executeGlobalSettlement(uint256 verseId) external onlyLauncher nonReentrant {
         LendMarket storage market = polendStorage.lendMarkets[verseId];
         if (market.state != MarketState.Locked) revert InvalidState();
-        address marketUAsset = market.uAsset;
+        address marketUAsset_ = market.uAsset;
 
         // Stage 1 — recover auxiliary liquidity: pull POL/PT/LP backing the leveraged position from
         // the launcher, burn settled POL into uAsset (+memecoin), and redeem any PT into uAsset.
@@ -414,7 +414,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         // before any external repay below.
         uint256 totalRecoveredUAsset = lpUAsset + burnedPolUAsset + redeemedPtUAsset;
         uint256 debt = _totalLeveragedDebt(market);
-        SettlementDustState storage dustState = polendStorage.settlementDustStates[marketUAsset];
+        SettlementDustState storage dustState = polendStorage.settlementDustStates[marketUAsset_];
         uint256 reserveBeforeSettlement = dustState.reserve;
         uint256 reserveAfterSettlement = reserveBeforeSettlement;
 
@@ -428,7 +428,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
             consumedSettlementDustReserve = deficit;
             reserveAfterSettlement = reserveBeforeSettlement - deficit;
             dustState.reserve = uint128(reserveAfterSettlement);
-            emit SettlementDustReserveConsumed(verseId, marketUAsset, deficit, reserveAfterSettlement);
+            emit SettlementDustReserveConsumed(verseId, marketUAsset_, deficit, reserveAfterSettlement);
         }
 
         // Stage 3 — persist residual claim state, mark the market settled, and clear the leveraged
@@ -437,14 +437,14 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         polendStorage.residualStates[verseId] =
             ResidualState({residualUAsset: residualUAsset, residualMemecoin: burnedPolMemecoin});
         market.state = MarketState.Settled;
-        if (debt != 0) polendStorage.globalDebtByUAsset[marketUAsset] -= debt;
+        if (debt != 0) polendStorage.globalDebtByUAsset[marketUAsset_] -= debt;
 
         // Stage 4 — repay the debt in uAsset to this contract's own balance via the universal asset.
-        if (debt != 0) IUniversalAssets(marketUAsset).repay(address(this), debt);
+        if (debt != 0) IUniversalAssets(marketUAsset_).repay(address(this), debt);
 
         emit GlobalSettlementExecuted(
             verseId,
-            marketUAsset,
+            marketUAsset_,
             debt,
             totalRecoveredUAsset,
             consumedSettlementDustReserve,
@@ -518,9 +518,9 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
     function burnPreRedeemedBacking(uint256 verseId, uint256 amount) external onlySplitter {
         if (amount == 0) revert ZeroInput();
 
-        address marketUAsset = polendStorage.lendMarkets[verseId].uAsset;
-        polendStorage.globalDebtByUAsset[marketUAsset] -= amount;
-        IUniversalAssets(marketUAsset).repay(polendStorage.splitter, amount);
+        address marketUAsset_ = polendStorage.lendMarkets[verseId].uAsset;
+        polendStorage.globalDebtByUAsset[marketUAsset_] -= amount;
+        IUniversalAssets(marketUAsset_).repay(polendStorage.splitter, amount);
     }
 
     /// @notice Refund a caller's leveraged-genesis interest after the verse fails and the market
@@ -759,6 +759,13 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         return polendStorage.lendMarkets[verseId];
     }
 
+    /// @notice Returns the verse uAsset bound to the market at registration.
+    /// @param verseId Verse identifier.
+    /// @return uAsset Address of the market's bound uAsset; address(0) when unregistered.
+    function marketUAsset(uint256 verseId) external view returns (address) {
+        return polendStorage.lendMarkets[verseId].uAsset;
+    }
+
     // --- Internal ---
 
     function _totalLeveragedDebt(LendMarket storage market) internal view returns (uint256) {
@@ -843,15 +850,15 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
 
         LendMarket storage market = polendStorage.lendMarkets[verseId];
         (address pol, address memecoin) = IPOLSplitter(polendStorage.splitter).getPOLAndMemecoin(verseId);
-        address marketUAsset = market.uAsset;
+        address marketUAsset_ = market.uAsset;
         address launcher_ = polendStorage.launcher;
-        uint256 beforeUAsset = IERC20(marketUAsset).balanceOf(address(this));
+        uint256 beforeUAsset = IERC20(marketUAsset_).balanceOf(address(this));
         uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
 
         IERC20(pol).safeApprove(launcher_, polAmount);
         IMemeverseLauncher(launcher_).redeemMemecoinLiquidity(verseId, polAmount, true, 0, 0, block.timestamp);
 
-        uAssetAmount = IERC20(marketUAsset).balanceOf(address(this)) - beforeUAsset;
+        uAssetAmount = IERC20(marketUAsset_).balanceOf(address(this)) - beforeUAsset;
         memecoinAmount = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;
     }
 

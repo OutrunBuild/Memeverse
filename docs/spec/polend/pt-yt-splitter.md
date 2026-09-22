@@ -245,3 +245,24 @@ memecoinAmount = settlementMemecoin * ytAmount / outstandingYT
 `redeemYT` 不得动 PT 本金准备金。
 
 `redeemPT / redeemYT` 的整数舍入 dust 永久留在 `Splitter`，不设计 sweep。
+
+## 4. POL 名义价值（nominal value）——展示层推导口径
+
+POL 与主池 LP 1:1：`mintPOLToken` 按实际加池量 1:1 mint POL（§1），`redeemMemecoinLiquidity(..., unwrap=true)` 按燃烧的 POL 1:1 移除主池 LP 并解包为底层资产（入口 `MemeverseLauncherUpgradeable.sol::redeemMemecoinLiquidity`；结算侧使用见 [settlement-and-fees.md §6](settlement-and-fees.md)）。
+
+**定义**：1 POL 的名义价值 = 燃烧 1 POL（unwrap 路径）可赎回的 memecoin + uAsset 底层组合按当前市价计的合计价值。名义价值不是链上存储值，是链下推导的展示值；价格取展示时点主池市价。
+
+**全范围简化**：主池 LP 为全范围头寸（`MemeverseSwapRouter.sol` 以 `LiquidityQuote.MIN_SQRT_PRICE_X96 / MAX_SQRT_PRICE_X96` 建仓，v2 等价形态），全范围 AMM 恒保持两侧价值相等，因此：
+
+```text
+nominalValuePerPOL = marketValue(memecoinOut) + marketValue(uAssetOut)
+                   = 2 × marketValue(uAssetOut)        // 全范围简化
+```
+
+其中 `uAssetOut` 为每 1 POL 对应的主池 uAsset 侧数量（由 `quoteAmountsForLiquidity` 类换算或 unwrap 模拟得出）。
+
+**用途与边界**：
+
+- 名义价值是 POL/uAsset 池交易价的参照基准：市场价高于名义价值为溢价，低于为折价；产品前端展示「名义价值 / Nominal Value」时以本节为唯一口径。
+- 简化式 `2 × marketValue(uAssetOut)` 仅在全范围 LP 下成立；若未来主池改为 ranged 头寸，必须回到两项合计的原式。
+- 本节只定义推导口径，不引入任何链上 getter 或状态；数值随市价波动，不构成结算输入。

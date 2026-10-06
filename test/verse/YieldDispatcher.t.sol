@@ -27,7 +27,8 @@ import {BindingPassingFakeVault} from "../mocks/verse/BindingPassingFakeVault.so
 import {
     MockDispatcherYieldVault,
     MockDispatcherGovernor,
-    ReentrantDispatcherVault
+    ReentrantDispatcherVault,
+    EtchableDispatcherYieldVault
 } from "../mocks/verse/DispatcherTestMocks.sol";
 import {MemecoinDaoGovernorUpgradeable} from "../../src/governance/MemecoinDaoGovernorUpgradeable.sol";
 import {GovernanceCycleIncentivizerUpgradeable} from "../../src/governance/GovernanceCycleIncentivizerUpgradeable.sol";
@@ -36,22 +37,12 @@ import {MockGovernorVotesToken} from "../mocks/governance/GovernanceMocks.sol";
 
 contract MockDispatcherComposeToken is MockERC20, IBurnable {
     uint256 public lastBurnAmount;
-    // Symmetric failure switch to the vault/governor mocks: lets a test inject an EOA-burn revert to pin the
-    // lzCompose settle-fail rollback-retry contract on the burn branch.
-    bool public burnShouldRevert;
 
     constructor(string memory name_, string memory symbol_) MockERC20(name_, symbol_, 18) {}
-
-    /// @notice Set whether burning should revert (mirrors the vault/governor mock's failure switch).
-    /// @param burnShouldRevert_ See implementation.
-    function setBurnShouldRevert(bool burnShouldRevert_) external {
-        burnShouldRevert = burnShouldRevert_;
-    }
 
     /// @notice Burn.
     /// @param amount See implementation.
     function burn(uint256 amount) external {
-        require(!burnShouldRevert, "settle failed");
         lastBurnAmount = amount;
         _burn(msg.sender, amount);
     }
@@ -239,20 +230,20 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         assertFalse(ok, "out-of-range tokenType must not silently succeed");
     }
 
-    /// @notice Test same-chain path burns memecoin for eoa receiver.
-    function testDistributeSameChainBurnsMemecoinForEoaReceiver() external {
+    /// @notice Test same-chain path reverts when a non-zero fee names a codeless receiver.
+    /// @dev ALICE is an EOA (no code), so `_settle` reverts `ReceiverNotDeployed` before any fund movement: no
+    ///      burn, no routing, no `OFTProcessed` event, and the fee tokens stay in the dispatcher for a retry once
+    ///      the receiver gains code.
+    function test_RevertIf_DistributeSameChainReceiverHasNoCode() external {
         uint256 amount = 5 ether;
         token.mint(address(dispatcher), amount);
 
-        vm.expectEmit(true, true, true, true);
-        emit IYieldDispatcher.OFTProcessed(
-            bytes32(0), address(token), IMemeverseOFTEnum.TokenType.MEMECOIN, ALICE, amount, true
-        );
         vm.prank(LAUNCHER);
+        vm.expectRevert(IYieldDispatcher.ReceiverNotDeployed.selector);
         dispatcher.distributeSameChain(address(token), ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN, amount);
 
-        assertEq(token.lastBurnAmount(), amount);
-        assertEq(token.balanceOf(address(dispatcher)), 0);
+        assertEq(token.lastBurnAmount(), 0, "no burn may happen on the no-code revert path");
+        assertEq(token.balanceOf(address(dispatcher)), amount, "custody must stay in the dispatcher");
     }
 
     /// @notice Test same-chain path approves exactly the amount and calls receivers.
@@ -314,29 +305,56 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         assertEq(token.allowance(address(dispatcher), address(governor)), 0);
     }
 
-    /// @notice Test local endpoint path burns the memecoin when the compose payload names an EOA receiver.
-    /// @dev Through the lzCompose entry, an EOA receiver must hit `_settle`'s burn branch and emit OFTProcessed
-    ///      with burnedAtDispatcher=true, with the mutex landing on Settled.
-    function testLzComposeBurnsMemecoinForEoaReceiver() external {
-        bytes32 guid = bytes32("compose-eoa-burn");
+    /// @notice A non-zero MEMECOIN compose naming a codeless receiver reverts `ReceiverNotDeployed` and stays
+    ///         retryable: the Settled write rolls back to None, the endpoint queue keeps its delivery hash, and
+    ///         once the receiver gains code the SAME frame settles through the contract path.
+    /// @dev ALICE is an EOA (no code), so `_settle` reverts before any fund movement — no burn, no re-route, no
+    ///      terminal consumption of the (token, guid) mutex. The retry etches a vault template's runtime code onto
+    ///      the receiver address (immutables are baked into runtime code, so the etched copy keeps `asset()` = the
+    ///      delivered token), then re-drives the still-pinned endpoint compose: the settlement now takes
+    ///      `_settleToContract` (approve + pull) and reports `burnedAtDispatcher=false`.
+    function testLzComposeRevertsAndRetriesWhenReceiverHasNoCode() external {
+        bytes32 guid = bytes32("compose-eoa-nocode");
         uint256 amount = 5 ether;
         token.mint(address(dispatcher), amount);
 
-        // ALICE is an EOA (no code), so settlement must burn the tokens instead of pulling into a contract.
         bytes memory message = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN);
 
+        // Deliver through the endpoint (queue hash write), then drive the compose forward: the dispatcher's
+        // lzCompose reverts ReceiverNotDeployed and the whole endpoint call — RECEIVED sentinel included — rolls back.
+        vm.prank(address(token));
+        endpoint.sendCompose(address(dispatcher), guid, 0, message);
+        vm.expectRevert(IYieldDispatcher.ReceiverNotDeployed.selector);
+        endpoint.lzCompose(address(token), address(dispatcher), guid, 0, message, "");
+
+        // The failed forward consumed nothing: the mutex is still None, the queue still holds the delivery hash
+        // (retry precondition intact), the funds stay in the dispatcher, and no burn happened.
+        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.None));
+        assertEq(endpoint.composeQueue(address(token), address(dispatcher), guid, 0), keccak256(message));
+        assertEq(token.lastBurnAmount(), 0);
+        assertEq(token.balanceOf(address(dispatcher)), amount);
+
+        // The receiver gains code: etch a MEMECOIN vault bound to the delivered token onto the EOA address.
+        EtchableDispatcherYieldVault template = new EtchableDispatcherYieldVault(address(token));
+        vm.etch(ALICE, address(template).code);
+
+        // Re-drive the same endpoint compose: the queue hash still matches, so the retry forwards and settles.
         vm.expectEmit(true, true, true, true);
         emit IYieldDispatcher.OFTProcessed(
-            guid, address(token), IMemeverseOFTEnum.TokenType.MEMECOIN, ALICE, amount, true
+            guid, address(token), IMemeverseOFTEnum.TokenType.MEMECOIN, ALICE, amount, false
         );
-        vm.prank(LOCAL_ENDPOINT);
-        dispatcher.lzCompose(address(token), guid, message, address(0), "");
+        endpoint.lzCompose(address(token), address(dispatcher), guid, 0, message, "");
 
-        // Burned rather than stranded: the dispatcher balance drops to zero, the burn is recorded, and the mutex
-        // resolved to Settled so a replay is blocked.
-        assertEq(token.lastBurnAmount(), amount);
-        assertEq(token.balanceOf(address(dispatcher)), 0);
         assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Settled));
+        assertEq(EtchableDispatcherYieldVault(ALICE).lastAccumulatedAmount(), amount);
+        assertEq(token.balanceOf(ALICE), amount);
+        assertEq(token.balanceOf(address(dispatcher)), 0);
+
+        // A replay after success is blocked by the single-resolution mutex (driven directly: the endpoint slot now
+        // holds the RECEIVED sentinel, so the endpoint wrapper would reject with ComposeNotFound first).
+        vm.prank(LOCAL_ENDPOINT);
+        vm.expectRevert(IYieldDispatcher.AlreadyResolved.selector);
+        dispatcher.lzCompose(address(token), guid, message, address(0), "");
     }
 
     /// @notice lzCompose rejects a second lzCompose for the same guid (single-resolution mutex).
@@ -522,8 +540,9 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     /// @notice lzCompose settles an overlong compose payload (inner tuple > 64 bytes, frame > 140) by its first two
     ///         words, ignoring the tail — identical semantics to a 64-byte inner.
     /// @dev Overlong inners are reachable only via a permissionless OFT direct send (the protocol send-side always
-    ///      encodes a 64-byte inner), so the EOA burn below is the forward-consistent settlement for this self-harm
-    ///      frame. The frame is 172 bytes (76-byte header + 96-byte inner) and the tail word is an out-of-range
+    ///      encodes a 64-byte inner), so the contract-receiver settlement below is the forward-consistent outcome
+    ///      for this self-harm frame (a no-code receiver would revert ReceiverNotDeployed and stay retryable). The
+    ///      frame is 172 bytes (76-byte header + 96-byte inner) and the tail word is an out-of-range
     ///      TokenType raw (2) that would reject any code path that read it — proving `_parseCompose` settles purely
     ///      on the first two words (message[76:108] / [108:140]) and ignores the tail.
     function testLzComposeSettlesOverlongPayloadIgnoringTail() external {
@@ -531,10 +550,10 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         uint256 amount = 5 ether;
         token.mint(address(dispatcher), amount);
 
-        // composeFrom(ALICE) + 64-byte (ALICE, MEMECOIN) tuple + a 32-byte dirty-enum tail that must be ignored.
+        // composeFrom(ALICE) + 64-byte (vault, MEMECOIN) tuple + a 32-byte dirty-enum tail that must be ignored.
         bytes memory composeMessage = abi.encodePacked(
             bytes32(uint256(uint160(ALICE))), // compose-from word (the parse skips it)
-            abi.encode(ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN), // the (address, TokenType) tuple
+            abi.encode(address(yieldVault), IMemeverseOFTEnum.TokenType.MEMECOIN), // the (address, TokenType) tuple
             bytes32(uint256(2)) // tail word: an out-of-range TokenType raw that must NOT be read
         );
         bytes memory message = OFTComposeMsgCodec.encode(1, 101, amount, composeMessage);
@@ -542,44 +561,43 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
         vm.expectEmit(true, true, true, true);
         emit IYieldDispatcher.OFTProcessed(
-            guid, address(token), IMemeverseOFTEnum.TokenType.MEMECOIN, ALICE, amount, true
+            guid, address(token), IMemeverseOFTEnum.TokenType.MEMECOIN, address(yieldVault), amount, false
         );
         vm.prank(LOCAL_ENDPOINT);
         dispatcher.lzCompose(address(token), guid, message, address(0), "");
 
-        // Settled exactly like the 64-byte frame: first-two-words settlement (EOA burn), tail ignored, mutex Settled.
-        assertEq(token.lastBurnAmount(), amount);
+        // Settled exactly like the 64-byte frame: first-two-words settlement (vault approve + pull), tail ignored,
+        // mutex Settled.
+        assertEq(yieldVault.lastAccumulatedAmount(), amount);
+        assertEq(token.balanceOf(address(yieldVault)), amount);
         assertEq(token.balanceOf(address(dispatcher)), 0);
         assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Settled));
     }
 
-    /// @notice lzCompose with a valid frame naming address(0) as receiver settles through the normal path: address(0)
-    ///         has no code, so `_settle`'s EOA branch burns the tokens (OFTProcessed burnedAtDispatcher=true) — it is NOT
-    ///         absorbed by the malformed-payload consume path.
+    /// @notice lzCompose with a valid frame naming address(0) as receiver reverts instead of settling or consuming:
+    ///         address(0) has no code, so a non-zero settlement is `ReceiverNotDeployed` and the slot stays None
+    ///         (retryable) — it is NOT absorbed by the malformed-payload consume path.
     /// @dev address(0) is a parseable receiver (a clean zero word) with an in-range tokenType, so the frame decodes
-    ///      and must take the settle path — same as any other EOA receiver; this pins that a zero receiver keeps
-    ///      the burn behavior instead of being consumed.
-    function testLzComposeBurnsZeroReceiver() external {
+    ///      and must take the settle path, not the consume path; this pins that a zero receiver reverts exactly like
+    ///      any other codeless receiver instead of being terminally consumed.
+    function test_RevertIf_ReceiverIsZeroAddress() external {
         bytes32 guid = bytes32("zero-receiver");
         uint256 amount = 5 ether;
         token.mint(address(dispatcher), amount);
 
         // composeFrom(ALICE) + hand-encoded (address(0), MEMECOIN) — address(0) is a clean zero word, so the frame
-        // is parseable and settles (EOA burn) rather than being consumed. `abi.encode(address(0), MEMECOIN)` produces
-        // the same two words, so the helper expresses this frame byte-for-byte.
+        // is parseable and reaches `_settle` (revert) rather than being consumed. `abi.encode(address(0), MEMECOIN)`
+        // produces the same two words, so the helper expresses this frame byte-for-byte.
         bytes memory message = _dispatcherMessage(amount, ALICE, address(0), IMemeverseOFTEnum.TokenType.MEMECOIN);
 
-        vm.expectEmit(true, true, true, true);
-        emit IYieldDispatcher.OFTProcessed(
-            guid, address(token), IMemeverseOFTEnum.TokenType.MEMECOIN, address(0), amount, true
-        );
         vm.prank(LOCAL_ENDPOINT);
+        vm.expectRevert(IYieldDispatcher.ReceiverNotDeployed.selector);
         dispatcher.lzCompose(address(token), guid, message, address(0), "");
 
-        // Burned rather than consumed or stranded: the dispatcher balance drops to zero and the burn is recorded.
-        assertEq(token.lastBurnAmount(), amount);
-        assertEq(token.balanceOf(address(dispatcher)), 0);
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Settled));
+        // Nothing was consumed and nothing moved: the slot stays None, no burn ran, custody is unchanged.
+        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.None));
+        assertEq(token.lastBurnAmount(), 0);
+        assertEq(token.balanceOf(address(dispatcher)), amount);
     }
 
     /// @notice lzCompose consumes a clean, parseable payload that names the dispatcher itself as receiver instead of
@@ -587,7 +605,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     /// @dev Self-reference guard. `_settleToContract` would call `accumulateYields`/`receiveTreasuryIncome` on the
     ///      dispatcher, which implements neither and has no fallback, so settlement always reverts. Without the guard
     ///      the revert would roll the Settled write back to None and pin the endpoint queue forever (no recovery
-    ///      entrypoint). Mirroring the `!parseable` / `testLzComposeBurnsZeroReceiver` consume path, the slot stays
+    ///      entrypoint). Mirroring the `!parseable` consume path above, the slot stays
     ///      Settled and ComposeRejected lets the endpoint state machine converge. The funds strand in the dispatcher
     ///      by the sender's own construction (only a permissionless OFT direct send can encode receiver=dispatcher;
     ///      the protocol send-side always encodes governor/vault), so this is the documented self-harm boundary — the
@@ -755,48 +773,6 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         dispatcher.lzCompose(address(token), guid, message, address(0), "");
     }
 
-    /// @notice A failed EOA-burn settle rolls back the Settled write, leaving the guid retryable; success pins it and blocks replay.
-    /// @dev Mirror of the vault/governor variants through the EOA-burn branch: when `IBurnable.burn` reverts, the whole
-    ///      lzCompose rolls back so composeStates returns to None and the endpoint can retry, then a successful retry pins
-    ///      the guid and a further replay reverts. This closes the lzCompose failure-rollback gap for the push-based burn
-    ///      branch (the vault/governor callbacks were already covered; the EOA burn is the third settle terminal action).
-    function testLzComposeAllowsRetryAfterFailedBurnAndBlocksReplayAfterSuccess() external {
-        bytes32 guid = bytes32("retry-burn");
-        uint256 amount = 4 ether;
-        token.mint(address(dispatcher), amount);
-        bytes memory message = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN);
-
-        // First attempt fails: the EOA-receiver burn reverts, and the whole lzCompose rolls back.
-        token.setBurnShouldRevert(true);
-        vm.prank(LOCAL_ENDPOINT);
-        vm.expectRevert("settle failed");
-        dispatcher.lzCompose(address(token), guid, message, address(0), "");
-
-        // The failed call reverted, rolling back the Settled write, so the guid is still resolvable.
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.None));
-        assertEq(token.lastBurnAmount(), 0);
-        // The failed settle pulled nothing (the whole call reverted).
-        assertEq(token.balanceOf(address(dispatcher)), amount);
-
-        // Retry succeeds after the failure is cleared: the guid resolves to Settled and the tokens are burned.
-        token.setBurnShouldRevert(false);
-        vm.expectEmit(true, true, true, true);
-        emit IYieldDispatcher.OFTProcessed(
-            guid, address(token), IMemeverseOFTEnum.TokenType.MEMECOIN, ALICE, amount, true
-        );
-        vm.prank(LOCAL_ENDPOINT);
-        dispatcher.lzCompose(address(token), guid, message, address(0), "");
-
-        assertEq(token.lastBurnAmount(), amount);
-        assertEq(token.balanceOf(address(dispatcher)), 0);
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Settled));
-
-        // A replay after success is blocked by the single-resolution mutex.
-        vm.prank(LOCAL_ENDPOINT);
-        vm.expectRevert(IYieldDispatcher.AlreadyResolved.selector);
-        dispatcher.lzCompose(address(token), guid, message, address(0), "");
-    }
-
     /// @notice A failed settlePendingCompose rolls back the Released write, leaving the guid retryable; a successful
     ///         retry pins Released and a further replay is blocked.
     /// @dev Mirror of testLzComposeAllowsRetryAfterFailedSettleAndBlocksReplayAfterSuccess through the settle entry:
@@ -904,11 +880,11 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     }
 
     /// @notice An empty-vault MEMECOIN settle burns the pulled yield inside the REAL vault (no shares exist to
-    ///         credit), while the dispatcher still reports burnedAtDispatcher=false — the flag is an EOA/contract
-    ///         discriminator, not an actual-burn indicator.
+    ///         credit), while the dispatcher still reports burnedAtDispatcher=false — the flag is a retained
+    ///         compatibility constant, not an actual-burn indicator.
     /// @dev Pins the behavior where MemecoinYieldVault._accumulateYield burns when totalSupply()==0, so the token
-    ///      emits a burn Transfer (to address(0)) and totalAssets stays 0, but the dispatcher's `_settle` only sets
-    ///      burnedAtDispatcher on the EOA push-burn branch and reports false for the approve+pull contract path. The file's
+    ///      emits a burn Transfer (to address(0)) and totalAssets stays 0, while the dispatcher's `_settle` never
+    ///      reports a dispatcher-side burn (the return is always false on the approve+pull contract path). The file's
     ///      MockDispatcherYieldVault always absorbs (it cannot express the empty-vault branch), so the real vault is
     ///      deployed behind a clone, mirroring the yield suite's deployment. The expectEmit sequence also pins that
     ///      the burn branch emits no AccumulateYields: a future change that absorbs instead of burns, flips burnedAtDispatcher,
@@ -917,7 +893,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         // Real vault, no shares: settle hits the empty-vault burn branch.
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         MemecoinYieldVault emptyVault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        emptyVault.initialize("Staked Memecoin", "sMEME", address(token), 1, 100 ether);
+        emptyVault.initialize("Staked Memecoin", "sMEME", address(token), 100 ether);
         assertEq(emptyVault.totalSupply(), 0, "vault must start empty");
 
         bytes32 guid = bytes32("compose-empty-vault");
@@ -932,7 +908,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
 
         // Event sequence: approve, pull Transfer (dispatcher -> vault), burn Transfer (vault -> address(0)), then
-        // ComposeSettled with burnedAtDispatcher=false (the EOA/contract discriminator, NOT the actual burn).
+        // ComposeSettled with burnedAtDispatcher=false (a retained constant, NOT an actual-burn report).
         vm.expectEmit(true, true, true, true);
         emit ERC20.Approval(address(dispatcher), address(emptyVault), amount);
         vm.expectEmit(true, true, true, true);
@@ -954,50 +930,50 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
     }
 
-    /// @notice A failed EOA-burn settle rolls back the Released write, leaving the guid retryable; a successful retry
-    ///         pins Released and a further replay is blocked.
-    /// @dev Mirror of the vault/governor settle-rollback variants through the EOA-burn branch (the third `_settle`
-    ///      terminal action): when `IBurnable.burn` reverts, the whole settlePendingCompose rolls back so composeStates
-    ///      returns to None and the endpoint queue slot keeps the keccak256(message) delivery proof (retry
-    ///      precondition intact), then a successful retry pins Released and a further replay reverts. Closes the
-    ///      settle-rollback symmetry gap: lzCompose had all three terminal branches covered (L567 burn, L470 vault,
-    ///      L518 governor), settle had only vault (L614) and governor (L669); the EOA-burn branch previously had
-    ///      success-only coverage. The receiver is an EOA, so (unlike the
-    ///      vault/governor variants) there is no contract callback to run a Released probe — the CEI write order is
-    ///      pinned via the pre/post composeStates assertions instead, matching the lzCompose EOA-burn rollback test.
-    function testSettlePendingComposeAllowsRetryAfterFailedBurnAndBlocksReplayAfterSuccess() external {
-        bytes32 guid = bytes32("settle-retry-burn");
+    /// @notice settlePendingCompose against a codeless receiver reverts `ReceiverNotDeployed` and stays retryable:
+    ///         the Released write rolls back to None, the endpoint queue keeps its delivery proof, and once the
+    ///         receiver gains code the same frame settles through the contract path.
+    /// @dev The settle-side mirror of testLzComposeRevertsAndRetriesWhenReceiverHasNoCode. The receiver is an EOA, so
+    ///      (unlike the vault/governor variants) there is no contract callback to run a Released probe — the CEI
+    ///      write order is pinned via the pre/post composeStates assertions instead. The retry etches a vault
+    ///      template's runtime code onto the receiver address, then the SAME settlePendingCompose call succeeds and
+    ///      reports `burnedAtDispatcher=false` (approve + pull, never a dispatcher-side burn).
+    function testSettlePendingComposeSettlesAfterReceiverGainsCode() external {
+        bytes32 guid = bytes32("settle-nocode-retry");
         uint256 amount = 4 ether;
         token.mint(address(dispatcher), amount);
 
-        // composeFrom(ALICE) + abi.encode(ALICE, MEMECOIN) — ALICE is an EOA, so settlement hits `_settle`'s burn branch.
+        // composeFrom(ALICE) + abi.encode(ALICE, MEMECOIN) — ALICE is an EOA (no code).
         bytes memory message = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN);
 
         // Delivered but not yet executed: the endpoint queue slot holds the message hash settlePendingCompose proves against.
         endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
 
-        // First attempt fails: the EOA-receiver burn reverts, and the whole settlePendingCompose rolls back.
-        token.setBurnShouldRevert(true);
-        vm.expectRevert("settle failed");
+        // First attempt fails: the receiver has no code, so `_settle` reverts before any fund movement and the
+        // whole settlePendingCompose — Released write included — rolls back.
+        vm.expectRevert(IYieldDispatcher.ReceiverNotDeployed.selector);
         dispatcher.settlePendingCompose(address(token), guid, message);
 
         // The failed call reverted, rolling back the Released write, so the guid is still resolvable.
         assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.None));
         assertEq(token.lastBurnAmount(), 0);
-        // The failed settle burned nothing (the whole call reverted).
         assertEq(token.balanceOf(address(dispatcher)), amount);
         // The endpoint slot still holds the message hash: the retry precondition (delivery proof) is intact.
         assertEq(endpoint.composeQueue(address(token), address(dispatcher), guid, 0), keccak256(message));
 
-        // Retry succeeds after the failure is cleared: the guid resolves to Released and the tokens are burned.
-        token.setBurnShouldRevert(false);
+        // The receiver gains code: etch a MEMECOIN vault bound to the delivered token onto the EOA address.
+        EtchableDispatcherYieldVault template = new EtchableDispatcherYieldVault(address(token));
+        vm.etch(ALICE, address(template).code);
+
+        // Retry succeeds: the guid resolves to Released and the funds move to the (now coded) receiver.
         vm.expectEmit(true, true, true, true);
         emit IYieldDispatcher.ComposeSettled(
-            guid, address(token), ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN, amount, true
+            guid, address(token), ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN, amount, false
         );
         dispatcher.settlePendingCompose(address(token), guid, message);
 
-        assertEq(token.lastBurnAmount(), amount);
+        assertEq(EtchableDispatcherYieldVault(ALICE).lastAccumulatedAmount(), amount);
+        assertEq(token.balanceOf(ALICE), amount);
         assertEq(token.balanceOf(address(dispatcher)), 0);
         assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
 
@@ -1062,21 +1038,22 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
     /// @notice settlePendingCompose settles the same overlong frame lzCompose settles: verifySettle passes (frame
     ///         >= 76), the >= 64 schema guard passes, abi.decode takes the first two words, and the settlement is
-    ///         identical to the forward path (same amount, receiver, burn result) — the fallback = re-run of
+    ///         identical to the forward path (same amount, receiver, settle result) — the fallback = re-run of
     ///         the forward-consistent settlement.
     /// @dev The 172-byte frame's inner composeMsg is 96 bytes; the static (address, TokenType) `abi.decode` reads the
     ///      first 64 bytes and ignores the 32-byte tail. The tail word is an out-of-range TokenType raw (2) that
-    ///      would revert any code path that read it, proving the tail is ignored; the settlement is then the EOA burn
-    ///      of the same amount to the same receiver as testLzComposeSettlesOverlongPayloadIgnoringTail.
+    ///      would revert any code path that read it, proving the tail is ignored; the settlement is then the same
+    ///      vault approve + pull of the same amount to the same receiver as
+    ///      testLzComposeSettlesOverlongPayloadIgnoringTail.
     function testSettlePendingComposeSettlesOverlongPayloadIgnoringTail() external {
         bytes32 guid = bytes32("overlong-settle");
         uint256 amount = 5 ether;
         token.mint(address(dispatcher), amount);
 
-        // Same frame as the lzCompose overlong test: composeFrom(ALICE) + (ALICE, MEMECOIN) + dirty tail word.
+        // Same frame as the lzCompose overlong test: composeFrom(ALICE) + (vault, MEMECOIN) + dirty tail word.
         bytes memory composeMessage = abi.encodePacked(
             bytes32(uint256(uint160(ALICE))), // compose-from word (the parse skips it)
-            abi.encode(ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN), // the (address, TokenType) tuple
+            abi.encode(address(yieldVault), IMemeverseOFTEnum.TokenType.MEMECOIN), // the (address, TokenType) tuple
             bytes32(uint256(2)) // tail word: an out-of-range TokenType raw that must NOT be read
         );
         bytes memory message = OFTComposeMsgCodec.encode(1, 101, amount, composeMessage);
@@ -1086,12 +1063,13 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
         vm.expectEmit(true, true, true, true);
         emit IYieldDispatcher.ComposeSettled(
-            guid, address(token), ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN, amount, true
+            guid, address(token), address(yieldVault), IMemeverseOFTEnum.TokenType.MEMECOIN, amount, false
         );
         dispatcher.settlePendingCompose(address(token), guid, message);
 
-        // Identical settlement to the forward path: same amount burned to the same EOA receiver, mutex Released.
-        assertEq(token.lastBurnAmount(), amount);
+        // Identical settlement to the forward path: same amount pulled to the same vault receiver, mutex Released.
+        assertEq(yieldVault.lastAccumulatedAmount(), amount);
+        assertEq(token.balanceOf(address(yieldVault)), amount);
         assertEq(token.balanceOf(address(dispatcher)), 0);
         assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
     }
@@ -1099,7 +1077,7 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
     /// @notice settlePendingCompose settles a 141-byte frame whose inner composeMsg is 65 bytes — the clean 64-byte
     ///         (receiver, TokenType) tuple plus a single non-word-aligned garbage tail byte. The >= 64 schema guard
     ///         passes and `abi.decode` reads only the first two words, ignoring the unaligned tail, so the settlement
-    ///         is identical to the forward path (same amount, receiver, burn result).
+    ///         is identical to the forward path (same amount, receiver, settle result).
     /// @dev The 1-byte unaligned tail is the sharpest boundary: any tail parsing beyond word boundaries would misread
     ///      it, proving the static decode consumes exactly the 64-byte tuple. This is the minimum overlong frame
     ///      (76-byte header + 65-byte inner), pinning the upper edge of the >= 64 guard in the settle fallback.
@@ -1108,10 +1086,10 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         uint256 amount = 5 ether;
         token.mint(address(dispatcher), amount);
 
-        // composeFrom(ALICE) + (ALICE, MEMECOIN) tuple + 1 unaligned garbage byte: inner 65 bytes, frame 141.
+        // composeFrom(ALICE) + (vault, MEMECOIN) tuple + 1 unaligned garbage byte: inner 65 bytes, frame 141.
         bytes memory composeMessage = abi.encodePacked(
             bytes32(uint256(uint160(ALICE))), // compose-from word (the parse skips it)
-            abi.encode(ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN), // the (address, TokenType) tuple
+            abi.encode(address(yieldVault), IMemeverseOFTEnum.TokenType.MEMECOIN), // the (address, TokenType) tuple
             hex"aa" // non-word-aligned tail byte that must be ignored
         );
         bytes memory message = OFTComposeMsgCodec.encode(1, 101, amount, composeMessage);
@@ -1121,12 +1099,13 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
 
         vm.expectEmit(true, true, true, true);
         emit IYieldDispatcher.ComposeSettled(
-            guid, address(token), ALICE, IMemeverseOFTEnum.TokenType.MEMECOIN, amount, true
+            guid, address(token), address(yieldVault), IMemeverseOFTEnum.TokenType.MEMECOIN, amount, false
         );
         dispatcher.settlePendingCompose(address(token), guid, message);
 
-        // Identical settlement to the forward path: same amount burned to the same EOA receiver, mutex Released.
-        assertEq(token.lastBurnAmount(), amount);
+        // Identical settlement to the forward path: same amount pulled to the same vault receiver, mutex Released.
+        assertEq(yieldVault.lastAccumulatedAmount(), amount);
+        assertEq(token.balanceOf(address(yieldVault)), amount);
         assertEq(token.balanceOf(address(dispatcher)), 0);
         assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
     }
@@ -1867,10 +1846,11 @@ contract YieldDispatcherTest is ComposerEndpointFixture {
         dispatcher.settlePendingCompose(address(token), guid, message);
     }
 
-    /// @notice A zero-amount lzCompose to an EOA receiver converges: the mock token's `burn(0)` is a no-op, the CEI
-    ///         Settled write sticks, and no funds move.
-    /// @dev Pins the dispatcher's zero-amount EOA branch: _settle short-circuits on amount==0 (returns
-    ///      burnedAtDispatcher=false) before reaching burn, so no downstream call occurs regardless of whether the mock or real
+    /// @notice A zero-amount lzCompose to an EOA receiver converges: the zero-amount short-circuit is a no-op, the
+    ///         CEI Settled write sticks, and no funds move.
+    /// @dev Pins the dispatcher's zero-amount branch: _settle short-circuits on amount==0 (returns
+    ///      burnedAtDispatcher=false) before the receiver.code check, so a codeless receiver does NOT revert and no
+    ///      downstream call occurs regardless of whether the mock or real
     ///      Memecoin (which reverts ZeroInput) is used — resolving the mock-vs-production divergence. The CEI
     ///      Settled write sticks and the endpoint state machine converges.
     function testLzComposeZeroAmountEoaReceiverConvergesToSettled() external {
@@ -2177,13 +2157,10 @@ contract UnsafeUninitializedProxy is ERC1967Proxy {
 }
 
 /// @title YieldDispatcherUAssetEoaBranchTest
-/// @notice Anchors the UASSET×EOA-receiver terminal classes of the dispatcher's EOA burn branch:
-///         the revert-pin class (a uAsset whose `burn` reverts → the whole settle call
-///         reverts, queue pinned, no convergence signal) and the silent false-report class (a uAsset whose `burn`
-///         is an empty no-op → settle "succeeds" with burnedAtDispatcher=true while nothing moves). Both classes are
-///         known settle-failure / fallback-absorb classes that previously had zero test anchoring: every existing
-///         EOA-burn test drives MEMECOIN frames, so the UASSET branch of
-///         `_settle`'s `receiver.code.length == 0` path was untested for both terminal classes.
+/// @notice Anchors the UASSET×no-code-receiver revert behavior across all three settle entries: a non-zero UASSET
+///         settlement naming a codeless receiver reverts `ReceiverNotDeployed` before any fund movement — no
+///         protocol-treasury re-route, no burn, no terminal consumption — leaving the compose mutex at None and the
+///         funds escrowed in the dispatcher until the receiver gains code.
 contract YieldDispatcherUAssetEoaBranchTest is ComposerEndpointFixture {
     address internal constant OWNER = address(0xABCD);
     address internal constant LAUNCHER = address(0x2222);
@@ -2203,72 +2180,63 @@ contract YieldDispatcherUAssetEoaBranchTest is ComposerEndpointFixture {
         endpoint = _etchComposer();
     }
 
-    /// @notice A UASSET frame naming a no-code (EOA) receiver routes the funds to `protocolTreasury` instead of
-    ///         burning: the dispatcher never calls `burn`, the treasury balance rises by `amount`, the dispatcher is
-    ///         drained, and `OFTProcessed.burnedAtDispatcher` is `false`.
-    /// @dev Replaces the prior UASSET×EOA coverage, which pinned the old unconditional `IBurnable.burn` (revert-pin
-    ///      and no-op-absorb classes). uAsset OFTs expose no caller-callable single-arg `burn(uint256)`, so the old
-    ///      path reverted/stranded; `_settle` now splits the no-code branch by `tokenType` and routes UASSET through
-    ///      `_transferOut(token, protocolTreasury, amount)`.
-    function testUAssetEoaReceiverRoutesToProtocolTreasuryOnLzCompose() external {
-        bytes32 guid = bytes32("uasset-eoa-treasury");
+    /// @notice A UASSET frame naming a no-code (EOA) receiver reverts `ReceiverNotDeployed`: no treasury re-route,
+    ///         the compose mutex stays None, and the funds remain escrowed in the dispatcher (retryable once the
+    ///         receiver gains code).
+    /// @dev Replaces the prior UASSET×EOA coverage, which pinned a `protocolTreasury` re-route terminal action. The
+    ///      no-code state is healable (the receiver can gain code), so per the retryable-vs-terminally-consumed
+    ///      contract it must revert before any fund movement instead of terminally diverting the uAsset.
+    function testUAssetEoaReceiverRevertsOnLzCompose() external {
+        bytes32 guid = bytes32("uasset-eoa-nocode");
         uint256 amount = 5 ether;
         token.mint(address(dispatcher), amount);
 
-        // ALICE is an EOA (no code), so `_settle` takes the no-code branch; UASSET routes to the protocol treasury.
+        // ALICE is an EOA (no code), so `_settle` takes the no-code branch and reverts for UASSET too.
         bytes memory message = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.UASSET);
 
-        vm.expectEmit(true, true, true, true);
-        emit IYieldDispatcher.OFTProcessed(
-            guid, address(token), IMemeverseOFTEnum.TokenType.UASSET, ALICE, amount, false
-        );
         vm.prank(LOCAL_ENDPOINT);
+        vm.expectRevert(IYieldDispatcher.ReceiverNotDeployed.selector);
         dispatcher.lzCompose(address(token), guid, message, address(0), "");
 
-        // Treasury credited, dispatcher drained, and NO burn happened.
-        assertEq(token.balanceOf(TREASURY), amount);
-        assertEq(token.balanceOf(address(dispatcher)), 0);
+        // Nothing moved and nothing was consumed: the treasury is untouched and the guid stays retryable.
+        assertEq(token.balanceOf(TREASURY), 0);
+        assertEq(token.balanceOf(address(dispatcher)), amount);
         assertEq(token.lastBurnAmount(), 0);
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Settled));
+        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.None));
     }
 
-    /// @notice The same-chain fast path routes UASSET no-code receivers to `protocolTreasury` too
-    ///         (`OFTProcessed.burnedAtDispatcher` is `false`), mirroring the lzCompose terminal class.
-    function testUAssetEoaReceiverRoutesToProtocolTreasuryOnDistributeSameChain() external {
+    /// @notice The same-chain fast path reverts for UASSET no-code receivers too, mirroring the lzCompose behavior.
+    function testUAssetEoaReceiverRevertsOnDistributeSameChain() external {
         uint256 amount = 5 ether;
         token.mint(address(dispatcher), amount);
 
-        vm.expectEmit(true, true, true, true);
-        emit IYieldDispatcher.OFTProcessed(
-            bytes32(0), address(token), IMemeverseOFTEnum.TokenType.UASSET, ALICE, amount, false
-        );
         vm.prank(LAUNCHER);
+        vm.expectRevert(IYieldDispatcher.ReceiverNotDeployed.selector);
         dispatcher.distributeSameChain(address(token), ALICE, IMemeverseOFTEnum.TokenType.UASSET, amount);
 
-        assertEq(token.balanceOf(TREASURY), amount);
-        assertEq(token.balanceOf(address(dispatcher)), 0);
+        assertEq(token.balanceOf(TREASURY), 0);
+        assertEq(token.balanceOf(address(dispatcher)), amount);
         assertEq(token.lastBurnAmount(), 0);
     }
 
-    /// @notice The permissionless `settlePendingCompose` fallback also routes UASSET no-code receivers to
-    ///         `protocolTreasury` (`ComposeSettled.burnedAtDispatcher` is `false`), matching the forward path.
-    function testUAssetEoaReceiverRoutesToProtocolTreasuryOnSettle() external {
-        bytes32 guid = bytes32("uasset-eoa-treasury-settle");
+    /// @notice The permissionless `settlePendingCompose` fallback also reverts for UASSET no-code receivers
+    ///         (Released write rolled back), matching the forward path.
+    function testUAssetEoaReceiverRevertsOnSettle() external {
+        bytes32 guid = bytes32("uasset-eoa-nocode-settle");
         uint256 amount = 5 ether;
         token.mint(address(dispatcher), amount);
         bytes memory message = _dispatcherMessage(amount, ALICE, ALICE, IMemeverseOFTEnum.TokenType.UASSET);
         endpoint.setQueue(address(token), address(dispatcher), guid, 0, keccak256(message));
 
-        vm.expectEmit(true, true, true, true);
-        emit IYieldDispatcher.ComposeSettled(
-            guid, address(token), ALICE, IMemeverseOFTEnum.TokenType.UASSET, amount, false
-        );
+        vm.expectRevert(IYieldDispatcher.ReceiverNotDeployed.selector);
         dispatcher.settlePendingCompose(address(token), guid, message);
 
-        assertEq(token.balanceOf(TREASURY), amount);
-        assertEq(token.balanceOf(address(dispatcher)), 0);
+        assertEq(token.balanceOf(TREASURY), 0);
+        assertEq(token.balanceOf(address(dispatcher)), amount);
         assertEq(token.lastBurnAmount(), 0);
-        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.Released));
+        assertEq(uint256(dispatcher.composeStates(address(token), guid)), uint256(IComposeState.ComposeState.None));
+        // The endpoint slot still holds the delivery proof: the retry precondition is intact.
+        assertEq(endpoint.composeQueue(address(token), address(dispatcher), guid, 0), keccak256(message));
     }
 }
 

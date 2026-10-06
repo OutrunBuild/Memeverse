@@ -54,6 +54,27 @@ contract MockDispatcherGovernor is YieldDispatcherMockBase {
     }
 }
 
+/// @notice Minimal `vm.etch`-able MEMECOIN settle receiver: `asset` is an immutable baked into the runtime code,
+///         so etching a template's code onto a previously codeless address yields a working vault there (the
+///         storage-based mocks above cannot serve as etch templates — their `asset()` would read the target's
+///         empty storage). Satisfies exactly the dispatcher's `_settleToContract` MEMECOIN path: `asset()` returns
+///         the bound token and `accumulateYields` pulls the approved amount from the dispatcher.
+contract EtchableDispatcherYieldVault {
+    address public immutable asset;
+    uint256 public lastAccumulatedAmount;
+
+    constructor(address asset_) {
+        asset = asset_;
+    }
+
+    /// @notice Pull the approved tokens from the caller (the dispatcher), then record.
+    /// @param amount See implementation.
+    function accumulateYields(uint256 amount) external {
+        MockERC20(asset).transferFrom(msg.sender, address(this), amount);
+        lastAccumulatedAmount = amount;
+    }
+}
+
 /// @notice Malicious vault that reenters the dispatcher's `settlePendingCompose` from inside its `accumulateYields`
 ///         callback. Used to pin the dispatcher's reentrancy defense on the approve+callback path: unlike the staker's
 ///         `_transferOut` path, the dispatcher's `_settleToContract` has no `nonReentrant`, so the defense is the

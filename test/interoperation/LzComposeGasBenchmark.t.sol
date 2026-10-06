@@ -10,10 +10,10 @@ import {VmSafe} from "forge-std/Vm.sol";
 import {OmnichainMemecoinStakerUpgradeable} from "../../src/interoperation/OmnichainMemecoinStakerUpgradeable.sol";
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
 import {IMemeverseOFTEnum} from "../../src/common/types/IMemeverseOFTEnum.sol";
-import {IBurnable} from "../../src/common/interfaces/IBurnable.sol";
 import {Memecoin} from "../../src/token/Memecoin.sol";
 import {MemecoinYieldVault} from "../../src/yield/MemecoinYieldVault.sol";
 import {YieldDispatcherUpgradeable} from "../../src/verse/YieldDispatcherUpgradeable.sol";
+import {IYieldDispatcher} from "../../src/verse/interfaces/IYieldDispatcher.sol";
 
 import {MockMessagingComposerEndpoint} from "../mocks/infrastructure/MockMessagingComposerEndpoint.sol";
 import {ComposerEndpointFixture} from "../mocks/infrastructure/ComposerEndpointFixture.sol";
@@ -49,13 +49,9 @@ contract GasGovernor {
     }
 }
 
-/// @notice ERC20 with a caller-callable single-arg `burn(uint256)` used for the dispatcher's EOA-burn branch.
-contract GasBurnableToken is MockERC20, IBurnable {
+/// @notice Plain ERC20 custody token for the dispatcher gas benchmarks (bridged-fee stand-in).
+contract GasToken is MockERC20 {
     constructor(string memory name_, string memory symbol_) MockERC20(name_, symbol_, 18) {}
-
-    function burn(uint256 amount) external {
-        _burn(msg.sender, amount);
-    }
 }
 
 /// @title LzComposeGasBenchmark
@@ -107,9 +103,9 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     Memecoin internal memecoin;
     MemecoinYieldVault internal vault;
 
-    // --- Dispatcher fixtures (real dispatcher + mirror vault/governor/burnable token) ---
+    // --- Dispatcher fixtures (real dispatcher + mirror vault/governor/custody token) ---
     YieldDispatcherUpgradeable internal dispatcher;
-    GasBurnableToken internal burnToken;
+    GasToken internal gasToken;
     GasVault internal dispatchVault;
     GasGovernor internal governor;
 
@@ -141,7 +137,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
         MemecoinYieldVault vaultImpl = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(vaultImpl)));
         // V = 1e18 virtual buffer (V > 0 required); shares mint 1:1 at the genesis rate.
-        vault.initialize("Verse 1 Vault", "vMEME", address(memecoin), 1, 1e18);
+        vault.initialize("Verse 1 Vault", "vMEME", address(memecoin), 1e18);
 
         // ---- Dispatcher ----
         // Re-etch the shared endpoint for the dispatcher's localEndpoint storage slot; the staker's slot state is
@@ -159,8 +155,8 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
                 )
             )
         );
-        burnToken = new GasBurnableToken("Burn Token", "BRN");
-        dispatchVault = new GasVault(address(burnToken));
+        gasToken = new GasToken("Custody Token", "CST");
+        dispatchVault = new GasVault(address(gasToken));
         governor = new GasGovernor();
     }
 
@@ -185,7 +181,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     ///      state. One prior pull warms the pull-side storage so the measured settle sees warm slots.
     function _warmDispatcherSettle() internal {
         uint256 seed = 1 ether;
-        burnToken.mint(address(dispatcher), seed * 2);
+        gasToken.mint(address(dispatcher), seed * 2);
         // Warm the MEMECOIN-vault pull path.
         bytes memory msgV = OFTComposeMsgCodec.encode(
             1,
@@ -197,10 +193,10 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
             )
         );
         bytes32 guidV = _nextGuid();
-        vm.prank(address(burnToken));
+        vm.prank(address(gasToken));
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT).sendCompose(address(dispatcher), guidV, 0, msgV);
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT)
-            .lzCompose(address(burnToken), address(dispatcher), guidV, 0, msgV, "");
+            .lzCompose(address(gasToken), address(dispatcher), guidV, 0, msgV, "");
         // Warm the UASSET-governor pull path.
         bytes memory msgG = OFTComposeMsgCodec.encode(
             1,
@@ -211,10 +207,10 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
             )
         );
         bytes32 guidG = _nextGuid();
-        vm.prank(address(burnToken));
+        vm.prank(address(gasToken));
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT).sendCompose(address(dispatcher), guidG, 0, msgG);
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT)
-            .lzCompose(address(burnToken), address(dispatcher), guidG, 0, msgG, "");
+            .lzCompose(address(gasToken), address(dispatcher), guidG, 0, msgG, "");
     }
 
     // -----------------------------------------------------------------------------------------------
@@ -300,7 +296,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     function test_Gas_DispatcherMemecoinBranch() public {
         _warmDispatcherSettle();
         uint256 amount = 50 ether;
-        burnToken.mint(address(dispatcher), amount);
+        gasToken.mint(address(dispatcher), amount);
 
         // Layout: [composeFrom(32)][receiver(32)][tokenType(32)] — tokenType = MEMECOIN (1).
         bytes memory composeMsg = abi.encodePacked(
@@ -310,16 +306,16 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
         bytes memory message = OFTComposeMsgCodec.encode(1, 101, amount, composeMsg);
         bytes32 guid = _nextGuid();
 
-        vm.prank(address(burnToken));
+        vm.prank(address(gasToken));
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT).sendCompose(address(dispatcher), guid, 0, message);
 
         uint256 gasBefore = gasleft();
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT)
-            .lzCompose(address(burnToken), address(dispatcher), guid, 0, message, "");
+            .lzCompose(address(gasToken), address(dispatcher), guid, 0, message, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         assertEq(
-            uint256(dispatcher.composeStates(address(burnToken), guid)), uint256(IComposeState.ComposeState.Settled)
+            uint256(dispatcher.composeStates(address(gasToken), guid)), uint256(IComposeState.ComposeState.Settled)
         );
         assertEq(dispatchVault.lastAccumulated(), amount, "vault pulled the delivered token");
         emit log_named_uint("GAS dispatcher lzCompose MEMECOIN branch (endpoint.lzCompose body)", gasUsed);
@@ -331,7 +327,7 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
     function test_Gas_DispatcherUassetBranch() public {
         _warmDispatcherSettle();
         uint256 amount = 50 ether;
-        burnToken.mint(address(dispatcher), amount);
+        gasToken.mint(address(dispatcher), amount);
 
         bytes memory composeMsg = abi.encodePacked(
             bytes32(uint256(uint160(RECEIVER))), abi.encode(address(governor), IMemeverseOFTEnum.TokenType.UASSET)
@@ -339,49 +335,61 @@ contract LzComposeGasBenchmark is ComposerEndpointFixture {
         bytes memory message = OFTComposeMsgCodec.encode(1, 101, amount, composeMsg);
         bytes32 guid = _nextGuid();
 
-        vm.prank(address(burnToken));
+        vm.prank(address(gasToken));
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT).sendCompose(address(dispatcher), guid, 0, message);
 
         uint256 gasBefore = gasleft();
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT)
-            .lzCompose(address(burnToken), address(dispatcher), guid, 0, message, "");
+            .lzCompose(address(gasToken), address(dispatcher), guid, 0, message, "");
         uint256 gasUsed = gasBefore - gasleft();
 
         assertEq(
-            uint256(dispatcher.composeStates(address(burnToken), guid)), uint256(IComposeState.ComposeState.Settled)
+            uint256(dispatcher.composeStates(address(gasToken), guid)), uint256(IComposeState.ComposeState.Settled)
         );
         assertEq(governor.lastAmount(), amount, "governor pulled the delivered token");
         emit log_named_uint("GAS dispatcher lzCompose UASSET branch (endpoint.lzCompose body)", gasUsed);
         assertLt(gasUsed, 85_000, "dispatcher UASSET lzCompose gas ceiling exceeded");
     }
 
-    /// @notice Dispatcher EOA-burn branch: receiver has no code, so the delivered token is burned directly.
-    ///         Uses an EOA receiver and a token with a caller-callable single-arg `burn(uint256)`.
+    /// @notice Dispatcher no-code-receiver revert branch: a non-zero settlement naming a codeless receiver reverts
+    ///         `ReceiverNotDeployed` before any fund movement, keeping the frame retryable (no burn, no re-route).
     /// @dev `_warmDispatcherSettle` warms the dispatcher's token-balance slot (held warm by custody in production).
-    function test_Gas_DispatcherEoaBurnBranch() public {
+    ///      Measured on the reverting call: `vm.expectRevert` still executes the full endpoint forward (hash-check +
+    ///      RECEIVED-sentinel write roll back with the revert), so the gasleft() delta covers the same surface as
+    ///      the happy-path branches up to the revert point. The measured guid's compose slot is fresh on every run
+    ///      (the Settled write rolls back), matching the retryable steady state.
+    function test_Gas_DispatcherNoCodeReceiverRevertBranch() public {
         _warmDispatcherSettle();
         uint256 amount = 50 ether;
-        burnToken.mint(address(dispatcher), amount);
+        gasToken.mint(address(dispatcher), amount);
+        uint256 custodyBefore = gasToken.balanceOf(address(dispatcher));
 
+        // RECEIVER is a fixed, never-deployed address: no code -> `_settle` reverts ReceiverNotDeployed.
         bytes memory composeMsg = abi.encodePacked(
             bytes32(uint256(uint160(RECEIVER))), abi.encode(RECEIVER, IMemeverseOFTEnum.TokenType.MEMECOIN)
         );
         bytes memory message = OFTComposeMsgCodec.encode(1, 101, amount, composeMsg);
         bytes32 guid = _nextGuid();
 
-        vm.prank(address(burnToken));
+        vm.prank(address(gasToken));
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT).sendCompose(address(dispatcher), guid, 0, message);
 
         uint256 gasBefore = gasleft();
+        vm.expectRevert(IYieldDispatcher.ReceiverNotDeployed.selector);
         MockMessagingComposerEndpoint(LOCAL_ENDPOINT)
-            .lzCompose(address(burnToken), address(dispatcher), guid, 0, message, "");
+            .lzCompose(address(gasToken), address(dispatcher), guid, 0, message, "");
         uint256 gasUsed = gasBefore - gasleft();
 
-        assertEq(
-            uint256(dispatcher.composeStates(address(burnToken), guid)), uint256(IComposeState.ComposeState.Settled)
+        // The revert rolled the whole forward back: the compose mutex is still None and custody is unchanged.
+        assertEq(uint256(dispatcher.composeStates(address(gasToken), guid)), uint256(IComposeState.ComposeState.None));
+        assertEq(gasToken.balanceOf(address(dispatcher)), custodyBefore, "no funds move on the revert path");
+        emit log_named_uint(
+            "GAS dispatcher lzCompose no-code-receiver revert branch (endpoint.lzCompose body)", gasUsed
         );
-        assertEq(burnToken.balanceOf(address(dispatcher)), 0, "burned the delivered token");
-        emit log_named_uint("GAS dispatcher lzCompose EOA-burn branch (endpoint.lzCompose body)", gasUsed);
-        assertLt(gasUsed, 55_000, "dispatcher EOA-burn lzCompose gas ceiling exceeded");
+        // Measured 31_511 (2026-10, warm custody): the revert path skips the approve + callback pulls entirely, so
+        // it is the lightest dispatcher branch. 45_000 = that footprint + ~40% regression margin, the same margin
+        // convention as the happy-path ceilings above. If the assertion fails, the revert path regressed; re-measure
+        // before raising the ceiling.
+        assertLt(gasUsed, 45_000, "dispatcher no-code-receiver revert lzCompose gas ceiling exceeded");
     }
 }

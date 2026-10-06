@@ -9,7 +9,6 @@ import {TokenHelper} from "../common/token/TokenHelper.sol";
 import {OutrunOwnableUpgradeable} from "../common/access/OutrunOwnableUpgradeable.sol";
 import {OFTComposeSettleVerify} from "../common/omnichain/OFTComposeSettleVerify.sol";
 import {ISettleCompose} from "../common/omnichain/ISettleCompose.sol";
-import {IBurnable} from "../common/interfaces/IBurnable.sol";
 import {IMemecoinYieldVault} from "../yield/interfaces/IMemecoinYieldVault.sol";
 import {IYieldDispatcher} from "./interfaces/IYieldDispatcher.sol";
 import {IMemecoinDaoGovernor} from "../governance/interfaces/IMemecoinDaoGovernor.sol";
@@ -73,7 +72,8 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
     /// @param initialOwner Address that becomes the initial owner.
     /// @param _localEndpoint Local LayerZero endpoint that is allowed to call `lzCompose`.
     /// @param _memeverseLauncher Launcher allowed to call `distributeSameChain`.
-    /// @param _protocolTreasury Sink for UASSET no-code-receiver settlement (see `_settle`).
+    /// @param _protocolTreasury Protocol treasury address (retained configuration surface, not a settlement path —
+    ///                          no settlement branch routes funds to it; see `setProtocolTreasury`).
     function initialize(
         address initialOwner,
         address _localEndpoint,
@@ -93,7 +93,8 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
     function _authorizeUpgrade(address) internal view override onlyOwner {}
 
     /// @inheritdoc IYieldDispatcher
-    /// @dev Only callable by the owner. The treasury is intended to be the same address across all chains
+    /// @dev Only callable by the owner. Retained configuration surface: no settlement branch routes funds to the
+    ///      treasury. The treasury is intended to be the same address across all chains
     ///      (a protocol-level single sink); cross-chain consistency is a deployment convention, not an invariant.
     /// @param _protocolTreasury The new protocol treasury address.
     function setProtocolTreasury(address _protocolTreasury) external onlyOwner {
@@ -275,13 +276,19 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
         parseable = true;
     }
 
-    /// @dev Routes `amount` of `token` to `receiver` based on `tokenType`.
+    /// @dev Routes `amount` of `token` to a contract `receiver` based on `tokenType`.
     ///      The unified settlement entry, shared by `lzCompose`, `distributeSameChain`, and `settlePendingCompose`,
     ///      so the settle path stays semantically identical to the forward settlement path.
-    ///      For no-code receivers (EOA / undeployed) the route splits by `tokenType`: a MEMECOIN is burned (actual
-    ///      destruction only for tokens implementing a caller-callable single-arg `burn(uint256)`, so `isBurned=true`);
-    ///      a UASSET is transferred to `protocolTreasury` (uAsset OFTs expose no caller-callable single-arg
-    ///      `burn(uint256)`, so the old burn path reverted/stranded the funds) and `isBurned=false`.
+    ///      A non-zero amount to a codeless receiver (EOA / undeployed) reverts `ReceiverNotDeployed` before any
+    ///      fund movement. The no-code state is healable, not terminal: in multichain deployments a non-governance
+    ///      chain's verse can still be pre-Locked while cross-chain fee receivers are CREATE2-predicted governance
+    ///      component addresses that have no code on the not-yet-Locked governance chain, and a terminal
+    ///      consumption would irreversibly destroy (burn) or divert (treasury re-route) DAO income. Per
+    ///      `IComposeState`, only frames that can never settle (unparseable / self-reference) are terminally
+    ///      consumed; a healable frame must stay retryable — the same philosophy as the UASSET `NonTreasuryToken`
+    ///      branch (see `_settleToContract`). The revert rolls the caller's compose-mutex write back to `None`, and
+    ///      once the receiver gains code the same frame settles through `_settleToContract` via an endpoint
+    ///      redelivery or a permissionless `settlePendingCompose` retry.
     ///      For contract receivers the token is approved for exactly `amount`
     ///      (since each receiver only pulls once per call) and the receiver pulls it via a callback — the exact-approval
     ///      cap bounds pulls only for genuine bridged frames (a forged frame's amountLD is sender-chosen up to
@@ -292,9 +299,10 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
     ///      reverting before any approve, and the defense no longer depends on the no-standing-allowance invariant.
     ///      UASSET receivers carry no pairing class (the governor pulls the payload-named token), so no binding
     ///      applies there.
-    ///      A zero amount is a no-op (returns isBurned=false): it converges a zero-amount compose without burning,
-    ///      routing, or accounting, matching the vault branch's own zero-yield early return and the staker's
-    ///      _transferOut(0).
+    ///      A zero amount is a no-op (returns isBurned=false): it converges a zero-amount compose without routing
+    ///      or accounting, matching the vault branch's own zero-yield early return and the staker's
+    ///      _transferOut(0). `isBurned` is a retained compatibility return and is always false: settlement never
+    ///      burns at the dispatcher.
     function _settle(address token, address receiver, TokenType tokenType, uint256 amount)
         internal
         returns (bool isBurned)
@@ -303,23 +311,13 @@ contract YieldDispatcherUpgradeable layout at erc7201("outrun.storage.YieldDispa
         // distributeSameChain via calldata decoding, settlePendingCompose via abi.decode)
         // rejects out-of-range enums before reaching this point.
         if (tokenType != TokenType.MEMECOIN && tokenType != TokenType.UASSET) revert InvalidTokenType();
-        // Zero amount carries no value; returning early lets a zero-amount compose converge (the EOA burn and
-        // UASSET→governor branches would otherwise revert ZeroInput downstream). isBurned stays false.
+        // Zero amount carries no value; returning early lets a zero-amount compose converge (the contract-receiver
+        // branches would otherwise revert ZeroInput downstream). isBurned stays false.
         if (amount == 0) return false;
-        if (receiver.code.length == 0) {
-            if (tokenType == TokenType.MEMECOIN) {
-                IBurnable(token).burn(amount);
-                isBurned = true;
-            } else {
-                // UASSET: route to the protocol treasury instead of burning. uAsset OFTs expose no caller-callable
-                // single-arg burn(uint256), so the prior unconditional burn reverted (stranding) for real uAssets.
-                // `InvalidTokenType` above guarantees this else-branch is UASSET. `_transferOut` is `nonReentrant`.
-                _transferOut(token, yieldDispatcherStorage.protocolTreasury, amount);
-                isBurned = false;
-            }
-        } else {
-            _settleToContract(token, receiver, tokenType, amount);
-        }
+        // Non-zero settlement requires a coded receiver: revert before any fund movement so the frame stays
+        // retryable (healable-vs-terminal rationale in the @dev above).
+        if (receiver.code.length == 0) revert ReceiverNotDeployed();
+        _settleToContract(token, receiver, tokenType, amount);
     }
 
     /// @dev Routes `amount` of `token` to a contract `receiver` based on `tokenType`.

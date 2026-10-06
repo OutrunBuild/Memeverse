@@ -8,11 +8,11 @@ import {IComposeState} from "../../common/types/IComposeState.sol";
 
 interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroComposer {
     /// @dev Emitted on every compose settlement (`lzCompose`, real compose guid) and on the same-chain fee
-    ///      distribution (`distributeSameChain`, guid `bytes32(0)`). `burnedAtDispatcher` reports the dispatcher's
-    ///      own action, not actual token destruction: `true` when `receiver` is an EOA and the dispatcher executed
-    ///      the burn call; `false` when the dispatcher only initiated approve + pull to a contract receiver — the
-    ///      receiver may internally destroy the pulled tokens (e.g., the empty yield vault burns first-yield), so
-    ///      reconcile destruction via the underlying token's `Transfer(to = address(0))`.
+    ///      distribution (`distributeSameChain`, guid `bytes32(0)`). `burnedAtDispatcher` is a retained
+    ///      compatibility flag that is always `false`: a non-zero settlement never burns at the dispatcher — it
+    ///      either initiates approve + pull to a contract receiver or reverts `ReceiverNotDeployed` for a codeless
+    ///      one — and the receiver may internally destroy the pulled tokens (e.g., the empty yield vault burns
+    ///      first-yield), so reconcile destruction via the underlying token's `Transfer(to = address(0))`.
     event OFTProcessed(
         bytes32 indexed guid,
         address indexed token,
@@ -23,11 +23,9 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     );
 
     /// @notice Emitted when a stuck compose payload is settled via `settlePendingCompose`.
-    /// @dev `burnedAtDispatcher` reports the dispatcher's own action, not actual token destruction: `true` when
-    ///      `receiver` is an EOA and the dispatcher executed the burn call (actual destruction holds only for
-    ///      tokens implementing a caller-callable single-arg `burn(uint256)` — others revert the EOA branch;
-    ///      fallback-absorbing tokens may no-op with a `true` report); `false` when the dispatcher only initiated
-    ///      approve + pull to a contract receiver — the receiver may pull nothing (fallback/no-op) or may
+    /// @dev `burnedAtDispatcher` is a retained compatibility flag that is always `false`: a non-zero settlement
+    ///      never burns at the dispatcher — it either initiates approve + pull to a contract receiver or reverts
+    ///      `ReceiverNotDeployed` for a codeless one. The receiver may pull nothing (fallback/no-op) or may
     ///      internally destroy the pulled tokens (the empty yield vault burns first-yield), so reconcile
     ///      destruction via the underlying token's `Transfer(to = address(0))` and pulls via balance/allowance.
     ///      The `token` key is not guaranteed to be a genuine bridged token: `sendCompose` is permissionless and
@@ -64,8 +62,8 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     error AlreadyResolved();
 
     /// @dev An address argument is the zero address. Covers `initialize` (localEndpoint / memeverseLauncher /
-    ///      protocolTreasury) and `setProtocolTreasury`; the dispatcher would be permanently unusable or route
-    ///      UASSET settlement to a black hole. The initial owner zero-check is enforced separately by
+    ///      protocolTreasury) and `setProtocolTreasury`; the dispatcher would be permanently unusable or carry a
+    ///      meaningless zero configuration field. The initial owner zero-check is enforced separately by
     ///      `OutrunOwnableUpgradeable.__OutrunOwnable_init` (`OwnableInvalidOwner`).
     error ZeroAddress();
 
@@ -77,6 +75,11 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     ///      `IOmnichainMemecoinStaker.TokenVaultMismatch` (identical signature, one shared binding error).
     error TokenVaultMismatch();
 
+    /// @dev Non-zero-amount settlement to a codeless receiver (EOA / undeployed) must stay retryable, not
+    ///      terminally consumed: `_settle` reverts before any fund movement, so the compose mutex rolls back and
+    ///      the frame can be retried once the receiver gains code.
+    error ReceiverNotDeployed();
+
     /// @notice Initializes the dispatcher proxy.
     /// @dev Sets the owner and the three single-purpose addresses. The initial owner zero-check is enforced by
     ///      `__OutrunOwnable_init`; the other three are checked here (`ZeroAddress`). Intended to be called once via
@@ -84,7 +87,8 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     /// @param initialOwner Address that becomes the initial owner.
     /// @param localEndpoint Local LayerZero endpoint allowed to call `lzCompose`.
     /// @param memeverseLauncher Launcher allowed to call `distributeSameChain`.
-    /// @param protocolTreasury Sink for UASSET no-code-receiver settlement (see `distributeSameChain` / `_settle`).
+    /// @param protocolTreasury Protocol treasury address (retained configuration surface, not a settlement path —
+    ///                         no settlement branch routes funds to it; see `setProtocolTreasury`).
     function initialize(
         address initialOwner,
         address localEndpoint,
@@ -92,8 +96,10 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
         address protocolTreasury
     ) external;
 
-    /// @notice Sets the protocol treasury that receives UASSET settlement when a no-code receiver is named.
-    /// @dev Only callable by the owner. The treasury is intended to be the same address across all chains.
+    /// @notice Sets the protocol treasury address (retained configuration surface, not a settlement path).
+    /// @dev Only callable by the owner. No settlement branch routes funds to the treasury; it is kept as an
+    ///      owner-rotatable configuration field for compatibility. The treasury is intended to be the same
+    ///      address across all chains.
     /// @param protocolTreasury The new protocol treasury address.
     function setProtocolTreasury(address protocolTreasury) external;
 
@@ -109,7 +115,7 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     /// @notice The launcher allowed to call `distributeSameChain`.
     function memeverseLauncher() external view returns (address);
 
-    /// @notice The protocol treasury sink for UASSET no-code-receiver settlement.
+    /// @notice The protocol treasury address (retained configuration surface, not a settlement path).
     function protocolTreasury() external view returns (address);
 
     /// @notice Per-(token, guid) compose mutex shared by `lzCompose` and `settlePendingCompose`.
@@ -118,14 +124,14 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     /// @notice Settles same-chain fee proceeds routed by the launcher.
     /// @dev Same-chain fast path: the launcher has already transferred the fee token into this dispatcher, then calls
     ///      this entry, so the same settlement logic that handles bridged compose payloads also serves the local
-    ///      fast path. A no-code `receiver` (EOA / undeployed) splits by `tokenType` in `_settle`: a MEMECOIN is
-    ///      burned (`OFTProcessed.burnedAtDispatcher` is `true`); a UASSET is transferred to `protocolTreasury`
-    ///      (`OFTProcessed.burnedAtDispatcher` is `false`). A contract `receiver` is settled via approve + pull
-    ///      (`OFTProcessed.burnedAtDispatcher` is `false`). A zero `amount` short-circuits in `_settle`
-    ///      (`if (amount == 0) return false`) as a no-op: no burn, no routing, no bookkeeping, and no downstream
+    ///      fast path. A no-code `receiver` (EOA / undeployed) reverts `ReceiverNotDeployed` in `_settle` before any
+    ///      fund movement, so `OFTProcessed` is not emitted and the fee tokens stay in the dispatcher for retry once
+    ///      the receiver gains code. A contract `receiver` is settled via approve + pull
+    ///      (`OFTProcessed.burnedAtDispatcher` is always `false`). A zero `amount` short-circuits in `_settle`
+    ///      (`if (amount == 0) return false`) as a no-op: no routing, no bookkeeping, and no downstream
     ///      approve + pull call.
     /// @param token Fee token to settle.
-    /// @param receiver Yield vault, governor, or EOA burn target.
+    /// @param receiver Yield vault or governor; must carry code for a non-zero `amount`.
     /// @param tokenType Whether the token is a memecoin or a uAsset.
     /// @param amount Amount to settle, derived by the launcher from on-chain claimed fees. For the governor
     ///      uAsset path this is a two-bucket sum: launcher-held uAsset
@@ -142,18 +148,18 @@ interface IYieldDispatcher is IMemeverseOFTEnum, IComposeState, ILayerZeroCompos
     ///      keccak256(message) — see `OFTComposeSettleVerify`'s dev note).
     ///      Guards against double resolution with the same `composeStates` mutex used by `lzCompose`.
     ///      All checks run before any state change or state-changing external call (CEI), and the mutex is advanced to `Released`
-    ///      before settlement. Settlement is identical to `_settle`: a no-code receiver splits by `tokenType` — a MEMECOIN
-    ///      is burned (`ComposeSettled.burnedAtDispatcher` is `true`; actual destruction only for tokens implementing a
-    ///      caller-callable single-arg `burn(uint256)`), and a UASSET is transferred to `protocolTreasury`
-    ///      (`ComposeSettled.burnedAtDispatcher` is `false`); a contract receiver is settled via approve + pull
-    ///      (initiated, not guaranteed to be pulled). An out-of-range TokenType cannot reach `_settle`: the
+    ///      before settlement. Settlement is identical to `_settle`: a non-zero amount to a no-code receiver
+    ///      (EOA / undeployed) reverts `ReceiverNotDeployed` before any fund movement, the `Released` write rolls
+    ///      back, and the frame stays retryable until the receiver gains code (no terminal consumption); a contract
+    ///      receiver is settled via approve + pull (initiated, not guaranteed to be pulled;
+    ///      `ComposeSettled.burnedAtDispatcher` is always `false`). An out-of-range TokenType cannot reach `_settle`: the
     ///      `abi.decode` below rejects it at the decode boundary (empty-data revert). `_settle`'s
     ///      `InvalidTokenType` branch is currently an unreachable defense-in-depth backstop.
     ///      Self-harm boundary: `lzReceive`/`sendCompose` is permissionless, so any token holder can send an OFT
-    ///      payload naming a no-code `receiver`. For a UASSET such a payload now routes the sender's own uAsset to
-    ///      `protocolTreasury` (`burnedAtDispatcher=false`) instead of reverting/stranding — a self-harm donation
-    ///      reachable only via a permissionless direct OFT send (the protocol send-side always encodes a
-    ///      governor/vault contract receiver).
+    ///      payload naming a no-code `receiver`. Such a payload reverts `ReceiverNotDeployed` and pins the frame
+    ///      (retryable only after the named address gains code); the sender's funds stay escrowed in the dispatcher
+    ///      by the sender's own construction — reachable only via a permissionless direct OFT send (the protocol
+    ///      send-side always encodes a governor/vault contract receiver).
     /// @param token Bridged token to settle.
     /// @param guid LayerZero compose guid.
     /// @param message The original compose payload (reconstructable from the endpoint's `ComposeSent` event log).

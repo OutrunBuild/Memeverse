@@ -2262,7 +2262,7 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         assertEq(memecoinLp.balanceOf(address(launcher)), 6 ether, "launcher memecoin lp");
     }
 
-    function testRedeemMemecoinLiquidity_UnwrapKeepsInfiniteLpAllowanceForRouter() external {
+    function testRedeemMemecoinLiquidity_UnwrapConsumesExactLpAllowanceForRouter() external {
         uint256 verseId = 1;
         _setUnlockedVerse(verseId);
 

@@ -528,14 +528,17 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     }
 
     /**
-     * @dev Redeem transaction fees and distribute them to the owner(uAsset) and vault(Memecoin)
-     * @param rewardReceiver - Address of executor reward receiver
-     * @return govFee - The uAsset-side gov fee.
-     * @return memecoinFee - The memecoin fee.
-     * @return polFee - The pol fee.
-     * @return executorReward  - The executor reward.
-     * @notice Anyone who calls this method will be rewarded with executorReward. Provide exactly the required native fee.
-     * @dev Reads only pre-committed `RedeemedFeeState` accumulators.
+     * @notice Redeems launcher-managed fees and distributes them to protocol recipients.
+     * @dev The uAsset-side fee is split into an executor reward, transferred to `rewardReceiver`, and a gov fee
+     *      routed to the governor treasury path (same-chain via the yield dispatcher, or cross-chain dispatch).
+     *      The memecoin-side fee goes to the verse's yield vault; the POL fee is burned. Requires exactly the
+     *      native fee quoted by `IMemeverseFeePreviewReader.quoteDistributionLzFee`; local/no-fee paths require zero.
+     *      Reads only pre-committed `RedeemedFeeState` accumulators.
+     * @param rewardReceiver The receiver of the executor reward.
+     * @return govFee The distributed governor fee amount.
+     * @return memecoinFee The distributed memecoin fee amount.
+     * @return polFee The distributed POL fee amount.
+     * @return executorReward The distributed executor reward amount.
      */
     function redeemAndDistributeFees(uint256 verseId, address rewardReceiver)
         external
@@ -748,15 +751,19 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     }
 
     /**
-     * @notice Pause state-changing launcher entrypoints.
-     * @dev Only callable by the owner.
+     * @notice Pause new-fund and non-essential claim entrypoints.
+     * @dev Only callable by the owner. Blocks `genesis`, `preorder`, `genesisAndPreorder`,
+     *      `claimNormalYT`, `claimNormalFees`, `redeemAuxiliaryLiquidity`,
+     *      `claimUnlockedPreorderMemecoin`, `redeemAndDistributeFees`, `mintPOLToken`, and
+     *      `registerMemeverse` via `whenNotPaused`; refunds, `POL` redemptions, stage transitions,
+     *      settlement callbacks, and metadata updates stay executable during a pause.
      */
     function pause() external onlyOwner {
         _pause();
     }
 
     /**
-     * @notice Unpause state-changing launcher entrypoints.
+     * @notice Unpause the entrypoints blocked by `pause`.
      * @dev Only callable by the owner.
      */
     function unpause() external onlyOwner {
@@ -895,14 +902,16 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
      * @dev Only callable by the owner.
      *      `fundBasedAmount` is denominated in memecoins per raw unit of `_uAsset` (not per whole token):
      *      its value silently bakes the uAsset's `decimals()` scale. `_minTotalFund` is likewise
-     *      denominated in raw units at the uAsset's own decimals (see `docs/spec/polend/genesis.md:113`).
+     *      denominated in raw units at the uAsset's own decimals.
      *      A 6-decimal stable and an 18-decimal token with the same economic target therefore require
      *      `fundBasedAmount` values differing by 1e12. The four live consumers of this slot are
-     *      (1) bootstrap memecoin budget (`MemeverseLiquidityImpl.sol:80-81`), (2) genesis launch gate
-     *      (`MemeverseLaunchImpl.sol:332`), (3) yield-vault `virtualAssets` derivation
-     *      (`MemeverseLaunchImpl.sol:400-401`, `MemecoinYieldVault.initialize:56`), and (4) debt-cap
-     *      base (`MemeverseLauncherUpgradeable.sol:232`). Only the GenesisCredit path gates 18 decimals
-     *      (`GenesisCreditFactory.sol:68-69`, `POLendUpgradeable.sol:297-301`); non-credit `genesis` /
+     *      (1) bootstrap memecoin budget (`MemeverseLiquidityImpl.sol::deployBootstrapLiquidity`), (2)
+     *      genesis launch gate (`MemeverseLaunchImpl.sol::_handleGenesisStage`), (3) yield-vault
+     *      `virtualAssets` derivation (`MemeverseLaunchImpl.sol::_deployGovernanceComponents`,
+     *      `MemecoinYieldVault.sol::initialize`), and (4) debt-cap base
+     *      (`MemeverseLauncherUpgradeable.sol::getDebtCapBaseByVerseId`). Only the GenesisCredit path
+     *      gates 18 decimals (`GenesisCreditFactory.sol::deployCredit`,
+     *      `POLendUpgradeable.sol::leveragedGenesisWithCredit`); non-credit `genesis` /
      *      `leveragedGenesis` intentionally supports arbitrary decimals — correct calibration is an
      *      operational requirement, not an on-chain invariant. Mis-calibration cannot steal funds
      *      (budgets are spent within escrowed verse funds; residual handling burns excess, `ZeroVirtualAssets`
@@ -981,7 +990,8 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
 
     /**
      * @notice Set external metadata for a memeverse.
-     * @dev Callable by the verse governor or the registrar.
+     * @dev Callable by the verse governor or the registrar. Intentionally omits `whenNotPaused`:
+     *      presentation metadata has no fund surface, so it stays writable during a pause.
      * @param uri - IPFS URI of memecoin icon
      * @param description - Description
      * @param communities - Community(Website, X, Discord, Telegram and Others)

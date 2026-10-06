@@ -27,7 +27,7 @@ interface IMemeverseProxyDeployer {
 
     /**
      * @notice Deploys the memecoin clone for a verse.
-     * @dev Reverts if the verse id is invalid or already consumed by deployment flow.
+     * @dev Restricted to the launcher; re-deploying an already-used verse id reverts via CREATE2 salt collision.
      * @param uniqueId Verse unique identifier.
      * @return memecoin Deployed memecoin clone address.
      */
@@ -35,7 +35,8 @@ interface IMemeverseProxyDeployer {
 
     /**
      * @notice Deploys the POL clone for a verse.
-     * @dev Reverts if required dependencies for the verse are not ready.
+     * @dev Restricted to the launcher; performs no verse-id or dependency validation.
+     * Verse ordering and readiness guarantees live in the launcher registration flow.
      * @param uniqueId Verse unique identifier.
      * @return pol Deployed POL clone address.
      */

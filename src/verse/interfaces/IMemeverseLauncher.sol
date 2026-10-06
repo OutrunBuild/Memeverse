@@ -60,8 +60,8 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     }
 
     struct FundMetaData {
-        uint256 minTotalFund; // The minimum participation genesis fund corresponding to uAsset
-        uint256 fundBasedAmount; // The number of Memecoins minted per unit of Memecoin genesis fund
+        uint256 minTotalFund; // The minimum participation genesis fund corresponding to uAsset (raw units)
+        uint256 fundBasedAmount; // The number of Memecoins minted per raw unit of uAsset (the fundraising token)
     }
 
     struct GenesisData {
@@ -174,8 +174,8 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
 
     /// @notice Returns fundraising metadata for a uAsset.
     /// @param uAsset Fundraising token address.
-    /// @return minTotalFund Minimum total fund required for launch.
-    /// @return fundBasedAmount Memecoin amount minted per unit of fundraising token.
+    /// @return minTotalFund Minimum total fund required for launch, denominated in raw units of the fundraising token.
+    /// @return fundBasedAmount Memecoin amount minted per raw unit of the fundraising token.
     function fundMetaDatas(address uAsset) external view returns (uint256 minTotalFund, uint256 fundBasedAmount);
 
     /// @notice Returns the base amount POLendUpgradeable should use for verse debt capacity.
@@ -343,11 +343,13 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
         payable
         returns (uint256 govFee, uint256 memecoinFee, uint256 polFee, uint256 executorReward);
 
-    /// @notice Redeems memecoin-side LP using POL, optionally unwrapping the LP into underlying assets.
-    /// @dev When `unwrap` is false, transfers LP shares. When true, removes liquidity through the router and forwards the underlying.
+    /// @notice Deprecated: redeems memecoin-side LP using POL by transferring LP shares; reverts on `unwrap == true`.
+    /// @dev The zero-slippage unwrap this overload used to expose is sandwichable, so `unwrap == true` now reverts
+    ///      with `SlippageProtectionRequired`; new callers must use the 6-arg overload with slippage protection.
+    ///      When `unwrap` is false, transfers LP shares, equivalent to the 6-arg overload with `unwrap == false`.
     /// @param verseId The memeverse id.
     /// @param amountInPOL The POL amount to redeem.
-    /// @param unwrap Whether to remove liquidity into underlying assets instead of transferring LP shares.
+    /// @param unwrap Deprecated: must be false; true reverts with `SlippageProtectionRequired`.
     /// @return amountInLP The redeemed memecoin LP amount.
     function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool unwrap)
         external
@@ -474,8 +476,8 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     /// @notice Sets the fund metadata used for a verse uAsset token.
     /// @dev `fundBasedAmount` controls launcher-side bootstrap pricing and may be bounded by the implementation.
     /// @param uAsset The fundraising token address.
-    /// @param minTotalFund The minimum total genesis fund required for the token.
-    /// @param fundBasedAmount The memecoin amount minted per unit of fundraising token.
+    /// @param minTotalFund The minimum total genesis fund required for the token, denominated in raw units.
+    /// @param fundBasedAmount The memecoin amount minted per raw unit of the fundraising token.
     function setFundMetaData(address uAsset, uint256 minTotalFund, uint256 fundBasedAmount) external;
 
     /// @notice Updates the executor reward rate used by fee distribution.

@@ -9,7 +9,7 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 ///         Does not inherit any src/ contract. Reads/writes proxy storage slots via vm.load/vm.store.
 ///         Your test contract should inherit this helper (`is Test, MemeverseLauncherTestHelper`).
 abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
-    // Storage layout mirrors MemeverseLauncherStorage (src/verse/MemeverseLauncherUpgradeable.sol:64-95).
+    // Storage layout mirrors MemeverseLauncherStorage (src/verse/interfaces/IMemeverseLauncherStorage.sol:14).
     // Slot offsets below correspond to field positions in that struct.
     // Memeverse sub-struct layout: slots 0-3 = string offsets, slot+4 = uAsset|currentStage|flashGenesis (packed),
     //   slots 5-9 = addresses, 10 = endTime|unlockTime, 11 = omnichainIds length.
@@ -52,7 +52,7 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
 
     // ── Read methods ──
 
-    /// @notice Read preorderStates[verseId] from proxy (mirrors TestBase.getPreorderStateForTest)
+    /// @notice Read preorderStates[verseId] from proxy
     function getPreorderStateForTest(address proxy, uint256 verseId)
         public
         view
@@ -65,7 +65,7 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
     }
 
     /// @notice Read claimable preorder memecoin after vesting from proxy
-    ///         mirrors MemeverseLauncherUpgradeable.sol:435-465, uses FullMath.mulDiv
+    ///         mirrors MemeverseLauncherLib.sol:227-260, uses FullMath.mulDiv
     function claimablePreorderMemecoinForTest(address proxy, uint256 verseId, address account)
         public
         view
@@ -88,7 +88,7 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
 
         if (userFunds == 0 || totalFunds == 0) return 0;
 
-        // — Vesting calculation (mirrors MemeverseLauncherUpgradeable.sol:454-465) —
+        // — Vesting calculation (mirrors MemeverseLauncherLib.sol:247-259) —
         uint256 purchasedMemecoin = FullMath.mulDiv(settledMemecoin, userFunds, totalFunds);
         if (purchasedMemecoin <= claimedMemecoin) return 0;
 
@@ -260,17 +260,21 @@ abstract contract MemeverseLauncherTestHelper is StorageSlotPrimitives {
 
     // ── Dynamic array fields ──
 
-    /// @notice Set omnichainIds for a verse. Writes length at the array slot
-    ///         and element data at keccak256(slot).
+    /// @notice Set omnichainIds for a verse. Writes length at the array slot; uint32 elements
+    ///         pack 8 per slot, element i living at bytes (i % 8) * 4 of slot keccak256(slot) + i / 8.
     function setOmnichainIdsForTest(address proxy, uint256 verseId, uint32[] memory chainIds) internal {
         bytes32 base = _mappingSlot(OFF_MEMEVERSES, verseId);
         bytes32 arraySlot = bytes32(uint256(base) + 11);
         // Write length
         _writeSlot(proxy, arraySlot, bytes32(chainIds.length));
-        // Write each element
+        // Write packed element data at keccak256(arraySlot)
         bytes32 dataSlot = keccak256(abi.encode(arraySlot));
-        for (uint256 i = 0; i < chainIds.length; i++) {
-            _writeSlot(proxy, bytes32(uint256(dataSlot) + i), bytes32(uint256(chainIds[i])));
+        for (uint256 slotIndex = 0; slotIndex * 8 < chainIds.length; slotIndex++) {
+            uint256 packed = 0;
+            for (uint256 offset = 0; offset < 8 && slotIndex * 8 + offset < chainIds.length; offset++) {
+                packed |= uint256(chainIds[slotIndex * 8 + offset]) << (offset * 32);
+            }
+            _writeSlot(proxy, bytes32(uint256(dataSlot) + slotIndex), bytes32(packed));
         }
     }
 }

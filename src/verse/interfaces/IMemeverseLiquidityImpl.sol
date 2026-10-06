@@ -40,14 +40,16 @@ interface IMemeverseLiquidityImpl {
         uint256 deadline
     ) external returns (uint256 amountInUAsset, uint256 amountInMemecoin, uint256 amountOut);
 
-    /// @notice Redeems launcher-managed memecoin-side LP using POL, optionally unwrapping into underlying.
-    ///         Approve the launcher proxy as a POL spender first (the burn is executed by the proxy on the
-    ///         caller's behalf).
+    /// @notice Deprecated: redeems launcher-managed memecoin-side LP using POL by transferring LP shares; reverts
+    ///         on `unwrap == true`. Approve the launcher proxy as a POL spender first (the burn is executed by
+    ///         the proxy on the caller's behalf).
     /// @dev Invoked via delegatecall by the facade's `redeemMemecoinLiquidity`. Under delegatecall `msg.sender`
     ///      is the original caller (POL burner, LP/refund recipient). POLendUpgradeable also reaches this entry through
-    ///      the facade callback ABI. The POL burn is executed by the launcher proxy on the caller's behalf, so
-    ///      the caller must first approve the launcher proxy as a POL spender for at least `amountInPOL`;
-    ///      otherwise the call reverts with `ERC20InsufficientAllowance`.
+    ///      the facade callback ABI. The POL burn is executed by the launcher proxy on the caller's behalf, so the
+    ///      caller must first approve the launcher proxy as a POL spender for at least `amountInPOL`;
+    ///      otherwise the call reverts with `ERC20InsufficientAllowance`. The zero-slippage unwrap this overload
+    ///      used to expose is sandwichable; `unwrap == true` now reverts with `SlippageProtectionRequired` to force
+    ///      migration to the 6-arg overload with slippage protection.
     function redeemMemecoinLiquidity(uint256 verseId, uint256 amountInPOL, bool unwrap)
         external
         returns (uint256 amountInLP);

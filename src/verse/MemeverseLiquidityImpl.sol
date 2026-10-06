@@ -63,7 +63,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         // Compute the memecoin bootstrap budget once here and forward it; the main-pool helper used to re-derive
         // it via the same MUL on the (warm) fundBasedAmount slot, so computing once saves one redundant product.
         // `fundBasedAmount` is memecoins per raw unit of `uAsset` (bakes decimals scale — see
-        // `MemeverseLauncherUpgradeable.sol:setFundMetaData` and `docs/spec/verse/config-matrix.md`);
+        // `MemeverseLauncherUpgradeable.sol:setFundMetaData`);
         // non-credit genesis intentionally supports arbitrary decimals, correct per-raw-unit calibration
         // is operator responsibility.
         uint256 mainPoolMemecoinBudget =
@@ -442,7 +442,7 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         // is enforced cross-file via ExactInputPartialFill (SettlementFacet.sol::settlementUnlockCallback) — this
         // MIN/MAX is the v4 tick-range safety bound, not a slippage intent.
         uint160 sqrtPriceLimitX96 = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
-        // Use exact allowance for hook settlement (was _safeApproveInf). totalFunds is known.
+        // Use exact allowance for hook settlement: totalFunds is known.
         if (uAsset != NATIVE) _safeApprove(uAsset, hookAddress, totalFunds);
         // Settlement goes through the hook's dedicated preorder-settlement path so preorder accounting stays isolated from public swap flow.
         BalanceDelta delta = IMemeverseUniswapHook(hookAddress)
@@ -761,11 +761,11 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
     /**
      * @dev Leveraged-side auxiliary liquidity removal — intentional 0,0 zero slippage (Accepted Risk, not a defect):
      * Liveness over precision tradeoff. Settlement is an internal protocol path with no user-supplied amountMin;
-     * the 5-step atomic unlock _capture -> stage=Unlocked -> settle -> executeGlobalSettlement(0,0) -> write resumeTime [INV-07A]
+     * the 5-step atomic unlock _capture -> stage=Unlocked -> settle -> executeGlobalSettlement(0,0) -> write resumeTime
      * executes remove before resumeTime is written, while the in-transaction quote is already polluted by the
      * preceding public swap. A tight lower bound (95%) would let price pushing grief the flow into
      * persistent TooMuchSlippage reverts that roll back Locked->Unlocked (DOS).
-     * Using 0 guarantees unlock liveness; the price-push shortfall is bounded by settlementDustReserve [INV-13].
+     * Using 0 guarantees unlock liveness; the price-push shortfall is bounded by settlementDustReserve.
      * The trailing 24h publicSwapResumeTime blocks atomic sandwich attacks; single-leg pushing is grief-only, not profitable.
      * Monitor GlobalSettlementExecuted.totalRecoveredUAsset vs debt; no defect is declared.
      */
@@ -818,6 +818,11 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         returns (uint128 polUAssetLp, uint128 ptUAssetLp, uint128 ptPolLp, uint256 residualPOL, uint256 residualPT)
     {
         IMemeverseLauncher.AuxiliaryLiquidity storage liq = memeverseLauncherStorage.auxiliaryLiquidities[verseId];
+        // FullMath.mulDiv rounds down, and the sole caller builds totalFunds via
+        // MemeverseLauncherLib.checkedTotalGenesisFunds as normalFunds + totalLeveragedDebt, so
+        // totalLeveragedDebt <= totalFunds: each share stays <= its stored amount, keeping the
+        // subtractions below underflow-safe. The uint256 storage fields only ever hold the router's
+        // uint128 liquidity returns, so the narrowing casts cannot truncate.
         polUAssetLp = uint128(FullMath.mulDiv(liq.polUAssetLpAmount, totalLeveragedDebt, totalFunds));
         ptUAssetLp = uint128(FullMath.mulDiv(liq.ptUAssetLpAmount, totalLeveragedDebt, totalFunds));
         ptPolLp = uint128(FullMath.mulDiv(liq.ptPolLpAmount, totalLeveragedDebt, totalFunds));
@@ -837,8 +842,9 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
 
     /// See `IMemeverseLiquidityImpl.redeemMemecoinLiquidity` for the full facade-facing documentation.
     /// @dev The facade keeps the outer `versIdValidate` + `Stage.Unlocked` guards (and intentionally omits
-    ///      `whenNotPaused`); this sibling owns the input-non-zero check, POL burn, LP balance check, and
-    ///      unwrap/transfer. The 1:1 LP amount equals the burned POL amount by main-pool construction.
+    ///      `whenNotPaused`); this overload delegates to `_redeemCore`, shared with the 6-arg overload,
+    ///      which owns the input-non-zero check, POL burn, LP balance check, and unwrap/transfer.
+    ///      The 1:1 LP amount equals the burned POL amount by main-pool construction.
     ///      Deprecated: the 3-arg overload keeps zero-slippage unwrap which is sandwichable after the protection
     ///      window. New callers must use the 6-arg overload with `amount0Min`/`amount1Min`/`deadline`.
     ///      This overload now reverts on `unwrap==true` to force migration to the slippage-protected path.
@@ -851,25 +857,13 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         // The zero-slippage path is kept only for `unwrap==false` (LP transfer) which is not price-sensitive.
         require(!unwrap, IMemeverseLauncher.SlippageProtectionRequired());
 
-        IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
-        require(amountInPOL != 0, IMemeverseLauncher.ZeroInput());
-
-        require(verse.currentStage == IMemeverseLauncher.Stage.Unlocked, IMemeverseLauncher.NotUnlockedStage());
-
-        IPol(verse.pol).burn(msg.sender, amountInPOL);
-
-        amountInLP = amountInPOL;
-        address swapRouter = memeverseLauncherStorage.memeverseSwapRouter;
-        address lpToken = _pairLpToken(verse.memecoin, verse.uAsset, swapRouter);
-        require(IERC20(lpToken).balanceOf(address(this)) >= amountInLP, IMemeverseLauncher.InsufficientLPBalance());
-        emit IMemeverseLauncher.RedeemMemecoinLiquidity(verseId, msg.sender, amountInLP);
-        _transferOut(lpToken, msg.sender, amountInLP);
+        amountInLP = _redeemCore(verseId, amountInPOL, false, 0, 0, 0);
     }
 
     /// See `IMemeverseLiquidityImpl.redeemMemecoinLiquidity` for the full facade-facing documentation.
     /// @dev The facade keeps the outer `versIdValidate` + `Stage.Unlocked` guards (and intentionally omits
-    ///      `whenNotPaused`); this sibling owns the input-non-zero check, POL burn, LP balance check, and
-    ///      unwrap/transfer.
+    ///      `whenNotPaused`); this overload delegates to `_redeemCore`, shared with the deprecated 3-arg
+    ///      overload, which owns the input-non-zero check, POL burn, LP balance check, and unwrap/transfer.
     function redeemMemecoinLiquidity(
         uint256 verseId,
         uint256 amountInPOL,
@@ -878,6 +872,21 @@ contract MemeverseLiquidityImpl layout at erc7201("outrun.storage.MemeverseLaunc
         uint256 amount1Min,
         uint256 deadline
     ) external onlyDelegatecall returns (uint256 amountInLP) {
+        amountInLP = _redeemCore(verseId, amountInPOL, unwrap, amount0Min, amount1Min, deadline);
+    }
+
+    /// @dev Shared core of both `redeemMemecoinLiquidity` overloads; the deprecated 3-arg entry is the
+    ///      `unwrap == false` special case of the 6-arg one. Owns the input-non-zero check, stage check,
+    ///      POL burn, the 1:1 `amountInLP == amountInPOL` identity, LP balance check, event, and the
+    ///      transfer-or-unwrap tail.
+    function _redeemCore(
+        uint256 verseId,
+        uint256 amountInPOL,
+        bool unwrap,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        uint256 deadline
+    ) internal returns (uint256 amountInLP) {
         IMemeverseLauncher.Memeverse storage verse = memeverseLauncherStorage.memeverses[verseId];
         require(amountInPOL != 0, IMemeverseLauncher.ZeroInput());
 

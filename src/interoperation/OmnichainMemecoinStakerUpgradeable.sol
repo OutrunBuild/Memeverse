@@ -55,7 +55,7 @@ contract OmnichainMemecoinStakerUpgradeable layout at erc7201("outrun.storage.Om
     /// @dev Deterministic dependencies may be predicted addresses during CREATE3 deployment, so
     ///      initialization checks non-zero addresses without requiring code to exist yet. The initial
     ///      owner zero-check is enforced by `__OutrunOwnable_init` (`OwnableInvalidOwner`).
-    /// @param initialOwner Address that becomes the initial owner (upgrade authorization only).
+    /// @param initialOwner Address that becomes the initial owner (upgrade authorization and gas-dust recovery).
     /// @param _localEndpoint Local LayerZero endpoint that is allowed to call `lzCompose`.
     function initialize(address initialOwner, address _localEndpoint) external initializer {
         __OutrunOwnable_init(initialOwner);

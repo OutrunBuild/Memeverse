@@ -195,7 +195,7 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
     }
 
     /// @inheritdoc IGovernanceCycleIncentivizer
-    /// @dev Computes the user's pro-rata share for each registered reward token.
+    /// @dev Computes the user's pro-rata share for each token in the previous cycle's finalized reward token list.
     function getClaimableReward(address user)
         external
         view
@@ -509,7 +509,11 @@ contract GovernanceCycleIncentivizerUpgradeable layout at erc7201("outrun.storag
 
     /**
      * @notice Unregisters a treasury token from the active cycle configuration.
-     * @dev Also clears current-cycle accounting and unregisters the reward token if necessary.
+     * @dev Also clears current-cycle accounting and unregisters the reward token if necessary. The token also
+     * leaves the finalize roll-back loop, so an unclaimed reward reserve left in an earlier cycle is no longer
+     * rolled forward at finalize; once its claim window closes it stays stranded in storage with no claim or view
+     * path. Re-registration re-seeds the ledger at `max(G - R, 0)` (G = governor custody balance, R = the
+     * previous-cycle unclaimed reserve at re-registration time), restoring ledger coverage of the custody balance.
      */
     function unregisterTreasuryToken(address token) external override onlyGovernance {
         require(governanceCycleIncentivizerStorage._treasuryTokens[token], NonRegisteredToken());

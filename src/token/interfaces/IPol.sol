@@ -29,7 +29,8 @@ interface IPol is IERC20 {
      * @param symbol_ ERC20 symbol.
      * @param memecoin_ Paired memecoin address associated with this POL token.
      * @param memeverseLauncher_ Authorized launcher controlling issuance flows.
-     * @param delegate_ LayerZero delegate used by omnichain OFT setup.
+     * @param delegate_ LayerZero delegate used by omnichain OFT setup; also set as the token's
+     *      initial owner (ownership is never renounceable).
      */
     function initialize(
         string calldata name_,

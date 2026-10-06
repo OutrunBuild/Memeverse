@@ -113,10 +113,11 @@ interface IGovernanceCycleIncentivizer {
     function getClaimableReward(address user, address token) external view returns (uint256);
 
     /**
-     * @notice Returns claimable rewards across all registered reward tokens.
+     * @notice Returns claimable rewards across the finalized reward token list of the previous cycle.
      * @dev Token order matches the returned reward array index-by-index.
+     * Returns empty arrays when the user has no votes in the previous cycle.
      * @param user Beneficiary account.
-     * @return tokens Registered reward token list considered for the query.
+     * @return tokens Finalized reward token list of the previous cycle (filtered subset distributed at its finalize).
      * @return rewards Claimable reward amounts aligned with `tokens`.
      */
     function getClaimableReward(address user) external view returns (address[] memory tokens, uint256[] memory rewards);
@@ -130,9 +131,10 @@ interface IGovernanceCycleIncentivizer {
     function getRemainingClaimableRewards(address token) external view returns (uint256 remainingReward);
 
     /**
-     * @notice Returns unclaimed reward balances for all registered reward tokens.
+     * @notice Returns unclaimed reward balances across the finalized reward token list of the previous cycle.
      * @dev Token order matches the returned reward array index-by-index.
-     * @return tokens Registered reward token list.
+     * Returns empty arrays when the previous cycle accumulated no votes.
+     * @return tokens Finalized reward token list of the previous cycle (filtered subset distributed at its finalize).
      * @return rewards Remaining claimable rewards aligned with `tokens`.
      */
     function getRemainingClaimableRewards() external view returns (address[] memory tokens, uint256[] memory rewards);

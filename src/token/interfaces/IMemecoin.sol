@@ -19,7 +19,8 @@ interface IMemecoin is IERC20 {
      * @param name_ ERC20 name.
      * @param symbol_ ERC20 symbol.
      * @param _memeverseLauncher Authorized launcher address.
-     * @param _delegate LayerZero delegate used for OFT configuration.
+     * @param _delegate LayerZero delegate used for OFT configuration; also set as the token's
+     *      initial owner (ownership is never renounceable).
      */
     function initialize(string calldata name_, string calldata symbol_, address _memeverseLauncher, address _delegate)
         external;
@@ -34,7 +35,9 @@ interface IMemecoin is IERC20 {
 
     /**
      * @notice Burns memecoin from caller-controlled supply.
-     * @dev Used by settlement and redemption flows to retire supply.
+     * @dev Called by protocol flows that permanently retire supply: leftover bootstrap budget
+     *      recovery (MemeverseLiquidityImpl), empty-vault yield burn (MemecoinYieldVault).
+     *      Redemption burns POL, not memecoin.
      * @param amount Amount to burn.
      */
     function burn(uint256 amount) external;

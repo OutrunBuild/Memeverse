@@ -38,6 +38,17 @@ library OutrunSafeERC20 {
      * calls are assumed to be successful.
      */
     function safeApprove(IERC20 token, address spender, uint256 value) internal {
+        if (!_safeApprove(token, spender, value)) {
+            revert SafeERC20FailedOperation(address(token));
+        }
+    }
+
+    /**
+     * @dev Imitates a Solidity `token.approve(spender, value)` call, relaxing the requirement on the
+     * return value: the return value is optional (but if data is returned, it must not be false).
+     * Returns false instead of reverting so wrappers can attach their own error payloads.
+     */
+    function _safeApprove(IERC20 token, address spender, uint256 value) internal returns (bool) {
         (
             bool success,
             bytes memory data
@@ -45,10 +56,7 @@ library OutrunSafeERC20 {
         ) = address(token).call(abi.encodeWithSelector(IERC20.approve.selector, spender, value));
         // Empty returndata is only trusted when the token has code (mirrors _safeTransfer/_safeTransferFrom
         // extcodesize guard). A CALL to an EOA succeeds with empty data and would otherwise be a false-positive.
-        require(
-            success && (data.length == 0 ? address(token).code.length > 0 : abi.decode(data, (bool))),
-            SafeERC20FailedOperation(address(token))
-        );
+        return success && (data.length == 0 ? address(token).code.length > 0 : abi.decode(data, (bool)));
     }
 
     /**

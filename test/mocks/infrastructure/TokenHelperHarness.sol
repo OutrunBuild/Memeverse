@@ -24,9 +24,5 @@ contract TokenHelperHarness is TokenHelper {
         _safeApprove(token, spender, value);
     }
 
-    function safeApproveInf(address token, address spender) external {
-        _safeApproveInf(token, spender);
-    }
-
     receive() external payable {}
 }

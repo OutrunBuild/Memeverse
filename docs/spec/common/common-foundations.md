@@ -30,14 +30,12 @@ swap 栈是显式例外：
 
 ## 3. Approval 语义
 
-`TokenHelper` 中的 `_safeApprove` / `_safeApproveInf` 不是普通样板代码。
+`TokenHelper.sol::_safeApprove` 不是普通样板代码。它用低层 call 直接调用 ERC20 `approve`，其关键语义是：
 
-其关键语义是：
+- 空 returndata 仅当 token 有 code 时才视为成功：向 EOA 地址的低层 CALL 同样成功且返回空数据，缺少 `token.code.length > 0` 检查会把无实现合约的 token 地址误判为 approve 成功（假阳性）
+- 有 returndata 时解码出布尔结果一并校验；call 失败或校验不通过即 revert `SafeApproveFailed(token, to, value)`
 
-- 对某些 allowance 语义不标准的 token，先清零再重设（清零仅当当前 allowance 非零时执行；已为 0 则该步是同值 no-op，直接跳过）
-- 当 allowance 低于下界时，才重新设置为 `type(uint256).max`
-
-这能降低重复 approve 与奇怪 token 行为带来的兼容性风险。
+生产路径仅按操作授予精确额度，无无限授权；launcher 的 bootstrap 与结算路径在各操作尾部显式撤销为零。`TokenHelper` 不提供无限授权 helper。
 
 ## 4. Reentrancy 语义
 

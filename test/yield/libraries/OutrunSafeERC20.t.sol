@@ -9,6 +9,7 @@ import {OutrunSafeERC20} from "../../../src/common/token/OutrunSafeERC20.sol";
 import {FalseApproveToken} from "../../mocks/common/CommonMocks.sol";
 import {SilentApproveToken} from "../../mocks/infrastructure/SilentApproveToken.sol";
 import {RevertingApproveToken} from "../../mocks/infrastructure/RevertingApproveToken.sol";
+import {MalformedApproveToken} from "../../mocks/infrastructure/MalformedApproveToken.sol";
 
 contract OutrunSafeERC20Harness {
     using OutrunSafeERC20 for IERC20;
@@ -115,5 +116,16 @@ contract OutrunSafeERC20Test is Test {
 
         assertEq(token.lastApproveSpender(), address(0xCAFE), "approve call landed on the token");
         assertEq(token.lastApproveValue(), 456, "approve value forwarded");
+    }
+
+    /// @notice Verifies `safeApprove` bubbles the decoder's own revert unchanged when the token's
+    ///         `approve` returns a malformed (non-32-byte) returndata payload: solc's `abi.decode`
+    ///         of the short payload reverts with EMPTY data, and that raw empty revert must surface —
+    ///         the wrapper must not convert it to `SafeERC20FailedOperation`.
+    function test_RevertWhen_SafeApproveApproveReturnsMalformedReturndata() external {
+        MalformedApproveToken token = new MalformedApproveToken();
+
+        vm.expectRevert(bytes(""));
+        harness.safeApprove(IERC20(address(token)), address(0xCAFE), 123);
     }
 }

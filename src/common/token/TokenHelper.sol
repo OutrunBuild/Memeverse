@@ -10,7 +10,6 @@ abstract contract TokenHelper is ReentrancyGuardTransient {
     using OutrunSafeERC20 for IERC20;
 
     address internal constant NATIVE = address(0);
-    uint256 internal constant LOWER_BOUND_APPROVAL = type(uint96).max / 2; // some tokens use 96 bits for approval
 
     error NativeValueMismatch(uint256 expected, uint256 actual);
     error NativeTransferFailed();
@@ -50,28 +49,10 @@ abstract contract TokenHelper is ReentrancyGuardTransient {
     }
 
     /// @notice Sets allowance for `to` on `token` using a low-level approve call.
-    /// @dev Some tokens require resetting allowance to zero before updating to a new value.
-    ///      Empty returndata is only trusted when the token has code (mirrors OutrunSafeERC20
-    ///      _safeTransfer/_safeTransferFrom extcodesize guard). A CALL to an EOA succeeds with
-    ///      empty data and would otherwise be a false-positive approve.
+    /// @dev Returndata trust rule is single-sourced in `OutrunSafeERC20._safeApprove`: empty returndata
+    ///      is only trusted when the token has code, since a CALL to an EOA succeeds with empty data and
+    ///      would otherwise be a false-positive approve. Keeps the richer revert context.
     function _safeApprove(address token, address to, uint256 value) internal {
-        // solhint-disable-next-line avoid-low-level-calls
-        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(IERC20.approve.selector, to, value));
-        require(
-            success && (data.length == 0 ? token.code.length > 0 : abi.decode(data, (bool))),
-            SafeApproveFailed(token, to, value)
-        );
-    }
-
-    function _safeApproveInf(address token, address to) internal {
-        if (token == NATIVE) return;
-        // Cache once. When current allowance is already 0, the reset-to-0 call below would be a
-        // same-value no-op external call (~2k gas wasted on a redundant CALL + Approval event), so
-        // skip it. USDT-style tokens only need the reset on non-zero -> non-zero; 0 -> max never does.
-        uint256 currentAllowance = IERC20(token).allowance(address(this), to);
-        if (currentAllowance < LOWER_BOUND_APPROVAL) {
-            if (currentAllowance != 0) _safeApprove(token, to, 0);
-            _safeApprove(token, to, type(uint256).max);
-        }
+        if (!OutrunSafeERC20._safeApprove(IERC20(token), to, value)) revert SafeApproveFailed(token, to, value);
     }
 }

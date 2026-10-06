@@ -176,7 +176,7 @@ V2 当前已实现的启动保护是：
 
 ### 7.2 保护窗口内应允许什么
 
-- `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap, amount0Min, amount1Min, deadline)`：burn `amountInPOL` 后令 `amountInLP = amountInPOL`；烧毁由 launcher 代理凭 allowance 代执行，调用前须先把 launcher 代理 approve 为 POL spender（额度 ≥ `amountInPOL`），否则回退 `ERC20InsufficientAllowance`；`unwrap=false` 转出 `memecoin/uAsset` LP token（忽略 `amount0Min`/`amount1Min`/`deadline`），`unwrap=true` 经 `MemeverseSwapRouter.sol::removeLiquidity` 移除 LP 并发送底层 `memecoin` 与 `uAsset`（`amount0Min`/`amount1Min`/`deadline` 做滑点/时限保护，零值无保护）
+- `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap, amount0Min, amount1Min, deadline)`：burn `amountInPOL` 后令 `amountInLP = amountInPOL`；烧毁由 launcher 代理凭 allowance 代执行，调用前须先把 launcher 代理 approve 为 POL spender（额度 ≥ `amountInPOL`），否则回退 `ERC20InsufficientAllowance`；`unwrap=false` 转出 `memecoin/uAsset` LP token（忽略 `amount0Min`/`amount1Min`/`deadline`），`unwrap=true` 经 `MemeverseSwapRouter.sol::removeLiquidity` 移除 LP 并发送底层 `memecoin` 与 `uAsset`（`amount0Min`/`amount1Min`/`deadline` 做滑点/时限保护，零值无保护）；已弃用的 3 参 overload `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap)` 仍暴露于公开 ABI，`unwrap=true` 恒回退 `SlippageProtectionRequired`（须改用 6 参 overload），`unwrap=false` 与本条 6 参路径的 `unwrap=false` 分支等价
 - `redeemAuxiliaryLiquidity`
 - `POLSplitterUpgradeable.redeemPT / redeemYT`
 - POLendUpgradeable leveraged residual claims

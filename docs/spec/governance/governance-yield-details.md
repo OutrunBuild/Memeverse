@@ -52,7 +52,7 @@ launcher 从 `memecoin/uAsset` 主池与三个辅助池捕获 fee 后，目标�
 - `memecoin` yield
   - 进入 yield 路径
 
-进一步流向（`UASSET` → `Governor.receiveTreasuryIncome`、`MEMECOIN` → `YieldVault.accumulateYields`、非合约 receiver 按 tokenType 分流：MEMECOIN→burn、UASSET→`protocolTreasury`）以 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3 为跨链终点 canonical；本链/异链分发路径见该文档 §3.1/§3.2。
+进一步流向（`UASSET` → `Governor.receiveTreasuryIncome`、`MEMECOIN` → `YieldVault.accumulateYields`、非合约 receiver 非零金额 revert `ReceiverNotDeployed`、帧可重试）以 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3 为跨链终点 canonical；本链/异链分发路径见该文档 §3.1/§3.2。
 
 ## 4. YieldVault 的份额模型
 
@@ -337,7 +337,7 @@ Incentivizer 负责把 treasury ledger 的一部分，按周期转成 reward led
 - 票权归属：Governor 投票后经 `MemecoinDaoGovernorUpgradeable.sol::_castVote` 回调 `GovernanceCycleIncentivizerUpgradeable.sol::accumCycleVotes`，票权记入 cast 时刻的当前周期（`_currentCycleId`），与提案快照所在周期解耦；跨周期边界：当投票窗口（`votingDelay + votingPeriod`，生产配置 1 天 + 1 周）跨过周期边界且 `finalizeCurrentCycle()` 已推进周期时，同一提案的票会被拆分到两个周期，分别参与各自周期的 userVotes / totalVotes 奖励分配；边界未推进：`finalizeCurrentCycle()` 未被调用时周期不推进，超时后 cast 的票仍记入原周期
 - 累计口径：`GovernanceCycleIncentivizerUpgradeable.sol::accumCycleVotes` 按每笔成功 `castVote` 的增量权重累计（含最终为 `Defeated`/`Canceled` 的提案），不做跨提案去重；周期奖励份额因此按投票量（次数×权重）分配，同一提案内多次分步投票受 `GovernorCountingFractionalUpgradeable.sol::_countVote` 的 `remainingWeight` 限额约束不超快照权；`sum(userVotes)==totalVotes` 保证 `mulDiv` 守恒
 - `finalizeCurrentCycle()` 的核心语义是账本切换与结算，不要求把 token 从 `Governor` 转入 `Incentivizer`
-- 上一周期未领完的 `rewardBalances` 会在后续 `finalizeCurrentCycle()` 时回卷到 treasury ledger
+- 上一周期未领完的 `rewardBalances` 会在后续 `finalizeCurrentCycle()` 时回卷到 treasury ledger；回卷循环只覆盖 finalize 时点仍在已注册 treasury token 列表（`_treasuryTokenList`）上的 token，已从 ledger 注销的 token 不参与回卷（注销边界语义见 §8.1）
 
 因此 reward 分发依赖的不是实时余额，而是周期化结算。
 
@@ -357,9 +357,10 @@ Incentivizer 负责把 treasury ledger 的一部分，按周期转成 reward led
 `GovernanceCycleIncentivizerUpgradeable.sol::claimReward` 只领取**紧邻上一周期**（`_currentCycleId - 1`）的奖励，且不接受 cycleId 参数，故无法补领更早周期。由此推出固定的 claim 窗口：
 
 - **窗口范围**：用户在周期 K 投票（经 `MemecoinDaoGovernorUpgradeable.sol::_castVote` 回调 `GovernanceCycleIncentivizerUpgradeable.sol::accumCycleVotes` 记入周期 K）产生的奖励，只能在 `currentCycleId == K + 1` 期间领取（即 K 成为紧邻上一周期时）；窗口关闭时机是下一次 `GovernanceCycleIncentivizerUpgradeable.sol::finalizeCurrentCycle` 把 `currentCycleId` 推进到 `K + 2` 的那一刻。
-- **错过即 forfeit**：一旦 `currentCycleId` 推进到 `K + 2` 及以后，周期 K 的 reward 份额按本节已记载的回卷机制并入后续周期 treasury ledger，不再归属原投票者，且无任何补领入口；周期 K 的 reward 不再被任何 view 或 claim 入口读取/领取（二者恒读 `currentCycleId - 1`，即 K+1 及以后，不再触及 K）。
+- **错过即 forfeit**：一旦 `currentCycleId` 推进到 `K + 2` 及以后，周期 K 的 reward 份额按本节已记载的回卷机制并入后续周期 treasury ledger（该回卷仅覆盖该次 finalize 时点仍在注册 treasury token 列表上的 token；注销边界的完整语义见下方「treasury token 注销后的 reward 残留」条），不再归属原投票者，且无任何补领入口；周期 K 的 reward 不再被任何 view 或 claim 入口读取/领取（二者恒读 `currentCycleId - 1`，即 K+1 及以后，不再触及 K）。
 - **permissionless 关窗**：`finalizeCurrentCycle` 无访问控制（见 [docs/spec/access-control.md](../access-control.md) §4），任何人都可在 `block.timestamp >= currentCycle.endTime` 后调用以推进周期，从而关闭当前领取窗口；窗口至少持续一个 `CYCLE_DURATION`（下一周期的 `endTime` 在本次 finalize 时设为 `block.timestamp + CYCLE_DURATION`，且 finalize 要求到点才能推进），无强制上限（无人调用 finalize 则窗口一直开着），但因 permissionless，第三方可在周期 `endTime` 一到就立即调用 finalize 把窗口压到该下限。
-- **历史 userVotes 残留（良性）**：错过窗口后，周期 K 的 `userVotes[user]` 不再被任何结算或 claim 路径读取或清零（`finalizeCurrentCycle` 不触碰 userVotes，`claimReward` 只清紧邻 prevCycle 的对应用户）。`GovernanceCycleIncentivizerUpgradeable.sol::getUserVotesCount` 作为只读历史 view 仍可读该周期的票数快照，但**仅作历史记录，不代表可领奖励**；这是良性的 storage 残留，无资金影响（份额已按上一条 forfeit 并入国库）。
+- **历史 userVotes 残留（良性）**：错过窗口后，周期 K 的 `userVotes[user]` 不再被任何结算或 claim 路径读取或清零（`finalizeCurrentCycle` 不触碰 userVotes，`claimReward` 只清紧邻 prevCycle 的对应用户）。`GovernanceCycleIncentivizerUpgradeable.sol::getUserVotesCount` 作为只读历史 view 仍可读该周期的票数快照，但**仅作历史记录，不代表可领奖励**；这是良性的 storage 残留，无资金影响（正常路径下份额已按上一条 forfeit 并入国库；注销边界例外见下条）。
+- **treasury token 注销后的 reward 残留（价值承载，非良性）**：治理在周期 K+1 claim 窗口内经 `GovernanceCycleIncentivizerUpgradeable.sol::unregisterTreasuryToken` 注销某 treasury token 且此后不再重新注册时，该 token 上一周期（周期 K）未领完的 reward 余额会永久滞留。窗口内的领取不受影响：`GovernanceCycleIncentivizerUpgradeable.sol::claimReward` 遍历的是周期 K finalize 时写入的冻结 `rewardTokenList` 快照，注销不触碰该快照；受影响的只是窗口关闭时（K+1 的 finalize 把 `currentCycleId` 推进到 K+2 的那次 finalize）仍未领取的份额。该剩余份额永久滞留：finalize 的回卷循环只遍历当时 live 的 treasury token 列表，滞留的 `_cycles[K].rewardBalances[token]` 既不会被清零也不会被并入后续周期 treasury ledger，且 K+2 之后不再有任何 claim 或 view 入口读取它（二者恒读 `currentCycleId - 1`），成为无任何清扫或清零路径的死 storage 条目。与上一条良性的 userVotes 残留不同，这是价值承载的残留：滞留条目代表真实托管价值，但资产并未丢失——`Governor` 始终是该资产的 canonical 托管方，Incentivizer 仅为账本（分层边界见 §7）。注销的当期副作用：该 token 已入账但未支出的当期 `treasuryBalances` 被静默清零（`TreasuryTokenUnregistered` 事件不携带金额）；注销期间 `GovernanceCycleIncentivizerUpgradeable.sol::syncTreasuryBalance` 对该 token revert `NonTreasuryToken`，记账支出路径 `Governor.sendTreasuryAssets` → `GovernanceCycleIncentivizerUpgradeable.sol::recordTreasuryAssetSpend` 对该 token 的注册校验同样失败——直至重新注册，账本对该 token 少记 `Governor` 的真实托管余额。恢复入口是重新注册：`GovernanceCycleIncentivizerUpgradeable.sol::_registerTreasuryToken` 以 §7 记载的注册时点初始入账公式重新入账（公式与 `R` 的定义以 §7 为 canonical）。在 K+2 及以后重新注册：公式读取的上一周期 reward 储备为 0，全部托管余额（含上述滞留金额）被整体重新入账——但入账的是新周期的通用 treasury ledger，按当时 `rewardRatio` 参与后续划拨（实际划拨仍以 §8 记载的全部条件为前提，含该 token 须重新注册为 reward token），不会恢复周期 K 投票者的定向 reward 份额；在 K+1 窗口内重新注册：初始入账排除仍然有效的周期 K reward 储备，且 token 重新加入回卷循环，周期 K 的储备在该次 finalize 时正常回卷。
 
 ## 9. 权限边界
 

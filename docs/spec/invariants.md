@@ -98,8 +98,9 @@
 
 - 约束（单通道供给）：`OutrunERC20Init._update`（`src/common/token/OutrunERC20Init.sol::_update`）对 `from == address(0)` 增 `_totalSupply`（mint 分支）、对 `to == address(0)` 减 `_totalSupply`（burn 分支），mint/burn 经此单一通道维护供给；token 层无独立供给字段，故各链 `totalSupply` 恒等于 Σmint − Σburn。`[代码已证]`
 - 约束（OFT 公开 send 守恒）：OFT 公开 `send`（`OutrunOFTCoreInit.sol::send`）经 `_debit`→`_burn`（`OutrunOFTInit.sol::_debit`）在源端减供给、`_credit`→`_mint`（`OutrunOFTInit.sol::_credit`）在目的端增供给，跨链两端的 `_totalSupply` 各自变化。OFT 公开 `send` 遵循官方 LayerZero OFTCore 语义，无 compose 二次 mint——源端 burn 1X、目的端经 `_credit` 单次 mint 1X（`to = address(0)` 仅重映射到 `0xdead`，mint 即终态，见 [docs/spec/interoperation/layerzero-oapp-oft.md §3.2.1](interoperation/layerzero-oapp-oft.md)），跨链通胀例外已不存在。故该守恒**无例外条件**成立。`[代码已证]`
+- 约束（credit 官方 OFT 栈同族守恒）：`GenesisCredit`（`src/credit/GenesisCredit.sol`）不经仓内 `OutrunOFT*` 栈，其跨链守恒由官方栈同族语义承载：公开 send 经 `lib/devtools/packages/oft-evm/contracts/OFTCore.sol::send` 源端 `lib/devtools/packages/oft-evm/contracts/OFT.sol::_debit`→`_burn` 减供给、目的端 `lib/devtools/packages/oft-evm/contracts/OFT.sol::_credit`→`_mint` 增供给；供给单通道为 OZ `ERC20._update`（`from == address(0)` 增 `_totalSupply`、`to == address(0)` 减 `_totalSupply`，与仓内 `OutrunERC20Init._update` 单通道同构）；`to = address(0)` 同样重映射 `0xdead`、mint 即终态，无 compose 二次 mint。故本条守恒对 credit 继承链**无例外条件**成立。`[代码已证]`
 - 价值：保证 token 单通道供给守恒在 OFT 公开 send 路径下无例外成立；该守恒无例外条件，与 INV-09 的 mint 权限约束不存在共同例外。
-- 主要锚点：`src/common/token/OutrunERC20Init.sol::_update`，`src/common/omnichain/oft/OutrunOFTInit.sol::_debit`、`::_credit`，`src/common/omnichain/oft/OutrunOFTCoreInit.sol::send`
+- 主要锚点：`src/common/token/OutrunERC20Init.sol::_update`，`src/common/omnichain/oft/OutrunOFTInit.sol::_debit`、`::_credit`，`src/common/omnichain/oft/OutrunOFTCoreInit.sol::send`，`src/credit/GenesisCredit.sol`，`lib/devtools/packages/oft-evm/contracts/OFTCore.sol::send`，`lib/devtools/packages/oft-evm/contracts/OFT.sol::_debit`、`lib/devtools/packages/oft-evm/contracts/OFT.sol::_credit`，`lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol::_update`
 
 ### INV-10 OFT compose 回调具备 replay 防护
 
@@ -229,11 +230,11 @@ settlementUAsset >= previewPTToUAsset(PT.totalSupply())
 - 约束（实际与最终 delta）：PoolManager 传入 `afterSwap` 的实际核心 delta 是完整成交校验、动态费历史更新和四路径结算的唯一真实依据；Hook charging delta 调整后的最终用户 delta 才是 Router `amountOutMinimum` / `amountInMaximum` 的唯一依据。失败交易不得收费或更新历史。
 - 约束（Referral）：每笔 rebate 守恒等式与同币种要求见 INV-20。输出侧 protocol fee 必须从实际核心毛输出或 exact-output 的固定毛额推导，不得与输入侧 LP fee 跨币种相加。
 - 约束（价格限制与容量）：原始价格限制只影响可执行性，不影响已选 `feeBps`。非零请求必须有活跃流动性，事前价格满足全范围下端点可等、上端点严格小于；用户内部有效停止价允许核心目标等于容量，但全范围端点只允许严格小于容量。非零 100% exact-output、不可完整成交、不可表示 delta 与全范围端点 equality 必须 revert。V4 `SwapMath` 的输出取整也可能把 post-swap 价格推到全范围端点；即使 core target 严格小于 capacity，此情形同样 revert `FinalTargetNotExecutable`，以避免端点仓位被取整差值耗尽。
-- 约束（报价一致性）：非零 `quoteSwapFeeWithContext`、Lens 和执行在相同完整上下文必须一致地拒绝或给出相同最终用户金额。报价只读；静态或普通调用不得写 Hook/PoolManager、settle/take 资金或调用可写外部逻辑。零金额报价仅表示兼容预览，不表示可执行交易。
+- 约束（报价一致性）：非零 `quoteSwapFeeWithContext`、Lens 和执行在相同完整上下文必须一致地拒绝或给出相同最终用户金额。报价只读；静态或普通调用不得写 Hook/PoolManager、settle/take 资金或调用可写外部逻辑。零金额报价仅表示兼容预览，不表示可执行交易。该约束不覆盖执行期输入侧费用 take 因 PoolManager 该币余额不足而整笔回滚的情形（报价只读，无法观测该余额；canonical 见 [uniswap-v4.md §3.3](swap/uniswap-v4.md)）。
 - 约束（v4 LP fee 代码事实）：新池将 v4 LP fee 初始化为零；当前源码没有 `updateDynamicLPFee`；普通 `beforeSwap` 不返回 fee override。它们是源码结构事实，不构成 runtime、deployment 或 governance check。`[代码已证]`
 - 约束（PoolManager protocol fee 外部边界）：PoolManager protocol fee 是外部 controller 的行为，不受 Memeverse 权限或保证，也不属于本任务的 protocol fee 模型。
 - 价值：将费率选择、资产归属、delta 边界、容量边界与代码结构事实收敛为可测试和可审计的一组规则，避免 fee-on-fee、跨币种守恒错误或 partial-fill 收费。
-- 主要真源：仅 [docs/spec/swap/uniswap-v4.md §3.1–§3.2](swap/uniswap-v4.md) 是本不变量规则的唯一 canonical；[docs/spec/swap/swap-flow.md §1.1](swap/swap-flow.md) 与 [docs/spec/swap/swap-integration.md §2.3.1](swap/swap-integration.md) 仅为从属非规范流程摘要／集成导览，不是共同真源。
+- 主要真源：仅 [docs/spec/swap/uniswap-v4.md §3.1–§3.2](swap/uniswap-v4.md) 是本不变量规则的唯一 canonical；报价一致性约束所引用的 take 余额边界例外以 [uniswap-v4.md §3.3](swap/uniswap-v4.md) 为 canonical；[docs/spec/swap/swap-flow.md §1.1](swap/swap-flow.md) 与 [docs/spec/swap/swap-integration.md §2.3.1](swap/swap-integration.md) 仅为从属非规范流程摘要／集成导览，不是共同真源。
 
 ### INV-23 Smart EOA transient session 的动态费隔离 `[代码已证]`
 

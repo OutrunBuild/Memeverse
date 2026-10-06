@@ -19,6 +19,7 @@
  - `MemeverseLauncherUpgradeable`（`IOFT.quoteSend/send` 分发 fee）
  - `MemeverseOmnichainInteroperation`（跨链 staking）
  - `YieldDispatcherUpgradeable`、`OmnichainMemecoinStakerUpgradeable`（compose 接收处理；staker 为 plain composer——不基于任何 OApp 基座，仅实现 compose 接收）
+ - `GenesisCredit`（credit 冷启动积分桥：直接继承官方 OFT 栈 `lib/devtools/packages/oft-evm`（remapping `@layerzerolabs/oft-evm`）+ `ERC20Pausable`，非仓内 `OutrunOFTInit` 栈，数值与管理面见 §3.5）
 
 以上为 `[代码已证]`。
 
@@ -70,13 +71,27 @@ OFT 遵循官方 LayerZero OFTCore 语义：`_lzReceive` mint 即终态 + `endpo
 
 `[代码已证]`
 
-### 3.4 OFT 精度与 dust 边界（通用，含第三方直接 `IOFT::send`）
+### 3.4 OFT 精度与 dust 边界（通用，含第三方直接 `IOFT::send`；符号锚定仓内 `OutrunOFT*` 栈，credit 路径基于官方 OFT 栈直连，见 §3.5）
 
 - `OutrunOFTCoreInit.sol::sharedDecimals` 固定 6；18 位 `Memecoin`/`MemePol` 的 `OutrunOFTCoreInit.sol::decimalConversionRate = 10**(18-6) = 1e12`（见 `OutrunOFTCoreInit.sol::decimalConversionRate`）。
 - `OutrunOFTCoreInit.sol::_removeDust` 按 `(_amountLD / rate) * rate` 截断，`OutrunOFTCoreInit.sol::_toSD` 在 `amountSD > type(uint64).max` 时 revert `AmountSDOverflowed`。`OutrunOFTCoreInit.sol::quoteOFT`/`OutrunOFTCoreInit.sol::quoteSend`/`OutrunOFTCoreInit.sol::send` 均经 `OutrunOFTCoreInit.sol::_debitView` 复用该截断。
 - 亚尘 `<rate` 在 OFT 层截断为 0：直接 `IOFT::send` 会以 `amountSentLD=0`/`amountSD=0` 上链，目标链零 mint、费不退；`MemeverseOmnichainInteroperation.sol::memecoinStaking` 与 `MemeverseSettlementImpl.sol::_sendRedeemedFeesCrossChain` 已分别用 `MemeverseOmnichainInteroperation.sol::_requireNonZeroRemoteDelivery`/`ICrossChainSendErrors::DustAmount` 在源链前置拒绝，第三方直接 `send` 需自检 `amountLD >= rate`（`OutrunOFTCoreInit.sol::quoteOFT` 返回 `amountReceivedLD == 0` 即零截断，可作判定）。
-- 非整数倍余数尘位在直接 `send` 中永久丢失；托管 staking 路径同 tx 退回该余数（见 `docs/spec/interoperation/interoperation-details.md:4.5-4.6`），通用 OFT 路径无此退款。
+- 非整数倍余数尘位在直接 `send` 中不销毁、不跨链交付，留存于发送者本地余额；托管 staking 路径因先全额拉入、同 tx 退回该余数，通用 OFT 路径无借记亦无退款（详见 `docs/spec/interoperation/interoperation-details.md` §4.5-4.6）。
 - `to == address(0)` 的 `OutrunOFTInit.sol::_credit` → `address(0xdead)` 重定向为 LayerZero 官方行为（`lib/devtools/packages/oft-evm/contracts/OFT.sol::_credit` 同款），跨链目标为零的资金入死址可视为销毁，见 `docs/spec/events.md`。
+
+`[代码已证]`
+
+### 3.5 GenesisCredit 的 OFT 数值面（官方 OFT 栈直连）
+
+- 栈归属：`GenesisCredit` 直接继承官方 OFT 栈 `lib/devtools/packages/oft-evm` 的 `OFT` 与 OZ `ERC20Pausable`（经 remapping `@layerzerolabs/oft-evm`），不继承仓内 `OutrunOFTInit`/`OutrunOFTCoreInit`；§3.4 的仓内栈符号不适用于 credit 继承链，其同族数值行为锚定官方栈符号（本节官方栈引用一律带 `lib/devtools/packages/oft-evm/contracts/` 全路径前缀）。
+- 数值面（与 §3.4 仓内栈同值同族，锚定官方符号）：
+ - `sharedDecimals` 默认 6（`lib/devtools/packages/oft-evm/contracts/OFTCore.sol::sharedDecimals`，`GenesisCredit` 无覆写）；18 位 token（`GenesisCredit` 未覆写 `decimals()`）下 `lib/devtools/packages/oft-evm/contracts/OFTCore.sol::decimalConversionRate = 1e12`；运维侧「禁止覆写为 18」的既有记载见 [docs/operations.md §3.12](../../operations.md)，此处引用不重述。
+ - `lib/devtools/packages/oft-evm/contracts/OFTCore.sol::_removeDust` 按 `(_amountLD / rate) * rate` floor 截断；`lib/devtools/packages/oft-evm/contracts/OFTCore.sol::_toSD` 在超出 `type(uint64).max` 时 revert `AmountSDOverflowed`——18 位下即单笔 `amountLD` 达约 1.84e31（2^64 × 1e12）时触发。
+ - 亚尘（`amountLD < rate`）直接 `send`：`lib/devtools/packages/oft-evm/contracts/OFTCore.sol::_debitView` 去尘后 `amountSentLD = 0`，源链 burn 0、目的链 mint 0、LayerZero 费照付不退；非零 `minAmountLD` 在同处改经 `SlippageExceeded` 前置 revert——零投递行为仅适用默认 `minAmountLD = 0` 的直接 send。
+ - 非整数倍余数不销毁、不跨链交付，留存发送者本地余额（`lib/devtools/packages/oft-evm/contracts/OFT.sol::_debit` 仅 burn 去尘值）。
+ - dust 通用语义与第三方自检要求同 §3.4 / `docs/spec/interoperation/interoperation-details.md` §4.6（交叉引用，不重述）；credit 路径无 `MemeverseOmnichainInteroperation.sol::_requireNonZeroRemoteDelivery` / `ICrossChainSendErrors::DustAmount` 封装守卫——该守卫仅覆盖托管 staking 与跨链费用分发路径。
+- 两栈 `quoteOFT` 分歧：`quoteOFT` 返回的 `oftLimit.max` 在官方栈（credit）为当前 `totalSupply()` 动态值（`lib/devtools/packages/oft-evm/contracts/OFTCore.sol::quoteOFT`），在仓内栈为常量 `type(uint64).max * decimalConversionRate`（`OutrunOFTCoreInit.sol::quoteOFT`）。集成者做最大额/上限预检时不可假设常量，也不可把仓内栈的静态上限照搬到 credit。
+- 管理面分叉：`GenesisCredit` 的 pause 为全挡——paused 时源端 `lib/devtools/packages/oft-evm/contracts/OFT.sol::_debit` burn 与目的端 `lib/devtools/packages/oft-evm/contracts/OFT.sol::_credit` mint 双向 revert（OZ `ERC20Pausable._update` 是 `_transfer`/`_mint`/`_burn` 公共 `_update` 收口上的 `whenNotPaused` 门，`GenesisCredit.sol::_update` 经 `super` 派发到它），即桥接双向皆停；owner 由 `GenesisCredit.sol` 构造器显式 `Ownable(delegate_)` 注入（plain 合约、无 initialize），与仓内栈 token initialize 时 owner == launcher 的形态不同。
 
 `[代码已证]`
 
@@ -100,7 +115,7 @@ OFT 遵循官方 LayerZero OFTCore 语义：`_lzReceive` mint 即终态 + `endpo
  - 每个 composer（`YieldDispatcherUpgradeable` / `OmnichainMemecoinStakerUpgradeable`）维护 `ComposeState{None,Settled,Released}` 互斥状态 + `settlePendingCompose(token, guid, message)` 入口，权限分列：`YieldDispatcherUpgradeable.settlePendingCompose` permissionless（接收方从 `message` 解码、不可篡改）；`OmnichainMemecoinStakerUpgradeable.settlePendingCompose` 仅接收人可调（`msg.sender == receiver`，receiver 从 hash 绑定的 `message` 解码），防第三方在 `lzCompose` 前 front-run 抢占导致用户 stake 无法入 vault 的 DoS。
  - `settlePendingCompose` 用 endpoint 公开 `composeQueue` 证明投递真实性（非零 = 已投递，`!= RECEIVED_MESSAGE_HASH` = lzCompose 未执行）+ `keccak256(message) == queueHash` 证明 message 真实性；接收方从 message 显式解码，调用者不可篡改。
  - `settlePendingCompose` / `MemecoinYieldVault.reAccumulateYields` 的 `message` 参数与目标链 composer 的 `ComposeSent` 事件 `message` 字段逐字节一致（由 `OutrunOFTCoreInit::_lzReceive` 经 `endpoint.sendCompose` 触发，即 `OFTComposeMsgCodec::encode` 的完整字节，布局 `[nonce(8)][srcEid(4)][amountLD(32)][composeFrom(32)][composeMsg]`）；恢复操作按 `guid` 过滤 `ComposeSent` 事件（`to` = 对应 composer、`from` = asset OFT、`index` = 0），原样拷贝 `message` 字段传入即可（注意：`ComposeSent` 字段均非 indexed，raw RPC 无法按 guid/to/from 做 topic 过滤，检索细节见 [docs/operations.md §3.13 步骤 1](../../operations.md)）；`ComposeSent` 的 `to` 即 compose 实际投递的 dispatcher（`reAccumulateYields` 的 `dispatcher` 参数取该值；vault 不存储 dispatcher，launcher `setYieldDispatcher` 旋转后须传 compose 实际所在的历史/当前 dispatcher），无需逐字段手工重组。
- - `YieldDispatcherUpgradeable.settlePendingCompose` 结算直接复用正向 `_settle`（单一事实源）：非合约 receiver 按 tokenType 分流（MEMECOIN → burn、UASSET → `protocolTreasury`）、越界 TokenType 在 `abi.decode` 解码边界即被拒绝（空数据回退，先于 `_settle`）；`_settle` 内的 `InvalidTokenType` 分支为当前不可达防御性 backstop——三个入口均前置过滤（`lzCompose` 经 `_parseCompose` 以 `ComposeRejected` 消费、`distributeSameChain` 经外部 calldata 解码、`settlePendingCompose` 经 `abi.decode`）；合约 receiver 按 tokenType 走 approve+pull（UASSET→governor `receiveTreasuryIncome`（pull + `treasuryBalances` 记账）、MEMECOIN→yieldVault `accumulateYields`（pull + `totalAssets` 记账））；`OmnichainMemecoinStakerUpgradeable.settlePendingCompose` 原币直接 push 给 receiver（`_transferOut`）。
+ - `YieldDispatcherUpgradeable.settlePendingCompose` 结算直接复用正向 `_settle`（单一事实源）：非合约 receiver（EOA / 未部署地址，含 `address(0)`）不再按 tokenType 分流（旧：MEMECOIN → burn、UASSET → `protocolTreasury`），非零金额在任何资金移动前 revert `ReceiverNotDeployed`——CEI 写入回滚、`composeStates` 保持 `None`、endpoint 队列 pinned，receiver 落码后重试走 `_settleToContract` 正常结算（帧可愈，不终态消费）；越界 TokenType 在 `abi.decode` 解码边界即被拒绝（空数据回退，先于 `_settle`）；`_settle` 内的 `InvalidTokenType` 分支为当前不可达防御性 backstop——三个入口均前置过滤（`lzCompose` 经 `_parseCompose` 以 `ComposeRejected` 消费、`distributeSameChain` 经外部 calldata 解码、`settlePendingCompose` 经 `abi.decode`）；合约 receiver 按 tokenType 走 approve+pull（UASSET→governor `receiveTreasuryIncome`（pull + `treasuryBalances` 记账）、MEMECOIN→yieldVault `accumulateYields`（pull + `totalAssets` 记账））；`OmnichainMemecoinStakerUpgradeable.settlePendingCompose` 原币直接 push 给 receiver（`_transferOut`）。
  - `lzCompose` 与 `settlePendingCompose` 经 `composeStates`（按 (token, guid) 键控）单向迁移互斥（None→Settled 或 None→Released，不可逆）；键控绑定真实桥接 token，防止攻击者用伪造 token 地址写自己的 `composeQueue` 槽后烧毁真实 guid 的互斥锁；endpoint 的 `RECEIVED_MESSAGE_HASH` 作纵深防御（`AlreadyExecuted` 分支在正常路径下不可达——`composeStates` 先于它拦截，仅理论窗口覆盖）；`composeStates` 置位先于外部调用（CEI）；`composeStates == Released` 后 `lzCompose` 幂等放行（no-op），使 endpoint 状态机收敛到 `ComposeDelivered` 终态。
 - replay 防护：
  - composer `composeStates` 互斥（权威）+ endpoint 原生 `lzCompose` 的 `LZ_ComposeNotFound` 防重放。

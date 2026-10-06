@@ -104,6 +104,7 @@
   - 烧毁由 launcher 代理凭 allowance 代执行：调用前须先把 launcher 代理 approve 为 POL spender（额度 ≥ `amountInPOL`），否则回退 `ERC20InsufficientAllowance`。
   - `unwrap=false`：按 `amountInLP` 转出 `memecoin/uAsset` LP token，`amount0Min`/`amount1Min`/`deadline` 忽略。
   - `unwrap=true`：按 `amountInLP` 经 `MemeverseSwapRouter.sol::removeLiquidity` 移除 `memecoin/uAsset` LP，并发送底层 `memecoin` 与 `uAsset`；`amount0Min`/`amount1Min`/`deadline` 透传至 router 做滑点保护（零值表示无保护，调用方应按容忍度设置），不满足时回退 `TooMuchSlippage` 或 `ExpiredPastDeadline`。
+- 已弃用的 3 参 overload `redeemMemecoinLiquidity(verseId, amountInPOL, unwrap)` 仍暴露于公开 ABI（`MemeverseLauncherUpgradeable.sol::redeemMemecoinLiquidity` facade）：`unwrap=true` 恒回退 `SlippageProtectionRequired`（强制迁移至 6 参 overload）；`unwrap=false` 等价于 6 参路径的 `unwrap=false` 分支。
 - 该路径是 `Unlocked` 退出路径；解锁后保护窗口内仍允许执行，但不是公开 swap。
 - `redeemAuxiliaryLiquidity`：普通用户在 `Unlocked` 后一次性领取三个辅助池普通份额 LP token，份额基准为 `userGenesisFund / totalNormalFunds`。
 - 该路径还负责分发 bootstrap residual 的 normal share：`normalResidualPOL` 与 `normalResidualPT` 按同一 `userGenesisFund / totalNormalFunds` 比例分给普通用户。
@@ -162,7 +163,7 @@
   - 辅助池 gov `PT` fee 按当前阶段转换成的 `uAsset`
     - `Locked`：经 `POLendUpgradeable.preRedeemPTFee(...)`
     - `Unlocked/settled`：经 `POLSplitterUpgradeable.redeemPT(...)`
-- 若治理链为本链或异链，token 的最终 receiver 映射（合约 receiver：`UASSET` → `Governor.receiveTreasuryIncome`、`MEMECOIN` → `YieldVault.accumulateYields`；非合约 receiver 按 tokenType 分流：MEMECOIN → burn、UASSET → `protocolTreasury`）以 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3 为跨链终点 canonical；本链/异链路径见 §3.1/§3.2。
+- 若治理链为本链或异链，token 的最终 receiver 映射（合约 receiver：`UASSET` → `Governor.receiveTreasuryIncome`、`MEMECOIN` → `YieldVault.accumulateYields`；非合约 receiver 非零金额 revert `ReceiverNotDeployed`、帧可重试）以 [docs/spec/interoperation/interoperation-details.md](../interoperation/interoperation-details.md) §3.3 为跨链终点 canonical；本链/异链路径见 §3.1/§3.2。
 - 目标：`redeemAndDistributeFees` 的 native payment 必须精确等于 required fee；underpay 与 overpay 都会 revert（实现要求“等于”，不是“大于等于”）。
 - 目标：若本次没有任何 fee 被分发，required fee 为 `0`，因此非零 `msg.value` 应 revert。
 
@@ -183,7 +184,7 @@ accounting.md 只保留对 Launcher 侧记账入口的引用：launcher 把 fee/
 - Launch fee 是在 token launch 阶段（池初始化后的一段时间窗口内）对 swap 施加的额外费率保护。
 - 每个池的 launch 时间戳在 `beforeInitialize` 中记录为 `poolLaunchTimestamp[poolId]`。
 - Launch fee 与动态费叠加取 max：`effectiveFeeBps = max(dynamicFeeBps, launchFeeBps)`。
-- **EWVWAP 豁免**：当池存在 EWVWAP 历史且交易方向回归 EWVWAP（即交易后 spot 距离 EWVWAP 更近）时，跳过全部动态费组件（adverse + volatility + short），直接返回 `baseFeeBps`。无历史时视为 adverse。此豁免大幅降低零售用户回归方向的费率负担。
+- **EWVWAP 豁免**：当池存在 EWVWAP 历史且交易方向回归 EWVWAP（即交易后 spot 距离 EWVWAP 不比交易前更远，含等距）时，跳过全部动态费组件（adverse + volatility + short），动态费侧返回 `baseFeeBps`；effective fee 仍按上文叠加规则取 `max(baseFeeBps, launchFeeBps)`，与非豁免交易共用同一 launch fee floor（无历史时视为 adverse）。launch 窗口内（`launchFeeBps > baseFeeBps` 时）豁免交易实付 `launchFeeBps` 而非 `baseFeeBps`：对不豁免时动态费组合不超过当前 `launchFeeBps` 的交易（典型零售回归单），豁免减费为零；减费幅度为 `max(dynamicFeeBps - launchFeeBps, 0)`，仅当动态费组合超过当前 `launchFeeBps` 时非零。launch fee 衰减至 `minFeeBps`（窗口结束）后，豁免交易实付 `max(baseFeeBps, minFeeBps)`；默认配置 `minFeeBps = baseFeeBps`（§7.2），实付即 `baseFeeBps`，此豁免降低零售用户回归方向费率负担的效果才完整成立。
 - 当不满足 EWVWAP 豁免时，动态费率由三部分组成：
   - **Adverse（per-address）**：基于 per-address 3 秒窗口内的累积 PIF 计算的逆向冲击费。同一地址在 3 秒内连续交易的 PIF 会累积，使拆单攻击面临与大单等同的费率。3 秒窗口从 batch 首笔交易开始计时，到期后重置。普通用户单笔交易不受影响。公式为软饱和曲线：`adverse = dffMax × effectivePif / (effectivePif + pifCap) × effectivePif / 1e6`。
   - **Volatility（per-pool）**：基于波动率偏差累加器计算的波动费。使用 sqrt 曲线平滑费率响应（避免二元跳变），累加器按价格偏差步数增长，经 10 秒 filter period 和 60 秒 decay period 衰减。实现采用整数公式 `floor(sqrt(accumulator * VOL_MAX_FEE_BPS^2 / VOL_MAX_DEVIATION_ACCUMULATOR))`；其中 `VOL_MAX_FEE_BPS = 50`、`VOL_MAX_DEVIATION_ACCUMULATOR = 1_500_000`，当累加器达到上限时精确得到 `50` bps，低累加器区间会因整数除法与整数开方产生截断。

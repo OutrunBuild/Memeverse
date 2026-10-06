@@ -15,7 +15,7 @@
 - `OmnichainMemecoinStakerUpgradeable`
   - 治理链侧接收跨链 staking compose
   - 把 memecoin 存入 yieldVault；异链 compose 时若目标 vault 不存在，走 `fallback`（回退路径），直接把到账 memecoin 转给 receiver
-  - UUPS（`ERC1967Proxy`）部署：地址稳定、可经升级修复；`localEndpoint` 与 `composeStates` 互斥锁位于 ERC-7201 namespace `outrun.storage.OmnichainMemecoinStaker`，升级保留（namespace 字段只允许尾部追加）；`lzCompose`（仅 endpoint）与 `settlePendingCompose`（仅受益人）权限面不变；owner 仅持升级授权（`_authorizeUpgrade` onlyOwner），升级权等同对滞留 bridged memecoin 的托管权（与 `YieldDispatcherUpgradeable` 同一接受的 residual）。见 `OmnichainMemecoinStakerUpgradeable.sol`
+  - UUPS（`ERC1967Proxy`）部署：地址稳定、可经升级修复；`localEndpoint` 与 `composeStates` 互斥锁位于 ERC-7201 namespace `outrun.storage.OmnichainMemecoinStaker`，升级保留（namespace 字段只允许尾部追加）；`lzCompose`（仅 endpoint）与 `settlePendingCompose`（仅受益人）权限面不变；owner 持升级授权（`_authorizeUpgrade` onlyOwner）与 native gas-dust 回收（`removeGasDust`），升级权等同对滞留 bridged memecoin 的托管权（与 `YieldDispatcherUpgradeable` 同一接受的 residual）。见 `OmnichainMemecoinStakerUpgradeable.sol`
 
 ## 3. 治理收益分发路径
 
@@ -42,12 +42,12 @@
 
 - `TokenType.MEMECOIN`
   - receiver 为合约时 -> `YieldVault.accumulateYields`
-  - receiver 不是合约时 -> burn
+  - receiver 不是合约时 -> revert `ReceiverNotDeployed`（非零金额在任何资金移动前 revert，帧保持可重试）
 - `TokenType.UASSET`
   - receiver 为合约时 -> `Governor.receiveTreasuryIncome`
-  - receiver 不是合约时 -> `_transferOut` 到 `protocolTreasury`（路由协议金库，非 burn）
+  - receiver 不是合约时 -> revert `ReceiverNotDeployed`（与 MEMECOIN 同分支，不再路由 `protocolTreasury`）
 
-> no-code receiver 现按 `tokenType` 分流：MEMECOIN 走 `IBurnable(token).burn(amount)`（`isBurned = true`）；UASSET 走 `_transferOut(token, protocolTreasury, amount)`（`isBurned` 恒为 `false`——uAsset 是仓库外 OFT，无公开单参 `burn(uint256)`，故路由 `protocolTreasury`）。该 UASSET→`protocolTreasury` 路由仅经 permissionless 直接 OFT send 命名 EOA/无代码 receiver 时可达（协议发送端恒编码 `governor`/`yieldVault`），sender 自有 uAsset 等同捐赠给 `protocolTreasury`。`protocolTreasury` 为协议级单一金库，经 `initialize` 传入、`onlyOwner` 的 `setProtocolTreasury` 可改（非零校验）。
+> no-code receiver（EOA / 未部署地址）不再按 `tokenType` 分流（旧分流已删除：MEMECOIN→`IBurnable.burn`（`isBurned = true`）、UASSET→`_transferOut` 到 `protocolTreasury`）；`_settle` 在任何资金移动前 revert 具名 error `ReceiverNotDeployed()`（定义于 `IYieldDispatcher.sol` 错误区）——CEI 写入整体回滚使帧保持可重试、资金滞留 dispatcher 可对账，receiver 落码后经 `settlePendingCompose` 免许可重试走 `_settleToContract` 正常结算（可愈帧不终态消费，与 `IComposeState` 哲学及 `NonTreasuryToken` 分支同型）；完整机制、重试步骤与协议路径动机（治理链 Locked 前跨链 fee 送无码 CREATE2 预测地址，该时序为活性前提而非损失前提）唯一权威见 [operations.md §3.13](../../operations.md)。不变项：零金额早退（`Settled` + `OFTProcessed(amount=0)`）不变；自引用消费（`ComposeRejected`）不变；`OFTProcessed`/`ComposeSettled` 的 `isBurned`/`burnedAtDispatcher` 字段保留兼容但此后恒为 `false`；`protocolTreasury` 仅保留配置面（`initialize` 参数 + `onlyOwner` 的 `setProtocolTreasury`（非零校验）+ `ProtocolTreasuryChanged` 事件），不再作为任何结算路径的资金去向。
 
 因此 `YieldDispatcherUpgradeable` 不是只处理 memecoin yield，而是统一处理 yield / treasury 两类协议收入。
 
@@ -111,8 +111,8 @@
 本节为 §4.5 的通用化补充：`OutrunOFTCoreInit.sol::sharedDecimals` 固定 6、`OutrunOFTCoreInit.sol::decimalConversionRate` 在 18 位 memecoin/MemePol 下为 `1e12`，`OutrunOFTCoreInit.sol::_removeDust`/`OutrunOFTCoreInit.sol::_toSD`/`OutrunOFTCoreInit.sol::_debitView`/`OutrunOFTCoreInit.sol::send` 的截断语义对**所有** OFT 路径生效，不限于 `MemeverseOmnichainInteroperation.sol::memecoinStaking`。
 
 - 亚尘（`amountLD < decimalConversionRate`，18 位下 `<1e12`）：`OutrunOFTCoreInit.sol::_removeDust` 截断为 0，`OutrunOFTCoreInit.sol::send` 中 `OutrunOFTInit.sol::_debit` 仅 `burn 0`、编码 `amountSD=0`，目标链 `OutrunOFTCoreInit.sol::_toLD` 兑回 0、`OutrunOFTInit.sol::_credit` mint 0，零到账但已付全额 `MessagingFee.nativeFee`，LayerZero 无自动退款。托管路径由 `MemeverseOmnichainInteroperation.sol::_requireNonZeroRemoteDelivery` 在 `MemeverseOmnichainInteroperation.sol::memecoinStaking` 的 `_transferIn` 前以 `DustAmount()` 前置拒绝；直接 `IOFT::send` 无此守卫，调用方需自检。
-- 非整数倍（`amountLD >= rate` 但 `amountLD % rate != 0`）：源链仅烧 `amountSentLD = OutrunOFTCoreInit.sol::_removeDust(amountLD)`，`amountLD - amountSentLD` 的尘位在 OFT 层永久截断丢失。托管路径在同 tx 经 `MemeverseOmnichainInteroperation.sol::memecoinStaking` 退回该余数；直接 `send` 无退款，尘位损失由调用方承担。
-- 集成要求：第三方/SDK/前端在构造 `SendParam.amountLD` 前校验 `amountLD >= OutrunOFTCoreInit.sol::decimalConversionRate` 且建议校验 `amountLD % OutrunOFTCoreInit.sol::decimalConversionRate == 0` 或向用户明示尘位损失；`OutrunOFTCoreInit.sol::quoteOFT`/`OutrunOFTCoreInit.sol::quoteSend` 的 `amountReceivedLD == 0` 可作零截断预检的精确判定，与 `MemeverseOmnichainInteroperation.sol::_requireNonZeroRemoteDelivery` 同款。
+- 非整数倍（`amountLD >= rate` 但 `amountLD % rate != 0`）：源链仅烧 `amountSentLD = OutrunOFTCoreInit.sol::_removeDust(amountLD)`，`amountLD - amountSentLD` 的余数不销毁、不跨链交付，留存于发送者本地余额（`OutrunOFTInit.sol::_debit` 仅 burn 去尘值，`send` 全程无其他余额变动）。托管 staking 路径先全额拉入、同 tx 经 `MemeverseOmnichainInteroperation.sol::memecoinStaking` 退回该余数；直接 `send` 从未借记余数、亦无退款动作，余数由持有者自行处置。跨链费用分发路径 `MemeverseSettlementImpl.sol::_sendRedeemedFeesCrossChain` 同样不退余数——发送者为该合约自身，余数滞留合约余额。
+- 集成要求：第三方/SDK/前端在构造 `SendParam.amountLD` 前校验 `amountLD >= OutrunOFTCoreInit.sol::decimalConversionRate` 且建议校验 `amountLD % OutrunOFTCoreInit.sol::decimalConversionRate == 0`（避免部分送达与余数处置的困惑）或向用户明示余数不跨链送达、留存于本地钱包（可自行处置，非损失）；`OutrunOFTCoreInit.sol::quoteOFT`/`OutrunOFTCoreInit.sol::quoteSend` 的 `amountReceivedLD == 0` 可作零截断预检的精确判定，与 `MemeverseOmnichainInteroperation.sol::_requireNonZeroRemoteDelivery` 同款。
 
 > 本边界继承自 LayerZero OFT 官方共享精度设计（`lib/devtools/packages/oft-evm/contracts/OFTCore.sol::_removeDust` 同款），非本仓新增限制；上游 `OFT.sol::_credit` 对 `to == address(0)` 的 `0xdead` 重定向亦同理见 `OutrunOFTInit.sol::_credit`。
 
@@ -138,8 +138,8 @@ replay 防护规则本体（endpoint 路径检查 `guid` 未执行、置 Settled
 
 在治理收益或异链 staking 到达治理链时，如果目标 receiver / yieldVault 不存在：
 
-- 不会默默保留悬空余额
-- 治理收益的非合约 receiver 按 tokenType 分流：MEMECOIN → burn；UASSET → `_transferOut` 到 `protocolTreasury`（UASSET no-code 的 `isBurned` 恒为 `false`，自伤捐赠语义见 §3.3）
+- 不会既不可恢复又不可对账地滞留资金（默认可愈：receiver 落码后重试；部署错配的不可愈残余见 [deployment.md §6](../verse/deployment.md)）：非合约 receiver 帧显式 revert 并保持可重试，无静默终态消费
+- 治理收益的非合约 receiver 不再终态分流（旧：MEMECOIN → burn；UASSET → `_transferOut` 到 `protocolTreasury`），现非零金额在任何资金移动前 revert `ReceiverNotDeployed`——CEI 写入回滚、`composeStates` 保持 `None`、资金滞留 dispatcher 可对账，receiver 落码后经 `settlePendingCompose` 免许可重试（统一 revert 语义与协议路径动机见 §3.3）
 - 异链 staking 的缺失 yieldVault 直接 fallback transfer 给 receiver
 
 本链 staking 的缺失 yieldVault 是显式回滚条件，不属于 fallback。

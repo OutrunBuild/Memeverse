@@ -2,6 +2,12 @@
 pragma solidity ^0.8.35;
 
 interface IPOLSplitter {
+    /// @dev Initialization-sentinel contract: `pt` is written exactly once by `initializeVerse`
+    ///      and never cleared, and no other field may be persistently written while
+    ///      `pt == address(0)` — `recordPTBackingRatio` reverts on a zero sentinel, split/merge
+    ///      are backing-ratio gated, and settle cannot commit on an uninitialized verse.
+    ///      Initialization binds only the identity fields and relies on the never-written slot
+    ///      reading zero for the rest, so a zero-sentinel struct is definitionally all-zero.
     struct SplitInfo {
         address pt;
         address yt;

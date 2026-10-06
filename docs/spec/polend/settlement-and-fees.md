@@ -752,8 +752,8 @@ Splitter 给 POLendUpgradeable 的 allowance 只在 `preRedeemedPT > 0` 时设�
 | 函数 | Caller | 状态要求 | 输入 / 零值检查 | 事件 / 配置语义 |
 | --- | --- | --- | --- | --- |
 | `registerLendMarket` | `Launcher` | market 未注册 | verse `uAsset` 必须有效，且 `settlementDustStates[uAsset].maxReserve > 0`；复制当前 `defaultInterestRate`，校验 `leveragedDebtFactor` 与利率约束 | 注册后利率固定;emit `LendMarketRegistered` |
-| `leveragedGenesis` | 用户 | Launcher verse 为 `Genesis`；market 为 `None / Genesis` | `interestAmount > 0`；该 `uAsset` 已完成全局 reserve 配置；参与地址为 `msg.sender`，无 user-address 输入；累计 `nextTotalLeveragedInterest -> previewDebt` 预检双条件见 §10.2 | `LeveragedGenesis` |
-| `leveragedGenesisWithCredit` | 用户 | Launcher verse 为 `Genesis`；market 为 `None / Genesis` | `creditAmount > 0`；该 `uAsset` 已完成全局 reserve 配置且在 `GenesisCreditFactory` 已部署对应 GenesisCredit（否则 `NoCreditForUAsset`）；对应 GenesisCredit 未处于 pause 状态（否则 `transferFrom` revert `EnforcedPause`，见 [genesis.md §4.1](genesis.md)）；参与地址为 `msg.sender`；累计 `nextTotalLeveragedInterest -> previewDebt` 预检同上（real + credit 合计吃 debt cap） | `LeveragedGenesisWithCredit` |
+| `leveragedGenesis` | 用户 | Launcher verse 为 `Genesis`；market 为 `None / Genesis` | `interestAmount > 0`；该 `uAsset` 已完成全局 reserve 配置；`user != address(0)`（否则 `ZeroInput`）；`msg.sender` 为 payer、`user` 为受益人（可分离，语义见 [genesis.md §4](genesis.md)）；累计 `nextTotalLeveragedInterest -> previewDebt` 预检双条件见 §10.2 | `LeveragedGenesis` |
+| `leveragedGenesisWithCredit` | 用户 | Launcher verse 为 `Genesis`；market 为 `None / Genesis` | `creditAmount > 0`；该 `uAsset` 已完成全局 reserve 配置且在 `GenesisCreditFactory` 已部署对应 GenesisCredit（否则 `NoCreditForUAsset`）；对应 GenesisCredit 未处于 pause 状态（否则 `transferFrom` revert `EnforcedPause`，见 [genesis.md §4.1](genesis.md)）；`user != address(0)`（否则 `ZeroInput`）；`msg.sender` 为 payer、`user` 为受益人（可分离，见 [genesis.md §4.1](genesis.md)）；累计 `nextTotalLeveragedInterest -> previewDebt` 预检同上（real + credit 合计吃 debt cap） | `LeveragedGenesisWithCredit` |
 | `markRefundable` | `Launcher` | market 为 `Genesis` | 无金额输入 | 状态改为 `Refund`;emit `MarketRefundable` |
 | `finalizeLeveragedGenesis` | `Launcher` | `Genesis -> Locked` 流程；market 为 `Genesis` | `totalLeveragedDebt > 0` | 状态改为 `Locked`，mint debt（基于合计 `totalLeveragedInterest`），真付部分 realInterest = totalLeveragedInterest - totalCreditInterest 全额转 `protocolTreasury`（credit 部分无 token 流入，跳过），burn 该 verse `totalCreditInterest` 对应的托管 GenesisCredit，emit `CreditBurned`。另无条件 emit `LeveragedGenesisFinalized`(real-only 市场 `creditBurned==0`)。finalize 不读 `maxReserve`，reserve 配置由 `registerLendMarket` 在注册时强制。GenesisCredit pause 期间 credit 部分被阻断（real-only 不受影响），见 [genesis.md §4.1](genesis.md) / [INV-27](../invariants.md) |
 | `recordLeveragedYT` | `Launcher` | market 为 `Locked` | `yt != address(0)`，`totalLeveragedYT > 0`，防重复 | 记录杠杆初始 `YT`;emit `LeveragedYTRecorded` |
@@ -770,7 +770,7 @@ Splitter 给 POLendUpgradeable 的 allowance 只在 `preRedeemedPT > 0` 时设�
 | `setMaxSettlementDustReserve` | owner | 任意 | `uAsset != address(0)`，`maxReserve > 0`，且下调时当前 `reserve <= maxReserve` | 配置该 `uAsset` 全局 settlement dust reserve 上限；不支持用 0 作为 launch-supported 运行模式 |
 | `setCreditFactory` | owner | 任意 | `newFactory != address(0)` | 替换 `GenesisCreditFactory` 地址指针，影响后续 `leveragedGenesisWithCredit` 按 `uAsset` 查 GenesisCredit 的路径;emit `CreditFactoryChanged` |
 | upgrade authorization | owner（UUPS `_authorizeUpgrade`） | 按升级框架 | 新实现初始化与存储布局必须兼容 | 不改变既有 market 语义 |
-| pause behavior | pauser / owner policy | 任意 | pause 不得阻断必要的 unlock / refund / repay 安全出口；`fundSettlementDustReserve` 视为 unlock / repay 安全出口 | pause 只限制新增资金入口和非必要领取入口。受 `whenNotPaused` 阻断与豁免的完整入口枚举唯一权威见 [docs/spec/access-control.md](../access-control.md) §3（pause 阻断资金入口；refund/用户退出/结算路径豁免）。 |
+| pause behavior | pauser / owner policy | 任意 | pause 不得阻断必要的 unlock / refund / repay 安全出口；`fundSettlementDustReserve` 视为 unlock / repay 安全出口 | 受 `whenNotPaused` 阻断与豁免的完整入口枚举（含类别口径）唯一权威见 [docs/spec/access-control.md](../access-control.md) §3。 |
 
 #### 10.2 输入校验矩阵
 
@@ -780,8 +780,8 @@ Splitter 给 POLendUpgradeable 的 allowance 只在 `preRedeemedPT > 0` 时设�
 | `preorder` | `amount > 0`，`user != address(0)`，`totalPreorderFunds + amount <= preorderCap` |
 | `redeemPT` | `amount > 0`，`to != address(0)` |
 | `redeemYT` | `amount > 0`，`to != address(0)` |
-| `leveragedGenesis` | `interestAmount > 0`；该 `uAsset` 已完成全局 reserve 配置；参与地址为 `msg.sender`，无 user-address 输入；累计 `nextTotalLeveragedInterest -> previewDebt` 必须同时满足 `previewDebt <= rawDebtCap` 与 `totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` |
-| `leveragedGenesisWithCredit` | `creditAmount > 0`；该 `uAsset` 已完成全局 reserve 配置且 `GenesisCreditFactory` 已部署对应 GenesisCredit；参与地址为 `msg.sender`；累计 `nextTotalLeveragedInterest -> previewDebt` 预检同 `leveragedGenesis` |
+| `leveragedGenesis` | `interestAmount > 0`；该 `uAsset` 已完成全局 reserve 配置；`user != address(0)`（否则 `ZeroInput`）；`msg.sender` 为 payer、`user` 为受益人；累计 `nextTotalLeveragedInterest -> previewDebt` 必须同时满足 `previewDebt <= rawDebtCap` 与 `totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS` |
+| `leveragedGenesisWithCredit` | `creditAmount > 0`；该 `uAsset` 已完成全局 reserve 配置且 `GenesisCreditFactory` 已部署对应 GenesisCredit；`user != address(0)`；`msg.sender` 为 payer、`user` 为受益人；累计 `nextTotalLeveragedInterest -> previewDebt` 预检同 `leveragedGenesis` |
 | `claimResidual` | 用户有有效利息且未领取时可标记 claimed，即使向下取整后的 payout 为 0 |
 | `getUserLeveragedDebt` | `user != address(0)`，`ZeroInput`；market 未注册时 `InvalidState` |
 | `getTotalDebtByUAsset` | `uAsset != address(0)`，`ZeroInput` |
@@ -791,6 +791,8 @@ Splitter 给 POLendUpgradeable 的 allowance 只在 `preRedeemedPT > 0` 时设�
 本节区分 deployment / proxy 初始化 ABI 与 runtime integration ABI。
 
 `initialize(...)` 是 proxy 初始化入口，用于部署编排和升级工具，不属于 Launcher / POLendUpgradeable / POLSplitterUpgradeable 运行期集成接口。`IPOLend` 与 `IPOLSplitter` 表达 runtime integration ABI；若部署脚本需要强类型 initializer，可使用单独的 initializer-only interface，不能把初始化入口误解为 per-verse 产品动作。
+
+两个 runtime integration ABI 清单逐项镜像 `IPOLend` 与 `IPOLSplitter`；`POLendUpgradeable` 与 `POLSplitterUpgradeable` 合约上另存在未纳入两接口的 accessor（`POLendUpgradeable` 的 `defaultInterestRate` / `leveragedDebtFactor` / `treasury` / `launcher` / `splitter` / `creditFactory` / `totalInterestPaid` / `residualStates`，以及 `POLSplitterUpgradeable` 的 `principalTokenImplementation` / `yieldTokenImplementation`），不在本清单收录口径内。
 
 `POLendUpgradeable` deployment / proxy 初始化 ABI：
 
@@ -802,8 +804,8 @@ function initialize(address initialOwner, uint256 interestRate_, uint256 leverag
 
 ```solidity
 function registerLendMarket(uint256 verseId) external;
-function leveragedGenesis(uint256 verseId, uint256 interestAmount) external returns (uint256 borrowedAmount);
-function leveragedGenesisWithCredit(uint256 verseId, uint256 creditAmount) external returns (uint256 borrowedAmount);
+function leveragedGenesis(uint256 verseId, uint256 interestAmount, address user) external returns (uint256 borrowedAmount);
+function leveragedGenesisWithCredit(uint256 verseId, uint256 creditAmount, address user) external returns (uint256 borrowedAmount);
 function setCreditFactory(address creditFactory) external;
 function markRefundable(uint256 verseId) external;
 function finalizeLeveragedGenesis(uint256 verseId) external;
@@ -829,6 +831,7 @@ function getTotalDebtByUAsset(address uAsset) external view returns (uint256);
 function getTotalLeveragedInterest(uint256 verseId) external view returns (uint256);
 function getTotalCreditInterest(uint256 verseId) external view returns (uint256);
 function settlementDustStates(address uAsset) external view returns (uint128 reserve, uint128 maxReserve);
+function marketUAsset(uint256 verseId) external view returns (address);
 ```
 
 `POLSplitterUpgradeable` deployment / proxy 初始化 ABI：
@@ -857,6 +860,8 @@ function getPTAndYT(uint256 verseId) external view returns (address pt, address 
 function getPTSettlementState(uint256 verseId) external view returns (address pt, bool settled);
 function getPOLAndMemecoin(uint256 verseId) external view returns (address pol, address memecoin);
 function splitInfos(uint256 verseId) external view returns (address pt, address yt, address pol, address memecoin, address uAsset, uint256 totalPOLCollateral, uint256 settlementUAsset, uint256 settlementMemecoin, uint256 ptBackingNumerator, uint256 ptBackingDenominator, bool settled);
+function preRedeemedStates(uint256 verseId) external view returns (uint256 ptAmount, uint256 uAssetBacking);
+function ptBackingRatios(uint256 verseId) external view returns (uint256 numerator, uint256 denominator);
 function getPTAndYTAndPOL(uint256 verseId) external view returns (address pt, address yt, address pol);
 function setTokenImplementations(address principalTokenImplementation_, address yieldTokenImplementation_) external;
 function launcher() external view returns (address);

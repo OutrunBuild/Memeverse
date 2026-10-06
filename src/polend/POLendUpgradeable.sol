@@ -186,16 +186,12 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         address uAsset = IMemeverseLauncher(polendStorage.launcher).getUAssetByVerseId(verseId);
         if (uAsset == address(0)) revert ZeroInput();
         if (polendStorage.settlementDustStates[uAsset].maxReserve == 0) revert InvalidConfig();
-        polendStorage.lendMarkets[verseId] = LendMarket({
-            uAsset: uAsset,
-            yt: address(0),
-            interestRate: polendStorage.defaultInterestRate,
-            totalLeveragedInterest: 0,
-            totalCreditInterest: 0,
-            totalLeveragedYT: 0,
-            state: MarketState.None,
-            creditToken: address(0)
-        });
+        // Seed only the non-zero identity/config fields: the market slot is fresh (uAsset guard
+        // above), so yt, the three interest/YT totals, state (None) and creditToken already read
+        // as their zero defaults — explicit zero stores would be pure gas cost.
+        LendMarket storage market = polendStorage.lendMarkets[verseId];
+        market.uAsset = uAsset;
+        market.interestRate = polendStorage.defaultInterestRate;
         emit LendMarketRegistered(verseId, uAsset, polendStorage.defaultInterestRate);
     }
 
@@ -228,14 +224,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         if (IMemeverseLauncher(launcher_).getStageByVerseId(verseId) != IMemeverseLauncher.Stage.Genesis) {
             revert InvalidState();
         }
-        uint256 actualNormalFunds = IMemeverseLauncher(launcher_).totalNormalFunds(verseId);
-        if (actualNormalFunds > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS) revert InvalidConfig();
-
-        uint256 nextTotalInterest = market.totalLeveragedInterest + interestAmount;
-        uint256 previewTotalDebt = Math.mulDiv(nextTotalInterest, 1e18, rate);
-        // Aggregate genesis funds include all leveraged debt already accumulated for the verse.
-        if (previewTotalDebt > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds) revert InvalidConfig();
-        if (previewTotalDebt > _debtCap(verseId, launcher_)) revert DebtCapExceeded();
+        uint256 nextTotalInterest = _checkLeverageCaps(market, verseId, interestAmount, rate, launcher_);
 
         borrowedAmount = Math.mulDiv(interestAmount, 1e18, rate);
         polendStorage.leveragedInterestPaid[verseId][user] += interestAmount;
@@ -300,13 +289,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
             market.creditToken = credit;
         }
 
-        uint256 actualNormalFunds = IMemeverseLauncher(launcher_).totalNormalFunds(verseId);
-        if (actualNormalFunds > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS) revert InvalidConfig();
-
-        uint256 nextTotalInterest = market.totalLeveragedInterest + creditAmount;
-        uint256 previewTotalDebt = Math.mulDiv(nextTotalInterest, 1e18, rate);
-        if (previewTotalDebt > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds) revert InvalidConfig();
-        if (previewTotalDebt > _debtCap(verseId, launcher_)) revert DebtCapExceeded();
+        uint256 nextTotalInterest = _checkLeverageCaps(market, verseId, creditAmount, rate, launcher_);
 
         borrowedAmount = Math.mulDiv(creditAmount, 1e18, rate);
         polendStorage.creditInterestPaid[verseId][user] += creditAmount;
@@ -434,8 +417,12 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         // Stage 3 — persist residual claim state, mark the market settled, and clear the leveraged
         // debt from the per-uAsset global ledger BEFORE the external repay, so the ledger decrement
         // cannot be skipped or observed mid-repay.
-        polendStorage.residualStates[verseId] =
-            ResidualState({residualUAsset: residualUAsset, residualMemecoin: burnedPolMemecoin});
+        // Settlement runs once per verse (Locked-only, Settled is terminal), so the residual slot
+        // is fresh: zero residuals are already the storage default and only non-zero values pay
+        // for a store.
+        ResidualState storage residual = polendStorage.residualStates[verseId];
+        if (residualUAsset != 0) residual.residualUAsset = residualUAsset;
+        if (burnedPolMemecoin != 0) residual.residualMemecoin = burnedPolMemecoin;
         market.state = MarketState.Settled;
         if (debt != 0) polendStorage.globalDebtByUAsset[marketUAsset_] -= debt;
 
@@ -489,7 +476,8 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
 
     /// @notice Pre-redeem a PT-fee amount and mint its uAsset backing ahead of settlement (onlyLauncher).
     ///         Accrues the resulting uAsset backing to the per-uAsset global debt and mints it as
-    ///         uAsset to `mintTo` so the splitter can later redeem/burn it.
+    ///         uAsset to `mintTo` for immediate distribution; `settle` later repays an equal amount
+    ///         to POLendUpgradeable out of the settled uAsset.
     /// @param verseId Verse identifier (must be in Locked state).
     /// @param ptAmount PT amount to pre-redeem (must be > 0).
     /// @param mintTo Recipient of the minted uAsset backing (must not be zero).
@@ -714,6 +702,8 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         // aggregate rationale: `leveragedGenesisWithCredit`'s @dev.
         uint256 totalInterest =
             polendStorage.leveragedInterestPaid[verseId][user] + polendStorage.creditInterestPaid[verseId][user];
+        // Debt is derived by dividing by the rate — direction rationale: `_totalLeveragedDebt`
+        // (authoritative).
         return Math.mulDiv(totalInterest, 1e18, market.interestRate);
     }
 
@@ -768,6 +758,12 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
 
     // --- Internal ---
 
+    /// Authoritative direction rationale for every interest -> debt conversion in this contract:
+    /// the market's `interestRate` is the interest's share of the borrowed notional (1e18-scaled,
+    /// in (0, 1e18], fixed at registration), not a principal-times-rate rate. Debt derives by
+    /// DIVIDING: debt = interest * 1e18 / interestRate >= interest, because the payer fronts only
+    /// the interest slice of the notional the launcher borrows in full. The division is deliberate:
+    /// switching it to multiplication would invert the leverage from 1/rate-x to rate-x.
     function _totalLeveragedDebt(LendMarket storage market) internal view returns (uint256) {
         if (market.interestRate == 0) revert InvalidState();
         return Math.mulDiv(market.totalLeveragedInterest, 1e18, market.interestRate);
@@ -801,6 +797,30 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         if (maxTotalInterest > totalInterest) remainingAdditionalInterest = maxTotalInterest - totalInterest;
     }
 
+    /// Shared cap pre-check for both leveraged-genesis entries: derives the post-payment total
+    /// interest and its implied debt, then reverts when the aggregate genesis-funds ceiling or
+    /// the per-verse debt cap would be exceeded. Check order is load-bearing: the aggregate
+    /// ceiling is enforced before the per-verse cap, and both entries call this after their own
+    /// stage/credit-token resolution, keeping revert precedence identical across the two paths.
+    function _checkLeverageCaps(
+        LendMarket storage market,
+        uint256 verseId,
+        uint256 amount,
+        uint256 rate,
+        address launcher_
+    ) internal view returns (uint256 nextTotalInterest) {
+        uint256 actualNormalFunds = IMemeverseLauncher(launcher_).totalNormalFunds(verseId);
+        if (actualNormalFunds > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS) revert InvalidConfig();
+
+        nextTotalInterest = market.totalLeveragedInterest + amount;
+        // Debt is derived by dividing by the rate — direction rationale: `_totalLeveragedDebt`
+        // (authoritative).
+        uint256 previewTotalDebt = Math.mulDiv(nextTotalInterest, 1e18, rate);
+        // Aggregate genesis funds include all leveraged debt already accumulated for the verse.
+        if (previewTotalDebt > MAX_SUPPORTED_TOTAL_GENESIS_FUNDS - actualNormalFunds) revert InvalidConfig();
+        if (previewTotalDebt > _debtCap(verseId, launcher_)) revert DebtCapExceeded();
+    }
+
     function _validateLeverageConfig(uint256 interestRate, uint256 debtFactor) internal pure {
         if (debtFactor == 0) revert ZeroInput();
         if (debtFactor > MAX_LEVERAGED_DEBT_FACTOR) revert InvalidConfig();
@@ -816,13 +836,8 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
 
     function _mulDiv1e18Saturating(uint256 a, uint256 b) internal pure returns (uint256 result) {
         unchecked {
-            uint256 prod0;
-            uint256 prod1;
-            assembly ("memory-safe") {
-                let mm := mulmod(a, b, not(0))
-                prod0 := mul(a, b)
-                prod1 := sub(sub(mm, prod0), lt(mm, prod0))
-            }
+            // 512-bit product a * b = prod1 * 2^256 + prod0 (Math.mul512 returns high, low).
+            (uint256 prod1, uint256 prod0) = Math.mul512(a, b);
 
             // Saturate when floor(a * b / 1e18) would be >= type(uint256).max.
             // (2^256 - 1) * 1e18 = (1e18 - 1) * 2^256 + (2^256 - 1e18)

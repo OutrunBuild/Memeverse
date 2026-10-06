@@ -432,8 +432,8 @@ else:
 `POLendUpgradeable` 侧 `InvalidState` 使用场景：
 
 - `registerLendMarket`：market 已注册；Launcher 返回的 verse `uAsset == address(0)` 时 `ZeroInput`
-- `leveragedGenesis`：market 未注册或非 None/Genesis，Launcher verse 非 Genesis
-- `leveragedGenesisWithCredit`：market 未注册或非 None/Genesis，Launcher verse 非 Genesis，`creditAmount == 0` 时 `ZeroInput`，该 `uAsset` 在 `GenesisCreditFactory` 未部署对应 GenesisCredit（revert `NoCreditForUAsset`），或该 verse `uAsset` / 缓存的 GenesisCredit decimals 非 18（revert `CreditDecimalsMismatch`，仅在该 verse 首次解析 credit token 时触发）
+- `leveragedGenesis`：market 未注册或非 None/Genesis，Launcher verse 非 Genesis，`interestAmount == 0 || user == address(0)` 时 `ZeroInput`
+- `leveragedGenesisWithCredit`：market 未注册或非 None/Genesis，Launcher verse 非 Genesis，`creditAmount == 0 || user == address(0)` 时 `ZeroInput`，该 `uAsset` 在 `GenesisCreditFactory` 未部署对应 GenesisCredit（revert `NoCreditForUAsset`），或该 verse `uAsset` / 缓存的 GenesisCredit decimals 非 18（revert `CreditDecimalsMismatch`，仅在该 verse 首次解析 credit token 时触发）
 - `markRefundable`：market 非 Genesis
 - `finalizeLeveragedGenesis`：market 非 Genesis
 - `recordLeveragedYT`：market 非 Locked 或已记录
@@ -453,6 +453,8 @@ else:
 - `POLendUpgradeable.sol::setMaxSettlementDustReserve`：`uAsset == 0 || maxReserve == 0`
 - `POLendUpgradeable.sol::preRedeemPTFee`：`ptAmount == 0 || mintTo == address(0)`
 - `POLendUpgradeable.sol::burnPreRedeemedBacking`：`amount == 0`
+- `POLendUpgradeable.sol::leveragedGenesis`：`interestAmount == 0 || user == address(0)`
+- `POLendUpgradeable.sol::leveragedGenesisWithCredit`：`creditAmount == 0 || user == address(0)`
 
 `POLSplitterUpgradeable` 侧 `InvalidState` 等价错误：
 

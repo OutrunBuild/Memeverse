@@ -182,7 +182,7 @@ totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS
 
 ## 4. 杠杆创世
 
-`leveragedGenesis(verseId, interestAmount)`：
+`leveragedGenesis(verseId, interestAmount, user)`：
 
 - 只允许 Launcher 已注册的 verse
 - 只允许 Launcher verse 处于 `Genesis`
@@ -191,9 +191,9 @@ totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS
 - market 为其他状态时 revert
 - `interestAmount` 必须大于 0
 - 要求该 verse 的 `uAsset` 已完成全局 reserve 配置：`settlementDustStates[uAsset].maxReserve > 0`
-- 参与地址为 `msg.sender`，没有 user-address 输入
-- 从用户转入该 verse 的 `uAsset` 到 `POLendUpgradeable`
-- 只累计 `leveragedInterestPaid[verseId][msg.sender]`
+- `msg.sender` 是 payer（uAsset 资金来源），`user` 是头寸受益人，二者可分离（支持代付）；头寸与后续 claim 权利均归 `user`，`user == address(0)` 时 revert `ZeroInput`
+- 从 payer（`msg.sender`）转入该 verse 的 `uAsset` 到 `POLendUpgradeable`
+- 只累计 `leveragedInterestPaid[verseId][user]`（按受益人 `user` 记账）
 - 只累计 `market.totalLeveragedInterest`
 - 不 mint `uAsset`
 - 不存储 `borrowedAmount`
@@ -202,12 +202,14 @@ totalNormalFunds + previewDebt <= MAX_SUPPORTED_TOTAL_GENESIS_FUNDS
 事件：
 
 ```solidity
-event LeveragedGenesis(uint256 indexed verseId, address indexed user, uint256 interestAmount);
+event LeveragedGenesis(uint256 indexed verseId, address indexed payer, address indexed user, uint256 interestAmount);
 ```
+
+`payer` 为出资的 `msg.sender`，`user` 为头寸受益人（代付场景二者分离）。
 
 ### 4.1 GenesisCredit 抵扣杠杆创世
 
-`leveragedGenesisWithCredit(verseId, creditAmount)`：冷启动期允许用户用 GenesisCredit（与该 verse `uAsset` raw-unit 1:1 对应的 ERC20/OFT）抵扣杠杆利息，等价于"免费借贷参与创世"。
+`leveragedGenesisWithCredit(verseId, creditAmount, user)`：冷启动期允许用 GenesisCredit（与该 verse `uAsset` raw-unit 1:1 对应的 ERC20/OFT）抵扣杠杆利息，等价于"免费借贷参与创世"。`msg.sender` 是 payer（资金来源），头寸记在 `user` 名下（可异于 payer，与 `leveragedGenesis` 同口径）。
 
 GenesisCredit 当前固定 18 decimals，因此 credit path 只支持 `uAsset.decimals() == 18` 的 verse。`GenesisCreditFactory.deployCredit` 必须拒绝非 18-dec `uAsset`（revert `InvalidUAssetDecimals`），`POLendUpgradeable.leveragedGenesisWithCredit` 在该 verse 首次解析 credit token 的流程内（经 `creditOf(uAsset)` 取得地址后、写入 `market.creditToken` 缓存前）校验 `uAsset` 与 GenesisCredit 均为 18 decimals；不满足时 revert `CreditDecimalsMismatch`。非 18-dec `uAsset` 仍可走普通 `genesis` 与真付 `uAsset` 的 `leveragedGenesis`，但不得启用 GenesisCredit credit path。
 
@@ -219,11 +221,11 @@ GenesisCredit 当前固定 18 decimals，因此 credit path 只支持 `uAsset.de
 - 要求该 verse 的 `uAsset` 已完成全局 reserve 配置
 - 经 `GenesisCreditFactory` 查该 `uAsset` 对应的 GenesisCredit 地址；无则 revert `NoCreditForUAsset`（credit 是可选路径，不影响正常 `leveragedGenesis`）
 - `GenesisCredit.transferFrom(msg.sender, POLendUpgradeable, creditAmount)` → 托管到 `POLendUpgradeable`（**不 burn**，finalize 时统一 burn）
-- `creditInterestPaid[verseId][msg.sender] += creditAmount`
+- `creditInterestPaid[verseId][user] += creditAmount`（按受益人 `user` 记账）
 - `market.totalCreditInterest += creditAmount`
 - `market.totalLeveragedInterest += creditAmount`（real + credit 合计，用于 launch gate + D 推导 + debt cap 预检）
 - 不 mint `uAsset`（与正常路径一致，mint 发生在 finalize）
-- emit `LeveragedGenesisWithCredit(verseId, user, creditAmount)`
+- emit `LeveragedGenesisWithCredit(verseId, payer, user, creditAmount)`（`payer` 为 `msg.sender`）
 
 Debt cap 预检与正常路径同一公式，用 `nextTotalLeveragedInterest`（real + credit 合计）推导 `previewDebt <= debtCap`。GenesisCredit 抵扣的利息同样吃 debt cap，不引入额外 uAsset 通胀上限放松。
 
@@ -232,7 +234,7 @@ GenesisCredit 抵扣的利息**计入 `minTotalFund` 启动门槛且不封顶**�
 事件：
 
 ```solidity
-event LeveragedGenesisWithCredit(uint256 indexed verseId, address indexed user, uint256 creditAmount);
+event LeveragedGenesisWithCredit(uint256 indexed verseId, address indexed payer, address indexed user, uint256 creditAmount);
 ```
 
 GenesisCredit pause 开关与 credit 路径的交互：GenesisCredit 提供 owner-only 转账暂停开关（`src/credit/GenesisCredit.sol::pause` / `::unpause`，继承 OZ `ERC20Pausable`，override `_update` 的标准全挡模式；与 `setMerkleRoot` 复用同一 OZ Ownable 权限面，不新增角色；`paused()` view 查询状态）。pause 期间该 GenesisCredit 的所有 ERC20 状态变更路径 revert OZ `EnforcedPause`，对 POLend 侧 credit 路径的影响：

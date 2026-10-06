@@ -225,19 +225,15 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         PrincipalToken(pt).initialize(string.concat("PT-", name), string.concat("PT-", symbol), address(this));
         YieldToken(yt).initialize(string.concat("YT-", name), string.concat("YT-", symbol), address(this));
 
-        polSplitterStorage.splitInfos[verseId] = SplitInfo({
-            pt: pt,
-            yt: yt,
-            pol: pol,
-            memecoin: memecoin,
-            uAsset: uAsset,
-            totalPOLCollateral: 0,
-            settlementUAsset: 0,
-            settlementMemecoin: 0,
-            ptBackingNumerator: 0,
-            ptBackingDenominator: 0,
-            settled: false
-        });
+        // Bind only the non-zero identity fields: the info slot is fresh (pt guard above), so
+        // settled, the collateral/settlement totals and the backing ratio already read as their
+        // zero defaults — explicit zero stores would be pure gas cost.
+        SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
+        info.pt = pt;
+        info.yt = yt;
+        info.pol = pol;
+        info.memecoin = memecoin;
+        info.uAsset = uAsset;
         emit VerseInitialized(verseId, pt, yt);
 
         return (pt, yt);
@@ -322,8 +318,10 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
 
         SplitInfo storage info = polSplitterStorage.splitInfos[verseId];
         // The backing ratio is set once, before any PT is minted, and is immutable thereafter —
-        // `redeemPT` applies this single ratio to all PT, so every holder must share one fixed backing
-        // (INV-14/19). `ptBackingNumerator != 0` is the true one-shot guard; the
+        // `redeemPT` applies this single ratio to all PT, so every holder must share one fixed backing.
+        // `numerator` is the main pool's actual executed uAsset spend and `denominator` the actually
+        // minted main pool LP raw amount, never a budget estimate. `ptBackingNumerator != 0` is the
+        // true one-shot guard; the
         // `totalPOLCollateral != 0` check is defense-in-depth, since `split`/`merge` gate on
         // `_requirePTBackingRatio`, meaning collateral != 0 already implies the ratio is set.
         if (info.pt == address(0)) revert InvalidClaim();
@@ -462,7 +460,7 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
     /// @dev Floor rounding (mulDiv default) is deliberate, not a default to "refine":
     ///      floor subadditivity — `floor(a)+floor(b) ≤ floor(a+b)` — guarantees the sum of
     ///      per-PT redemptions never exceeds the floored total reserve `_ptReservedUAsset`,
-    ///      which settle guarantees is `≤ settlementUAsset` (INV-18). So every PT holder can
+    ///      which settle guarantees is `≤ settlementUAsset`. So every PT holder can
     ///      always redeem in full, and any rounding dust stays in the contract (the YT pool).
     ///      Switching to ceil reverses the inequality (`Σceil ≥ ceil(Σ)`): early redeemers
     ///      would over-claim and a late PT holder would hit redeemPT's coverage revert. Do

@@ -106,7 +106,7 @@ burn POL collateral
 
 `preRedeemedPT` 逻辑上是 `{ ptAmount, uAssetBacking }` 结构，包含 `Locked` 阶段主动分发时已经预兑付给 Memeverse DAO governor 路径的杠杆侧 PT fee raw 数量及其固定 ratio 转换后的 backing。不得用两个互不关联的 mapping 表达该状态。
 
-> **代码实现说明：** `preRedeemedPT` 是逻辑状态名（`{ ptAmount, uAssetBacking }` 结构）；代码通过 `preRedeemedStates(verseId)` 访问完整 `PreRedeemedState` 结构体，标量 `ptAmount` 经 `.ptAmount` 字段读取。
+> **代码实现说明：** `preRedeemedPT` 是逻辑状态名（`{ ptAmount, uAssetBacking }` 结构）；存储层为 `PreRedeemedState` 结构体（内部 storage），对外经 `preRedeemedStates(verseId)` 以两标量返回值 `(uint256 ptAmount, uint256 uAssetBacking)` 暴露。
 
 `preRedeemedPT` 不包含：
 

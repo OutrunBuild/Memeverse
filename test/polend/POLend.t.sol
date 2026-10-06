@@ -546,9 +546,10 @@ contract POLendTest is Test, POLendStorageHelper {
         external
     {
         // normalFunds at the uint128 ceiling => aggregate genesis cap = 0. With
-        // actualNormalFunds == MAX the strict-`>` L233 guard is false, and the huge
-        // capBase keeps L238 (_debtCap) out of reach, so any credit debt hits only
-        // the L237 MAX_SUPPORTED guard => InvalidConfig (not DebtCapExceeded).
+        // actualNormalFunds == MAX the strict-`>` normalFunds guard in _checkLeverageCaps
+        // is false, and the huge capBase keeps the _debtCap check out of reach, so any
+        // credit debt hits only the MAX_SUPPORTED aggregate guard
+        // => InvalidConfig (not DebtCapExceeded).
         // Mirrors the real-uAsset aggregate case (testLeveragedGenesis_...Aggregate...).
         uint256 verseId = 251;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();
@@ -579,9 +580,10 @@ contract POLendTest is Test, POLendStorageHelper {
         external
     {
         // normalFunds = MAX - 10 => aggregate genesis cap = 10. capBase = max(1,
-        // MAX-10) is huge, so L238 (_debtCap) never binds; the L237 MAX guard is the
-        // sole gate. First credit(10) fits exactly (previewDebt == cap); a further
-        // credit(1) pushes cumulative debt to 11 > 10 => InvalidConfig.
+        // MAX-10) is huge, so the _debtCap check in _checkLeverageCaps never binds; the
+        // MAX_SUPPORTED aggregate guard is the sole gate. First credit(10) fits exactly
+        // (previewDebt == cap); a further credit(1) pushes cumulative debt to 11 > 10
+        // => InvalidConfig.
         // Mirrors the real-uAsset cumulative case (testLeveragedGenesis_...Cumulative...).
         uint256 verseId = 252;
         MockSplitterForPOLend localSplitter = new MockSplitterForPOLend();

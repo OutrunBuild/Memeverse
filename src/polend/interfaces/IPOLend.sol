@@ -10,6 +10,12 @@ interface IPOLend {
         Refund
     }
 
+    /// @dev Registration-sentinel contract: `uAsset` is written exactly once by
+    ///      `registerLendMarket` and never cleared, and no other field may be persistently
+    ///      written while `uAsset == address(0)` — every later writer gates on a post-registration
+    ///      value (`interestRate != 0` or the `state` machine). Registration seeds only the
+    ///      non-zero fields and relies on the never-written slot reading zero for the rest, so a
+    ///      zero-sentinel struct is definitionally all-zero.
     struct LendMarket {
         address uAsset;
         address yt;

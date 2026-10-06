@@ -129,8 +129,7 @@ contract MemeverseRegistrarAtLocalTest is Test {
     function setUp() external {
         registrationCenter = new MockAtLocalRegistrationCenter();
         launcher = new MockAtLocalLauncher();
-        registrar =
-            new MemeverseRegistrarAtLocal(OWNER, address(registrationCenter), address(launcher), address(0x1234));
+        registrar = new MemeverseRegistrarAtLocal(OWNER, address(registrationCenter), address(launcher));
     }
 
     /// @notice Test quote register builds memeverse param and returns center quote.
@@ -305,15 +304,12 @@ contract MemeverseRegistrarAtLocalTest is Test {
         registrar.renounceOwnership();
     }
 
-    /// @notice Test the inherited constructor rejects a zero launcher or zero endpoint registry.
+    /// @notice Test the inherited constructor rejects a zero launcher.
     /// @dev The guard lives on `MemeverseRegistrarAbstract`; it reuses this interface's `ZeroAddress()`
     ///      declaration, so the interface-qualified selector pins both the inherited and the leaf guards.
-    function test_RevertWhen_ConstructorGetsZeroLauncherOrRegistry() external {
+    function test_RevertWhen_ConstructorGetsZeroLauncher() external {
         vm.expectRevert(IMemeverseRegistrarAtLocal.ZeroAddress.selector);
-        new MemeverseRegistrarAtLocal(OWNER, address(registrationCenter), address(0), address(0x1234));
-
-        vm.expectRevert(IMemeverseRegistrarAtLocal.ZeroAddress.selector);
-        new MemeverseRegistrarAtLocal(OWNER, address(registrationCenter), address(launcher), address(0));
+        new MemeverseRegistrarAtLocal(OWNER, address(registrationCenter), address(0));
     }
 
     function _registrationParam() internal view returns (IMemeverseRegistrationCenter.RegistrationParam memory param) {

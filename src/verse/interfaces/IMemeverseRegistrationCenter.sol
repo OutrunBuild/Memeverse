@@ -12,7 +12,7 @@ interface IMemeverseRegistrationCenter {
         string symbol; // Token symbol
         string uri; // Token icon uri
         string desc; // Description
-        string[] communities; // Community, index -> 0:Website, 1:X, 2:Discord, 3:Telegram, >4:Others
+        string[] communities; // Community, index -> 0:Website, 1:X, 2:Discord, 3:Telegram, >=4:Others
         uint256 durationDays; // DurationDays of genesis stage
         uint32[] omnichainIds; // ChainIds of the token's omnichain(EVM)
         address uAsset; // uAsset of Memeverse

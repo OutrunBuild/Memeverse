@@ -86,6 +86,13 @@ contract MockReadinessRegistrar {
 
 contract MockReadinessProxyDeployer {
     address public memeverseLauncher;
+    // Read back by the readiness gate's baked-implementation probes; mirror the immutable getters
+    // MemeverseProxyDeployer exposes for its constructor-burned implementation pins.
+    address public memecoinImplementation;
+    address public polImplementation;
+    address public vaultImplementation;
+    address public governorImplementation;
+    address public incentivizerImplementation;
 
     constructor(address launcher_) {
         memeverseLauncher = launcher_;
@@ -93,6 +100,20 @@ contract MockReadinessProxyDeployer {
 
     function setLauncher(address launcher_) external {
         memeverseLauncher = launcher_;
+    }
+
+    function setImplementationPointers(
+        address memecoin_,
+        address pol_,
+        address vault_,
+        address governor_,
+        address incentivizer_
+    ) external {
+        memecoinImplementation = memecoin_;
+        polImplementation = pol_;
+        vaultImplementation = vault_;
+        governorImplementation = governor_;
+        incentivizerImplementation = incentivizer_;
     }
 }
 
@@ -248,6 +269,20 @@ contract TestableMemeverseScript is MemeverseScript {
 
     function setMemeverseOmnichainInteroperationForTest(address interoperation) external {
         MEMEVERSE_OMNICHAIN_INTEROPERATION = interoperation;
+    }
+
+    function setBakedImplementationPinsForTest(
+        address memecoin_,
+        address pol_,
+        address vault_,
+        address governor_,
+        address incentivizer_
+    ) external {
+        MEMECOIN_IMPLEMENTATION = memecoin_;
+        POL_IMPLEMENTATION = pol_;
+        MEMECOIN_VAULT_IMPLEMENTATION = vault_;
+        MEMECOIN_GOVERNOR_IMPLEMENTATION = governor_;
+        CYCLE_INCENTIVIZER_IMPLEMENTATION = incentivizer_;
     }
 
     function configureReadinessHarness(
@@ -754,6 +789,24 @@ contract MemeverseScriptLauncherDeploymentTest is Test {
         registrar.setLauncher(registrarLauncher == address(0) ? launcherAddress : registrarLauncher);
         proxyDeployer.setLauncher(proxyDeployerLauncher == address(0) ? launcherAddress : proxyDeployerLauncher);
         dispatcher.setLauncher(dispatcherLauncher == address(0) ? launcherAddress : dispatcherLauncher);
+        // Five baked-implementation probes run mid-gate: each reads a pointer back on the deployer,
+        // requires code at it, and compares it with the script-side pin. Point all five at fresh
+        // code-bearing addresses (the 0x60xx etch family) and pin the same values script-side, so
+        // every readiness test can reach its own targeted named check past the probes.
+        address memecoinImpl = address(uint160(0x600A));
+        address polImpl = address(uint160(0x600B));
+        address vaultImpl = address(uint160(0x600C));
+        address governorImpl = address(uint160(0x600D));
+        address incentivizerImpl = address(uint160(0x600E));
+        vm.etch(memecoinImpl, type(MockReadinessHook).creationCode);
+        vm.etch(polImpl, type(MockReadinessHook).creationCode);
+        vm.etch(vaultImpl, type(MockReadinessHook).creationCode);
+        vm.etch(governorImpl, type(MockReadinessHook).creationCode);
+        vm.etch(incentivizerImpl, type(MockReadinessHook).creationCode);
+        proxyDeployer.setImplementationPointers(memecoinImpl, polImpl, vaultImpl, governorImpl, incentivizerImpl);
+        scriptHarness.setBakedImplementationPinsForTest(
+            memecoinImpl, polImpl, vaultImpl, governorImpl, incentivizerImpl
+        );
         // Readiness reads back launcher.lzEndpointRegistry and compares it with the script-side pin
         // (set to LZ_ENDPOINT_REGISTRY by setUp's configureLauncherDeployment); keep them consistent
         // and give the pin code (REGISTRY_CODE_NOT_READY) like the creditFactory/staker etches below.

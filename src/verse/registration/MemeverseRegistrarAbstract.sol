@@ -12,22 +12,17 @@ import {IMemeverseRegistrarAtLocal} from "../interfaces/IMemeverseRegistrarAtLoc
  */
 abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
     address public immutable MEMEVERSE_LAUNCHER;
-    address public immutable LZ_ENDPOINT_REGISTRY;
 
     /// @notice Reverts when ownership renunciation is attempted.
     /// @dev Repo invariant: ownership is never renounceable.
     error OwnershipRenounceDisabled();
 
-    constructor(address _owner, address _memeverseLauncher, address _lzEndpointRegistry) Ownable(_owner) {
+    constructor(address _owner, address _memeverseLauncher) Ownable(_owner) {
         // Reuses the existing `IMemeverseRegistrarAtLocal.ZeroAddress()` declaration instead of declaring a
         // duplicate here: the local leaf inherits both this contract and that interface, and Solidity rejects
         // the same error name declared in two base contracts. Selector is identical to the repo-wide guards.
-        require(
-            _memeverseLauncher != address(0) && _lzEndpointRegistry != address(0),
-            IMemeverseRegistrarAtLocal.ZeroAddress()
-        );
+        require(_memeverseLauncher != address(0), IMemeverseRegistrarAtLocal.ZeroAddress());
         MEMEVERSE_LAUNCHER = _memeverseLauncher;
-        LZ_ENDPOINT_REGISTRY = _lzEndpointRegistry;
     }
 
     /// @notice Ownership renunciation is permanently disabled.

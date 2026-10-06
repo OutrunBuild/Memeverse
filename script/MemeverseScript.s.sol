@@ -157,22 +157,17 @@ contract MemeverseScript is BaseScript {
     }
 
     function _loadScriptEnv() internal {
-        owner = vm.envAddress("OWNER");
         factory = vm.envAddress("OUTRUN_AMM_FACTORY");
         router = vm.envAddress("LIQUIDITY_ROUTER");
         OUTRUN_DEPLOYER = vm.envAddress("OUTRUN_DEPLOYER");
 
-        MEMECOIN_IMPLEMENTATION = vm.envAddress("MEMECOIN_IMPLEMENTATION");
-        POL_IMPLEMENTATION = vm.envAddress("POL_IMPLEMENTATION");
-        MEMECOIN_VAULT_IMPLEMENTATION = vm.envAddress("MEMECOIN_VAULT_IMPLEMENTATION");
-        MEMECOIN_GOVERNOR_IMPLEMENTATION = vm.envAddress("MEMECOIN_GOVERNOR_IMPLEMENTATION");
-        CYCLE_INCENTIVIZER_IMPLEMENTATION = vm.envAddress("CYCLE_INCENTIVIZER_IMPLEMENTATION");
-
+        // owner / LZ_ENDPOINT_REGISTRY / MEMEVERSE_REGISTRAR / MEMEVERSE_PROXY_DEPLOYER /
+        // MEMEVERSE_YIELD_DISPATCHER / MEMECOIN_IMPLEMENTATION / POL_IMPLEMENTATION /
+        // MEMECOIN_VAULT_IMPLEMENTATION / MEMECOIN_GOVERNOR_IMPLEMENTATION /
+        // CYCLE_INCENTIVIZER_IMPLEMENTATION are loaded solely by the tail _loadReadinessEnv()
+        // call below: this function performs no reads between its own assignments and that
+        // tail call, so loading them here too would only duplicate the identical env read.
         MEMEVERSE_REGISTRATION_CENTER = vm.envAddress("MEMEVERSE_REGISTRATION_CENTER");
-        LZ_ENDPOINT_REGISTRY = vm.envAddress("LZ_ENDPOINT_REGISTRY");
-        MEMEVERSE_REGISTRAR = vm.envAddress("MEMEVERSE_REGISTRAR");
-        MEMEVERSE_PROXY_DEPLOYER = vm.envAddress("MEMEVERSE_PROXY_DEPLOYER");
-        MEMEVERSE_YIELD_DISPATCHER = vm.envAddress("MEMEVERSE_YIELD_DISPATCHER");
         MEMEVERSE_SWAP_ROUTER = _optionalEnvAddress("MEMEVERSE_SWAP_ROUTER");
         MEMEVERSE_UNISWAP_HOOK = _optionalEnvAddress("MEMEVERSE_UNISWAP_HOOK");
         POLEND_INTEREST_RATE = vm.envUint("POLEND_INTEREST_RATE");
@@ -193,7 +188,13 @@ contract MemeverseScript is BaseScript {
     // optional pattern instead: run() deploys it and _deployMemeverseOmnichainInteroperation writes
     // the address back, so the single-session deploy flow never needs an env pre-fill; a standalone
     // readiness run must provide the env, and a missing var fails readiness with the named
-    // INTEROPERATION_CODE_NOT_READY (optional load yields address(0), which has no code).
+    // INTEROPERATION_CODE_NOT_READY (optional load yields address(0), which has no code). The five
+    // implementation vars (MEMECOIN_IMPLEMENTATION, POL_IMPLEMENTATION, MEMECOIN_VAULT_IMPLEMENTATION,
+    // MEMECOIN_GOVERNOR_IMPLEMENTATION, CYCLE_INCENTIVIZER_IMPLEMENTATION) are REQUIRED here too:
+    // _requireDeploymentReady reads the pointers burned into MemeverseProxyDeployer's constructor
+    // back, checks code at them, and compares them against these pins, so the standalone readiness
+    // entry must load them from env; run() gets them from this same loader via _loadScriptEnv's
+    // _loadReadinessEnv tail call.
     function _loadReadinessEnv() internal {
         owner = vm.envAddress("OWNER");
         UUSD = vm.envAddress("UUSD");
@@ -204,6 +205,11 @@ contract MemeverseScript is BaseScript {
         MEMEVERSE_YIELD_DISPATCHER = vm.envAddress("MEMEVERSE_YIELD_DISPATCHER");
         LZ_ENDPOINT_REGISTRY = vm.envAddress("LZ_ENDPOINT_REGISTRY");
         OMNICHAIN_MEMECOIN_STAKER = vm.envAddress("OMNICHAIN_MEMECOIN_STAKER");
+        MEMECOIN_IMPLEMENTATION = vm.envAddress("MEMECOIN_IMPLEMENTATION");
+        POL_IMPLEMENTATION = vm.envAddress("POL_IMPLEMENTATION");
+        MEMECOIN_VAULT_IMPLEMENTATION = vm.envAddress("MEMECOIN_VAULT_IMPLEMENTATION");
+        MEMECOIN_GOVERNOR_IMPLEMENTATION = vm.envAddress("MEMECOIN_GOVERNOR_IMPLEMENTATION");
+        CYCLE_INCENTIVIZER_IMPLEMENTATION = vm.envAddress("CYCLE_INCENTIVIZER_IMPLEMENTATION");
         MEMEVERSE_OMNICHAIN_INTEROPERATION = _optionalEnvAddress("MEMEVERSE_OMNICHAIN_INTEROPERATION");
         expectedRegistrationDay = vm.envOr("EXPECTED_DAY", DAY);
         POLEND = _optionalEnvAddress("POLEND");
@@ -339,6 +345,19 @@ contract MemeverseScript is BaseScript {
         address cycleIncentivizerImplementation = IOutrunDeployer(OUTRUN_DEPLOYER)
             .deploy(incentivizerSalt, type(GovernanceCycleIncentivizerUpgradeable).creationCode);
 
+        // These pins are burned into MemeverseProxyDeployer's constructor args and cloned per verse;
+        // an actual address that diverges from its pin means the env was not pre-filled for the
+        // current nonce — fail fast so clones cannot derive from a stale or codeless implementation.
+        require(memecoinImplementation == MEMECOIN_IMPLEMENTATION, "MEMECOIN_IMPLEMENTATION_DEPLOY_MISMATCH");
+        require(
+            memecoinYieldVaultImplementation == MEMECOIN_VAULT_IMPLEMENTATION,
+            "MEMECOIN_VAULT_IMPLEMENTATION_DEPLOY_MISMATCH"
+        );
+        require(
+            cycleIncentivizerImplementation == CYCLE_INCENTIVIZER_IMPLEMENTATION,
+            "CYCLE_INCENTIVIZER_IMPLEMENTATION_DEPLOY_MISMATCH"
+        );
+
         console.log("MemecoinImplementation deployed on %s", memecoinImplementation);
         console.log("MemecoinYieldVaultImplementation deployed on %s", memecoinYieldVaultImplementation);
         console.log("GovernanceCycleIncentivizerImplementation deployed on %s", cycleIncentivizerImplementation);
@@ -351,6 +370,7 @@ contract MemeverseScript is BaseScript {
         bytes memory memecoinPOLCreationCode = abi.encodePacked(type(MemePol).creationCode, abi.encode(localEndpoint));
         address memecoinPOLImplementation =
             IOutrunDeployer(OUTRUN_DEPLOYER).deploy(memecoinPOLSalt, memecoinPOLCreationCode);
+        require(memecoinPOLImplementation == POL_IMPLEMENTATION, "POL_IMPLEMENTATION_DEPLOY_MISMATCH");
 
         console.log("MemecoinPOLImplementation deployed on %s", memecoinPOLImplementation);
     }
@@ -359,6 +379,10 @@ contract MemeverseScript is BaseScript {
         bytes32 governorSalt = _saltFrom(SALT_MEMECOIN_GOVERNOR_IMPLEMENTATION, nonce);
         address memecoinDaoGovernorImplementation =
             IOutrunDeployer(OUTRUN_DEPLOYER).deploy(governorSalt, type(MemecoinDaoGovernorUpgradeable).creationCode);
+        require(
+            memecoinDaoGovernorImplementation == MEMECOIN_GOVERNOR_IMPLEMENTATION,
+            "MEMECOIN_GOVERNOR_IMPLEMENTATION_DEPLOY_MISMATCH"
+        );
 
         console.log("MemecoinDaoGovernorImplementation deployed on %s", memecoinDaoGovernorImplementation);
     }
@@ -410,7 +434,7 @@ contract MemeverseScript is BaseScript {
         bytes32 salt = _saltFrom(SALT_LZ_ENDPOINT_REGISTRY, nonce);
         address lzEndpointRegistryAddr = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
         // LZ_ENDPOINT_REGISTRY is a required env pin consumed by downstream constructor args (center/
-        // registrar/interoperation) and readiness probes; a CREATE3 actual address that diverges from it
+        // interoperation) and readiness probes; a CREATE3 actual address that diverges from it
         // means the env was not pre-filled for the current nonce — fail fast so the fresh deploy cannot
         // be orphaned while the whole system wires itself to the env address.
         require(lzEndpointRegistryAddr == LZ_ENDPOINT_REGISTRY, "REGISTRY_DEPLOY_MISMATCH");
@@ -434,14 +458,13 @@ contract MemeverseScript is BaseScript {
         address localEndpoint = endpoints[uint32(block.chainid)];
         require(localEndpoint != address(0), "ZERO_LOCAL_ENDPOINT");
         if (block.chainid == vm.envUint("BSC_TESTNET_CHAINID")) {
-            encodedArgs = abi.encode(owner, MEMEVERSE_REGISTRATION_CENTER, MEMEVERSE_LAUNCHER, LZ_ENDPOINT_REGISTRY);
+            encodedArgs = abi.encode(owner, MEMEVERSE_REGISTRATION_CENTER, MEMEVERSE_LAUNCHER);
             creationBytecode = type(MemeverseRegistrarAtLocal).creationCode;
         } else {
             encodedArgs = abi.encode(
                 owner,
                 localEndpoint,
                 MEMEVERSE_LAUNCHER,
-                LZ_ENDPOINT_REGISTRY,
                 uint32(vm.envUint("BSC_TESTNET_EID")),
                 uint32(vm.envUint("BSC_TESTNET_CHAINID")),
                 150000,
@@ -484,6 +507,12 @@ contract MemeverseScript is BaseScript {
 
         bytes32 salt = _saltFrom(SALT_MEMEVERSE_PROXY_DEPLOYER, nonce);
         address memeverseProxyDeployer = IOutrunDeployer(OUTRUN_DEPLOYER).deploy(salt, creationCode);
+        // MEMEVERSE_PROXY_DEPLOYER is a required env pin burned into the launcher's initialize args;
+        // a CREATE3 actual address that diverges from it means the env was not pre-filled for the
+        // current nonce — fail fast in simulation, before broadcast, so the fresh deploy cannot be
+        // orphaned while the launcher initializes itself to the stale env address. Pre-fill the pin
+        // via _getDeployedMemeverseProxyDeployer(nonce).
+        require(memeverseProxyDeployer == MEMEVERSE_PROXY_DEPLOYER, "MEMEVERSE_PROXY_DEPLOYER_DEPLOY_MISMATCH");
 
         console.log("MemeverseProxyDeployer deployed on %s", memeverseProxyDeployer);
     }
@@ -877,11 +906,12 @@ contract MemeverseScript is BaseScript {
     ///      registration for this uAsset can be accepted before every other surface is in place.
     ///      Each step reads its surface back and asserts readiness before moving on; the call is
     ///      owner-only via the broadcaster modifier, so a mid-way failure leaves the uAsset fully
-    ///      unregistered (whitelist never set). Standalone runs must provide the _loadReadinessEnv
-    ///      vars (OWNER, UUSD, UETH, MEMEVERSE_LAUNCHER, MEMEVERSE_REGISTRAR,
-    ///      MEMEVERSE_PROXY_DEPLOYER, MEMEVERSE_YIELD_DISPATCHER, LZ_ENDPOINT_REGISTRY,
-    ///      OMNICHAIN_MEMECOIN_STAKER, MEMEVERSE_OMNICHAIN_INTEROPERATION, POLEND, POLSPLITTER), plus
-    ///      MEMEVERSE_REGISTRATION_CENTER and, when withCredit is true, CREDIT_FACTORY_PROXY.
+    ///      unregistered (whitelist never set). Standalone runs must provide every env var
+    ///      hard-loaded by `_loadReadinessEnv` (the single authority for the standalone readiness
+    ///      surface), plus the onboard-specific MEMEVERSE_REGISTRATION_CENTER and, when withCredit
+    ///      is true, CREDIT_FACTORY_PROXY (optional otherwise). All envs hard-loaded by
+    ///      _loadReadinessEnv are required on every standalone entry that calls it (including
+    ///      onboardUAsset), regardless of whether that entry's own checks consume them.
     /// @param registrationCenter RegistrationCenter holding the whitelist (completion marker).
     /// @param uAsset The new uAsset to onboard (cannot be zero).
     /// @param minTotalFund Launcher minimum total fund for the uAsset.
@@ -943,6 +973,75 @@ contract MemeverseScript is BaseScript {
         require(_readSupportedUAsset(registrationCenter, uAsset), "SUPPORTED_UASSET_NOT_READY");
     }
 
+    /// @notice Read-only per-chain registration readiness gate, runnable standalone on ANY fan-out
+    ///         target chain — including remote chains where the registration-center-based entries
+    ///         (`openSupportedUAssetsAfterReadiness` / `onboardUAsset`) cannot run, because the center
+    ///         contract only exists on the center chain.
+    /// @dev Asserts, on THIS chain's own contracts, that the union of the canonical UETH/UUSD pair and
+    ///      `uAssets` has a non-zero settlement-dust reserve cap (POLendUpgradeable refuses market
+    ///      registration until the cap is configured) and usable launcher fund metadata; that the
+    ///      endpoint registry's chain pairs match this run's pins; that the five implementation
+    ///      pointers baked into MemeverseProxyDeployer's constructor carry code and match this run's
+    ///      env pins; that the launcher's full wiring identity (registrar, proxyDeployer,
+    ///      yieldDispatcher, polend, polSplitter, lzEndpointRegistry) matches this run's env pins via
+    ///      the shared `_requireLauncherWiringReady` helper — the launcher resolves registration ACL,
+    ///      clone derivation, dst eids and POLend routing through its own baked pointers, never
+    ///      through the env pins; and that the launcher's launch/settlement/
+    ///      liquidity/fee-preview-reader siblings carry code. Every probe run here mirrors its
+    ///      `_requireDeploymentReady` counterpart verbatim, but the per-chain probe set is a subset:
+    ///      dispatcher/splitter code checks, endpoint-capability probes, and swap readiness remain
+    ///      deployment-gate-only.
+    ///      Ordering contract: every remote fan-out target
+    ///      chain must pass this gate before the supported-uAsset whitelist opens at the center.
+    ///      Read-only — no broadcast, no state writes; loads env via `_loadReadinessEnv` and the
+    ///      chain list via `_chainsInit`, so a standalone run must provide every required readiness
+    ///      env.
+    function checkPerChainRegistrationReadiness(address[] calldata uAssets) public {
+        _loadReadinessEnv();
+        _chainsInit();
+        _checkPerChainRegistrationReadiness(uAssets);
+    }
+
+    /// @dev Gate body behind `checkPerChainRegistrationReadiness` (the public entry loads the env
+    ///      and chain pins first). Asserts the per-chain registration surface — the union of the
+    ///      canonical UETH/UUSD pair and `uAssets` must have a configured settlement-dust reserve
+    ///      cap and usable launcher fund metadata — plus the deployment-shared probes this chain's
+    ///      own contracts must still satisfy: registry chain-pair content, the deployer's five
+    ///      baked implementation pointers (code + identity against this run's pins), the launcher's
+    ///      full wiring identity (the six registrar/proxyDeployer/yieldDispatcher/polend/polSplitter/
+    ///      lzEndpointRegistry readbacks of the shared `_requireLauncherWiringReady` helper, same
+    ///      pointers and error strings as `_requireDeploymentReady`), and launcher sibling code.
+    ///      Every probe run here mirrors its `_requireDeploymentReady` counterpart verbatim; the
+    ///      per-chain probe set is a subset — dispatcher/splitter code checks, endpoint-capability
+    ///      probes, and swap readiness remain deployment-gate-only.
+    function _checkPerChainRegistrationReadiness(address[] calldata uAssets) internal view {
+        _requireContractCode(MEMEVERSE_LAUNCHER, "LAUNCHER_CODE_NOT_READY");
+        // Registrar code check mirrors the deployment gate: the launcher-wiring identity readback below
+        // cannot catch a wrong env value when the launcher and the pin share the same codeless
+        // prediction — and the registrar is the registration-path ACL consumer on this chain.
+        _requireContractCode(MEMEVERSE_REGISTRAR, "REGISTRAR_CODE_NOT_READY");
+        _requireContractCode(POLEND, "POLEND_CODE_NOT_READY");
+        _requireContractCode(LZ_ENDPOINT_REGISTRY, "REGISTRY_CODE_NOT_READY");
+        _requireContractCode(MEMEVERSE_PROXY_DEPLOYER, "PROXY_DEPLOYER_CODE_NOT_READY");
+        _requireRegistryPairsReady();
+        // Same five baked-pointer readbacks as _requireDeploymentReady: a codeless or drifted
+        // pointer must block this chain's registration gate too, not only the deployment gate.
+        _requireBakedImplementationPointersReady();
+        _requireCanonicalPairReady();
+        // Same sibling-code contract as _requireDeploymentReady's tail: a codeless sibling would
+        // defer a setup mistake on this chain into a user-facing registration-time revert.
+        IMemeverseLauncher.LauncherContracts memory launcherContracts =
+            IMemeverseLauncher(MEMEVERSE_LAUNCHER).getLauncherContracts();
+        _requireLauncherWiringReady(launcherContracts);
+        _requireLauncherSiblingsReady(launcherContracts);
+        for (uint256 i = 0; i < uAssets.length; ++i) {
+            address uAsset = uAssets[i];
+            require(uAsset != address(0), "ZERO_UASSET");
+            _requireReserveReady(uAsset, "RESERVE_NOT_READY");
+            _requireFundMetaDataReady(uAsset, "FUND_METADATA_NOT_READY");
+        }
+    }
+
     /// @dev Registration-center readiness gate: the center must have code, its DAY() must equal the
     ///      network's expected registration day (`expectedRegistrationDay`, loaded from EXPECTED_DAY env),
     ///      and its lzEndpointRegistry() storage pointer must match the script pin — the center consumes
@@ -1000,45 +1099,14 @@ contract MemeverseScript is BaseScript {
         // Production exposes launcher wiring through the aggregate getter, not legacy public fields.
         IMemeverseLauncher.LauncherContracts memory launcherContracts =
             IMemeverseLauncher(MEMEVERSE_LAUNCHER).getLauncherContracts();
-        require(launcherContracts.memeverseRegistrar == MEMEVERSE_REGISTRAR, "LAUNCHER_REGISTRAR_NOT_READY");
-        require(
-            launcherContracts.memeverseProxyDeployer == MEMEVERSE_PROXY_DEPLOYER, "LAUNCHER_PROXY_DEPLOYER_NOT_READY"
-        );
-        require(launcherContracts.yieldDispatcher == MEMEVERSE_YIELD_DISPATCHER, "LAUNCHER_YIELD_DISPATCHER_NOT_READY");
-        require(_readAddress(MEMEVERSE_LAUNCHER, "polend()") == POLEND, "LAUNCHER_POLEND_NOT_READY");
-        require(launcherContracts.polSplitter == POLSPLITTER, "LAUNCHER_POLSPLITTER_NOT_READY");
-        // The registry pointer is initialize-only on the launcher (setter removed), so a mismatch
-        // with the script pin cannot be remediated in place — readiness must block (redeploy is the
-        // only fix).
-        require(launcherContracts.lzEndpointRegistry == LZ_ENDPOINT_REGISTRY, "LAUNCHER_REGISTRY_NOT_READY");
+        _requireLauncherWiringReady(launcherContracts);
         // Same identity readback for the interoperation's own immutable: gov-chain sends resolve dst
         // eids through it, and like every constructor-baked pointer a mismatch is redeploy-only.
         require(
             _readAddress(MEMEVERSE_OMNICHAIN_INTEROPERATION, "LZ_ENDPOINT_REGISTRY()") == LZ_ENDPOINT_REGISTRY,
             "INTEROPERATION_REGISTRY_NOT_READY"
         );
-        // Registry CONTENT probe: the identity readbacks above pin WHICH registry every consumer
-        // points at, not WHAT it maps — and launcher/center/interoperation resolve every dst eid
-        // through lzEndpointIdOfChain, so pairs that drifted from this run's endpointIds silently
-        // misroute all omnichain sends. Epistemic limit: inside a single run() the probe is
-        // tautological (deploy writes the registry pairs from the same env endpointIds came from);
-        // its value is the other paths — a standalone readiness run whose EID env forked from the
-        // deploying session, the pin pointing at a stale pre-nonce-bump registry instance, or an
-        // owner setLzEndpointIds re-point between deploy and this gate. Post-open re-pointing is
-        // beyond the reach of any gate and stays an operational invariant.
-        uint256 chainCount = omnichainIds.length;
-        for (uint32 i = 0; i < chainCount; i++) {
-            uint32 chainId = omnichainIds[i];
-            require(_readLzEndpointIdOfChain(chainId) == endpointIds[chainId], "REGISTRY_PAIR_NOT_READY");
-        }
-        // Env-independent local anchor: the local slice of the registry is compared against the
-        // endpoint's own eid() read back on-chain — the one chain with in-place ground truth. This
-        // kills the "registry and env share the same wrong value" blind spot for the local chain;
-        // remote chains have no readable ground truth here, so their slice stays env-compared above.
-        require(
-            _readLzEndpointIdOfChain(uint32(block.chainid)) == _readUint32(endpoints[uint32(block.chainid)], "eid()"),
-            "REGISTRY_LOCAL_EID_NOT_READY"
-        );
+        _requireRegistryPairsReady();
         require(
             _readAddress(MEMEVERSE_REGISTRAR, "MEMEVERSE_LAUNCHER()") == MEMEVERSE_LAUNCHER,
             "REGISTRAR_LAUNCHER_NOT_READY"
@@ -1047,6 +1115,9 @@ contract MemeverseScript is BaseScript {
             _readAddress(MEMEVERSE_PROXY_DEPLOYER, "memeverseLauncher()") == MEMEVERSE_LAUNCHER,
             "PROXY_DEPLOYER_LAUNCHER_NOT_READY"
         );
+        // Implementation-pointer probes: rationale and epistemic limits live on the shared helper,
+        // which both gate families call so the probe set cannot fork between chain classes.
+        _requireBakedImplementationPointersReady();
         require(
             _readAddress(MEMEVERSE_YIELD_DISPATCHER, "memeverseLauncher()") == MEMEVERSE_LAUNCHER,
             "YIELD_DISPATCHER_LAUNCHER_NOT_READY"
@@ -1064,14 +1135,130 @@ contract MemeverseScript is BaseScript {
         require(_readAddress(POLSPLITTER, "launcher()") == MEMEVERSE_LAUNCHER, "POLSPLITTER_LAUNCHER_NOT_READY");
         require(_readPolSplitterPolend() == POLEND, "POLSPLITTER_POLEND_NOT_READY");
 
-        _requireReserveReady(UETH, "UETH_RESERVE_NOT_READY");
-        _requireReserveReady(UUSD, "UUSD_RESERVE_NOT_READY");
-        _requireFundMetaDataReady(UETH, "UETH_FUND_METADATA_NOT_READY");
-        _requireFundMetaDataReady(UUSD, "UUSD_FUND_METADATA_NOT_READY");
+        _requireCanonicalPairReady();
         _requireSwapReady(swapRouter, hook);
 
         // These siblings are delegatecall/view targets on user paths; opening before they have code
         // would defer setup mistakes into user-facing runtime failures.
+        _requireLauncherSiblingsReady(launcherContracts);
+    }
+
+    /// @dev Registry content probe shared by `_requireDeploymentReady` and
+    ///      `checkPerChainRegistrationReadiness`: pins not just WHICH registry every consumer points
+    ///      at but WHAT it maps — every dst-eid resolution goes through lzEndpointIdOfChain, so pairs
+    ///      that drifted from this run's endpointIds silently misroute all omnichain sends. Also
+    ///      anchors the local chain's slice against the endpoint's own eid() (the one chain with
+    ///      in-place ground truth).
+    function _requireRegistryPairsReady() internal view {
+        // Epistemic limit: inside a single run() the probe is tautological (deploy writes the
+        // registry pairs from the same env endpointIds came from); its value is the other paths — a
+        // standalone readiness run whose EID env forked from the deploying session, the pin pointing
+        // at a stale pre-nonce-bump registry instance, or an owner setLzEndpointIds re-point between
+        // deploy and this gate. Post-open re-pointing is beyond the reach of any gate and stays an
+        // operational invariant.
+        uint256 chainCount = omnichainIds.length;
+        for (uint32 i = 0; i < chainCount; i++) {
+            uint32 chainId = omnichainIds[i];
+            require(_readLzEndpointIdOfChain(chainId) == endpointIds[chainId], "REGISTRY_PAIR_NOT_READY");
+        }
+        // Env-independent local anchor: the local slice of the registry is compared against the
+        // endpoint's own eid() read back on-chain — the one chain with in-place ground truth. This
+        // kills the "registry and env share the same wrong value" blind spot for the local chain;
+        // remote chains have no readable ground truth here, so their slice stays env-compared above.
+        require(
+            _readLzEndpointIdOfChain(uint32(block.chainid)) == _readUint32(endpoints[uint32(block.chainid)], "eid()"),
+            "REGISTRY_LOCAL_EID_NOT_READY"
+        );
+    }
+
+    /// @dev Canonical UETH/UUSD readiness shared by `_requireDeploymentReady` and
+    ///      `checkPerChainRegistrationReadiness`: both entry families assert the same canonical-pair
+    ///      reserve + fund-metadata semantics, so the gate cannot fork between chain classes.
+    function _requireCanonicalPairReady() internal view {
+        _requireReserveReady(UETH, "UETH_RESERVE_NOT_READY");
+        _requireReserveReady(UUSD, "UUSD_RESERVE_NOT_READY");
+        _requireFundMetaDataReady(UETH, "UETH_FUND_METADATA_NOT_READY");
+        _requireFundMetaDataReady(UUSD, "UUSD_FUND_METADATA_NOT_READY");
+    }
+
+    /// @dev Five implementation-pointer readbacks shared by `_requireDeploymentReady` and
+    ///      `checkPerChainRegistrationReadiness`: the pins are burned into the deployer's
+    ///      constructor and cloned into every per-verse token, so a bad pointer cannot be
+    ///      remediated at runtime and both gate families must probe the same pointers with the same
+    ///      getters, pins, and error strings — a sixth pointer or renamed family becomes a
+    ///      single-point edit here instead of two synchronized copies. Epistemic limit: inside a
+    ///      single run() the identity readbacks are tautological (the constructor args and this
+    ///      gate read the same env); their value is the other paths — a standalone readiness run
+    ///      whose env drifted from the deploying session, or a pin pointing at a stale
+    ///      pre-nonce-bump artifact. The code checks are not tautological: they catch a codeless
+    ///      pin in any session. Each pointer runs the shared readback protocol in
+    ///      `_requireBakedImplementationPointer`, in the deployer's constructor-arg order.
+    function _requireBakedImplementationPointersReady() internal view {
+        _requireBakedImplementationPointer(
+            MEMEVERSE_PROXY_DEPLOYER,
+            "memecoinImplementation()",
+            MEMECOIN_IMPLEMENTATION,
+            "MEMECOIN_IMPLEMENTATION_CODE_NOT_READY",
+            "PROXY_DEPLOYER_MEMECOIN_IMPLEMENTATION_NOT_READY"
+        );
+        _requireBakedImplementationPointer(
+            MEMEVERSE_PROXY_DEPLOYER,
+            "polImplementation()",
+            POL_IMPLEMENTATION,
+            "POL_IMPLEMENTATION_CODE_NOT_READY",
+            "PROXY_DEPLOYER_POL_IMPLEMENTATION_NOT_READY"
+        );
+        _requireBakedImplementationPointer(
+            MEMEVERSE_PROXY_DEPLOYER,
+            "vaultImplementation()",
+            MEMECOIN_VAULT_IMPLEMENTATION,
+            "VAULT_IMPLEMENTATION_CODE_NOT_READY",
+            "PROXY_DEPLOYER_VAULT_IMPLEMENTATION_NOT_READY"
+        );
+        _requireBakedImplementationPointer(
+            MEMEVERSE_PROXY_DEPLOYER,
+            "governorImplementation()",
+            MEMECOIN_GOVERNOR_IMPLEMENTATION,
+            "GOVERNOR_IMPLEMENTATION_CODE_NOT_READY",
+            "PROXY_DEPLOYER_GOVERNOR_IMPLEMENTATION_NOT_READY"
+        );
+        _requireBakedImplementationPointer(
+            MEMEVERSE_PROXY_DEPLOYER,
+            "incentivizerImplementation()",
+            CYCLE_INCENTIVIZER_IMPLEMENTATION,
+            "INCENTIVIZER_IMPLEMENTATION_CODE_NOT_READY",
+            "PROXY_DEPLOYER_INCENTIVIZER_IMPLEMENTATION_NOT_READY"
+        );
+    }
+
+    /// @dev Launcher wiring identity readbacks shared by `_requireDeploymentReady` and
+    ///      `checkPerChainRegistrationReadiness`: five pointers come from the getLauncherContracts()
+    ///      typed decode; polend is the one retained direct getter (it is not part of LauncherContracts).
+    ///      Every pointer is consumed on its chain by the registration path (registrar ACL, polend's
+    ///      registerLendMarket) or by launch-lifecycle wiring (clone derivation, post-Locked fee
+    ///      distribution, launch setup, dst-eid resolution), so a launcher/pin cross-session drift must
+    ///      fail closed here instead of misrouting live flows.
+    function _requireLauncherWiringReady(IMemeverseLauncher.LauncherContracts memory launcherContracts) internal view {
+        require(launcherContracts.memeverseRegistrar == MEMEVERSE_REGISTRAR, "LAUNCHER_REGISTRAR_NOT_READY");
+        require(
+            launcherContracts.memeverseProxyDeployer == MEMEVERSE_PROXY_DEPLOYER, "LAUNCHER_PROXY_DEPLOYER_NOT_READY"
+        );
+        require(launcherContracts.yieldDispatcher == MEMEVERSE_YIELD_DISPATCHER, "LAUNCHER_YIELD_DISPATCHER_NOT_READY");
+        require(_readAddress(MEMEVERSE_LAUNCHER, "polend()") == POLEND, "LAUNCHER_POLEND_NOT_READY");
+        require(launcherContracts.polSplitter == POLSPLITTER, "LAUNCHER_POLSPLITTER_NOT_READY");
+        // The registry pointer is initialize-only on the launcher (setter removed), so a mismatch with
+        // the script pin cannot be remediated in place — readiness must block (redeploy is the only fix).
+        require(launcherContracts.lzEndpointRegistry == LZ_ENDPOINT_REGISTRY, "LAUNCHER_REGISTRY_NOT_READY");
+    }
+
+    /// @dev Launcher sibling code checks shared by `_requireDeploymentReady` and
+    ///      `checkPerChainRegistrationReadiness`: the siblings are delegatecall/view targets on
+    ///      user and stage-transition paths, so both gate families must require code at the same
+    ///      four fields in the same order (LAUNCH → SETTLEMENT → FEE_PREVIEW_READER → LIQUIDITY).
+    function _requireLauncherSiblingsReady(IMemeverseLauncher.LauncherContracts memory launcherContracts)
+        internal
+        view
+    {
         _requireContractCode(launcherContracts.launchImpl, "LAUNCH_IMPL_NOT_READY");
         _requireContractCode(launcherContracts.settlementImpl, "SETTLEMENT_IMPL_NOT_READY");
         _requireContractCode(launcherContracts.feePreviewReader, "FEE_PREVIEW_READER_NOT_READY");
@@ -1152,6 +1339,23 @@ contract MemeverseScript is BaseScript {
         require(target.code.length > 0, errorMessage);
     }
 
+    /// @dev Shared readback protocol for the five implementation pointers MemeverseProxyDeployer
+    ///      bakes as constructor immutables (and clones into every per-verse token): staticcall the
+    ///      getter, require code at the readback, then require identity with the env pin. One call
+    ///      per pointer, in the deployer's constructor-arg order, so all five follow the same
+    ///      ordering and revert behavior.
+    function _requireBakedImplementationPointer(
+        address proxyDeployer,
+        string memory getter,
+        address pin,
+        string memory codeError,
+        string memory identityError
+    ) internal view {
+        address implementation = _readAddress(proxyDeployer, getter);
+        _requireContractCode(implementation, codeError);
+        require(implementation == pin, identityError);
+    }
+
     /// @dev Staticcall probe that the endpoint exposes a surface matching the MessagingComposer
     ///      composeQueue getter (the surface verifySettle and both composers lzCompose/OFT
     ///      sendCompose depend on). Placeholder args are fine: any (from, to, guid, index) key reads
@@ -1225,6 +1429,12 @@ contract MemeverseScript is BaseScript {
             initializeData,
             "YIELD_DISPATCHER_PROXY_MISMATCH"
         );
+        // Same family contract as the registry/proxyDeployer deploy gates: the launcher's wiring and
+        // the readiness gates consume this env pin, so an actual deploy diverging from it means the
+        // env was not pre-filled for the current nonce — the fresh deploy would be orphaned while the
+        // launcher wires itself to the stale env address. Fail fast in simulation before broadcast;
+        // pre-fill via _getDeployedYieldDispatcher(nonce).
+        require(memeverseOFTDispatcher == MEMEVERSE_YIELD_DISPATCHER, "YIELD_DISPATCHER_DEPLOY_MISMATCH");
 
         console.log("YieldDispatcherUpgradeable deployed on %s", memeverseOFTDispatcher);
     }
@@ -1266,6 +1476,14 @@ contract MemeverseScript is BaseScript {
             initializeData,
             "OMNICHAIN_MEMECOIN_STAKER_PROXY_MISMATCH"
         );
+        // Same family contract as the registry/proxyDeployer/yieldDispatcher deploy gates: interoperation
+        // bakes this pin as a constructor immutable (no setter, no write-back here), so an actual deploy
+        // diverging from the pin means the env was not pre-filled for the current nonce — the fresh
+        // staker would be orphaned while interoperation irreversibly wires itself to the stale env
+        // address, and a mixed-nonce cross-chain session could encode the stale address into remote OFT
+        // send parameters. Fail fast in simulation before broadcast; pre-fill via
+        // _getDeployedOmnichainMemecoinStaker(nonce).
+        require(staker == OMNICHAIN_MEMECOIN_STAKER, "OMNICHAIN_MEMECOIN_STAKER_DEPLOY_MISMATCH");
 
         console.log("OmnichainMemecoinStaker deployed on %s", staker);
     }

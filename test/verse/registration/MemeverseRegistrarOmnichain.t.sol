@@ -158,7 +158,7 @@ contract MemeverseRegistrarOmnichainTest is Test {
         endpoint = new MockRegistrarOmnichainEndpoint();
         launcher = new MockOmnichainLauncher();
         registrar = new MemeverseRegistrarOmnichain(
-            OWNER, address(endpoint), address(launcher), address(0x1234), CENTER_EID, CENTER_CHAIN_ID, 100, 10, 20
+            OWNER, address(endpoint), address(launcher), CENTER_EID, CENTER_CHAIN_ID, 100, 10, 20
         );
 
         vm.prank(OWNER);

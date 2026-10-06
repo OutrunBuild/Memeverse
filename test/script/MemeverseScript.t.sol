@@ -68,9 +68,48 @@ contract MockScriptRegistrar {
 
 contract MockScriptProxyDeployer {
     address public memeverseLauncher;
+    address public memecoinImplementation;
+    address public polImplementation;
+    address public vaultImplementation;
+    address public governorImplementation;
+    address public incentivizerImplementation;
 
-    constructor(address launcher_) {
+    constructor(
+        address launcher_,
+        address memecoinImplementation_,
+        address polImplementation_,
+        address vaultImplementation_,
+        address governorImplementation_,
+        address incentivizerImplementation_
+    ) {
         memeverseLauncher = launcher_;
+        memecoinImplementation = memecoinImplementation_;
+        polImplementation = polImplementation_;
+        vaultImplementation = vaultImplementation_;
+        governorImplementation = governorImplementation_;
+        incentivizerImplementation = incentivizerImplementation_;
+    }
+
+    // Readiness models pointers that have no code at their targets (the codeless-pin attack path);
+    // constructor baking alone cannot re-point one getter for a single test.
+    function setMemecoinImplementation(address memecoinImplementation_) external {
+        memecoinImplementation = memecoinImplementation_;
+    }
+
+    function setPolImplementation(address polImplementation_) external {
+        polImplementation = polImplementation_;
+    }
+
+    function setVaultImplementation(address vaultImplementation_) external {
+        vaultImplementation = vaultImplementation_;
+    }
+
+    function setGovernorImplementation(address governorImplementation_) external {
+        governorImplementation = governorImplementation_;
+    }
+
+    function setIncentivizerImplementation(address incentivizerImplementation_) external {
+        incentivizerImplementation = incentivizerImplementation_;
     }
 }
 
@@ -287,6 +326,13 @@ contract MemeverseScriptHarness is MemeverseScript {
         _requireRegistrationCenterReady(registrationCenter);
     }
 
+    /// @dev Reaches the per-chain registration readiness gate without `_loadReadinessEnv` /
+    ///      `_chainsInit` (env vars are not set in these tests); the pins and chain list come from
+    ///      the storage setters, mirroring the openSupportedUAssetsAfterReadinessForTest precedent.
+    function checkPerChainRegistrationReadinessForTest(address[] calldata uAssets) external view {
+        _checkPerChainRegistrationReadiness(uAssets);
+    }
+
     function setEndpointForTest(uint32 chainId, address endpoint) external {
         endpoints[chainId] = endpoint;
     }
@@ -305,12 +351,40 @@ contract MemeverseScriptHarness is MemeverseScript {
         OMNICHAIN_MEMECOIN_STAKER = staker;
     }
 
+    /// @dev Mirrors the five implementation env pins: production loads them via _loadReadinessEnv /
+    ///      _loadScriptEnv; this harness has no env, so tests set them explicitly.
+    function setImplementationPinsForTest(
+        address memecoinImplementation_,
+        address polImplementation_,
+        address vaultImplementation_,
+        address governorImplementation_,
+        address incentivizerImplementation_
+    ) external {
+        MEMECOIN_IMPLEMENTATION = memecoinImplementation_;
+        POL_IMPLEMENTATION = polImplementation_;
+        MEMECOIN_VAULT_IMPLEMENTATION = vaultImplementation_;
+        MEMECOIN_GOVERNOR_IMPLEMENTATION = governorImplementation_;
+        CYCLE_INCENTIVIZER_IMPLEMENTATION = incentivizerImplementation_;
+    }
+
     function setMemeverseOmnichainInteroperationForTest(address interoperation) external {
         MEMEVERSE_OMNICHAIN_INTEROPERATION = interoperation;
     }
 
     function setMemeverseLauncherForTest(address launcher_) external {
         MEMEVERSE_LAUNCHER = launcher_;
+    }
+
+    function setMemeverseProxyDeployerForTest(address proxyDeployer_) external {
+        MEMEVERSE_PROXY_DEPLOYER = proxyDeployer_;
+    }
+
+    function setMemeverseYieldDispatcherForTest(address yieldDispatcher_) external {
+        MEMEVERSE_YIELD_DISPATCHER = yieldDispatcher_;
+    }
+
+    function setMemeverseRegistrarForTest(address registrar_) external {
+        MEMEVERSE_REGISTRAR = registrar_;
     }
 
     function setLzEndpointRegistryForTest(address lzEndpointRegistry_) external {
@@ -341,6 +415,10 @@ contract MemeverseScriptHarness is MemeverseScript {
         _deployMemecoinPOLImplementation(nonce);
     }
 
+    function deployMemecoinGovernorImplementationForTest(uint256 nonce) external {
+        _deployMemecoinGovernorImplementation(nonce);
+    }
+
     function deployRegistrationCenterForTest(uint256 nonce) external {
         _deployRegistrationCenter(nonce);
     }
@@ -351,6 +429,10 @@ contract MemeverseScriptHarness is MemeverseScript {
 
     function deployLzEndpointRegistryForTest(uint256 nonce) external {
         _deployLzEndpointRegistry(nonce);
+    }
+
+    function deployMemeverseProxyDeployerForTest(uint256 nonce) external {
+        _deployMemeverseProxyDeployer(nonce);
     }
 
     function optionalEnvAddressForTest(string memory name) external view returns (address) {
@@ -367,6 +449,14 @@ contract MemeverseScriptTest is Test {
     address internal constant UUSD = address(0x1002);
     address internal constant LOCAL_ENDPOINT = address(0x1337);
     address internal constant STAKER = address(0x6002);
+    // The five implementation pointers burned into MockScriptProxyDeployer's constructor and
+    // mirrored as the script's pins; each is etched with code in setUp so the readiness code
+    // probes pass, matching how the production deployer bakes coded artifacts.
+    address internal constant MEMECOIN_IMPL = address(0x6101);
+    address internal constant POL_IMPL = address(0x6102);
+    address internal constant VAULT_IMPL = address(0x6103);
+    address internal constant GOVERNOR_IMPL = address(0x6104);
+    address internal constant INCENTIVIZER_IMPL = address(0x6105);
     // Registry pin: assigned in setUp to a REAL LzEndpointRegistry (owner = this test contract) so
     // the content probes exercise the production contract instead of an etch placeholder.
     address internal LZ_ENDPOINT_REGISTRY;
@@ -385,6 +475,16 @@ contract MemeverseScriptTest is Test {
     address internal constant READY_SWAP_FACET = address(uint160(0xFAB1));
     address internal constant READY_DYNAMIC_FEE_FACET = address(uint160(0xFAB2));
     address internal constant READY_SETTLEMENT_FACET = address(uint160(0xFAB3));
+    // Launcher sibling slots wired with code for every readiness path (launchImpl is the mock's
+    // constructor-baked dummy and already coded); _configureReadySwap re-wires these same slots.
+    address internal constant SIBLING_SETTLEMENT_IMPL = address(uint160(0x5002));
+    address internal constant SIBLING_FEE_PREVIEW_READER = address(uint160(0x5003));
+    address internal constant SIBLING_LIQUIDITY_IMPL = address(uint160(0x5004));
+    // Minimum green launcher fund metadata: the smallest (minTotalFund, fundBasedAmount) pair whose
+    // derived virtual buffer rounds above zero (143 * 1 * 7 / 1000 = 1 > 0); one tick below on
+    // minTotalFund rounds V to zero and readiness keeps registration closed.
+    uint256 internal constant MIN_GREEN_MIN_TOTAL_FUND = 143;
+    uint256 internal constant MIN_GREEN_FUND_BASED_AMOUNT = 1;
 
     MemeverseScriptHarness internal script;
     MemeverseUniswapHookLens internal lens;
@@ -404,7 +504,9 @@ contract MemeverseScriptTest is Test {
         lens = new MemeverseUniswapHookLens(IPoolManager(MOCK_POOL_MANAGER));
         launcher = new MockScriptLauncher();
         registrar = new MockScriptRegistrar(address(launcher));
-        proxyDeployer = new MockScriptProxyDeployer(address(launcher));
+        proxyDeployer = new MockScriptProxyDeployer(
+            address(launcher), MEMECOIN_IMPL, POL_IMPL, VAULT_IMPL, GOVERNOR_IMPL, INCENTIVIZER_IMPL
+        );
         yieldDispatcher = new MockScriptYieldDispatcher(address(launcher));
         splitter = new MockScriptPOLSplitter(address(launcher), address(0));
         polend = new MockScriptPOLend(address(launcher), address(splitter));
@@ -418,10 +520,19 @@ contract MemeverseScriptTest is Test {
         launcher.setLauncherDependencies(address(registrar), address(proxyDeployer), address(yieldDispatcher));
         launcher.setPolend(address(polend));
         launcher.setPolSplitter(address(splitter));
+        // Readiness wiring: _requireDeploymentReady's tail and the per-chain registration gate both
+        // require code at the launcher's settlement/liquidity/fee-preview siblings before the system
+        // opens (launchImpl is the constructor-baked dummy and already has code).
+        vm.etch(SIBLING_SETTLEMENT_IMPL, address(lens).code);
+        vm.etch(SIBLING_FEE_PREVIEW_READER, address(lens).code);
+        vm.etch(SIBLING_LIQUIDITY_IMPL, address(lens).code);
+        launcher.setSettlementImpl(SIBLING_SETTLEMENT_IMPL);
+        launcher.setFeePreviewReader(SIBLING_FEE_PREVIEW_READER);
+        launcher.setLiquidityImpl(SIBLING_LIQUIDITY_IMPL);
         // Minimum config that passes the derived virtual-buffer guard (143 * 1 * 7 / 1000 = 1 > 0);
         // values below 143 would round V to zero and keep registration closed.
-        launcher.setFundMetaData(UETH, 143, 1);
-        launcher.setFundMetaData(UUSD, 143, 1);
+        launcher.setFundMetaData(UETH, MIN_GREEN_MIN_TOTAL_FUND, MIN_GREEN_FUND_BASED_AMOUNT);
+        launcher.setFundMetaData(UUSD, MIN_GREEN_MIN_TOTAL_FUND, MIN_GREEN_FUND_BASED_AMOUNT);
         script.setDeploymentAddresses(
             address(script),
             UETH,
@@ -478,6 +589,16 @@ contract MemeverseScriptTest is Test {
         // real contract, so the address has code without an extra etch.
         interoperation = new MockScriptInteroperation(LZ_ENDPOINT_REGISTRY);
         script.setMemeverseOmnichainInteroperationForTest(address(interoperation));
+        // Readiness wiring: _requireDeploymentReady reads the deployer's five implementation
+        // pointers back (code probe MEMECOIN_IMPLEMENTATION_CODE_NOT_READY family, then identity
+        // against the script pins), so each pointer needs code and the pins must mirror the same
+        // values the mock constructor baked.
+        vm.etch(MEMECOIN_IMPL, address(lens).code);
+        vm.etch(POL_IMPL, address(lens).code);
+        vm.etch(VAULT_IMPL, address(lens).code);
+        vm.etch(GOVERNOR_IMPL, address(lens).code);
+        vm.etch(INCENTIVIZER_IMPL, address(lens).code);
+        script.setImplementationPinsForTest(MEMECOIN_IMPL, POL_IMPL, VAULT_IMPL, GOVERNOR_IMPL, INCENTIVIZER_IMPL);
         // _deployYieldDispatcher reads PROTOCOL_TREASURY (UASSET no-code settlement sink). Default it to a non-zero
         // address so the dispatcher deploy tests pass; the zero-treasury test overrides it.
         script.setProtocolTreasuryForTest(address(0xBEEF));
@@ -522,7 +643,7 @@ contract MemeverseScriptTest is Test {
         // and then only break the derived virtual buffer for UETH.
         polend.setSettlementDustState(UETH, 0, 1);
         polend.setSettlementDustState(UUSD, 0, 1);
-        launcher.setFundMetaData(UETH, 142, 1);
+        launcher.setFundMetaData(UETH, MIN_GREEN_MIN_TOTAL_FUND - 1, MIN_GREEN_FUND_BASED_AMOUNT);
 
         vm.expectRevert("UETH_FUND_METADATA_NOT_READY");
         script.requireDeploymentReady(address(0), address(0));
@@ -752,6 +873,64 @@ contract MemeverseScriptTest is Test {
         script.requireDeploymentReady(address(0), address(0));
     }
 
+    // Readiness gate: every one of the five deployer implementation pointers must match its script
+    // pin. The pointers are cloned into every per-verse token, so a pointer that drifted from its
+    // pin (cross-session env drift, or a stale pre-nonce-bump artifact) must block before the
+    // system opens. Parametrized over the pin slots: exactly one slot drifts per pass, proving each
+    // branch surfaces its own named error (the readback pointer keeps code, so the identity
+    // readback is what fires).
+    function testReadinessRevertsWhenAnyImplementationPinMismatchesDeployer() external {
+        address driftPin = address(0xBAD);
+        string[5] memory expectedErrors = [
+            "PROXY_DEPLOYER_MEMECOIN_IMPLEMENTATION_NOT_READY",
+            "PROXY_DEPLOYER_POL_IMPLEMENTATION_NOT_READY",
+            "PROXY_DEPLOYER_VAULT_IMPLEMENTATION_NOT_READY",
+            "PROXY_DEPLOYER_GOVERNOR_IMPLEMENTATION_NOT_READY",
+            "PROXY_DEPLOYER_INCENTIVIZER_IMPLEMENTATION_NOT_READY"
+        ];
+
+        for (uint256 i = 0; i < expectedErrors.length; i++) {
+            // Rebuilt from the setUp constants every pass, so exactly one slot drifts per pass.
+            script.setImplementationPinsForTest(
+                i == 0 ? driftPin : MEMECOIN_IMPL,
+                i == 1 ? driftPin : POL_IMPL,
+                i == 2 ? driftPin : VAULT_IMPL,
+                i == 3 ? driftPin : GOVERNOR_IMPL,
+                i == 4 ? driftPin : INCENTIVIZER_IMPL
+            );
+
+            vm.expectRevert(bytes(expectedErrors[i]));
+            script.requireDeploymentReady(address(0), address(0));
+        }
+    }
+
+    // Readiness gate: a codeless pointer must block ahead of the identity readback — clones would
+    // derive from a codeless implementation, which no runtime path can repair. Parametrized over
+    // the five getters: exactly one slot is blanked per pass, proving each code check surfaces its
+    // own named error. Every pass resets all five getters to their setUp values first — the same
+    // rebuild pattern as the pin-drift test — so no state leaks across passes.
+    function testReadinessRevertsWhenAnyImplementationPointerHasNoCode() external {
+        address codelessPin = address(0xDEAD);
+        string[5] memory expectedErrors = [
+            "MEMECOIN_IMPLEMENTATION_CODE_NOT_READY",
+            "POL_IMPLEMENTATION_CODE_NOT_READY",
+            "VAULT_IMPLEMENTATION_CODE_NOT_READY",
+            "GOVERNOR_IMPLEMENTATION_CODE_NOT_READY",
+            "INCENTIVIZER_IMPLEMENTATION_CODE_NOT_READY"
+        ];
+
+        for (uint256 i = 0; i < expectedErrors.length; i++) {
+            proxyDeployer.setMemecoinImplementation(i == 0 ? codelessPin : MEMECOIN_IMPL);
+            proxyDeployer.setPolImplementation(i == 1 ? codelessPin : POL_IMPL);
+            proxyDeployer.setVaultImplementation(i == 2 ? codelessPin : VAULT_IMPL);
+            proxyDeployer.setGovernorImplementation(i == 3 ? codelessPin : GOVERNOR_IMPL);
+            proxyDeployer.setIncentivizerImplementation(i == 4 ? codelessPin : INCENTIVIZER_IMPL);
+
+            vm.expectRevert(bytes(expectedErrors[i]));
+            script.requireDeploymentReady(address(0), address(0));
+        }
+    }
+
     // Readiness gate (content probe): the registry's chain->eid pairs must match the harness
     // endpointIds for every omnichain chain. Models the pre-open owner re-point drift vector: an
     // owner setLzEndpointIds between deploy and the gate re-points chain 97 to a different eid, so
@@ -808,6 +987,223 @@ contract MemeverseScriptTest is Test {
         script.requireDeploymentReady(readyRouter, readyHook);
     }
 
+    // Per-chain readiness gate: the canonical UETH/UUSD pair plus a green uAsset input and matching
+    // registry pairs must pass with no revert — this gate is the remote-chain fan-out precondition,
+    // so its positive path must be reachable with only this chain's own contracts wired.
+    function testCheckPerChainRegistrationReadinessPassesWhenCanonicalPairAndUAssetReady() external {
+        address uAsset = address(0x2001);
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+        polend.setSettlementDustState(uAsset, 0, 1);
+        // Same minimum green metadata as setUp's canonical pair (143 * 1 * 7 / 1000 = 1 > 0).
+        launcher.setFundMetaData(uAsset, MIN_GREEN_MIN_TOTAL_FUND, MIN_GREEN_FUND_BASED_AMOUNT);
+
+        address[] memory uAssets = new address[](1);
+        uAssets[0] = uAsset;
+
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate: a uAsset whose settlement-dust reserve cap is zero must block with
+    // RESERVE_NOT_READY — POLendUpgradeable refuses market registration until the cap is configured,
+    // which would otherwise surface only as a user-facing revert on the remote chain.
+    function testCheckPerChainRegistrationReadinessRevertsWhenUAssetReserveIsZero() external {
+        address uAsset = address(0x2001);
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+        launcher.setFundMetaData(uAsset, MIN_GREEN_MIN_TOTAL_FUND, MIN_GREEN_FUND_BASED_AMOUNT);
+        // uAsset reserve deliberately left at (0, 0); reserve is checked before fund metadata.
+
+        address[] memory uAssets = new address[](1);
+        uAssets[0] = uAsset;
+
+        vm.expectRevert("RESERVE_NOT_READY");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate: a uAsset with a usable reserve but zero launcher fund metadata must
+    // block with FUND_METADATA_NOT_READY — registration reverts ZeroInput until it is set.
+    function testCheckPerChainRegistrationReadinessRevertsWhenUAssetFundMetaDataIsZero() external {
+        address uAsset = address(0x2001);
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+        polend.setSettlementDustState(uAsset, 0, 1);
+        // uAsset fund metadata deliberately left at (0, 0).
+
+        address[] memory uAssets = new address[](1);
+        uAssets[0] = uAsset;
+
+        vm.expectRevert("FUND_METADATA_NOT_READY");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate: a zero address in the uAsset list must block with ZERO_UASSET; the
+    // fully green leading element proves each element is validated in order before the failure.
+    function testCheckPerChainRegistrationReadinessRevertsWhenUAssetIsZero() external {
+        address uAsset = address(0x2001);
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+        polend.setSettlementDustState(uAsset, 0, 1);
+        launcher.setFundMetaData(uAsset, MIN_GREEN_MIN_TOTAL_FUND, MIN_GREEN_FUND_BASED_AMOUNT);
+
+        address[] memory uAssets = new address[](2);
+        uAssets[0] = uAsset;
+        uAssets[1] = address(0);
+
+        vm.expectRevert("ZERO_UASSET");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate: the canonical UETH/UUSD pair is checked unconditionally — with an
+    // EMPTY uAsset list a zero UETH reserve still blocks (UUSD is wired green so the revert pins
+    // the UETH slot, which is checked first).
+    function testCheckPerChainRegistrationReadinessRevertsWhenCanonicalUethReserveIsZero() external {
+        polend.setSettlementDustState(UUSD, 0, 1);
+        // UETH reserve deliberately left at (0, 0); empty input list.
+        address[] memory uAssets = new address[](0);
+
+        vm.expectRevert("UETH_RESERVE_NOT_READY");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate (registry content probe): the shared _requireRegistryPairsReady probe
+    // must fire through this entry too — a registry pair re-pointed away from this run's endpointIds
+    // would silently misroute every omnichain send from this chain, so the gate must block with
+    // REGISTRY_PAIR_NOT_READY before the whitelist opens at the center. Mirrors the
+    // requireDeploymentReady drift test's registry re-point construction.
+    function testCheckPerChainRegistrationReadinessRevertsWhenRegistryPairDrifts() external {
+        ILzEndpointRegistry.LzEndpointIdPair[] memory repointed = new ILzEndpointRegistry.LzEndpointIdPair[](1);
+        repointed[0] =
+            ILzEndpointRegistry.LzEndpointIdPair({chainId: BSC_TESTNET_CHAIN_ID, endpointId: BSC_TESTNET_EID + 897});
+        lzEndpointRegistry.setLzEndpointIds(repointed);
+
+        address[] memory uAssets = new address[](0);
+
+        vm.expectRevert("REGISTRY_PAIR_NOT_READY");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate (registrar code check): the registrar is the registration-path ACL
+    // consumer on this chain, and the launcher-wiring identity readback cannot catch a wrong env
+    // value when the launcher and the pin share the same codeless prediction — so the per-chain
+    // gate must require code at the pin with the deployment gate's named error. Both the launcher
+    // wiring and the script pin point at the same codeless address, so the identity readback would
+    // agree and only the code check can fire; it runs ahead of every other per-chain probe, so no
+    // reserve wiring is needed.
+    function testCheckPerChainRegistrationReadinessRevertsWhenRegistrarPinHasNoCode() external {
+        address codelessRegistrar = address(0x9999);
+        launcher.setLauncherDependencies(codelessRegistrar, address(proxyDeployer), address(yieldDispatcher));
+        script.setMemeverseRegistrarForTest(codelessRegistrar);
+
+        address[] memory uAssets = new address[](0);
+
+        vm.expectRevert("REGISTRAR_CODE_NOT_READY");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate (baked-pointer readback): the deployer's five implementation pointers
+    // are cloned into every per-verse token, so a script pin that drifted from the pointer baked into
+    // THIS chain's deployer must block this chain's gate with the same named error the deployment
+    // gate uses. Mirrors the requireDeploymentReady pin-drift construction through the per-chain
+    // entry; fires before the reserve checks, so no reserve wiring is needed.
+    function testCheckPerChainRegistrationReadinessRevertsWhenBakedPointerMismatchesPin() external {
+        script.setImplementationPinsForTest(address(0xBAD), POL_IMPL, VAULT_IMPL, GOVERNOR_IMPL, INCENTIVIZER_IMPL);
+
+        address[] memory uAssets = new address[](0);
+
+        vm.expectRevert("PROXY_DEPLOYER_MEMECOIN_IMPLEMENTATION_NOT_READY");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate (launcher sibling code check): a liquidityImpl without code would
+    // defer this chain's setup mistake into a user-facing registration-time revert, so the gate must
+    // block with LIQUIDITY_IMPL_NOT_READY — the deployment gate's tail probe reached through the
+    // per-chain entry. Canonical reserves are wired green so the revert pins the sibling probe, not
+    // the canonical reserve check that runs before it.
+    function testCheckPerChainRegistrationReadinessRevertsWhenLiquidityImplHasNoCode() external {
+        launcher.setLiquidityImpl(address(0xDEAD));
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+
+        address[] memory uAssets = new address[](0);
+
+        vm.expectRevert("LIQUIDITY_IMPL_NOT_READY");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate (launcher registry identity readback): remote registration resolves
+    // dst eids through the launcher's initialize-only lzEndpointRegistry pointer, so a launcher baked
+    // with a different registry than this run's pin (cross-session env drift, or a stale pre-nonce-
+    // bump instance) would leave this gate's registry content probe green while every remote
+    // registration misroutes; the gate must block with the deployment gate's named error. Only the
+    // launcher-side pointer drifts — the pin keeps pointing at setUp's real registry, so the content
+    // probe stays green and the revert pins the identity readback itself. Canonical reserves are
+    // wired green because the readback runs after the canonical pair check.
+    function testCheckPerChainRegistrationReadinessRevertsWhenLauncherRegistryMismatchesPin() external {
+        launcher.setLzEndpointRegistry(address(0xBAD));
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+
+        address[] memory uAssets = new address[](0);
+
+        vm.expectRevert("LAUNCHER_REGISTRY_NOT_READY");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate (launcher proxyDeployer identity readback): verse clones are
+    // deployed through the launcher's baked proxyDeployer storage pointer, not the env pin, so a
+    // launcher initialized with a different deployer than this run's pin (cross-session env drift)
+    // would leave this gate green while every per-verse token deploy resolves through an
+    // unverified deployer; the gate must block with the deployment gate's named error. Only the
+    // launcher-side pointer drifts — the pin keeps pointing at setUp's real deployer, so the
+    // deployer-side probes stay green and the revert pins the identity readback itself. Canonical
+    // reserves are wired green because the readback runs after the canonical pair check.
+    function testCheckPerChainRegistrationReadinessRevertsWhenLauncherProxyDeployerMismatchesPin() external {
+        launcher.setLauncherDependencies(address(registrar), address(0xBAD), address(yieldDispatcher));
+        polend.setSettlementDustState(UETH, 0, 1);
+        polend.setSettlementDustState(UUSD, 0, 1);
+
+        address[] memory uAssets = new address[](0);
+
+        vm.expectRevert("LAUNCHER_PROXY_DEPLOYER_NOT_READY");
+        script.checkPerChainRegistrationReadinessForTest(uAssets);
+    }
+
+    // Per-chain readiness gate (launcher wiring identity readback): the gate consumes the launcher's
+    // full wiring through the shared _requireLauncherWiringReady helper, so any of the four pointers
+    // beyond the registry/proxyDeployer pair already covered above (registrar, yieldDispatcher,
+    // polend, polSplitter) drifting from this run's pin must block with the deployment gate's named
+    // error. Parametrized over the four slots: exactly one launcher-side pointer drifts per pass
+    // while the pins keep pointing at setUp's real instances, so the code probes and registry content
+    // probe stay green and the revert pins the identity readback itself. Canonical reserves are wired
+    // green because the readback runs after the canonical pair check.
+    function testCheckPerChainRegistrationReadinessRevertsWhenAnyLauncherWiringMismatchesPin() external {
+        string[4] memory expectedErrors = [
+            "LAUNCHER_REGISTRAR_NOT_READY",
+            "LAUNCHER_YIELD_DISPATCHER_NOT_READY",
+            "LAUNCHER_POLEND_NOT_READY",
+            "LAUNCHER_POLSPLITTER_NOT_READY"
+        ];
+
+        for (uint256 i = 0; i < expectedErrors.length; i++) {
+            // Exactly one launcher-side pointer drifts per pass; every other slot keeps its setUp value.
+            launcher.setLauncherDependencies(
+                i == 0 ? address(0xBAD) : address(registrar),
+                address(proxyDeployer),
+                i == 1 ? address(0xBAD) : address(yieldDispatcher)
+            );
+            launcher.setPolend(i == 2 ? address(0xBAD) : address(polend));
+            launcher.setPolSplitter(i == 3 ? address(0xBAD) : address(splitter));
+            polend.setSettlementDustState(UETH, 0, 1);
+            polend.setSettlementDustState(UUSD, 0, 1);
+
+            address[] memory uAssets = new address[](0);
+
+            vm.expectRevert(bytes(expectedErrors[i]));
+            script.checkPerChainRegistrationReadinessForTest(uAssets);
+        }
+    }
+
     function testOptionalEnvAddressReturnsZeroWhenMissing() external view {
         assertEq(script.optionalEnvAddressForTest("MEMEVERSE_SCRIPT_OPTIONAL_ADDRESS_MISSING_FOR_TEST"), address(0));
     }
@@ -837,6 +1233,9 @@ contract MemeverseScriptTest is Test {
         script.setOutrunDeployerForTest(address(deployer));
         script.setEndpointForTest(uint32(block.chainid), localEndpoint);
         script.setProtocolTreasuryForTest(treasury);
+        // The mock returns address(0) for every deploy, so the dispatcher pin must mirror that actual
+        // for the post-deploy env-pin guard (YIELD_DISPATCHER_DEPLOY_MISMATCH).
+        script.setMemeverseYieldDispatcherForTest(address(0));
 
         script.deployYieldDispatcherForTest(2);
 
@@ -893,11 +1292,14 @@ contract MemeverseScriptTest is Test {
         script.setOutrunDeployerForTest(address(realDeployer));
         script.setEndpointForTest(uint32(block.chainid), localEndpoint);
         script.setProtocolTreasuryForTest(treasury);
+        // Pre-fill the dispatcher env pin with the current-nonce CREATE3 prediction, as the deploy
+        // guard (YIELD_DISPATCHER_DEPLOY_MISMATCH) requires.
+        bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", uint256(7)));
+        address predictedProxy = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        script.setMemeverseYieldDispatcherForTest(predictedProxy);
 
         script.deployYieldDispatcherForTest(7);
 
-        bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", uint256(7)));
-        address predictedProxy = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
         // The proxy is deployed and is a real initialized dispatcher at the predicted CREATE3 address.
         assertGt(predictedProxy.code.length, 0, "proxy not deployed at predicted address");
         assertEq(YieldDispatcherUpgradeable(predictedProxy).localEndpoint(), localEndpoint);
@@ -932,11 +1334,15 @@ contract MemeverseScriptTest is Test {
         script.setEndpointForTest(uint32(block.chainid), localEndpoint);
         script.setProtocolTreasuryForTest(treasury);
 
-        script.deployYieldDispatcherForTest(7);
-
         bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", uint256(7)));
         address predictedByCaller = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
         address predictedByOwner = IOutrunDeployer(address(realDeployer)).getDeployed(multisig, salt);
+        // Pre-fill the dispatcher env pin with the caller-namespaced prediction the deploy guard
+        // (YIELD_DISPATCHER_DEPLOY_MISMATCH) requires.
+        script.setMemeverseYieldDispatcherForTest(predictedByCaller);
+
+        script.deployYieldDispatcherForTest(7);
+
         // The dual-role setup must actually diverge — otherwise the branch under test is not exercised.
         assertFalse(predictedByCaller == predictedByOwner, "dual-role namespaces must diverge");
         // The proxy lands at the deploy-caller-namespaced address (not owner's), proving the prediction caller is correct.
@@ -969,6 +1375,9 @@ contract MemeverseScriptTest is Test {
         address expectedOwner = address(script);
         script.setOutrunDeployerForTest(address(deployer));
         script.setEndpointForTest(uint32(block.chainid), localEndpoint);
+        // The mock returns address(0) for every deploy, so the staker pin must mirror that actual for
+        // the post-deploy env-pin guard (OMNICHAIN_MEMECOIN_STAKER_DEPLOY_MISMATCH).
+        script.setOmnichainMemecoinStakerForTest(address(0));
 
         script.deployOmnichainMemecoinStakerForTest(2);
 
@@ -1133,7 +1542,7 @@ contract MemeverseScriptTest is Test {
     }
 
     // REGISTRY_DEPLOY_MISMATCH regression: LZ_ENDPOINT_REGISTRY is a required env pin consumed by the
-    // center/registrar/interoperation constructor args and the readiness probes. When the pin still
+    // center/interoperation constructor args and the readiness probes. When the pin still
     // points at a stale (old-nonce) instance while CREATE3 deploys a fresh registry, the new deploy
     // would be orphaned and the whole system would wire itself to the env address — the deploy must
     // fail fast instead. The stale pin is modeled by setUp's `new`-deployed registry instance.
@@ -1168,6 +1577,124 @@ contract MemeverseScriptTest is Test {
         assertGt(predicted.code.length, 0, "registry not deployed at predicted address");
         assertEq(ILzEndpointRegistry(predicted).lzEndpointIdOfChain(BSC_TESTNET_CHAIN_ID), BSC_TESTNET_EID);
         assertEq(ILzEndpointRegistry(predicted).lzEndpointIdOfChain(BASE_SEPOLIA_CHAIN_ID), BASE_SEPOLIA_EID);
+    }
+
+    // MEMEVERSE_PROXY_DEPLOYER_DEPLOY_MISMATCH regression: MEMEVERSE_PROXY_DEPLOYER is a required
+    // env pin burned into the launcher's initialize args.
+    // When the pin still points at a stale (old-nonce) instance while CREATE3 deploys a fresh proxy
+    // deployer, the new deploy would be orphaned and the launcher would initialize itself to the
+    // stale env address — the deploy must fail fast instead. The stale pin is modeled by setUp's
+    // `new`-deployed readiness mock proxyDeployer.
+    function testDeployMemeverseProxyDeployerRevertsWhenPinMismatchesCreate3Address() external {
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        script.setOutrunDeployerForTest(address(realDeployer));
+
+        // Non-vacuous guard: the fresh CREATE3 prediction this run deploys at must differ from the pin.
+        bytes32 salt = keccak256(abi.encodePacked("MemeverseProxyDeployer", uint256(7)));
+        address predicted = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        assertFalse(predicted == address(proxyDeployer), "stale pin must not equal fresh CREATE3 address");
+
+        vm.expectRevert("MEMEVERSE_PROXY_DEPLOYER_DEPLOY_MISMATCH");
+        script.deployMemeverseProxyDeployerForTest(7);
+    }
+
+    // Positive mirror: when the env pin is pre-filled with the current-nonce CREATE3 prediction (the
+    // documented operator step, _getDeployedMemeverseProxyDeployer), the deploy passes the mismatch
+    // assert and a real MemeverseProxyDeployer lands at the predicted address.
+    function testDeployMemeverseProxyDeployerDeploysWhenPinMatchesCreate3Address() external {
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        script.setOutrunDeployerForTest(address(realDeployer));
+
+        bytes32 salt = keccak256(abi.encodePacked("MemeverseProxyDeployer", uint256(7)));
+        address predicted = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        script.setMemeverseProxyDeployerForTest(predicted);
+
+        script.deployMemeverseProxyDeployerForTest(7);
+
+        // The proxy deployer is a real contract at the predicted address (its constructor guards
+        // require every setUp pin non-zero, so a deployed contract also proves the args were wired).
+        assertGt(predicted.code.length, 0, "proxy deployer not deployed at predicted address");
+    }
+
+    // YIELD_DISPATCHER_DEPLOY_MISMATCH regression: MEMEVERSE_YIELD_DISPATCHER is a required env pin
+    // burned into the launcher's initialize args and consumed by the readiness gates. When the pin
+    // still points at a stale (old-nonce) instance while CREATE3 deploys a fresh dispatcher, the new
+    // deploy would be orphaned and the launcher would wire itself to the stale env address — the
+    // deploy must fail fast instead. The stale pin is modeled by setUp's readiness mock dispatcher.
+    function testDeployYieldDispatcherRevertsWhenPinMismatchesCreate3Address() external {
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        script.setOutrunDeployerForTest(address(realDeployer));
+
+        // Non-vacuous guard: the fresh CREATE3 prediction this run deploys at must differ from the pin.
+        bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", uint256(7)));
+        address predicted = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        assertFalse(predicted == address(yieldDispatcher), "stale pin must not equal fresh CREATE3 address");
+
+        vm.expectRevert("YIELD_DISPATCHER_DEPLOY_MISMATCH");
+        script.deployYieldDispatcherForTest(7);
+    }
+
+    // Positive mirror: when the env pin is pre-filled with the current-nonce CREATE3 prediction (the
+    // documented operator step, _getDeployedYieldDispatcher), the deploy passes the mismatch assert
+    // and a real initialized YieldDispatcherUpgradeable lands at the predicted address.
+    function testDeployYieldDispatcherDeploysWhenPinMatchesCreate3Address() external {
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        script.setOutrunDeployerForTest(address(realDeployer));
+
+        bytes32 salt = keccak256(abi.encodePacked("YieldDispatcher", uint256(7)));
+        address predicted = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        script.setMemeverseYieldDispatcherForTest(predicted);
+
+        script.deployYieldDispatcherForTest(7);
+
+        // The dispatcher is a real initialized contract at the predicted address (setUp wired owner,
+        // launcher and treasury = address(0xBEEF), all read back through the proxy).
+        assertGt(predicted.code.length, 0, "dispatcher not deployed at predicted address");
+        assertEq(YieldDispatcherUpgradeable(predicted).memeverseLauncher(), address(launcher));
+        assertEq(YieldDispatcherUpgradeable(predicted).protocolTreasury(), address(0xBEEF));
+        assertEq(YieldDispatcherUpgradeable(predicted).owner(), address(script));
+    }
+
+    // OMNICHAIN_MEMECOIN_STAKER_DEPLOY_MISMATCH regression: OMNICHAIN_MEMECOIN_STAKER is a required
+    // env pin that interoperation bakes as a constructor immutable (no setter, and the staker deploy
+    // writes nothing back). When the pin still points at a stale (old-nonce) address while CREATE3
+    // deploys a fresh staker, the fresh staker would be orphaned while interoperation irreversibly
+    // wires itself to the stale env address — the deploy must fail fast instead. The stale pin is
+    // modeled by setUp's etched STAKER constant.
+    function testDeployOmnichainMemecoinStakerRevertsWhenPinMismatchesCreate3Address() external {
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        script.setOutrunDeployerForTest(address(realDeployer));
+
+        // Non-vacuous guard: the fresh CREATE3 prediction this run deploys at must differ from the pin.
+        bytes32 salt = keccak256(abi.encodePacked("OmnichainMemecoinStaker", uint256(7)));
+        address predicted = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        assertFalse(predicted == STAKER, "stale pin must not equal fresh CREATE3 address");
+
+        vm.expectRevert("OMNICHAIN_MEMECOIN_STAKER_DEPLOY_MISMATCH");
+        script.deployOmnichainMemecoinStakerForTest(7);
+    }
+
+    // Positive mirror: when the env pin is pre-filled with the current-nonce CREATE3 prediction (the
+    // documented operator step, _getDeployedOmnichainMemecoinStaker), the deploy passes the mismatch
+    // assert and a real initialized OmnichainMemecoinStakerUpgradeable lands at the predicted address.
+    function testDeployOmnichainMemecoinStakerDeploysWhenPinMatchesCreate3Address() external {
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        script.setOutrunDeployerForTest(address(realDeployer));
+        address localEndpoint = address(0x4321);
+        script.setEndpointForTest(uint32(block.chainid), localEndpoint);
+        // Pre-fill the staker env pin with the current-nonce CREATE3 prediction, as the deploy guard
+        // (OMNICHAIN_MEMECOIN_STAKER_DEPLOY_MISMATCH) requires.
+        bytes32 salt = keccak256(abi.encodePacked("OmnichainMemecoinStaker", uint256(7)));
+        address predicted = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), salt);
+        script.setOmnichainMemecoinStakerForTest(predicted);
+
+        script.deployOmnichainMemecoinStakerForTest(7);
+
+        // The staker is a real initialized contract at the predicted address (setUp wired owner =
+        // address(script), read back through the proxy with the fresh local endpoint).
+        assertGt(predicted.code.length, 0, "staker not deployed at predicted address");
+        assertEq(OmnichainMemecoinStakerUpgradeable(predicted).localEndpoint(), localEndpoint);
+        assertEq(OmnichainMemecoinStakerUpgradeable(predicted).owner(), address(script));
     }
 
     // Regression: a zero local endpoint must fail loudly at deploy time instead of baking
@@ -1279,6 +1806,131 @@ contract MemeverseScriptTest is Test {
         assertEq(deployer.lastCreationCode(), bytes(""));
     }
 
+    // IMPLEMENTATION_DEPLOY_MISMATCH coverage: the deploy asserts compare each fresh CREATE3 actual
+    // against its env pin. The mock deployer returns address(0) for every deploy, so the
+    // matching-pin positive must zero the pins (actual == pin); the negative cases keep the setUp
+    // pins non-zero so the mock's actual diverges.
+    function testDeployImplementationsPassWhenPinsMatchDeployedAddresses() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+        script.setImplementationPinsForTest(address(0), address(0), address(0), address(0), address(0));
+
+        script.deployImplementationForTest(2);
+        script.deployMemecoinPOLImplementationForTest(2);
+        script.deployMemecoinGovernorImplementationForTest(2);
+
+        // Each mismatch guard runs after its deploy call, so all creation codes reached the deployer.
+        (bytes32 memecoinSalt,) = deployer.deployCalls(0);
+        (bytes32 polSalt,) = deployer.deployCalls(3);
+        (bytes32 governorSalt,) = deployer.deployCalls(4);
+        assertEq(memecoinSalt, keccak256(abi.encodePacked("MemecoinImplementation", uint256(2))));
+        assertEq(polSalt, keccak256(abi.encodePacked("MemecoinPOLImplementation", uint256(2))));
+        assertEq(governorSalt, keccak256(abi.encodePacked("MemecoinDaoGovernorImplementation", uint256(2))));
+    }
+
+    // Positive mirror of the proxyDeployer/registry deploy-gate family for the three implementation
+    // deploy functions: with a REAL OutrunDeployer and every env pin pre-filled with the current-nonce
+    // CREATE3 prediction (the documented operator step), each mismatch assert passes and a real
+    // implementation lands at its predicted address with code. The pins are the real non-zero
+    // getDeployed predictions — a degenerate pin (e.g. address(0)) cannot satisfy both the guard and
+    // these code assertions, so the pass proves the guard admits exactly the fresh artifacts.
+    function testDeployImplementationsDeploysWhenPinsMatchCreate3Addresses() external {
+        OutrunDeployer realDeployer = new OutrunDeployer(address(script));
+        script.setOutrunDeployerForTest(address(realDeployer));
+
+        // Non-degenerate pins: each prediction is a real non-zero CREATE3 address.
+        bytes32 memecoinSalt = keccak256(abi.encodePacked("MemecoinImplementation", uint256(7)));
+        bytes32 vaultSalt = keccak256(abi.encodePacked("MemecoinYieldVaultImplementation", uint256(7)));
+        bytes32 incentivizerSalt = keccak256(abi.encodePacked("GovernanceCycleIncentivizerImplementation", uint256(7)));
+        bytes32 polSalt = keccak256(abi.encodePacked("MemecoinPOLImplementation", uint256(7)));
+        bytes32 governorSalt = keccak256(abi.encodePacked("MemecoinDaoGovernorImplementation", uint256(7)));
+        address predictedMemecoin = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), memecoinSalt);
+        address predictedVault = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), vaultSalt);
+        address predictedIncentivizer =
+            IOutrunDeployer(address(realDeployer)).getDeployed(address(script), incentivizerSalt);
+        address predictedPol = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), polSalt);
+        address predictedGovernor = IOutrunDeployer(address(realDeployer)).getDeployed(address(script), governorSalt);
+        assertTrue(
+            predictedMemecoin != address(0) && predictedVault != address(0) && predictedIncentivizer != address(0)
+                && predictedPol != address(0) && predictedGovernor != address(0),
+            "predictions must be real non-zero CREATE3 addresses"
+        );
+        script.setImplementationPinsForTest(
+            predictedMemecoin, predictedPol, predictedVault, predictedGovernor, predictedIncentivizer
+        );
+
+        script.deployImplementationForTest(7);
+        script.deployMemecoinPOLImplementationForTest(7);
+        script.deployMemecoinGovernorImplementationForTest(7);
+
+        // Every mismatch guard passed (no revert) and each fresh implementation has code at its
+        // predicted address; the five predictions must also be pairwise distinct artifacts.
+        assertGt(predictedMemecoin.code.length, 0, "memecoin implementation not deployed at predicted address");
+        assertGt(predictedVault.code.length, 0, "vault implementation not deployed at predicted address");
+        assertGt(predictedIncentivizer.code.length, 0, "incentivizer implementation not deployed at predicted address");
+        assertGt(predictedPol.code.length, 0, "POL implementation not deployed at predicted address");
+        assertGt(predictedGovernor.code.length, 0, "governor implementation not deployed at predicted address");
+        assertTrue(
+            predictedMemecoin != predictedVault && predictedMemecoin != predictedIncentivizer
+                && predictedMemecoin != predictedPol && predictedMemecoin != predictedGovernor
+                && predictedVault != predictedIncentivizer && predictedVault != predictedPol
+                && predictedVault != predictedGovernor && predictedIncentivizer != predictedPol
+                && predictedIncentivizer != predictedGovernor && predictedPol != predictedGovernor,
+            "predictions must be pairwise distinct"
+        );
+    }
+
+    function testDeployImplementationRevertsWhenMemecoinPinMismatchesDeployedAddress() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+        // setUp pins point at the readiness mocks (non-zero); the mock deploy returns address(0).
+
+        vm.expectRevert("MEMECOIN_IMPLEMENTATION_DEPLOY_MISMATCH");
+        script.deployImplementationForTest(2);
+    }
+
+    function testDeployMemecoinPOLImplementationRevertsWhenPinMismatchesDeployedAddress() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+
+        vm.expectRevert("POL_IMPLEMENTATION_DEPLOY_MISMATCH");
+        script.deployMemecoinPOLImplementationForTest(2);
+    }
+
+    function testDeployMemecoinGovernorImplementationRevertsWhenPinMismatchesDeployedAddress() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+
+        vm.expectRevert("MEMECOIN_GOVERNOR_IMPLEMENTATION_DEPLOY_MISMATCH");
+        script.deployMemecoinGovernorImplementationForTest(2);
+    }
+
+    // The mock deployer returns address(0) for every deploy, so every guard BEFORE the one under
+    // test must see a matching (zero) pin, and the slot under test keeps its non-zero setUp pin.
+    function testDeployImplementationRevertsWhenVaultPinMismatchesDeployedAddress() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+        script.setImplementationPinsForTest(address(0), address(0), VAULT_IMPL, address(0), address(0));
+
+        vm.expectRevert("MEMECOIN_VAULT_IMPLEMENTATION_DEPLOY_MISMATCH");
+        script.deployImplementationForTest(2);
+    }
+
+    function testDeployImplementationRevertsWhenIncentivizerPinMismatchesDeployedAddress() external {
+        MockScriptOutrunDeployer deployer = new MockScriptOutrunDeployer();
+        script.setOutrunDeployerForTest(address(deployer));
+        script.setEndpointForTest(uint32(block.chainid), LOCAL_ENDPOINT);
+        script.setImplementationPinsForTest(address(0), address(0), address(0), address(0), INCENTIVIZER_IMPL);
+
+        vm.expectRevert("CYCLE_INCENTIVIZER_IMPLEMENTATION_DEPLOY_MISMATCH");
+        script.deployImplementationForTest(2);
+    }
+
     // Regression: a zero local endpoint must fail loudly at deploy time instead of baking
     // localEndpoint=0 into the registration center.
     function testDeployRegistrationCenterRevertsOnZeroLocalEndpoint() external {
@@ -1388,19 +2040,18 @@ contract MemeverseScriptTest is Test {
         launcher.setMemeverseUniswapHook(readyHook);
 
         // Readiness requires code at every launch/settlement/view/liquidity sibling before opening.
+        // The three setUp-wired slots are re-pointed at the shared constants; launchImpl keeps a
+        // dedicated address so this helper mirrors the deploy flow's fresh sibling wiring.
         address launchImplAddr = address(uint160(0x5001));
-        address settlementImplAddr = address(uint160(0x5002));
-        address feePreviewReaderAddr = address(uint160(0x5003));
-        address liquidityImplAddr = address(uint160(0x5004));
         bytes memory siblingCode = address(hookImpl).code;
         vm.etch(launchImplAddr, siblingCode);
-        vm.etch(settlementImplAddr, siblingCode);
-        vm.etch(feePreviewReaderAddr, siblingCode);
-        vm.etch(liquidityImplAddr, siblingCode);
+        vm.etch(SIBLING_SETTLEMENT_IMPL, siblingCode);
+        vm.etch(SIBLING_FEE_PREVIEW_READER, siblingCode);
+        vm.etch(SIBLING_LIQUIDITY_IMPL, siblingCode);
         launcher.setLaunchImpl(launchImplAddr);
-        launcher.setSettlementImpl(settlementImplAddr);
-        launcher.setFeePreviewReader(feePreviewReaderAddr);
-        launcher.setLiquidityImpl(liquidityImplAddr);
+        launcher.setSettlementImpl(SIBLING_SETTLEMENT_IMPL);
+        launcher.setFeePreviewReader(SIBLING_FEE_PREVIEW_READER);
+        launcher.setLiquidityImpl(SIBLING_LIQUIDITY_IMPL);
         return (address(router), readyHook);
     }
 

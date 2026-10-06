@@ -215,4 +215,21 @@ contract MemeverseQuoteReadOnlyInvariantTest is Test, HookStorageHelper {
         assertEq(quote.estimatedOutputAmount, 0, "zero user output");
         _assertFeeStateUnchanged(beforeQuote, _snapshotFeeState(poolId));
     }
+
+    /// @notice Zero Lens/Router quotes keep the public-swap gate: the protection window rejects the view
+    ///         path while the bridge direct call (ZeroAmountAllowsZeroContext) stays open in the same state.
+    function test_RevertWhen_LensZeroAmountQuoteDuringPublicSwapWindow() external {
+        hook.setPublicSwapResumeTime(address(token0), address(token1), uint40(block.timestamp + 1 hours));
+        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: 0, sqrtPriceLimitX96: 0});
+
+        vm.expectRevert(SwapGuardMath.PublicSwapDisabled.selector);
+        lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
+
+        // Once the window passes, the same zero-amount quote succeeds again.
+        vm.warp(block.timestamp + 1 hours + 1);
+        IMemeverseUniswapHook.SwapQuote memory quote =
+            lens.quoteSwap(IMemeverseUniswapHook(address(hook)), key, params, address(this));
+        assertEq(quote.estimatedUserInputAmount, 0, "zero user input");
+        assertEq(quote.estimatedUserOutputAmount, 0, "zero user output");
+    }
 }

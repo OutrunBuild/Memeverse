@@ -98,7 +98,7 @@ fee claim 需要单独区分两类能力：
 
 > **非规范集成摘要。** 精确的一次选费、四路径、raw `sqrtPriceLimitX96`、全范围容量、核心/最终用户 delta 与拒绝规则均以 [uniswap-v4.md §3.1–§3.2](uniswap-v4.md) 为唯一 canonical；本节与其发生任何不一致时，以该 canonical 为准。
 
-集成方应通过 Router 提交普通 swap，并将 Router 返回的最终用户结果用于自身的展示与后续处理；PoolManager 与 Hook 的核心执行和费用结算属于底层实现流程。需要预估普通动态 swap 时，使用 `quoteSwap(...)`，并以 canonical 中定义的相同完整上下文解释其成功或拒绝结果。
+集成方应通过 Router 提交普通 swap，并将 Router 返回的最终用户结果用于自身的展示与后续处理；PoolManager 与 Hook 的核心执行和费用结算属于底层实现流程。需要预估普通动态 swap 时，使用 `quoteSwap(...)`，并以 canonical 中定义的相同完整上下文解释其成功或拒绝结果。大额订单提示——极端高费态下（owner 配置的高 launch fee，或同一交易者短窗口内连续大额逆向 swap 自致累积），单笔大额 swap 可能因 PoolManager 输入币余额不足以覆盖费用 take 而整笔回滚，quote 无法预测该回退（报价只读）；可拆单或待费衰减后重试，canonical 见 [uniswap-v4.md §3.3](uniswap-v4.md)。
 
 ### 2.4 启动期收费语义
 
@@ -269,7 +269,7 @@ Preorder settlement 的资金流分三步：
 2. **Hook 从 Launcher 拉取 netInput 与 LP fee 到 hook proxy custody**：一次 `transferFrom(launcher, address(this), netInputAmount + lpFeeInputAmount)`（同源同收款人合并，省一次 ERC20 transferFrom）。Settlement logic 经 Router entry `delegatecall` SettlementFacet 执行（SettlementFacet 持有 unlock 回调上下文，负责 swap、settle、take 与 output-side protocol fee 扣减）。
 3. **Hook proxy 余额 settle 给 PoolManager**：`CurrencySettler.settle` 中 `payer == address(this)`（delegatecall 下即 hook proxy）走 `transfer` 分支，不需要 approve。
 
-Launcher 只需对 **Hook 地址**做一次 infinite approve（`_safeApproveInf(uAsset, hookAddress)`）。所有 `transferFrom` 的 spender 都是 hook，to 可以是 hook 自身或 treasury，不需要额外 approve PoolManager。
+Launcher 无常驻授权：preorder 结算路径在结算前对 **Hook 地址**授予精确 `totalFunds` 的 uAsset 额度，结算完成后撤销为零（`MemeverseLiquidityImpl.sol::_settlePreorder`）。所有 `transferFrom` 的 spender 都是 hook，to 可以是 hook 自身或 treasury，不需要额外 approve PoolManager。
 
 普通集成方不应自行构造这条路径。
 

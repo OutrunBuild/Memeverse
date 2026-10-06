@@ -830,6 +830,9 @@ contract MemeverseUniswapHookUpgradeable layout at erc7201("outrun.storage.Memev
         uint128 liquidity,
         bool protocolFeeOnInput
     ) external override returns (IDynamicFeeFacet.PreparedSwapFee memory) {
+        // Both gates below are amount-conditional on purpose: a zero-amount quote is a fee-only
+        // compatibility preview that stays callable inside the public-swap protection window, while
+        // non-zero quotes reject the same blocked/orphaned states as the Lens path and execution.
         if (params.amountSpecified != 0) {
             SwapGuardMath.revertIfPublicSwapBlocked(_memeverseUniswapHookStorage.publicSwapResumeTime[poolId]);
             // A live pool with no cached LP shares cannot distribute LP fees. Match Lens and execution

@@ -227,8 +227,10 @@ library DynamicFeeMath {
     }
 
     /// @notice Number of volatility-deviation steps between two sqrt prices for a given step size in bps.
-    /// @dev Uses the squared ratio (X18) against `EWVWAP_PRECISION` so the step count is symmetric in
-    ///      the price direction; `stepBps * 2` reflects that one step equals a `stepBps` move on each leg.
+    /// @dev Uses the ratio of the two sqrt prices (X18), i.e. the square root of the price ratio, against
+    ///      `EWVWAP_PRECISION`; the min/max ordering makes the step count symmetric in the price direction.
+    ///      `stepBps * 2` converts the sqrt-ratio deviation into price bps to first order, since for a
+    ///      ratio R the price move `R^2 - 1` is approximated by `2 * (R - 1)`.
     function volatilityDeltaSteps(uint160 referenceSqrtPriceX96, uint160 currentSqrtPriceX96, uint256 stepBps)
         internal
         pure

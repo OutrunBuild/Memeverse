@@ -142,6 +142,17 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
             poolId, principal, _encodeSwapContextFee(dynamicFeeBps, ctx.protocolFeeOnInput), preSqrtPriceX96, coreTarget
         );
 
+        // v4 splits every swap into a "specified" side (the leg the caller names: input for exact-in, output
+        // for exact-out) and an "unspecified" side (the opposite leg). `BeforeSwapDelta` packs the hook's
+        // adjustment of each side as (specified | unspecified); this hook adjusts only the specified side, and
+        // the same positive value means opposite things on the two request paths:
+        //   exact-in:  `gross input - core input target` > 0 SHRINKS the input the pool core swaps, withholding
+        //              the input-side fee that `_collectKnownInputFees` takes in the branch below;
+        //   exact-out: `core output target - requested net output` > 0 ENLARGES the output the pool core must
+        //              deliver, reserving the output-side fee that afterSwap collects.
+        // The credit is what keeps the hook's transient PoolManager delta at zero despite the fee takes: takes
+        // debit the hook and this credit offsets them, so a flipped direction here would desynchronize the two
+        // and fail unlock settlement (or leak fees). Zero total fee therefore returns ZERO_DELTA.
         uint256 specifiedDeltaAmount;
         if (params.amountSpecified < 0) {
             _collectKnownInputFees(poolId, ctx, settlementPlan, effectiveSupply, referrer);
@@ -150,6 +161,9 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         } else {
             specifiedDeltaAmount = settlementPlan.coreOutputTarget - uint256(params.amountSpecified);
         }
+        // The third return value is the v4 lpFeeOverride candidate: both returns pass plain 0 with no override
+        // flag set, so v4 keeps the pool's stored LP fee (zero for these dynamic-fee pools); every fee priced
+        // in this callback rides the hook delta, never the v4 core swap fee.
         if (specifiedDeltaAmount == 0) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
@@ -223,6 +237,11 @@ contract SwapFacet layout at erc7201("outrun.storage.MemeverseUniswapHook")
         OrdinarySwapMath.FinalSettlement memory finalSettlement = OrdinarySwapMath.deriveFinalSettlement(
             params.amountSpecified, protocolFeeOnInput, feeSplit, settlementPlan, actualCurve
         );
+        // A positive unspecifiedDelta credits the hook this swap's fee share on the unspecified leg — the
+        // output-side protocol fee for exact-in, the input-side fee for exact-out — matching the fee takes
+        // this callback performs (directly below / via `_collectProtocolFee`). Together with the beforeSwap
+        // specified credit (which reserves the exact-out output-side protocol fee), every take is offset by an
+        // equal credit, so the hook's net delta vs the PoolManager settles back to zero at unlock settlement.
         uint256 unspecifiedDeltaAmount = params.amountSpecified < 0
             ? actualCurve.coreGrossOutput - finalSettlement.userNetOutput
             : finalSettlement.userInput - actualCurve.coreInput;

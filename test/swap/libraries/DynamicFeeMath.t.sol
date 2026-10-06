@@ -313,18 +313,19 @@ contract DynamicFeeMathTest is Test {
     // Each helper is pinned at its documented contract edges.
 
     /// @notice `volatilityDeltaSteps` returns 0 for degenerate inputs and yields symmetric step counts for
-    ///         up/down moves of equal magnitude, because it compares the squared-price ratio (direction-agnostic).
+    ///         up/down moves of equal magnitude, because it compares the sqrt-price ratio under min/max
+    ///         ordering (direction-agnostic).
     function testVolatilityDeltaStepsBoundaries() external pure {
         assertEq(DynamicFeeMath.volatilityDeltaSteps(0, SQRT_PRICE_1_1, 1), 0, "zero reference");
         assertEq(DynamicFeeMath.volatilityDeltaSteps(SQRT_PRICE_1_1, 0, 1), 0, "zero current");
         assertEq(DynamicFeeMath.volatilityDeltaSteps(SQRT_PRICE_1_1, SQRT_PRICE_1_1, 1), 0, "equal prices");
         assertEq(DynamicFeeMath.volatilityDeltaSteps(SQRT_PRICE_1_1, SQRT_PRICE_1_1, 0), 0, "zero step size");
 
-        // A 1% price move (upper/lower = 101/100) with a 1 bps step:
+        // A 1% sqrt-price move (upper/lower = 101/100, a ~2% price move) with a 1 bps step:
         //   sqrtRatioX18 = mulDiv(101, 1e18, 100) = 1.01e18
         //   steps        = mulDiv(1.01e18 − 1e18, 2 * 10000, 1 * 1e18)
         //                = mulDiv(1e16, 20000, 1e18) = 200
-        // The factor 2 reflects "one step = a 1 bps move on each leg" (see the helper's @dev).
+        // The factor 2 converts the sqrt-ratio deviation into price bps to first order (see the helper's @dev).
         assertEq(DynamicFeeMath.volatilityDeltaSteps(100, 101, 1), 200, "1% up move step count");
         assertEq(DynamicFeeMath.volatilityDeltaSteps(101, 100, 1), 200, "1% down move step count (symmetric)");
     }

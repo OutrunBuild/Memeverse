@@ -91,6 +91,8 @@ sequenceDiagram
     H->>R: transfer rebate 到 recipient
 ```
 
+非规范提示：输入侧费用 take 在本笔用户输入 settle 进 PoolManager 之前执行，资金来自 PoolManager 该输入币的全局余额，因此单笔 swap 的费腿合计超过该余额时，交易在该 take 处整笔原子回滚；大额订单可拆单或待费衰减后重试，canonical 边界表述见 [uniswap-v4.md §3.3](uniswap-v4.md)。
+
 说明：
 
 - **rebate custody 在 hook proxy**：`MemeverseUniswapHookUpgradeable` 的 callback/fee logic 由 SwapFacet / DynamicFeeFacet 经 Router entry `delegatecall` 执行并共享 Router storage。rebate `take` recipient = `address(this)`（hook proxy），`pendingRebate` 在 Router storage，`claimRebate`/`pendingRebateOf` 入口在 hook。
@@ -156,7 +158,7 @@ sequenceDiagram
 - Settlement logic 经 Router entry `delegatecall` SettlementFacet 执行。unlock payload 直接使用 `abi.encode(UnlockCallbackKind.Settlement, SettlementCallbackData)`；Router 只对当前支持的 raw discriminator 分支，未知值回退 `InvalidUnlockCallbackKind(rawKind)`。因 `SettlementCallbackData` 当前全静态，kind 校验后用 `bytes.concat(settlementUnlockCallback.selector, rawData[32:])` 前缀转发到 facet（跳过 memory decode + 二次 encode）。typed facet returndata 由 Router 原样返回，外层 settlement logic 只解码一次。若 `SettlementCallbackData` 未来引入动态字段，须回到 `abi.encodeCall`。
 - settlement swap 是 hook self-call，真实 v4 同时跳过 `beforeSwap` / `afterSwap`；不需要 settlement transient routing flag。回调型 token 发起的**跨池**外部重入 swap 不是 hook self-call，仍执行普通 callbacks 并走 public fee 正常收费；**同池**生命周期重入（公开 swap 路径下由 outer `beforeSwapLogic` 持有该池 per-pool transient lock，回调内再次进入同池 `beforeSwapLogic` 触发 `SwapLifecycleReentrant`）被阻断，防止 callback token 在 outer 报价固定后推进动态费 state 造成费率失真；settlement self-call 因 v4 跳过 `beforeSwap`/`afterSwap` 不进这两个函数的 acquire/release 路径，故 settlement 路径下改由 `SettlementFacet.executeSettlementLogic` 在 Phase 1 `transferFrom` 前 acquire、Phase 3 `_updateAfterSwap` 后的函数末尾 release 同一 per-pool lock，覆盖 callback token 在 transferFrom 窗口（Phase 1/2，pre-unlock）与 settle/take transfer 期间对同池发起的 reentrant swap（见 [docs/spec/invariants.md](../invariants.md) INV-04A）。需注意在 no-session settlement 路径上该重入 swap 进入 `beforeSwapLogic` 后先命中 INV-23 session 门（`activePrincipal() == address(0)` 即回退 `AccountSessionNotActive`，早于 `_revertIfPublicSwapBlocked` 与 `acquireSwapLifecycleLock`），故前述 `SwapLifecycleReentrant` 选择子仅在「重入 swap 发生时 session 已 active」的公开 swap 路径下成立，settlement 无 session 路径由该 session 门更早阻断（只是选择子更早、不同）。
 - 该路径使用固定总费（数值定义见 [docs/spec/verse/accounting.md §7.4](../verse/accounting.md)）；caller 约束见 [docs/spec/invariants.md](../invariants.md) INV-04。不复用普通动态费结果。
-- **资金与 approve 路径**：Launcher 只需对 Hook 做一次 infinite approve。Hook 作为 `transferFrom` 的 spender，拉取 protocol fee 到 treasury，并把 netInput 与 LP fee 合并一次 `transferFrom` 拉到 hook proxy custody（同源同收款人，省一次 ERC20 transferFrom）；SettlementFacet 用 hook proxy 余额直接 `transfer` 给 PoolManager，不需要任何 approve。详见 [docs/spec/swap/swap-integration.md §5.1](swap-integration.md)。
+- **资金与 approve 路径**：Launcher 无常驻授权，preorder 结算前对 Hook 授予精确 `totalFunds` 的 uAsset 额度、结算后撤销为零（`MemeverseLiquidityImpl.sol::_settlePreorder`）。Hook 作为 `transferFrom` 的 spender，拉取 protocol fee 到 treasury，并把 netInput 与 LP fee 合并一次 `transferFrom` 拉到 hook proxy custody（同源同收款人，省一次 ERC20 transferFrom）；SettlementFacet 用 hook proxy 余额直接 `transfer` 给 PoolManager，不需要任何 approve。详见 [docs/spec/swap/swap-integration.md §5.1](swap-integration.md)。
 
 ---
 

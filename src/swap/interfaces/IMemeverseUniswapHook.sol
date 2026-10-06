@@ -111,6 +111,10 @@ interface IMemeverseUniswapHook is IImmutableState {
     ///      the implementation needs `delegatecall` because solc 0.8.35 rejects `view` + `delegatecall`
     ///      (Error 8961). A direct ordinary CALL is read-only only while the delegated facet implementation
     ///      is read-only; `eth_call` alone does not establish EVM static-call enforcement.
+    ///      The public-swap-protection and orphaned-liquidity gates at the implementation are
+    ///      amount-conditional by design: they run only when `params.amountSpecified != 0`, so a
+    ///      zero-amount quote stays available as a fee-only compatibility preview even inside the
+    ///      public-swap protection window, while the view Lens path keeps rejecting there.
     /// @param poolId Pool being quoted.
     /// @param params Swap parameters used for the quote.
     /// @param trader Trader address used by the dynamic-fee context.
@@ -411,8 +415,6 @@ interface IMemeverseUniswapHook is IImmutableState {
     error NoActiveLiquidityShares();
 
     error SenderMustBeHook();
-
-    error ExpiredPastDeadline();
 
     /// @notice Reverts when actual amounts are worse than user-provided minimums.
     error TooMuchSlippage();

@@ -197,8 +197,11 @@ library OrdinarySwapMath {
         (uint160 postSqrtPriceX96,,,) = SwapMath.computeSwapStep(
             preSqrtPriceX96, capacityResult.effectiveSqrtPriceStopX96, activeLiquidity, amountRemaining, 0
         );
-        // The target/capacity gate above already established capacityResult.stopsAtFullRangeEndpoint == true
-        // on this path, so only the post-swap price check remains.
+        // v4's exact-output price step rounds in the overshoot direction, so with output capacity rounded
+        // down, the post-swap price can land exactly on the endpoint even though target < capacity held
+        // above; landing there means the full-range position is exhausted by rounding dust. The capacity
+        // gate above already established capacityResult.stopsAtFullRangeEndpoint == true on this path, so
+        // only this price check remains.
         if (postSqrtPriceX96 == capacityResult.effectiveSqrtPriceStopX96) {
             revert FinalTargetNotExecutable();
         }
@@ -246,6 +249,27 @@ library OrdinarySwapMath {
         }
     }
 
+    /// @notice Derives the final per-party settlement for the core swap the plan targeted: what the user pays in,
+    ///         what the user nets out, and the LP/protocol fees, one branch per fee path.
+    /// @dev Final settlement by path, holding the same conservativeness invariant as the settlement plan (the fee
+    ///      leg is never under-funded):
+    ///      - exact-input, fee-on-input (amountSpecified < 0, protocolFeeOnInput=true): both fee legs were fixed
+    ///        on the input side at plan time, so `lpFee`/`protocolFee` replay the plan's rounded split (protocol
+    ///        share rounds DOWN, remainder to LP) and `userNetOutput` is the core gross output verbatim.
+    ///      - exact-input, fee-on-output (amountSpecified < 0, protocolFeeOnInput=false): the LP fee was taken on
+    ///        the input side, so only the protocol fee is deducted from the output: `userNetOutput` rounds DOWN on
+    ///        the total/lp survival ratio — the output-side effective rate is the grossed-up
+    ///        `protocolFeeBps / (BPS_BASE - lpFeeBps)`, not the bare bps — and `protocolFee` is the kept remainder.
+    ///      - exact-output, fee-on-input (amountSpecified > 0, protocolFeeOnInput=true): `userInput` is
+    ///        reverse-derived from the actual core input by the total-fee survival ratio, rounding UP so the fee
+    ///        leg is never under-funded; that grossed-up input fee is split as on the exact-input path, and
+    ///        `userNetOutput` is the core gross output verbatim, overfill included.
+    ///      - exact-output, fee-on-output (amountSpecified > 0, protocolFeeOnInput=false): `userInput` is
+    ///        reverse-derived the same way but on the lp-survival ratio, because the whole input fee funds LP;
+    ///        `protocolFee` stays fixed at plan time as `coreOutputTarget - requestedNetOutput`.
+    ///      `appliedInputFeeBps` selects the same fee leg the plan charged on the input side, so the gross-up
+    ///      exactly inverts the plan's survival ratio; `largestCoreInput` is the largest core input whose
+    ///      rounded-up gross-up still fits `uint256.max`, above which the reverse derivation is not representable.
     function deriveFinalSettlement(
         int256 amountSpecified,
         bool protocolFeeOnInput,

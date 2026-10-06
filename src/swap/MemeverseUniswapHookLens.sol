@@ -43,6 +43,9 @@ contract MemeverseUniswapHookLens is IMemeverseUniswapHookLens {
         if (address(key.hooks) != address(hook)) revert IMemeverseUniswapHook.HookAddressMismatch();
         PoolId poolId = key.toId();
         // Gate logic lives in SwapGuardMath so the quote path cannot drift from the execution path.
+        // This gate also covers zero-amount quotes: unlike the hook bridge, whose amount-conditional
+        // gates let a zero-amount preview through the protection window, a Lens quote mirrors execution
+        // and stays fail-closed while the window is active.
         SwapGuardMath.revertIfPublicSwapBlocked(hook.publicSwapResumeTime(poolId));
         // Read liquidity once and reuse it for both the orphan-liquidity gate and the fee quote,
         // mirroring the execution path (SwapFacet reads getLiquidity once, threads it through).

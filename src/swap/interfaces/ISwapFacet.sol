@@ -26,7 +26,9 @@ interface ISwapFacet {
     /// @param hookData Opaque hook data forwarded by PoolManager; the first 20 bytes optionally encode a referrer.
     /// @return selector The `beforeSwap` selector expected by PoolManager.
     /// @return delta Hook delta used to reserve input/output-side fees.
-    /// @return lpFeeBps LP fee basis points reported to PoolManager for this swap.
+    /// @return lpFeeBps Always 0, with no fee-override flag set: the hook never overrides the pool LP fee, the
+    ///      v4 core swap therefore runs at zero pool LP fee, and every fee on this swap is collected via the
+    ///      hook delta path instead of the v4 core fee.
     function beforeSwapLogic(address sender, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         external
         returns (bytes4 selector, BeforeSwapDelta delta, uint24 lpFeeBps);

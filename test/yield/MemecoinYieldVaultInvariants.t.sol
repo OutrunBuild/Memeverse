@@ -290,7 +290,7 @@ contract MemecoinYieldVaultInvariants is StdInvariant, Test {
         asset = new MockComposeAsset();
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        vault.initialize("Test Vault", "TVLT", address(asset), 1, VIRTUAL_ASSETS);
+        vault.initialize("Test Vault", "TVLT", address(asset), VIRTUAL_ASSETS);
 
         sentinel = makeAddr("sentinel");
         asset.mint(sentinel, 1e24);
@@ -447,6 +447,6 @@ contract MemecoinYieldVaultInvariants is StdInvariant, Test {
     function _freshVault() internal returns (MemecoinYieldVault v) {
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         v = MemecoinYieldVault(Clones.clone(address(implementation)));
-        v.initialize("Fresh", "FRSH", address(asset), 1, VIRTUAL_ASSETS);
+        v.initialize("Fresh", "FRSH", address(asset), VIRTUAL_ASSETS);
     }
 }

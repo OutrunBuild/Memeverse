@@ -366,8 +366,10 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         if (govChainId == block.chainid) {
             // On the governance chain we deploy concrete contracts immediately because fee distribution will target them locally.
             yieldVault = IMemeverseProxyDeployer(_proxyDeployer).deployYieldVault(verseId);
-            // Size the permanent virtual buffer from the per-uAsset fund metadata: 0.7% of the minimum
-            // main-pool memecoin provision. registerMemeverse already enforces both fields are non-zero.
+            // Size the permanent virtual buffer from the per-uAsset fund metadata: 1% of the minimum
+            // main-pool memecoin provision, equivalently 0.7% of `minTotalFund * fundBasedAmount`; the
+            // main pool receives 70% of genesis funds. registerMemeverse already enforces both fields
+            // are non-zero.
             IMemeverseLauncher.FundMetaData storage _meta = memeverseLauncherStorage.fundMetaDatas[uAsset];
             uint256 _virtualAssets = MemeverseLauncherLib.virtualAssetsBuffer(_meta.minTotalFund, _meta.fundBasedAmount);
             IMemecoinYieldVault(yieldVault)
@@ -375,7 +377,6 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
                     string(abi.encodePacked("Staked ", name)),
                     string(abi.encodePacked("s", symbol)),
                     memecoin,
-                    verseId,
                     _virtualAssets
                 );
             (governor, incentivizer) = IMemeverseProxyDeployer(_proxyDeployer)

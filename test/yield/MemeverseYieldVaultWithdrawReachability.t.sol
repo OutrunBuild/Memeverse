@@ -5,7 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
-import {MemecoinYieldVault} from "../../src/yield/MemecoinYieldVault.sol";
+import {MemecoinYieldVault, WithdrawPlanner} from "../../src/yield/MemecoinYieldVault.sol";
+import {IMemecoinYieldVault} from "../../src/yield/interfaces/IMemecoinYieldVault.sol";
 
 /// @dev Test boundary:
 /// - These cases lock the read-only `isWithdrawReachable` simulation against the state-changing
@@ -14,6 +15,9 @@ import {MemecoinYieldVault} from "../../src/yield/MemecoinYieldVault.sol";
 /// - Rates are kept 1:1 (totalAssets == totalSupply) except the dust and non-unit-rate cases, which
 ///   engineer a locked-per-share rate above 1 to reach the takeShares == 0 branch and pin the ceil
 ///   inverse of the lock rate respectively.
+/// - The differential fuzz below randomizes the queue state (lock rates, maturities, partial
+///   consumption) and the target, cross-checking the view verdict against the actual `withdraw`
+///   outcome over arbitrary states instead of hand-picked fixtures.
 contract MemeverseYieldVaultWithdrawReachabilityTest is Test {
     address internal constant ATTACKER = address(0xA11CE);
     address internal constant VICTIM = address(0xB0B);
@@ -30,11 +34,19 @@ contract MemeverseYieldVaultWithdrawReachabilityTest is Test {
         asset = new MockERC20("Memecoin", "MEME", 18);
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        vault.initialize("Staked Memecoin", "sMEME", address(asset), 1, VIRTUAL_ASSETS);
+        vault.initialize("Staked Memecoin", "sMEME", address(asset), VIRTUAL_ASSETS);
 
         asset.mint(ATTACKER, 1_001 ether);
         vm.prank(ATTACKER);
         asset.approve(address(vault), type(uint256).max);
+
+        // Mechanical lock: the planner's fixed scratch arrays are length-bound to the vault's queue
+        // cap literal (the two constants cannot reference each other), so the values must stay equal.
+        assertEq(
+            vault.MAX_REDEEM_REQUESTS(),
+            WithdrawPlanner.MAX_REDEEM_REQUESTS,
+            "planner bound must equal vault queue bound"
+        );
     }
 
     /// @notice Zero assets are never reachable, even with a fully matured queue.
@@ -223,6 +235,89 @@ contract MemeverseYieldVaultWithdrawReachabilityTest is Test {
         assertEq(remainingShares, 5 ether, "residual shares");
         vm.expectRevert();
         vault.redeemRequestQueues(ATTACKER, 1);
+    }
+
+    /// @notice Differential fuzz: for any queue state and target, the view's verdict must equal the
+    ///         actual `withdraw` outcome — the exact-match contract pinned by the shared planner.
+    /// @dev Builds randomized queues (varying lock rates via random yield, varying maturities via
+    ///      random warps, up to MAX_REDEEM_REQUESTS entries), then cross-checks that a reachable
+    ///      verdict implies a successful exact withdraw whose terminal state drops both claimable
+    ///      readings by exactly the payout / burned shares while pending (immature) shares stay
+    ///      untouched, and that an unreachable verdict implies the InsufficientClaimableRedeem revert.
+    function testFuzz_IsWithdrawReachableMatchesActualWithdrawOutcome(
+        uint256 depositAssets,
+        uint256 yieldAssets,
+        uint256 requestCount,
+        uint256 targetAssets
+    ) external {
+        // Lower bound MAX_REDEEM_REQUESTS keeps at least one share per queue slot; a single deposit
+        // into the empty vault mints depositAmount shares 1:1 (the V buffer cancels on both sides).
+        depositAssets = bound(depositAssets, vault.MAX_REDEEM_REQUESTS(), 100 ether);
+        // Yield up to 2_000 ether pushes the lock rate well above 1 (V = 100 ether dominates small
+        // deposits), so the ceil-inverse rounding edges are exercised; 0 keeps the exact 1:1 rate.
+        yieldAssets = bound(yieldAssets, 0, 2_000 ether);
+        requestCount = bound(requestCount, 1, vault.MAX_REDEEM_REQUESTS());
+
+        vm.prank(ATTACKER);
+        uint256 remainingShares = vault.deposit(depositAssets, ATTACKER);
+
+        asset.mint(YIELD_SOURCE, yieldAssets);
+        vm.startPrank(YIELD_SOURCE);
+        asset.approve(address(vault), type(uint256).max);
+        vault.accumulateYields(yieldAssets);
+        vm.stopPrank();
+
+        // Each entry reserves one share for every later slot so no slice can empty a future entry;
+        // the random 0..REDEEM_DELAY+1 warp after each request mixes matured and immature entries.
+        for (uint256 i = 0; i < requestCount; ++i) {
+            uint256 entriesAfterThis = requestCount - 1 - i;
+            uint256 slice =
+                entriesAfterThis == 0 ? remainingShares : vm.randomUint(1, remainingShares - entriesAfterThis);
+            vm.prank(ATTACKER);
+            vault.requestRedeem(slice, ATTACKER, ATTACKER);
+            remainingShares -= slice;
+            vm.warp(block.timestamp + vm.randomUint(0, vault.REDEEM_DELAY() + 1));
+        }
+
+        // +2 covers the exactly-reachable full-drain bound and just past it; when nothing matured,
+        // maxWithdraw is 0 and only unreachable targets are sampled.
+        targetAssets = bound(targetAssets, 1, vault.maxWithdraw(ATTACKER) + 2);
+
+        bool ok = vault.isWithdrawReachable(ATTACKER, targetAssets);
+        uint256 balanceBefore = asset.balanceOf(ATTACKER);
+        if (ok) {
+            uint256 claimableBefore = vault.maxWithdraw(ATTACKER);
+            uint256 claimableSharesBefore = vault.claimableRedeemRequest(ATTACKER);
+            uint256 pendingBefore = vault.pendingRedeemRequest(ATTACKER);
+            vm.prank(ATTACKER);
+            uint256 burnedShares = vault.withdraw(targetAssets, ATTACKER, ATTACKER);
+            assertEq(asset.balanceOf(ATTACKER) - balanceBefore, targetAssets, "reachable verdict must pay exactly");
+            // Payouts come only from matured entries' lockedAssets and sum to exactly the target; fully
+            // consumed entries pop only after both fields reach zero, so both claimable readings must
+            // drop by exactly the payout / burned shares.
+            assertEq(
+                vault.maxWithdraw(ATTACKER),
+                claimableBefore - targetAssets,
+                "post-claim claimable locked must drop by exactly the payout"
+            );
+            assertEq(
+                vault.claimableRedeemRequest(ATTACKER),
+                claimableSharesBefore - burnedShares,
+                "post-claim claimable shares must drop by exactly the burned shares"
+            );
+            // The planner skips immature entries entirely and swap-pop carries each entry's own
+            // requestTime, so maturity classification (fixed block.timestamp) never changes across
+            // the claim and the pending sum must be identical.
+            assertEq(
+                vault.pendingRedeemRequest(ATTACKER), pendingBefore, "immature entries must be untouched by a claim"
+            );
+        } else {
+            vm.prank(ATTACKER);
+            // Partial selector match: the `available` argument is itself planner output and must not be
+            // re-derived here — that would fork the single source this test exists to protect.
+            vm.expectPartialRevert(IMemecoinYieldVault.InsufficientClaimableRedeem.selector);
+            vault.withdraw(targetAssets, ATTACKER, ATTACKER);
+        }
     }
 
     /// @notice Queues two fully matured requests of 10 ether each: deposit 20 ether (1:1 rate), request

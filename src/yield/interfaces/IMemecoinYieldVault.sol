@@ -111,16 +111,11 @@ interface IMemecoinYieldVault is IERC20 {
     /// @param name Share token name.
     /// @param symbol Share token symbol.
     /// @param asset Underlying memecoin address.
-    /// @param verseId Verse id associated with this vault.
     /// @param virtualAssets Permanent virtual buffer added symmetrically to the share/asset sides of every
-    ///        conversion; sized by the launcher at 0.7% of the minimum main-pool memecoin provision.
-    function initialize(
-        string calldata name,
-        string calldata symbol,
-        address asset,
-        uint256 verseId,
-        uint256 virtualAssets
-    ) external;
+    ///        conversion; sized by the launcher at 1% of the minimum main-pool memecoin provision
+    ///        (equivalently 0.7% of the minimum fund-based memecoin amount `minTotalFund * fundBasedAmount`;
+    ///        the main pool receives 70% of genesis funds).
+    function initialize(string calldata name, string calldata symbol, address asset, uint256 virtualAssets) external;
 
     /// @notice Adds freshly supplied yield into the vault.
     /// @dev Implementations may restrict who is allowed to call this entrypoint.
@@ -143,7 +138,7 @@ interface IMemecoinYieldVault is IERC20 {
     /// @dev Implementations may add validation around who may receive shares. A non-zero deposit that
     ///      rounds down to zero shares reverts ZeroSharesDeposit; a zero-asset deposit returns 0 without
     ///      emitting Deposit (narrow EIP-4626 MUST-emit deviation; zero amount has no state change and
-    ///      preserves previewDeposit(0) == deposit(0) == 0, see governance-yield-details.md §6.2 #7).
+    ///      preserves previewDeposit(0) == deposit(0) == 0.)
     /// @param assets Amount of underlying asset to deposit.
     /// @param receiver Recipient of the minted vault shares.
     /// @return shares Shares minted for the deposit.
@@ -153,7 +148,7 @@ interface IMemecoinYieldVault is IERC20 {
     /// @dev Shares-first deposit: `assets` is rounded up (ceil) to protect the vault so existing
     ///      shareholders are never diluted by an under-paying mint. The caller (`msg.sender`) pays the
     ///      assets, mirroring `deposit`; there is no operator-allowance path. A zero-share mint returns 0
-    ///      without emitting Deposit (same narrow deviation as deposit(0); previewMint(0) == mint(0) == 0, see §6.2 #7).
+    ///      without emitting Deposit (same narrow deviation as deposit(0); previewMint(0) == mint(0) == 0).
     /// @param shares Amount of vault shares to mint.
     /// @param receiver Recipient of the minted shares.
     /// @return assets Underlying assets pulled from the caller.

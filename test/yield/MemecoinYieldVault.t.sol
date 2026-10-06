@@ -41,7 +41,7 @@ contract MemecoinYieldVaultTest is Test {
         asset = new MockERC20("Memecoin", "MEME", 18);
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        vault.initialize("Staked Memecoin", "sMEME", address(asset), 1, VIRTUAL_ASSETS);
+        vault.initialize("Staked Memecoin", "sMEME", address(asset), VIRTUAL_ASSETS);
 
         asset.mint(ATTACKER, 1_001 ether);
         asset.mint(VICTIM, 2_000 ether);
@@ -56,8 +56,9 @@ contract MemecoinYieldVaultTest is Test {
     /// @notice A first depositor who front-runs public yield captures only a V-damped fraction.
     /// @dev Yield is injected by a third party (modeling legitimate swap-fee arrival via the
     ///      yieldDispatcher path), NOT by the attacker. This makes the assertion V-sensitive:
-    ///      with VIRTUAL_ASSETS=100 ether the attacker redeems ~11 ether; if V regressed to +1
-    ///      the attacker would redeem ~500 ether, failing the bound below.
+    ///      with VIRTUAL_ASSETS=100 ether the attacker redeems 10 wei (one share at the floored
+    ///      ~11 wei/share rate); if V regressed to +1 the attacker would redeem 600 ether,
+    ///      failing the bound below.
     function testVirtualBufferDampsFirstDepositorCaptureOfPublicYield() external {
         // Attacker front-runs: deposits dust before public yield arrives.
         vm.prank(ATTACKER);
@@ -81,10 +82,10 @@ contract MemecoinYieldVaultTest is Test {
         vm.prank(ATTACKER);
         uint256 attackerRedeemed = vault.redeem(attackerShares, ATTACKER, ATTACKER);
 
-        // The attacker captured some yield (sanity), but only a V-damped fraction: ~11 ether with
-        // V=100, versus ~500 ether if V regressed to +1. The 50 ether bound catches such a regression.
+        // The attacker captured some yield (sanity), but only a V-damped fraction: 10 wei with
+        // V=100, versus 600 ether if V regressed to +1. The 50 ether bound catches such a regression.
         assertGt(attackerRedeemed, 0, "attacker should capture some public yield");
-        assertLt(attackerRedeemed, 50 ether, "attacker capture must be damped by V (V=100 ~11e, V=1 ~500e)");
+        assertLt(attackerRedeemed, 50 ether, "attacker capture must be damped by V (V=100 10 wei, V=1 ~600e)");
     }
 
     /// @notice Verifies raw ERC20 transfers into the vault do not affect share pricing.
@@ -110,8 +111,8 @@ contract MemecoinYieldVaultTest is Test {
 
     /// @notice V damping holds across multiple downstream victim deposits.
     /// @dev Same third-party yield injection as the single-victim case; the attacker stakes 1 ether
-    ///      (small but not dust) and still captures only a damped fraction (~7.4 ether at V=100,
-    ///      ~667 ether if V regressed to +1).
+    ///      (small but not dust) and still captures only a damped fraction (~10.9 ether at V=100,
+    ///      ~1001 ether if V regressed to +1).
     function testVirtualBufferDampsFirstDepositorCaptureAcrossMultipleVictims() external {
         address victimTwo = address(0xB0B2);
         asset.mint(victimTwo, 2_000 ether);
@@ -827,7 +828,7 @@ contract MemecoinYieldVaultTest is Test {
         // Deploy a standard production vault (no test-harness subclass).
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         MemecoinYieldVault overflowVault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        overflowVault.initialize("Overflow Vault", "ovMEME", address(asset), 99, VIRTUAL_ASSETS);
+        overflowVault.initialize("Overflow Vault", "ovMEME", address(asset), VIRTUAL_ASSETS);
 
         // Give the attacker 1 wei of shares via a real deposit so _burn has a valid balance to debit.
         vm.startPrank(ATTACKER);
@@ -1463,9 +1464,9 @@ contract MemecoinYieldVaultTest is Test {
     ///      This test pins the rate-scaled domain, so exact amounts (750/250) must break this test if the
     ///      rounding semantics change.
     function test_RoundTripLossInResidualState() external {
-        // Pin the exact state: virtualAssets at slot 3, totalAssets at slot 1, totalSupply at the
+        // Pin the exact state: virtualAssets at slot 2, totalAssets at slot 1, totalSupply at the
         // ERC20 storage location (same slots as the uint192/uint208 overflow tests).
-        vm.store(address(vault), bytes32(uint256(3)), bytes32(uint256(1)));
+        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(1)));
         vm.store(address(vault), bytes32(uint256(1)), bytes32(uint256(500)));
         vm.store(
             address(vault),
@@ -1500,9 +1501,9 @@ contract MemecoinYieldVaultTest is Test {
     ///      prices that share at floor(2001 / 3) = 667 wei. Exact amounts (667/333) are asserted so any
     ///      change to the floor-floor rounding or to conversion at post-deposit state breaks this test.
     function test_RoundTripLossInHighRateState() external {
-        // Pin the exact state: virtualAssets at slot 3, totalAssets at slot 1, totalSupply at the
+        // Pin the exact state: virtualAssets at slot 2, totalAssets at slot 1, totalSupply at the
         // ERC20 storage location.
-        vm.store(address(vault), bytes32(uint256(3)), bytes32(uint256(1)));
+        vm.store(address(vault), bytes32(uint256(2)), bytes32(uint256(1)));
         vm.store(address(vault), bytes32(uint256(1)), bytes32(uint256(1000)));
         vm.store(
             address(vault),
@@ -1657,7 +1658,7 @@ contract MemecoinYieldVaultTest is Test {
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         MemecoinYieldVault zeroVault = MemecoinYieldVault(Clones.clone(address(implementation)));
         vm.expectRevert(IMemecoinYieldVault.ZeroVirtualAssets.selector);
-        zeroVault.initialize("Zero V", "zMEME", address(asset), 1, 0);
+        zeroVault.initialize("Zero V", "zMEME", address(asset), 0);
     }
 
     /// @notice A large yield injection moves the exchange rate by far less than the un-buffered case.
@@ -1713,7 +1714,7 @@ contract MemecoinYieldVaultTest is Test {
         MockComposeAsset burnableAsset = new MockComposeAsset();
         MemecoinYieldVault implementation = new MemecoinYieldVault();
         MemecoinYieldVault emptyVault = MemecoinYieldVault(Clones.clone(address(implementation)));
-        emptyVault.initialize("Empty Vault", "eMEME", address(burnableAsset), 3, VIRTUAL_ASSETS);
+        emptyVault.initialize("Empty Vault", "eMEME", address(burnableAsset), VIRTUAL_ASSETS);
 
         burnableAsset.mint(ATTACKER, 50 ether);
         vm.prank(ATTACKER);
@@ -1842,7 +1843,7 @@ contract MemecoinYieldVaultTest is Test {
             )
         );
         dispatcherAddr = address(dispatcher);
-        composeVault.initialize("Compose Vault", "cvMEME", asset_, 2, VIRTUAL_ASSETS);
+        composeVault.initialize("Compose Vault", "cvMEME", asset_, VIRTUAL_ASSETS);
     }
 
     /// @dev Builds the OFT compose payload a launcher would have sent for a memecoin-yield retry:

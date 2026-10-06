@@ -138,13 +138,14 @@ library MemeverseLauncherLib {
 
     /// @notice Compute the permanent virtual buffer for a yield vault from its fund metadata.
     /// @dev V = minTotalFund * fundBasedAmount * YIELD_VAULT_VIRTUAL_ASSET_FACTOR / YIELD_VAULT_VIRTUAL_ASSET_DIVISOR
-    ///      (0.7% of the minimum main-pool memecoin provision). Shared by the facade `setFundMetaData`
+    ///      (1% of the minimum main-pool memecoin provision, equivalently 0.7% of the fund-based product
+    ///      above; the main pool receives 70% of genesis funds). Shared by the facade `setFundMetaData`
     ///      `> 0` validation and the launch sibling's vault-deploy computation so the two cannot drift.
     ///      Plain multiplication/division (no FullMath) mirrors the original inline implementations; values
     ///      are bounded (`fundBasedAmount <= MAX_FUND_BASED_AMOUNT = 2^64 - 1`, and `minTotalFund *` that
     ///      product `* 7` cannot overflow uint256 in practice), so rounding/gas stay identical to before.
-    /// @param minTotalFund Minimum genesis fund for the uAsset (from FundMetaData).
-    /// @param fundBasedAmount Memecoins minted per unit of genesis fund (from FundMetaData).
+    /// @param minTotalFund Minimum genesis fund for the uAsset, denominated in raw units (from FundMetaData).
+    /// @param fundBasedAmount Memecoins minted per raw unit of the genesis fund (from FundMetaData).
     /// @return virtualAssets The permanent virtual buffer passed to MemecoinYieldVault.initialize.
     function virtualAssetsBuffer(uint256 minTotalFund, uint256 fundBasedAmount)
         internal

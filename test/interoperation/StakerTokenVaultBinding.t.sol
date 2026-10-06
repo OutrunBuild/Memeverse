@@ -136,7 +136,7 @@ contract StakerTokenVaultBindingTest is ComposerEndpointFixture {
         // Real yield vault, minimal-proxy clone like production. V = 1e18 virtual buffer (V > 0 required).
         MemecoinYieldVault vaultImpl = new MemecoinYieldVault();
         vault = MemecoinYieldVault(Clones.clone(address(vaultImpl)));
-        vault.initialize("Verse 1 Vault", "vMEME", address(memecoin), 1, 1e18);
+        vault.initialize("Verse 1 Vault", "vMEME", address(memecoin), 1e18);
 
         // The victim contract under attack; localEndpoint wired like the deploy script (canonical endpoint).
         // Deployed through the shared fixture helper (production UUPS shape, mirroring the script's

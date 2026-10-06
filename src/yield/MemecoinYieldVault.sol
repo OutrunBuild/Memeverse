@@ -13,13 +13,96 @@ import {OutrunERC20PermitInit} from "../common/token/OutrunERC20PermitInit.sol";
 import {OutrunERC20Init, OutrunERC20VotesInit} from "../common/token/extensions/governance/OutrunERC20VotesInit.sol";
 
 /**
+ * @dev Single-source planner for the vault's assets-first claim scan. `withdraw` (state-changing) and
+ *      `isWithdrawReachable` (view-only) both run `plan`, so the reachability verdict and the actual
+ *      claim can never drift apart. Lives outside the contract because the planner mutates only the
+ *      passed memory arrays and needs no vault storage.
+ */
+library WithdrawPlanner {
+    /// @dev Upper bound on redeem-queue entries a plan can cover; mirrors the vault's public
+    ///      `MAX_REDEEM_REQUESTS` (enforced at enqueue time in `_requestWithdraw`). Both must stay
+    ///      equal: the compiler only accepts file-local literal constants as fixed-array lengths, so
+    ///      the two declarations cannot reference each other.
+    uint256 public constant MAX_REDEEM_REQUESTS = 5;
+
+    /// @dev Maturity delay a redeem request must age before its locked assets become claimable; the
+    ///      vault re-exports the same value as its public `REDEEM_DELAY` constant.
+    uint256 public constant REDEEM_DELAY = 1 days;
+
+    /// @dev Plans the assets-first FIFO claim scan. Mutates the passed memory arrays in place:
+    ///      matured entries are consumed in queue (FIFO) order — the scan index only moves forward
+    ///      and swap-pop moves the tail entry into the current slot — with each entry contributing
+    ///      the largest share count whose floor payout stays within the remaining target;
+    ///      fully-consumed entries are compacted swap-pop style, so the arrays end in the exact
+    ///      post-`withdraw` queue state (first `newLength` slots survive; slots at or past
+    ///      `newLength` are stale). `queueLength` is the number of filled leading slots. Returns
+    ///      whether `assets` was covered exactly, the shares the claim would burn, the unpaid
+    ///      remainder, and the surviving queue length.
+    function plan(
+        uint256[MAX_REDEEM_REQUESTS] memory shares,
+        uint192[MAX_REDEEM_REQUESTS] memory lockedAssets,
+        uint64[MAX_REDEEM_REQUESTS] memory requestTimes,
+        uint256 queueLength,
+        uint256 assets
+    ) internal view returns (bool ok, uint256 totalShares, uint256 remainingAssets, uint256 newLength) {
+        uint256 len = queueLength;
+        remainingAssets = assets;
+        uint256 j = 0;
+        while (j < len && remainingAssets > 0) {
+            if (block.timestamp < uint256(requestTimes[j]) + REDEEM_DELAY) {
+                unchecked {
+                    ++j;
+                }
+                continue;
+            }
+            uint256 takeAssets = remainingAssets < lockedAssets[j] ? remainingAssets : uint256(lockedAssets[j]);
+            // Largest share count whose floor payout stays <= takeAssets (assets-first inverse of the lock rate).
+            // Computed as ceil((T+1)·S/L) − 1 = floor(((T+1)·S − 1)/L): the exact largest s with floor(s·L/S) <= T.
+            // The naive floor(T·S/L) under-counts by one at rounding edges and spuriously reverts reachable targets.
+            // The −1 is load-bearing: without it, ceil over-counts when (T+1)·S is an exact multiple of L, which
+            // would make the payout exceed takeAssets and strand the scan (underflow on the remainder decrement).
+            uint256 takeShares =
+                Math.mulDiv(takeAssets + 1, shares[j], uint256(lockedAssets[j]), Math.Rounding.Ceil) - 1;
+            if (takeShares == 0) {
+                // Rounding leaves too few shares to cover 1 unit of payout here; try the next matured entry.
+                unchecked {
+                    ++j;
+                }
+                continue;
+            }
+            uint256 payout = Math.mulDiv(takeShares, uint256(lockedAssets[j]), shares[j]);
+            shares[j] -= takeShares;
+            lockedAssets[j] -= uint192(payout);
+            remainingAssets -= payout;
+            totalShares += takeShares;
+            if (shares[j] == 0) {
+                if (j != len - 1) {
+                    lockedAssets[j] = lockedAssets[len - 1];
+                    shares[j] = shares[len - 1];
+                    requestTimes[j] = requestTimes[len - 1];
+                }
+                --len;
+            } else {
+                unchecked {
+                    ++j;
+                }
+            }
+        }
+        return (remainingAssets == 0, totalShares, remainingAssets, len);
+    }
+}
+
+/**
  * @dev Memecoin Yield Vault
  */
 contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, OutrunERC20VotesInit {
     using OutrunSafeERC20 for IERC20;
 
+    // Queue bound and maturity delay mirror the planner library: REDEEM_DELAY re-exports the
+    // library's value (single numeric source), while MAX_REDEEM_REQUESTS must stay a literal here —
+    // the compiler rejects cross-contract constants as fixed-array lengths (see WithdrawPlanner).
     uint256 public constant MAX_REDEEM_REQUESTS = 5;
-    uint256 public constant REDEEM_DELAY = 1 days; // Preventing flash attacks
+    uint256 public constant REDEEM_DELAY = WithdrawPlanner.REDEEM_DELAY; // Preventing flash attacks
 
     address public asset;
     /// @dev Total managed assets. Implicit upper bound type(uint208).max: the governance asset checkpoint stores
@@ -30,29 +113,22 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     ///      orders of magnitude beyond the 2^208 bound and unreachable, documented so error-name monitoring knows
     ///      the boundary.
     uint256 public totalAssets;
-    uint256 public verseId;
     /// @dev Permanent virtual buffer used by the share/asset conversion helpers. Set once at
-    ///      initialization; sized by the launcher at 0.7% of the minimum main-pool memecoin provision.
+    ///      initialization; sized by the launcher at 1% of the minimum main-pool memecoin provision
+    ///      (equivalently 0.7% of the minimum fund-based memecoin amount `minTotalFund * fundBasedAmount`;
+    ///      the main pool receives 70% of genesis funds).
     uint256 public virtualAssets;
 
     mapping(address account => RedeemRequestEntry[]) public redeemRequestQueues;
 
-    /// @notice Initializes the yield vault proxy.
-    /// @dev Sets ERC20 share metadata, binds the vault to one verse and one underlying memecoin, and locks
-    ///      the permanent virtual buffer used to dampen exchange-rate inflation.
-    /// @param _name Share token name.
-    /// @param _symbol Share token symbol.
-    /// @param _asset Underlying memecoin address. Reverts `ZeroAddress` if set to the zero address.
-    /// @param _verseId Verse id associated with this vault.
-    /// @param _virtualAssets Permanent virtual buffer. Must be non-zero so the `+virtualAssets` conversion guards can
-    ///        never divide by zero and actually dampen the rate; sized by the launcher.
-    function initialize(
-        string calldata _name,
-        string calldata _symbol,
-        address _asset,
-        uint256 _verseId,
-        uint256 _virtualAssets
-    ) external override initializer {
+    /// @inheritdoc IMemecoinYieldVault
+    /// @dev Reverts `ZeroVirtualAssets` when the buffer is zero — the `+virtualAssets` conversion guards
+    ///      can never divide by zero and actually dampen the rate — and `ZeroAddress` for a zero asset.
+    function initialize(string calldata _name, string calldata _symbol, address _asset, uint256 _virtualAssets)
+        external
+        override
+        initializer
+    {
         require(_virtualAssets > 0, ZeroVirtualAssets());
         require(_asset != address(0), ZeroAddress());
 
@@ -60,7 +136,6 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         __OutrunERC20Permit_init(_name);
 
         asset = _asset;
-        verseId = _verseId;
         virtualAssets = _virtualAssets;
     }
 
@@ -86,9 +161,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return _convertToShares(assets, totalAssets);
     }
 
-    /// @notice Preview how many underlying assets redeeming `shares` would release.
-    /// @dev NOT supported. Claim payouts use each request's per-entry locked rate (fixed at requestRedeem
-    ///      time), which a single current-rate preview cannot represent, so this always reverts.
+    /// @inheritdoc IMemecoinYieldVault
     function previewRedeem(uint256) external pure override returns (uint256) {
         revert PreviewRedeemNotSupported();
     }
@@ -131,66 +204,24 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @inheritdoc IMemecoinYieldVault
-    /// @dev The simulation mirrors `withdraw`'s FIFO scan with swap-pop compaction in memory, so the
-    ///      reachability result matches the state-changing call exactly.
+    /// @dev Delegates to `WithdrawPlanner.plan`, the single-source simulation of `withdraw`'s FIFO scan
+    ///      with swap-pop compaction, so the reachability result matches the state-changing call exactly.
     function isWithdrawReachable(address owner, uint256 assets) external view override returns (bool ok) {
         if (assets == 0) return false;
         RedeemRequestEntry[] storage queue = redeemRequestQueues[owner];
-        uint256 len = queue.length;
-        if (len == 0) return false;
-        // Copy to memory to simulate swap-pop without mutating storage.
-        uint192[] memory lockedAssets = new uint192[](len);
-        uint256[] memory shares = new uint256[](len);
-        uint64[] memory requestTimes = new uint64[](len);
-        for (uint256 i = 0; i < len; ++i) {
-            RedeemRequestEntry storage e = queue[i];
-            lockedAssets[i] = e.lockedAssets;
-            shares[i] = e.shares;
-            requestTimes[i] = e.requestTime;
-        }
-        uint256 remaining = assets;
-        uint256 j = 0;
-        while (j < len && remaining > 0) {
-            if (block.timestamp < uint256(requestTimes[j]) + REDEEM_DELAY) {
-                unchecked {
-                    ++j;
-                }
-                continue;
-            }
-            uint256 takeAssets = remaining < lockedAssets[j] ? remaining : uint256(lockedAssets[j]);
-            uint256 takeShares =
-                Math.mulDiv(takeAssets + 1, shares[j], uint256(lockedAssets[j]), Math.Rounding.Ceil) - 1;
-            if (takeShares == 0) {
-                unchecked {
-                    ++j;
-                }
-                continue;
-            }
-            uint256 payout = Math.mulDiv(takeShares, uint256(lockedAssets[j]), shares[j]);
-            shares[j] -= takeShares;
-            lockedAssets[j] -= uint192(payout);
-            remaining -= payout;
-            if (shares[j] == 0) {
-                if (j != len - 1) {
-                    lockedAssets[j] = lockedAssets[len - 1];
-                    shares[j] = shares[len - 1];
-                    requestTimes[j] = requestTimes[len - 1];
-                }
-                --len;
-            } else {
-                unchecked {
-                    ++j;
-                }
-            }
-        }
-        return remaining == 0;
+        if (queue.length == 0) return false;
+        // Copy to memory to simulate swap-pop without mutating storage; the scratch arrays are
+        // length-bound to the enqueue-time queue cap (see _loadQueue).
+        (
+            uint256[MAX_REDEEM_REQUESTS] memory shares,
+            uint192[MAX_REDEEM_REQUESTS] memory lockedAssets,
+            uint64[MAX_REDEEM_REQUESTS] memory requestTimes,
+            uint256 queueLength
+        ) = _loadQueue(queue);
+        (ok,,,) = WithdrawPlanner.plan(shares, lockedAssets, requestTimes, queueLength, assets);
     }
 
-    /// @notice Maximum shares `owner` could redeem right now.
-    /// @dev Claim-mode semantics: sums shares across `owner`'s matured (claimable) queue entries. Shares
-    ///      are burned at requestRedeem time, so this does NOT reflect `balanceOf`.
-    /// @param owner Account whose claimable shares are queried.
-    /// @return maxShares Total claimable shares for `owner`.
+    /// @inheritdoc IMemecoinYieldVault
     function maxRedeem(address owner) external view override returns (uint256) {
         return _claimableShares(owner);
     }
@@ -200,8 +231,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return _convertToAssetsCeil(shares, totalAssets);
     }
 
-    /// @notice Previews the shares that must be burned to release exactly `assets`.
-    /// @dev NOT supported for the same per-entry locked-rate reason as `previewRedeem`; always reverts.
+    /// @inheritdoc IMemecoinYieldVault
     function previewWithdraw(uint256) external pure override returns (uint256) {
         revert PreviewWithdrawNotSupported();
     }
@@ -215,25 +245,14 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         _accumulateYield(msgSender, yield);
     }
 
-    /// @notice Retries yield accumulation after a LayerZero compose call to `accumulateYields` failed.
-    /// @dev Delegates to the `dispatcher`'s `settlePendingCompose`, which proves the compose was delivered-but-unrun
-    ///      via the endpoint's composeQueue and then settles by approving this vault and calling `accumulateYields`
-    ///      (pull + totalAssets accounting) in one step. The vault stores no dispatcher at all: the launcher's
-    ///      `setYieldDispatcher` can rotate the canonical dispatcher after this vault was created, so a stuck compose may
-    ///      sit in a different dispatcher's composeQueue than the current canonical one. The caller must supply the
-    ///      dispatcher the compose was actually delivered to (the `to` field of the endpoint's `ComposeSent` event,
-    ///      sourced alongside `message`), plus the original compose `message`, reconstructable from the same
-    ///      `ComposeSent` log. `settlePendingCompose`
-    ///      re-derives delivery against `composeQueue(token, dispatcher, guid, 0)`. This entry also verifies that the
-    ///      message's inner receiver is this vault (revert `NotComposeBeneficiary`) and that the settlement released
-    ///      a non-zero amount (revert `ComposeSettlementFailed`). A no-code `dispatcher` (EOA/empty contract) is not
-    ///      pre-checked: the high-level call succeeds with empty returndata, so the strict `abi.decode` of the
+    /// @inheritdoc IMemecoinYieldVault
+    /// @dev `settlePendingCompose` settles by approving this vault and calling `accumulateYields` (pull +
+    ///      totalAssets accounting) in one step, re-deriving delivery against
+    ///      `composeQueue(token, dispatcher, guid, 0)`. A no-code `dispatcher` (EOA/empty contract) is not
+    ///      pre-checked: the high-level call succeeds with empty returdata, so the strict `abi.decode` of the
     ///      uint256 return reverts with EMPTY revert data — no named error, and error-name monitoring must not
-    ///      expect `ComposeSettlementFailed` for this class (verify the address was sourced
-    ///      from the endpoint's `ComposeSent` event `to` field).
-    /// @param dispatcher YieldDispatcherUpgradeable that the stuck compose was delivered to (ComposeSent `to`).
-    /// @param guid LayerZero guid.
-    /// @param message The original compose payload.
+    ///      expect `ComposeSettlementFailed` for this class (verify the address was sourced from the
+    ///      endpoint's `ComposeSent` event `to` field).
     function reAccumulateYields(address dispatcher, bytes32 guid, bytes calldata message) external override {
         // The compose's beneficiary is fixed by the message (hash-bound to the guid by the endpoint queue), so only
         // a message whose inner receiver is this vault can settle yield into this vault. The receiver word sits at
@@ -277,12 +296,8 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         }
     }
 
-    /// @notice Deposits underlying asset and mints vault shares to `receiver`.
+    /// @inheritdoc IMemecoinYieldVault
     /// @dev Share minting uses the current `totalAssets` exchange rate before the new deposit is added.
-    ///      A non-zero deposit that would round down to 0 shares reverts instead of silently absorbing assets.
-    /// @param assets Amount of underlying asset to deposit.
-    /// @param receiver Recipient of the minted shares.
-    /// @return shares Shares minted for the deposit.
     function deposit(uint256 assets, address receiver) external override returns (uint256) {
         // Zero-asset deposit carries no value; returning early avoids redundant transfers, mint, and
         // checkpoint writes. Preserves the ERC-4626 round-trip: previewDeposit(0) == deposit(0) == 0.
@@ -298,15 +313,9 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         return shares;
     }
 
-    /// @notice Mints exactly `shares` to `receiver` by pulling the needed assets from the caller.
-    /// @dev Shares-first deposit. `assets` is rounded up (ceil) to protect the vault so existing
-    ///      shareholders are never diluted by an under-paying mint. Reuses `_deposit` (pull + mint +
-    ///      uint208 guard + Deposit event) and writes the `totalAssets` checkpoint so the paired
-    ///      governance invariant holds. The caller (`msg.sender`) pays the assets, mirroring `deposit`;
-    ///      there is no operator-allowance path.
-    /// @param shares Amount of vault shares to mint.
-    /// @param receiver Recipient of the minted shares.
-    /// @return assets Underlying assets pulled from the caller.
+    /// @inheritdoc IMemecoinYieldVault
+    /// @dev Reuses `_deposit` (pull + mint + uint208 guard + Deposit event) and writes the `totalAssets`
+    ///      checkpoint so the paired governance invariant holds.
     function mint(uint256 shares, address receiver) external override returns (uint256 assets) {
         // Zero-share mint carries no value; returning early avoids redundant transfers, mint, and
         // checkpoint writes. Preserves the ERC-4626 round-trip: previewMint(0) == mint(0) == 0.
@@ -321,16 +330,6 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     }
 
     /// @inheritdoc IMemecoinYieldVault
-    /// @dev Entries remain until fully claimed (swap-pop on `entry.shares == 0`), so matured entries
-    ///      still occupy `MAX_REDEEM_REQUESTS` slots until `redeem`/`withdraw` frees them. Governance:
-    ///      shares are burned at request time via `_requestWithdraw` (`_burn` → `totalAssets -=
-    ///      lockedAssets` → `_writeTotalAssetCheckpoint`), so the owner's `getVotes`/`getPastVotes`
-    ///      (asset-denominated via `_convertVotes` / `_convertPastVotes` over
-    ///      `OutrunVotesInit.sol::_totalAssetsCheckpoint`) drop to the post-burn checkpoint immediately
-    ///      and remain zero for that position throughout `REDEEM_DELAY`; a proposal snapshot taken in
-    ///      that window records zero voting power and a later `redeem`/`withdraw` does not restore it —
-    ///      requesting is exiting governance one day early (see `_requestWithdraw` /
-    ///      `OutrunVotesInit.sol::getPastVotes`).
     function requestRedeem(uint256 shares, address controller, address owner)
         external
         override
@@ -427,55 +426,30 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         require(assets > 0, ZeroRedeemRequest());
 
         RedeemRequestEntry[] storage requestQueue = redeemRequestQueues[msg.sender];
-        uint256 remainingAssets = assets;
-        uint256 totalShares;
-
-        uint256 i = 0;
-        // Length is re-read each pass on purpose: the swap-pop compaction below pops requestQueue and
-        // shrinks it, so caching length once would let i overrun the array after a pop.
-        // solhint-disable-next-line gas-length-in-loops
-        while (i < requestQueue.length && remainingAssets > 0) {
-            RedeemRequestEntry storage entry = requestQueue[i];
-            if (block.timestamp < uint256(entry.requestTime) + REDEEM_DELAY) {
-                unchecked {
-                    ++i;
-                }
-                continue;
-            }
-            uint256 takeAssets = remainingAssets < entry.lockedAssets ? remainingAssets : entry.lockedAssets;
-            // Largest share count whose floor payout stays <= takeAssets (assets-first inverse of the lock rate).
-            // Computed as ceil((T+1)·S/L) − 1 = floor(((T+1)·S − 1)/L): the exact largest s with floor(s·L/S) <= T.
-            // The naive floor(T·S/L) under-counts by one at rounding edges and spuriously reverts reachable targets.
-            // The −1 is load-bearing: without it, ceil over-counts when (T+1)·S is an exact multiple of L, which
-            // would make `remainingAssets -= payout` underflow (Panic 0x11).
-            uint256 takeShares = Math.mulDiv(takeAssets + 1, entry.shares, entry.lockedAssets, Math.Rounding.Ceil) - 1;
-            if (takeShares == 0) {
-                // Rounding leaves too few shares to cover 1 unit of payout here; try the next matured entry.
-                unchecked {
-                    ++i;
-                }
-                continue;
-            }
-            uint256 payout = Math.mulDiv(takeShares, entry.lockedAssets, entry.shares);
-            entry.shares -= takeShares;
-            entry.lockedAssets -= uint192(payout);
-            remainingAssets -= payout;
-            totalShares += takeShares;
-
-            if (entry.shares == 0) {
-                if (i != requestQueue.length - 1) {
-                    requestQueue[i] = requestQueue[requestQueue.length - 1];
-                }
-                requestQueue.pop();
-            } else {
-                unchecked {
-                    ++i;
-                }
-            }
-        }
+        // Copy the bounded queue to memory (see _loadQueue), plan the take sequence off-storage, then
+        // write the planned end state back in one pass — same scan math as `isWithdrawReachable`
+        // because both share `WithdrawPlanner.plan`.
+        (
+            uint256[MAX_REDEEM_REQUESTS] memory shares,
+            uint192[MAX_REDEEM_REQUESTS] memory lockedAssets,
+            uint64[MAX_REDEEM_REQUESTS] memory requestTimes,
+            uint256 queueLength
+        ) = _loadQueue(requestQueue);
+        (bool ok, uint256 totalShares, uint256 remainingAssets, uint256 newLength) =
+            WithdrawPlanner.plan(shares, lockedAssets, requestTimes, queueLength, assets);
 
         // Floor loss can leave a sub-unit remainder that no entry can satisfy exactly; revert, do not under-pay.
-        require(remainingAssets == 0, InsufficientClaimableRedeem(assets - remainingAssets));
+        require(ok, InsufficientClaimableRedeem(assets - remainingAssets));
+
+        for (uint256 i = 0; i < newLength; ++i) {
+            requestQueue[i] =
+                RedeemRequestEntry({lockedAssets: lockedAssets[i], requestTime: requestTimes[i], shares: shares[i]});
+        }
+        // Fully-consumed tail entries are gone from the plan; shrink the storage queue to match.
+        while (queueLength > newLength) {
+            requestQueue.pop();
+            --queueLength;
+        }
 
         IERC20(asset).safeTransfer(receiver, assets);
 
@@ -499,6 +473,30 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
     /// @inheritdoc IMemecoinYieldVault
     function claimableRedeemRequest(address controller) external view override returns (uint256 shares) {
         return _claimableShares(controller);
+    }
+
+    /// @dev Copies the bounded redeem queue into the fixed-size memory scratch arrays the shared
+    ///      planner runs on. The array lengths are the `MAX_REDEEM_REQUESTS` literal — the enqueue-time
+    ///      queue bound — because the compiler only accepts file-local literals as fixed-array lengths:
+    ///      if the bound ever changes, these lengths and the planner's must change with it. Slots at
+    ///      or past `queueLength` are left zeroed and never read by the plan.
+    function _loadQueue(RedeemRequestEntry[] storage queue)
+        internal
+        view
+        returns (
+            uint256[MAX_REDEEM_REQUESTS] memory shares,
+            uint192[MAX_REDEEM_REQUESTS] memory lockedAssets,
+            uint64[MAX_REDEEM_REQUESTS] memory requestTimes,
+            uint256 queueLength
+        )
+    {
+        queueLength = queue.length;
+        for (uint256 i = 0; i < queueLength; ++i) {
+            RedeemRequestEntry storage entry = queue[i];
+            shares[i] = entry.shares;
+            lockedAssets[i] = entry.lockedAssets;
+            requestTimes[i] = entry.requestTime;
+        }
     }
 
     /// @dev Shared matured-share sum used by `claimableRedeemRequest` and `maxRedeem`. Sums shares of

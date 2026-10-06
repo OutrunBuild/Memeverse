@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "generated_at": "2026-09-07T20:04:24Z",
-  "finding_count": 362,
-  "notes": "Snapshot of forge-lint findings verified site-by-site as false positives or accepted patterns: encode-packed-collision hits are creationCode||abi.encode initcode assembly (fixed-length tail, injective); missing-events-access-control cannot associate erc7201 namespaced-struct writes with the emit in the same function or public caller; uninitialized-local hits are intentional zero-default idiom; reentrancy-events misfires on namespaced-storage setters with no external call; boolean-cst hits are early-return constant defaults; unused-return hits are deliberate void protocol calls (transfer return-value enforcement lives in OutrunSafeERC20). Any NEW finding beyond this set fails the gate. Regenerate: bash script/harness/forge-lint-baseline.sh regen. Style detectors (unsafe-typecast, block-timestamp) were re-enabled from exclude_lints; their pre-existing hits were snapshotted here so only new occurrences are reported. Regen intentionally re-snapshots: it is an explicit, git-reviewed acceptance decision.",
+  "generated_at": "2026-10-05T05:31:51Z",
+  "finding_count": 359,
+  "notes": "Snapshot of forge-lint findings verified site-by-site as false positives or accepted patterns: encode-packed-collision hits are creationCode||abi.encode initcode assembly (fixed-length tail, injective); missing-events-access-control cannot associate erc7201 namespaced-struct writes with the emit in the same function or public caller; uninitialized-local hits are intentional zero-default idiom; reentrancy-events misfires on namespaced-storage setters with no external call; reentrancy-no-eth keys only direct namespaced-struct writes and is blind to member writes through a local storage-pointer alias; boolean-cst hits are early-return constant defaults; unused-return hits are deliberate void protocol calls (transfer return-value enforcement lives in OutrunSafeERC20). Any NEW finding beyond this set fails the gate. Regenerate: bash script/harness/forge-lint-baseline.sh regen. Style detectors (unsafe-typecast, block-timestamp) were re-enabled from exclude_lints; their pre-existing hits were snapshotted here so only new occurrences are reported. Regen intentionally re-snapshots: it is an explicit, git-reviewed acceptance decision.",
   "findings": [
     {
       "key": "arbitrary-send-erc20|src/swap/MemeverseSwapRouter.sol|2f0252579bf43a1d"
@@ -209,7 +209,7 @@
       "key": "missing-events-access-control|src/polend/POLSplitterUpgradeable.sol|5b0a626b6592eea2"
     },
     {
-      "key": "missing-events-access-control|src/polend/POLSplitterUpgradeable.sol|63bd6242cd71d6b1"
+      "key": "missing-events-access-control|src/polend/POLSplitterUpgradeable.sol|5ba89a12dc30cf35"
     },
     {
       "key": "missing-events-access-control|src/polend/POLSplitterUpgradeable.sol|7679188a7a5d8ada"
@@ -239,6 +239,9 @@
       "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|4caaeae2b97a88e4"
     },
     {
+      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|865223c6cf716a79"
+    },
+    {
       "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|b83710a83ed28f11"
     },
     {
@@ -249,9 +252,6 @@
     },
     {
       "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|e3795b9f7ef29c9c"
-    },
-    {
-      "key": "missing-events-access-control|src/polend/POLendUpgradeable.sol|eb20a179aafe2528"
     },
     {
       "key": "missing-events-access-control|src/swap/MemeverseUniswapHookUpgradeable.sol|4a47e1b92d9f33c8"
@@ -656,19 +656,10 @@
       "key": "reentrancy-events|src/yield/MemecoinYieldVault.sol|f8130e6cd31a3e65"
     },
     {
-      "key": "reentrancy-no-eth|src/common/token/TokenHelper.sol|776a4fbc86936f46"
-    },
-    {
-      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|50a5c310679fea1e"
-    },
-    {
       "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|6e53feaa67125503"
     },
     {
       "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|708daa89e35911f2"
-    },
-    {
-      "key": "reentrancy-no-eth|src/polend/POLSplitterUpgradeable.sol|9a3a6c15640687bb"
     },
     {
       "key": "reentrancy-no-eth|src/polend/POLendUpgradeable.sol|3f14b8f4fec55ad0"
@@ -764,13 +755,13 @@
       "key": "require-revert-in-loop|src/verse/registration/MemeverseRegistrationCenterUpgradeable.sol|6ddfae230e6fcc68"
     },
     {
+      "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|3ae04fe3ef9dfa05"
+    },
+    {
       "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|46a28740482b7839"
     },
     {
       "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|544b80cebfa066bd"
-    },
-    {
-      "key": "uninitialized-local|src/polend/POLendUpgradeable.sol|b6697d0707ac559c"
     },
     {
       "key": "uninitialized-local|src/swap/SettlementFacet.sol|25694e15eb0bf0ce"

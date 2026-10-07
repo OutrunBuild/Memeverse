@@ -118,7 +118,11 @@ contract GenesisCredit is OFT, ERC20Pausable, IGenesisCredit {
     /// @notice Ownership renunciation is permanently disabled.
     /// @dev The OZ `Ownable` base (inherited through the OFT stack) exposes `renounceOwnership`;
     ///      this override makes it always revert, keeping the repo-wide never-renounceable
-    ///      ownership invariant.
+    ///      ownership invariant. The override stays local instead of deriving from the shared
+    ///      `NeverRenounceable` base: the vendored official LayerZero OFT stack embeds OZ `Ownable`
+    ///      whose constructor this leaf binds to `delegate_`, so adding the mixin base would
+    ///      introduce a second `Ownable` construction path and force re-routing this leaf's
+    ///      explicit `Ownable(delegate_)` binding through the mixin's constructor.
     function renounceOwnership() public override {
         revert OwnershipRenounceDisabled();
     }

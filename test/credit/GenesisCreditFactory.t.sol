@@ -7,6 +7,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {GenesisCreditFactory} from "../../src/credit/GenesisCreditFactory.sol";
 import {IGenesisCreditFactory} from "../../src/credit/interfaces/IGenesisCreditFactory.sol";
 import {GenesisCredit} from "../../src/credit/GenesisCredit.sol";
+import {NeverRenounceable} from "../../src/common/access/NeverRenounceable.sol";
 
 /// @notice Minimal LayerZero endpoint stand-in: supports `setDelegate` (OFTCore constructor) and
 ///         exposes `eid()` (auto-generated getter of the EndpointV2 `eid` immutable).
@@ -194,7 +195,7 @@ contract GenesisCreditFactoryTest is Test {
     /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
     /// @dev The test contract itself is the factory owner (see setUp), so no prank is needed.
     function testRenounceOwnershipIsDisabled() public {
-        vm.expectRevert(GenesisCreditFactory.OwnershipRenounceDisabled.selector);
+        vm.expectRevert(NeverRenounceable.OwnershipRenounceDisabled.selector);
         factory.renounceOwnership();
     }
 }

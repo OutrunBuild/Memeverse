@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {CREATE3} from "solmate/utils/CREATE3.sol";
 
 import {IGenesisCreditFactory} from "./interfaces/IGenesisCreditFactory.sol";
 import {GenesisCredit} from "./GenesisCredit.sol";
+import {NeverRenounceable} from "../common/access/NeverRenounceable.sol";
 
 /**
  * @title GenesisCreditFactory
@@ -23,7 +23,7 @@ import {GenesisCredit} from "./GenesisCredit.sol";
  *      `onlyOwner`. There is no separate deployer contract to own, so no ownership transfer is
  *      required before first deployment.
  */
-contract GenesisCreditFactory is IGenesisCreditFactory, Ownable {
+contract GenesisCreditFactory is IGenesisCreditFactory, NeverRenounceable {
     /// @notice LayerZero endpoint address baked into every deployed credit token.
     address public immutable lzEndpoint;
 
@@ -33,16 +33,12 @@ contract GenesisCreditFactory is IGenesisCreditFactory, Ownable {
     /// @notice Registry of already-deployed credit tokens keyed by uAsset; address(0) means not deployed.
     mapping(address => address) private registry;
 
-    /// @notice Reverts when ownership renunciation is attempted.
-    /// @dev Repo invariant: ownership is never renounceable.
-    error OwnershipRenounceDisabled();
-
     /// @notice Construct the factory, baking the LayerZero endpoint, home-chain eid, and owner
     ///         into immutable state that every deployed credit token inherits.
     /// @param lzEndpoint_ LayerZero endpoint address forwarded to every credit constructor.
     /// @param homeChainEid_ LayerZero endpoint id of the home chain where claims are allowed.
     /// @param owner_ Initial owner of this factory (gates deployCredit).
-    constructor(address lzEndpoint_, uint32 homeChainEid_, address owner_) Ownable(owner_) {
+    constructor(address lzEndpoint_, uint32 homeChainEid_, address owner_) NeverRenounceable(owner_) {
         require(lzEndpoint_ != address(0), ZeroAddress());
         // Zero eid would bake a permanently reverting claim gate (endpoint.eid() != 0 on every
         // real chain) into every credit this factory deploys; fail fast at construction.
@@ -96,12 +92,5 @@ contract GenesisCreditFactory is IGenesisCreditFactory, Ownable {
     /// @inheritdoc IGenesisCreditFactory
     function creditOf(address uAsset) external view override returns (address credit) {
         return registry[uAsset];
-    }
-
-    /// @notice Ownership renunciation is permanently disabled.
-    /// @dev The OZ `Ownable` base exposes `renounceOwnership`; this override makes it always revert,
-    ///      keeping the repo-wide never-renounceable ownership invariant.
-    function renounceOwnership() public override {
-        revert OwnershipRenounceDisabled();
     }
 }

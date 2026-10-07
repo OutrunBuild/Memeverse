@@ -27,7 +27,7 @@ userGenesisFund
 - 只在 `Genesis` 阶段开放
 - 累加 `totalNormalFunds += amount`
 - 累加 `userGenesisFund += amount`
-- `Genesis` 事件只记录 `amount`
+- `Genesis` 事件为 `Genesis(verseId, payer, user, amount)`：`payer` 为 `msg.sender`/资金来源，`user`（`Genesis.depositer`）为积分受益人，代付场景二者分离
 
 普通退款：
 
@@ -95,7 +95,7 @@ totalPreorderFunds + amount <= preorderCap
 - `user` 是 genesis 与 preorder 两步的共同受益人，`msg.sender` 是 payer（与单函数一致，支持代付）。
 - 容量校验：内部先执行 genesis 步（写 `totalNormalFunds[verseId]`），再执行 preorder 步；preorder 步实时读取已含本次 genesis 增量的 `totalNormalFunds` + `totalLeveragedDebt`，按本节既有 `preorderCap` 公式计算并校验 `totalPreorderFunds + preorderAmount <= preorderCap`，不足 revert `InvalidLength`（沿用既有 preorder 容量校验错误），不引入新口径。
 - 阶段准入与 `genesis`/`preorder` 一致，仅 `Stage.Genesis` 开放。
-- 依次 emit `Genesis(verseId, user, genesisAmount)` 与 `Preorder(verseId, caller, user, preorderAmount)` 各一次，`Preorder.caller` 仍为 `msg.sender`/payer；字段结构分别与单次调用完全一致，不新增事件（详见 [events.md §2.1](../events.md)）。
+- 依次 emit `Genesis(verseId, payer, user, genesisAmount)` 与 `Preorder(verseId, caller, user, preorderAmount)` 各一次，`Genesis.payer`/`Preorder.caller` 均为 `msg.sender`/payer；字段结构分别与单次调用完全一致，不新增事件（详见 [events.md §2.1](../events.md)）。
 
 ## 3. 成功门槛与杠杆上限
 

@@ -49,12 +49,12 @@ Router 不接受任意 `PoolKey` 或资产地址。每个用户入口在任何�
 
 ```text
 launcher = hook.launcher()
-canonical = launcher.getLauncherContracts()
-canonical.memeverseUniswapHook == address(hook)
-canonical.polSplitter == address(splitter)
+(canonicalHook, canonicalSplitter) = launcher.getCanonicalSwapDependencies()
+canonicalHook == address(hook)
+canonicalSplitter == address(splitter)
 ```
 
-每个入口只外调一次 `getLauncherContracts()` 并复用 `canonical` 完成两项比较。外调前必须先校验 `hook.launcher()` 返回的 launcher 非零且有 deployed code（否则回滚命名错误 `LauncherCodeNotReady`，镜像构造期 `HookCodeNotReady` 的先 code-length 后外读顺序），避免对无 code 地址的 STATICCALL 返回空 returndata 触发不透明的 ABI-decode 回滚。这把 immutable Hook/Splitter 绑定到 Hook 当前 launcher 的 canonical 配置；Router 不缓存 launcher 配置或维护第二套配置。随后仅从该 canonical Splitter 读取 verse 的 PT/POL/YT，拒绝零地址、重复地址或无 deployed code 的地址，并只从 canonical PT/POL 与 Hook 推导 `PoolKey`。POL、PT、YT 必须是 canonical 的被动、精确转账 ERC20；fee-on-transfer、rebasing、转账回调等不在范围内。付款只用 allowance + transferFrom，不支持 Permit2。
+每个入口只外调一次 `getCanonicalSwapDependencies()` 并复用结果完成两项比较（定向读取校验实际消费的 hook/splitter 两槽，不拉取面向链下读者的全量 `getLauncherContracts()` bundle）。外调前必须先校验 `hook.launcher()` 返回的 launcher 非零且有 deployed code（否则回滚命名错误 `LauncherCodeNotReady`，镜像构造期 `HookCodeNotReady` 的先 code-length 后外读顺序），避免对无 code 地址的 STATICCALL 返回空 returndata 触发不透明的 ABI-decode 回滚。这把 immutable Hook/Splitter 绑定到 Hook 当前 launcher 的 canonical 配置；Router 不缓存 launcher 配置或维护第二套配置。随后仅从该 canonical Splitter 读取 verse 的 PT/POL/YT，拒绝零地址、重复地址或无 deployed code 的地址，并只从 canonical PT/POL 与 Hook 推导 `PoolKey`。POL、PT、YT 必须是 canonical 的被动、精确转账 ERC20；fee-on-transfer、rebasing、转账回调等不在范围内。付款只用 allowance + transferFrom，不支持 Permit2。
 
 构造期 PoolManager 对角不变量：Router 与 Hook 各自在构造期绑定一个 immutable `PoolManager`（经 `SafeCallback`/`ImmutableState`）。Router 在 `PoolManager.unlock` 内对自身 manager 调 `swap`，该 manager 再回调 `key.hooks = address(hook)` 的 `beforeSwap`/`afterSwap`，Hook 的 `onlyPoolManager` 把 `msg.sender` 比对自身 manager。若两者不同，每条 PT/POL swap（进而两条 YT Flash Swap 入口）都会在 Hook 侧回滚 `NotPoolManager`（若该 manager 上 pool 未初始化则先回滚 `PoolNotInitialized`），且 manager 为 immutable、错误不可恢复。因此构造成功前，在零地址检查之后、读取 `hook_.poolManager()` 并进行 manager 对角比较之前，必须按 `manager_`、`hook_`、`splitter_` 顺序确认这三个 immutable executable dependency 均有 deployed code；分别无 code 时回滚命名错误 `PoolManagerCodeNotReady`、`HookCodeNotReady`、`SplitterCodeNotReady`。`SafeCallback(manager_)` 在构造器 body 前已绑定 manager immutable，不能将上述 body 内检查表述为发生在该绑定之前；正确时序是部署成功前完成零地址与 code-ready 检查，再读取 getter 并进行对角比较。对角失配回滚命名错误 `RouterPoolManagerMismatch`。这与代码库对 facet（`_requireFacetPoolManager`→`FacetPoolManagerMismatch`）、UUPS upgrade（`UpgradePoolManagerMismatch`）、sibling lens（`HookLensPoolManagerMismatch`）的同对角处理一致。
 
@@ -386,7 +386,7 @@ Router 不复制 fee 数学，不在 Splitter 前后收取额外交易费，也�
 | 无效 recipient / deadline | `InvalidRecipient` / `ExpiredPastDeadline` | recipient 为零或 Router，交易期限过期 |
 | account-session principal 不匹配 | `AccountSessionPrincipalMismatch` | 无活动 session，或 active principal 不等于 `msg.sender`；Router 在自身接口 `src/swap/interfaces/IMemeverseYTFlashSwapRouter.sol` 定义**自己的** `AccountSessionPrincipalMismatch(address active, address caller)`，作用域仅限 Router 入口校验，与 Hook 既有的 afterSwap 专用同名 error `(address contextPrincipal, address activePrincipal)` 是不同合约、不同语义，不互相复用。两种情形都由同一校验 `hook.activeAccountSessionPrincipal() != msg.sender` 捕获（`address(0) != msg.sender`），按本期设计归入同一错误类别 |
 | canonical dependency 不匹配 | `CanonicalDependencyMismatch` | Hook 当前 launcher 的 `memeverseUniswapHook` 或 `polSplitter` 不等于 Router immutable |
-| 运行时 launcher 无 code | `LauncherCodeNotReady` | `hook.launcher()` 返回零地址或无 deployed code 的地址；在 `getLauncherContracts()` 外调前先拒绝，避免 STATICCALL 命中非合约返回空 returndata 触发 opaque ABI-decode 回滚；命名镜像构造期 `HookCodeNotReady` 与 `InvalidCanonicalVerseAssets` 的 code-length-first 模式（**新增行**） |
+| 运行时 launcher 无 code | `LauncherCodeNotReady` | `hook.launcher()` 返回零地址或无 deployed code 的地址；在 `getCanonicalSwapDependencies()` 外调前先拒绝，避免 STATICCALL 命中非合约返回空 returndata 触发 opaque ABI-decode 回滚；命名镜像构造期 `HookCodeNotReady` 与 `InvalidCanonicalVerseAssets` 的 code-length-first 模式（**新增行**） |
 | canonical verse 资产零、重复或无 deployed code | `InvalidCanonicalVerseAssets` | canonical Splitter 对 `verseId` 返回零、重复、或无 deployed code 的 PT/YT/POL 地址；在 `_snapshotBalances` 读取 `balanceOf` 前先拒绝，避免 STATICCALL 命中非合约返回空 returndata 触发 opaque ABI-decode 回滚；与构造器 `HookCodeNotReady` 的 code-length-first 风格一致（**新增行**） |
 | 非法 callback / unlock context | `UnexpectedOrTamperedCallback` / `CallbackNotConsumed` | 无 pending one-shot context，或 callback payload hash 与 `_runFlashSwap` 提交的 context 不匹配（被篡改/重放/伪造）；`UnexpectedOrTamperedCallback` 在 `_unlockCallback` 顶部触发；`PoolManager.unlock` 返回后 pending hash 未被清零则触发 `CallbackNotConsumed`（"调用者必须是 PoolManager"由基类 `SafeCallback` 的独立守卫负责，不归入此行） |
 | 真实 delta 结构不符 | `FlashDeltaMismatch` | 真实 delta 不符合固定 \(y\) 所要求的币种、符号或完整成交结构；不比较任何历史 quote |
@@ -426,6 +426,7 @@ YTFlashSwapYTForPOL(
 | `src/swap/interfaces/IMemeverseYTFlashSwapRouter.sol` | 两个公开接口、事件、错误和返回值 |
 | 现有 `src/swap/MemeverseUniswapHookUpgradeable.sol` | 增加只读 transient-principal getter，不改 session 生命周期 |
 | 现有 `src/swap/interfaces/IMemeverseUniswapHook.sol` | 声明 `activeAccountSessionPrincipal()` |
+| 现有 `src/verse/MemeverseLauncherUpgradeable.sol` + `src/verse/interfaces/IMemeverseLauncher.sol` | 新增定向 view getter `getCanonicalSwapDependencies() returns (address memeverseUniswapHook, address polSplitter)`，直读 `memeverseLauncherStorage` 两槽；`getLauncherContracts()` bundle 保留供链下读者 |
 | Router、Hook session、invariant 与 mock 测试文件 | 覆盖本稿验收条件 |
 
 ### 12.2 保持不变的既有依赖

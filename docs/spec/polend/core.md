@@ -436,12 +436,12 @@ else:
 - `leveragedGenesisWithCredit`：market 未注册或非 None/Genesis，Launcher verse 非 Genesis，`creditAmount == 0 || user == address(0)` 时 `ZeroInput`，该 `uAsset` 在 `GenesisCreditFactory` 未部署对应 GenesisCredit（revert `NoCreditForUAsset`），或该 verse `uAsset` / 缓存的 GenesisCredit decimals 非 18（revert `CreditDecimalsMismatch`，仅在该 verse 首次解析 credit token 时触发）
 - `markRefundable`：market 非 Genesis
 - `finalizeLeveragedGenesis`：market 非 Genesis
-- `recordLeveragedYT`：market 非 Locked 或已记录
-- `preRedeemPTFee`：market 非 Locked
+- `recordLeveragedYT`：market 非 Locked 或已记录，`yt == address(0) || totalLeveragedYT == 0` 时 `ZeroInput`
+- `preRedeemPTFee`：market 非 Locked，`ptAmount == 0 || mintTo == address(0)` 时 `ZeroInput`
 - `executeGlobalSettlement`：market 非 Locked
-- `claimRefund`：market 非 Refund
-- `claimLeveragedYT`：market 非 Locked/Settled
-- `claimResidual`：market 非 Settled
+- `claimRefund`：market 非 Refund，`to == address(0)` 时 `ZeroInput`
+- `claimLeveragedYT`：market 非 Locked/Settled，`to == address(0)` 时 `ZeroInput`
+- `claimResidual`：market 非 Settled，`to == address(0)` 时 `ZeroInput`
 - `getLeveragedDebtInfo`：market 未注册
 - `getUserLeveragedDebt`：market 未注册；`user == address(0)` 时 `ZeroInput`
 - `getTotalDebtByUAsset`：`uAsset == address(0)` 时 `ZeroInput`
@@ -455,6 +455,14 @@ else:
 - `POLendUpgradeable.sol::burnPreRedeemedBacking`：`amount == 0`
 - `POLendUpgradeable.sol::leveragedGenesis`：`interestAmount == 0 || user == address(0)`
 - `POLendUpgradeable.sol::leveragedGenesisWithCredit`：`creditAmount == 0 || user == address(0)`
+- `POLendUpgradeable.sol::initialize`：`interestRate_ == 0 || treasury_ == address(0) || launcher_ == address(0) || splitter_ == address(0) || creditFactory_ == address(0)`（`leveragedDebtFactor` 零值经 `_validateLeverageConfig` 拒绝，已由 `setLeveragedDebtFactor` 条目覆盖）
+- `POLendUpgradeable.sol::setProtocolTreasury`：`newTreasury == address(0)`
+- `POLendUpgradeable.sol::setCreditFactory`：`newFactory == address(0)`
+- `POLendUpgradeable.sol::recordLeveragedYT`：`yt == address(0) || totalLeveragedYT == 0`
+- `POLendUpgradeable.sol::fundSettlementDustReserve`：`amount == 0`（`uAsset` reserve 未配置分支为 `InvalidConfig`）
+- `POLendUpgradeable.sol::claimRefund`：`to == address(0)`
+- `POLendUpgradeable.sol::claimLeveragedYT`：`to == address(0)`
+- `POLendUpgradeable.sol::claimResidual`：`to == address(0)`
 
 `POLSplitterUpgradeable` 侧 `InvalidState` 等价错误：
 

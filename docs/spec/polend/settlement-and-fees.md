@@ -40,8 +40,8 @@
 - `POL fee` burn
 - 普通侧 `uAsset fee / PT fee` 写入 `normalFeeStates`
 - 杠杆侧 `uAsset fee` 本次直接分发
-- 杠杆侧 `PT fee` 必须走 `POLendUpgradeable.preRedeemPTFee` 预兑付成 `uAsset` 后本次直接分发
-- 不写 `pendingAuxiliaryGovFeeStates`
+- 杠杆侧 `PT fee` 若合并后 `previewPTToUAsset != 0`，必须走 `POLendUpgradeable.preRedeemPTFee` 预兑付成 `uAsset` 后本次直接分发；若 `== 0`（零 backing dust 边界），保留在 `pendingPTFee` 待后续重试（共享保留规则见 §1.3）
+- 除零 backing dust 边界写 `pendingPTFee` 外，不写 `pendingAuxiliaryGovFeeStates`
 
 #### 1.3 Locked -> Unlocked 最后捕获
 
@@ -56,7 +56,7 @@
 - 杠杆侧 `uAsset fee / PT fee` 写入 `pendingAuxiliaryGovFeeStates`
 - 不调用 `preRedeemPTFee`
 
-`pendingAuxiliaryGovFeeStates` 只承接这次切阶段时捕获但尚未分发的杠杆侧 fee：
+`pendingAuxiliaryGovFeeStates` 承接两类尚未分发的杠杆侧 fee：切阶段时捕获的部分，以及任意 `redeemAndDistributeFees` 调用（含 `Locked` 阶段主动分发）中零 backing dust 边界保留的 `PT fee`：
 
 ```text
 pendingUAssetFee
@@ -67,9 +67,9 @@ pendingPTFee
 
 `pendingUAssetFee` 对应的 uAsset 同样托管在 `Launcher` 地址上，后续 `redeemAndDistributeFees` 调用时直接分发。
 
-`pendingPTFee` 虽然是在 settle 前捕获，但后续会在 `Splitter` 已 settled 后分发，因此走 `Splitter.redeemPT`，不进入 `preRedeemedPT`。
+`pendingPTFee` 虽然是在 settle 前捕获，但切阶段捕获的部分后续会在 `Splitter` 已 settled 后分发，因此走 `Splitter.redeemPT`，不进入 `preRedeemedPT`；零 backing 边界保留的部分若在 verse 仍处 `Locked` 时重试且合并后 `previewPTToUAsset != 0`，则走 `preRedeemPTFee`。
 
-若 `previewPTToUAsset(verseId, currentAuxiliaryGovPTFee + pendingPTFee) == 0`：
+以下零 backing 保留规则由 `MemeverseSettlementImpl.sol::_mergePendingAuxiliaryGovFees` 实现，被每一次 `redeemAndDistributeFees`（`Locked` 阶段主动分发与 `Unlocked` 后分发均含）共享，不限于切阶段捕获路径。若 `previewPTToUAsset(verseId, currentAuxiliaryGovPTFee + pendingPTFee) == 0`：
 
 - 本次不调用 `preRedeemPTFee` / `redeemPT`
 - 合并后的 PT fee 继续保留在 `pendingPTFee`
@@ -272,7 +272,7 @@ normal share 取余数，不能另建永久 launcher bucket。
 
 #### 5.1 settle 前：preRedeemPTFee
 
-`Locked` 阶段主动调用 `redeemAndDistributeFees` 时，若捕获到杠杆侧 PT fee，由于 `Splitter` 尚未 settle，必须走预兑付：
+`Locked` 阶段主动调用 `redeemAndDistributeFees` 时，若捕获到杠杆侧 PT fee 且合并后 `previewPTToUAsset != 0`，由于 `Splitter` 尚未 settle，必须走预兑付（`== 0` 时按 §1.3 零 backing 保留规则留在 `pendingPTFee`）：
 
 ```text
 POLendUpgradeable.preRedeemPTFee(verseId, ptAmount, mintTo)
@@ -381,7 +381,7 @@ event PreRedeemPTFee(uint256 indexed verseId, address indexed uAsset, uint256 pt
 
 #### 5.3 settle 后：直接 redeemPT
 
-Splitter 已 settled 后，杠杆侧 PT fee 直接走：
+Splitter 已 settled 后，杠杆侧 PT fee 若合并后 `previewPTToUAsset != 0`，直接走（`== 0` 时按 §1.3 零 backing 保留规则留在 `pendingPTFee`）：
 
 ```text
 Splitter.redeemPT(verseId, ptAmount, receiver)
@@ -408,7 +408,7 @@ settle 后这条路径：
 - 本链同交易本地分发失败则 `redeemPT` 回滚
 - 异链 `IOFT.send` 成功后目标链 `lzReceive / lzCompose` 失败不回滚源链 `redeemPT`，由 LayerZero retry 处理
 
-`pendingAuxiliaryGovFeeStates.pendingPTFee` 在后续 settled 后分发时走本路径。
+`pendingAuxiliaryGovFeeStates.pendingPTFee` 若在 `Splitter` 已 settled 后分发则走本路径；若在 verse 仍处 `Locked` 时重试且合并后 `previewPTToUAsset != 0`，则走 §5.1 的 `preRedeemPTFee` 路径（零 backing 保留规则见 §1.3）。
 
 ### 6. POLendUpgradeable 全局结算
 

@@ -105,7 +105,7 @@
 | INV-13 POLendUpgradeable 全局结算 bounded reserve | [invariants.md](invariants.md) | 全局结算只能用 bounded reserve 覆盖 dust |
 | INV-14 POLendUpgradeable PT raw / uAsset backing 分离 | [invariants.md](invariants.md) | 必须分离 |
 | INV-15 预兑付 PT fee 真实 supply 结清 | [invariants.md](invariants.md) | fee 由真实 PT supply 结清 |
-| INV-16 normal fee entitlement / zero-backing dust | [invariants.md](invariants.md) | 保持可领取语义 |
+| INV-16 normal fee entitlement / zero-backing dust | [invariants.md](invariants.md) | 不得被错误标记为已领取 |
 | INV-17 创世总资金累计上限 | [invariants.md](invariants.md) | 累计且排除 preorder |
 | INV-18 PT settlement backing 偿还 | [invariants.md](invariants.md) | backing 偿还不变量 |
 | INV-19 PT backing ratio 实际额约束 | [invariants.md](invariants.md) | backing ratio 实际额约束 |
@@ -181,9 +181,15 @@
 
 | 规则/概念 | canonical home | 说明 |
 | --- | --- | --- |
-| deployment salt label / canonical 地址推导 | [verse/deployment.md §6](verse/deployment.md) | 部署 artifact salt 唯一事实表 |
+| deployment salt label / canonical 地址推导 | [verse/deployment.md §6](verse/deployment.md) | §6 所载 artifact 的 salt 唯一事实表；未载 artifact 以 `script/MemeverseScript.s.sol` 的 `SALT_*` 常量声明区为唯一真相源 |
 | storage namespace / 共享 storage 兼容规则 | [upgradeability.md §2](upgradeability.md) | 升级面分类与 namespace 归属 |
 | setFundMetaData 活读决策点 | [verse/config-matrix.md §2](verse/config-matrix.md) | 四处决策点与方向性影响 |
+
+### 2.11 token 签名面
+
+| 规则/概念 | canonical home | 说明 |
+| --- | --- | --- |
+| token 签名扩展基面（EIP-712 域构造 / ERC-2612 permit / delegateBySig） | [common-foundations.md §4](common/common-foundations.md) | 签名域规则、免交易授权与免交易票权委托的唯一 canonical |
 
 ## 3. 相关真源
 

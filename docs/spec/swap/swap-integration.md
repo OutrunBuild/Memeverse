@@ -137,6 +137,7 @@ function swap(
 - `amountInMaximum`：
   - exact-input 时可传 `0`
   - exact-output 时必须传
+  - 输入预拉-退款语义 `[代码已证]`：Router 在进入任何池交互之前先从 caller 全额预拉输入币（`MemeverseSwapRouter.sol::_pullCurrency`，`transferFrom`），swap 结算后按实际输入把未用差额退还 caller（`MemeverseSwapRouter.sol::_refundUnusedInput`）。预拉口径 exact-output 为 `amountInMaximum`、exact-input 为 `|amountSpecified|`；exact-input 被价格上限提前截断致实际输入小于预拉时同样退差额。因此 ERC20 allowance 与 Permit2 拉资额度必须按预拉口径准备，而不是按报价实际输入定额授权——按 `quoteSwap` 估得的输入定额授权、而 `amountInMaximum` 高于该估值（正常滑点余量配置）时，exact-output 预拉 `amountInMaximum` 的 `transferFrom` 会因 allowance 不足确定性失败
 - `hookData`：公开 Router 只把前 20 字节解释为 referrer 数据；普通集成路径可传空。若要触发返佣，caller 必须用 `abi.encodePacked(referrer)` 把 referrer 地址 packed 放入前 20 字节（`abi.encode` 会左 padding 导致 `SwapFacet::_decodeReferrer` 误读，禁止使用）；长度 < 20 字节或前 20 字节为全零视为无 referrer，protocol fee 不切 rebate。preorder settlement 使用 `Launcher -> Hook.executePreorderSettlement(...) -> SettlementFacet` 的 typed Router 路径，不通过公开 swap `hookData`
 
 返回值含义：
@@ -179,6 +180,8 @@ function quoteSwap(PoolKey calldata key, SwapParams calldata params, address tra
 - `addLiquidityWithPermit2(...)`
 - `removeLiquidity(...)`
 - `removeLiquidityWithPermit2(...)`
+
+add 流程输入侧同构 `[代码已证]`：`addLiquidity(...)` 系列在加流动性前从 caller 全额预拉两侧 `amount*Desired` 预算，结算后把两侧未用部分退还 caller；ERC20 allowance 与 Permit2 批量拉资额度必须覆盖两侧 desired 预算，而不是按报价估得的实际花费定额授权。
 
 启动期 bootstrap 单独入口：
 
@@ -233,6 +236,7 @@ Permit2 入口是并行路径，不替代现有 approve 路径。集成时应注
 
 - `estimatedUserInputAmount`
   - 用户最终总共要支付的输入数量
+  - 这是实际支付口径的估算值，不是授权口径：exact-output 的 allowance / Permit2 额度须按 `amountInMaximum` 准备（预拉-退款语义见 §3.1 `amountInMaximum` 条目）
 - `estimatedUserOutputAmount`
   - 用户最终净到手的输出数量
 
@@ -269,7 +273,7 @@ Preorder settlement 的资金流分三步：
 2. **Hook 从 Launcher 拉取 netInput 与 LP fee 到 hook proxy custody**：一次 `transferFrom(launcher, address(this), netInputAmount + lpFeeInputAmount)`（同源同收款人合并，省一次 ERC20 transferFrom）。Settlement logic 经 Router entry `delegatecall` SettlementFacet 执行（SettlementFacet 持有 unlock 回调上下文，负责 swap、settle、take 与 output-side protocol fee 扣减）。
 3. **Hook proxy 余额 settle 给 PoolManager**：`CurrencySettler.settle` 中 `payer == address(this)`（delegatecall 下即 hook proxy）走 `transfer` 分支，不需要 approve。
 
-Launcher 无常驻授权：preorder 结算路径在结算前对 **Hook 地址**授予精确 `totalFunds` 的 uAsset 额度，结算完成后撤销为零（`MemeverseLiquidityImpl.sol::_settlePreorder`）。所有 `transferFrom` 的 spender 都是 hook，to 可以是 hook 自身或 treasury，不需要额外 approve PoolManager。
+Preorder 结算路径无常驻授权：结算前对 **Hook 地址**授予精确 `totalFunds` 的 uAsset 额度，结算完成后撤销为零（`MemeverseLiquidityImpl.sol::_settlePreorder`）。所有 `transferFrom` 的 spender 都是 hook，to 可以是 hook 自身或 treasury，不需要额外 approve PoolManager。
 
 普通集成方不应自行构造这条路径。
 
@@ -316,13 +320,13 @@ YT Flash Swap 是与 `MemeverseSwapRouter` **相互独立**的公开入口，由
 
 - **两个用户入口**：`swapPOLForExactYT(verseId, exactYTOut, maxPOLIn, sqrtPriceLimitX96, recipient, deadline, referrer)` 与 `swapExactYTForPOL(verseId, exactYTIn, minPOLOut, sqrtPriceLimitX96, recipient, deadline, referrer)`。两者都是 PoolManager 的正常 swap 调用者，底层 PT/POL 腿与普通 swap 走同一条 v4 + Hook 路径，只在外层用 split/merge 把 POL 与 YT 互换。
 
-- **无 Permit2**：YT Flash Swap Router 明确不提供 `*WithPermit2(...)` 入口，也不复用 `MemeverseSwapRouter` 的 Permit2 拉资路径。付款只用 allowance + `transferFrom`：买入只从 payer 拉取 `actualPOLIn`（不预拉 `maxPOLIn`，无退款分支），卖出从 payer 拉取 `exactYTIn` YT。这是与 `MemeverseSwapRouter`（§3.3）刻意不同的边界。
+- **无 Permit2**：YT Flash Swap Router 明确不提供 `*WithPermit2(...)` 入口，也不复用 `MemeverseSwapRouter` 的 Permit2 拉资路径。付款只用 allowance + `transferFrom`：买入只从 payer 拉取 `actualPOLIn`（不预拉 `maxPOLIn`，无退款分支），卖出从 payer 拉取 `exactYTIn` YT。这是与 `MemeverseSwapRouter`（§3.1 / §3.3）刻意不同的边界。
 
 - **不接收 quote / Lens / 搜索参数**：Router 入参里没有 quote、`R`、搜索边界或 Lens 结果。SDK 用 `MemeverseUniswapHookLens` 在固定 EIP-1898 `blockHash` 上报价并保留 headroom，但 Router 只按执行时真实 `BalanceDelta` 结算，不与历史 quote 比较，也不要求两者相等。Lens trader 必须等于建立 session 的执行 principal；Router 看不到也不验证历史 Lens 参数。
 
 - **SDK 报价操作序列**：Router 不接收 quote，因此 SDK 必须自行驱动报价。下列步骤与 Router 执行逻辑同构，并与 yt-flash-swap.md §5 互补——§5 定义数学语义（公式 C=y-R、O=y-Q），本节给出落地操作序列。
 
-  - **Step 1 — 解析 verse 三件套**：调用 `IPOLSplitter.getPTAndYTAndPOL(verseId)` view，得到 `(pt, yt, pol)`。splitter 地址从 `hook.launcher().getLauncherContracts().polSplitter` 读取，与 Router 运行时使用的同一 canonical 来源对齐。
+  - **Step 1 — 解析 verse 三件套**：调用 `IPOLSplitter.getPTAndYTAndPOL(verseId)` view，得到 `(pt, yt, pol)`。splitter 地址从 `hook.launcher().getLauncherContracts().polSplitter` 读取（链下集成可继续用全量 bundle）；Router 运行时经定向 getter `getCanonicalSwapDependencies()` 读取同一 launcher 存储源。
 
   - **Step 2 — 离线构建 PT/POL `PoolKey`**：复现 `MemeversePoolKeyLib.hookPoolKey` 语义——`currency0 = min(pt, pol)`、`currency1 = max(pt, pol)`；`fee` 取 v4-core `LPFeeLibrary.DYNAMIC_FEE_FLAG`（`hookPoolKey` 内部引用的就是它），`tickSpacing` 取 `MemeversePoolKeyLib.DEFAULT_TICK_SPACING`，`hooks` 取 Router 的 hook 地址。**常量值不写字面数值，按上述出处引用**，避免漂移。
 

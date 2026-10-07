@@ -37,6 +37,10 @@
 - `burn(uint256)`（`MemePol.sol::burn(uint256)`）：仅自烧，无 allowance 分支。
 - `Memecoin.burn(uint256)`（`Memecoin.sol::burn`）：仅自烧。
 
+**token 层 mint/burn 零值拒绝边界**（当前规则，代码已证）：
+- 五条外部入口 `Memecoin.sol::mint`、`Memecoin.sol::burn`、`MemePol.sol::mint`、`MemePol.sol::burn(address,uint256)`、`MemePol.sol::burn(uint256)` 在 `amount == 0` 时一律 revert `ZeroInput`；该边界与权限边界正交——mint 仅 launcher 可调（外部调用不可达），burn 侧对外部调用者直接可达。
+- 对照：ERC20 `transfer` 0 值仍允许（零额跳过惯例见 [common/common-foundations.md §2](common/common-foundations.md)）；OFT send 的跨链 burn/mint 走内部供给通道，不经这五条外部入口的 `ZeroInput` 检查，亚尘 send 的源链 burn 0 / 目的链 mint 0 为合法行为（见 [interoperation/layerzero-oapp-oft.md §3.4](interoperation/layerzero-oapp-oft.md)）。
+
 **POL token 命名约定**（当前规则，代码已证）：
 - POL token 的 name/symbol 固定使用 `POL-` + verse name/symbol 前缀（`MemeverseLaunchImpl.sol::_deployAndInitializeVerseTokens`）。
 - 同族固定前缀：`PT-`/`YT-`（PT/YT token，`POLSplitterUpgradeable.sol::initializeVerse`）、`Staked `（name）/`s`（symbol）（yield vault，`MemeverseLaunchImpl.sol::_deployGovernanceComponents`）。

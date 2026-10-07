@@ -131,7 +131,7 @@ POL raw、PT raw、YT raw 与主池 LP raw 保持 1:1 raw-unit identity；PT 兑
 - 主池 `memecoin/uAsset` fee 按 Memeverse 规则分流：`memecoin` fee 进入 yield 路径，`uAsset` fee 拆成 `executorReward + govFee` 后进入执行者奖励与 governor treasury 路径
 - 辅助池 `POL/uAsset`、`PT/uAsset`、`PT/POL` fee 按 POLendUpgradeable 四池规则拆分：POL fee burn，普通侧 fee 进入普通领取账本，杠杆侧 `uAsset` fee 分发到 governor treasury 路径，杠杆侧 `PT` fee 在 settle 前走 `preRedeemPTFee`，settle 后走 `redeemPT`
 - 普通用户领取历史辅助池 normal fee 时，`claimNormalFees` 使用 full-precision `mulDiv` 计算 entitlement，避免 `accUAssetFee` 或 `accPTFee` 较大时因中间乘法溢出导致可表示账本无法领取。
-- 普通 PT fee 在 `settled=false` 时直接按份额转出 `PT`；在 `settled=true` 时改为按 `previewPTToUAsset` 确认 backing 后走 `redeemPT -> uAsset`。若该 backing 为零，则本次不标记为已领，留待后续重试。
+- 普通 PT fee 在 `settled=false` 时直接按份额转出 `PT`；在 `settled=true` 时改为按 `previewPTToUAsset` 确认 backing 后走 `redeemPT -> uAsset`。若该 backing 为零，则本次不标记为已领：该 PT entitlement 永久停留为未领取 dust 报告。settled 后 `accPTFee` 不再增长（`MemeverseSettlementImpl.sol::_accrueAuxiliaryFeeShares` 的普通侧累积仅发生在 `Locked` 阶段与 unlock 切换交易内、先于 settle），backing ratio 一次性写入不可变，重试恒得到同一零 backing 结果；`ClaimNormalFees` 事件的 `ptAmount` 持续报告该未领取份额，仅作对账可见性，不代表未来可兑付。
 
 `Locked` 后 `mintPOLToken` 使用 exact-liquidity minting，启动时记录的固定 PT backing ratio 是 PT/YT 经济真源；若报价后的实际执行无法 mint 出请求的 LP/POL 数量，则 mint 失败并整体回退（该 fail-close 仅适用于 exact 模式，即 `amountOutDesired != 0` 时；`amountOutDesired == 0` 的预算/自动模式不设该约束）。额外 backing 不得改写该经济关系。
 

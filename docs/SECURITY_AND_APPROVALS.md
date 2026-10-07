@@ -93,7 +93,7 @@ GenesisCredit 是 per-uAsset ERC20+OFT 凭证（`leveragedGenesisWithCredit` 用
 
 - **产品规则（不是审阅可改写的）**：无 Permit2、无 quote 入参、无 Lens/搜索参数、无管理员、无退款循环；付款只用 allowance + transferFrom，买入只拉 `actualPOLIn`、不预拉 `maxPOLIn`；SDK 负责固定 EIP-1898 `blockHash` 报价与 headroom。把「Router 接收并校验 quote」「引入 Permit2」「预拉 `maxPOLIn` 再退款」「加管理员审批 flash」「把求根/二分搬上链」作为安全修复重新提出，属产品规则变化（§3），须先经人工确认。
 - **真实 `BalanceDelta` 是唯一结算依据**：`FlashDeltaMismatch` 只校验真实 delta 的币种、符号与完整成交结构，绝不比较历史 quote；审阅不得要求 Router 与离线 quote 相等、或把「真实结果偏离历史报价」当 revert 条件。
-- **principal 绑定与 canonical dependency 在资金动作前**：每个入口在任何转账、take、settle、split、merge 前须同时通过 `hook.activeAccountSessionPrincipal() == msg.sender` 与 `getLauncherContracts()` 一致性校验（Router 自身接口与 Hook 同名 error 的区分见 yt-flash-swap.md §11）；审阅不得把它们后置到 callback 内或移除。
+- **principal 绑定与 canonical dependency 在资金动作前**：每个入口在任何转账、take、settle、split、merge 前须同时通过 `hook.activeAccountSessionPrincipal() == msg.sender` 与 `getCanonicalSwapDependencies()` 一致性校验（Router 自身接口与 Hook 同名 error 的区分见 yt-flash-swap.md §11）；审阅不得把它们后置到 callback 内或移除。
 - **dust 不可消费、baseline 必须精确恢复、买入 Splitter POL allowance 残留必须为 0、失败原子回滚**：完整约束集见 [INV-24](spec/invariants.md)；审阅不得把「用 Router 自有余额补差」「消费 dust 容忍误差」「残留 allowance」作为修复建议，不得放宽 fail-closed 语义。
 - **与普通 swap 共享费率规则**：底层 PT/POL 腿就是一次普通动态 swap，§4.4 的费率/容量/价格限制/referral 审阅边界完全适用；审阅不得要求 Router 重复收费、二次「修正 swap」或第二套 fee/referral 状态机。
 

@@ -137,8 +137,8 @@
 - `Unlocked` 后新产生的辅助池非 `POL` fee 全部归 Memeverse DAO governor，普通用户仍可补领历史 `Locked` 阶段普通侧 fee。
 - 普通侧 PT fee 领取分两条路径：
   - `settled=false`：直接把按份额应得的 `PT` 转给用户，并把该部分 `claimedPTFee` 标记为已领。
-  - `settled=true`：先看 `previewPTToUAsset(verseId, ptAmount)`；只有 backing 非零时才调用 `redeemPT` 把对应 `uAsset` 发给用户并标记该部分 `claimedPTFee`。若 backing 为零，则该笔 PT entitlement 保持未领取状态，允许后续重试；同次 `uAsset` fee 领取不受影响。
-- governor 路径的 PT fee 也有同样的 zero-backing 保留语义：`pending auxiliary gov PT fee` 或本次 preview 出来的 gov PT fee 在 `previewPTToUAsset(...) == 0` 时不得视为已处理，而是留在 pending 状态等待后续可兑付时再转换。
+  - `settled=true`：先看 `previewPTToUAsset(verseId, ptAmount)`；只有 backing 非零时才调用 `redeemPT` 把对应 `uAsset` 发给用户并标记该部分 `claimedPTFee`。若 backing 为零，则该笔 PT entitlement 保持未领取状态；普通侧该状态是永久性的——settled 后 `accPTFee` 无任何增长路径（普通侧累积仅发生在 `Locked` 阶段与 unlock 切换交易内、先于 settle）、backing ratio 一次性写入不可变，重试恒得到同一零 backing 结果，`ptAmount` 仅为对账可见性而重复报告，不代表未来可兑付；同次 `uAsset` fee 领取不受影响。
+- governor 路径的 PT fee 在 `previewPTToUAsset(...) == 0` 时同样不得视为已处理，但其保留语义与普通侧不对称：`pending auxiliary gov PT fee` 会与后续 `redeemAndDistributeFees` 新捕获的 gov PT fee 合并（`MemeverseSettlementImpl.sol::_mergePendingAuxiliaryGovFees`），合并后 preview 非零即可兑付，因此 gov 侧 pending 可以最终转出；普通侧无此合并机制，dust entitlement 永久停留 pending。可分发的其它 `uAsset/memecoin/POL` fee 不因此被阻断。
 - PT fee 的预兑付、settle 后 redeem、pending auxiliary gov fee 规则以 [docs/spec/polend/settlement-and-fees.md](../polend/settlement-and-fees.md) 为准。
 
 ### 5.3 执行者奖励与治理收入

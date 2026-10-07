@@ -93,6 +93,7 @@ bootstrap auxiliary pool creation 的 auxiliary underspend 处置（actual spend
 
 - 注册时 launcher 对 `omnichainIds` 中的非本链 id 执行 `_lzConfigure`。
 - 任一远端链在 endpoint registry 中无映射会回退注册。
+- 送达时 `endTime <= block.timestamp`（已过或恰到期）会回退注册（`MemeverseLaunchImpl.sol::registerMemeverse` 新鲜度界，revert `RegistrationExpired`；完整语义见 [docs/spec/verse/registration-details.md §8](registration-details.md)）。
 - `omnichainIds[0]` 被解释为治理链。
 
 ## 4. 启动窗口状态行为

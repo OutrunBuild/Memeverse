@@ -25,12 +25,12 @@ Router 暴露 3 组 Permit2 入口（与普通入口并行，不替代）：
 
 - 校验 `permit.permitted.token` 必须等于预期 token
 - 校验 `transferDetails.to` 必须是 `address(this)`（Router）
-- 校验 `transferDetails.requestedAmount` 必须等于业务预算
+- 校验 `transferDetails.requestedAmount` 必须等于业务预算；swap 的业务预算即输入预拉口径——exact-output 为 `amountInMaximum`、exact-input 为 `|amountSpecified|`（预拉-退款语义与授权口径以 [docs/spec/swap/swap-integration.md](swap-integration.md) §3.1 为 canonical）；remove 的业务预算即被移除的 LP 数量 `liquidity`（拉资额恰为该值，无退款分支）
 
 ### 3.2 双 token 路径（add）
 
 - 仅接受 ERC20/ERC20 pair，期望 batch 长度固定为 2
-- 逐项校验 token 顺序、接收地址、请求金额
+- 逐项校验 token 顺序、接收地址、请求金额；两侧请求金额即业务预算——各等于对应侧 `amount*Desired` 预拉口径（add 输入侧说明见 [docs/spec/swap/swap-integration.md](swap-integration.md) §3.2）
 
 以上为 `[代码已证]`。
 

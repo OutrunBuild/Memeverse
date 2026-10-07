@@ -31,6 +31,8 @@ center 当前负责检查：
 - `omnichainIds` 长度是否合法
 - `omnichainIds` 去重后再继续分发
 
+launcher 侧入口另有送达新鲜度校验：`MemeverseLaunchImpl.sol::registerMemeverse` 要求送达时刻 `endTime > block.timestamp`，`endTime <= block.timestamp` 时 revert `RegistrationExpired`。
+
 因此注册中心不是简单转发器，而是时间与参数的权威入口。
 
 ## 4. Symbol 生命周期
@@ -90,6 +92,8 @@ center 为 UUPS（`ERC1967Proxy`）部署，registrar 是 owner 可变的 storag
 - 中心链负责决定 `unlockTime`
 - 异链 registrar 不拥有最终时间解释权
 
+迟到/滞留送达的语义：center fan-out 的注册消息若滞留或迟到（executor gas 误配进入 LayerZero failed message 后被任何人重试），落地时 `endTime` 已过则 `MemeverseLaunchImpl.sol::registerMemeverse` revert `RegistrationExpired`，消息永久无法重试成功，由 endpoint 侧 clear/nilify 清账，该链不再注册该 verse（部分部署，fail-closed），不再产出「注册即过期」的退化 Genesis verse。本链路径（§7）的 endTime 由 center 在同一交易内派生、恒为未来值，不受该界影响（前提 `minDurationDays >= 1` 的已配置态，见 [docs/spec/verse/config-matrix.md §2](config-matrix.md)；durationDays 为 0 的未配置态本就属部署误配）。
+
 ## 9. fan-out 与 fee
 
 `MemeverseRegistrationCenterUpgradeable.quoteSend` 负责累计所有目标链 fan-out 的 native fee。
@@ -121,7 +125,7 @@ center gas dust 不可由用户认领，只能由 owner 通过 `removeGasDust(re
 
 注册成功后，launcher 侧目标产品执行顺序应是：
 
-1. 校验 `registrar` 权限，且 `polend` 与 `polSplitter` 已配置
+1. 校验 `registrar` 权限，且 `polend` 与 `polSplitter` 已配置，并校验送达时刻 `endTime > block.timestamp`（过期 revert `RegistrationExpired`）
 2. 通过 deployer 部署并初始化 memecoin / POL
 3. 按 `omnichainIds` 配置 peer
 4. 写入 verse 基础信息与反向索引

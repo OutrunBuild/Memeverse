@@ -33,11 +33,11 @@ contract AttackStakerToken {
 }
 
 /// @notice Mock memecoin used by the omnichain staker tests.
-/// @dev Implements `IBurnable` so production code that calls the burn path can exercise it without a full
-///      LayerZero deployment. Replay protection now lives in the staker's `composeStates` mutex, so this mock
-///      no longer tracks a token-side executed-status flag. The transfer failure switch and the mid-call Released
-///      probe pin the settlePendingCompose rollback-retry contract and its CEI write order (Released written
-///      before the outward transfer).
+/// @dev Mirrors the real memecoin's token surface — including the single-arg `burn(uint256)` shape inherited
+///      from BurnableMockERC20Base — without a full LayerZero deployment. Replay protection now lives in the staker's
+///      `composeStates` mutex, so this mock no longer tracks a token-side executed-status flag. The transfer
+///      failure switch and the mid-call Released probe pin the settlePendingCompose rollback-retry contract
+///      and its CEI write order (Released written before the outward transfer).
 contract MockStakerComposeToken is BurnableMockERC20Base {
     bool public transferRevert;
     address public composeProbeStaker;
@@ -214,7 +214,7 @@ contract ReentrantStakerVault {
     }
 }
 
-/// @notice Mock launcher exposing the memecoin -> verse lookup used by interoperation tests.
+/// @notice Mock launcher exposing the staking route lookup used by interoperation tests.
 contract MockInteroperationLauncher {
     IMemeverseLauncher.Memeverse internal verse;
     address internal registeredMemecoin;
@@ -227,14 +227,15 @@ contract MockInteroperationLauncher {
         verse = verse_;
     }
 
-    /// @notice Get memeverse by memecoin.
+    /// @notice Get the staking route by memecoin.
     /// @param memecoin See implementation.
-    /// @return See implementation.
-    function getMemeverseByMemecoin(address memecoin) external view returns (IMemeverseLauncher.Memeverse memory) {
+    /// @return govChainId See implementation.
+    /// @return yieldVault See implementation.
+    function getStakingRouteByMemecoin(address memecoin) external view returns (uint32 govChainId, address yieldVault) {
         if (memecoin != registeredMemecoin) {
             revert IMemeverseLauncher.InvalidVerseId();
         }
-        return verse;
+        return (verse.omnichainIds[0], verse.yieldVault);
     }
 }
 

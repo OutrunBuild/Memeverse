@@ -12,6 +12,7 @@ import {
     IMemeverseOmnichainInteroperation
 } from "../../src/interoperation/interfaces/IMemeverseOmnichainInteroperation.sol";
 import {MemeverseOmnichainInteroperation} from "../../src/interoperation/MemeverseOmnichainInteroperation.sol";
+import {NeverRenounceable} from "../../src/common/access/NeverRenounceable.sol";
 import {
     MockInteroperationLauncher,
     MockInteroperationYieldVault,
@@ -297,7 +298,7 @@ contract MemeverseOmnichainInteroperationTest is Test {
     /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
     function testRenounceOwnershipIsDisabled() external {
         vm.prank(OWNER);
-        vm.expectRevert(MemeverseOmnichainInteroperation.OwnershipRenounceDisabled.selector);
+        vm.expectRevert(NeverRenounceable.OwnershipRenounceDisabled.selector);
         interoperation.renounceOwnership();
     }
 

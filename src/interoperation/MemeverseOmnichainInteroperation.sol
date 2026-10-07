@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import {
     IOFT,
@@ -16,11 +15,12 @@ import {IMemeverseLauncher} from "../verse/interfaces/IMemeverseLauncher.sol";
 import {IMemecoinYieldVault} from "../yield/interfaces/IMemecoinYieldVault.sol";
 import {ILzEndpointRegistry} from "../common/omnichain/interfaces/ILzEndpointRegistry.sol";
 import {IMemeverseOmnichainInteroperation} from "./interfaces/IMemeverseOmnichainInteroperation.sol";
+import {NeverRenounceable} from "../common/access/NeverRenounceable.sol";
 
 /**
  * @title Memeverse Omnichain Interoperation
  */
-contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, TokenHelper, Ownable {
+contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, TokenHelper, NeverRenounceable {
     using OptionsBuilder for bytes;
 
     address public immutable LZ_ENDPOINT_REGISTRY;
@@ -30,10 +30,6 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     uint128 public oftReceiveGasLimit;
     uint128 public omnichainStakingGasLimit;
 
-    /// @notice Reverts when ownership renunciation is attempted.
-    /// @dev Repo invariant: ownership is never renounceable.
-    error OwnershipRenounceDisabled();
-
     constructor(
         address _owner,
         address _lzEndpointRegistry,
@@ -41,7 +37,7 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
         address _omnichainMemecoinStaker,
         uint128 _oftReceiveGasLimit,
         uint128 _omnichainStakingGasLimit
-    ) Ownable(_owner) {
+    ) NeverRenounceable(_owner) {
         require(_omnichainMemecoinStaker != address(0), ZeroAddress());
         require(_lzEndpointRegistry != address(0), ZeroAddress());
         require(_memeverseLauncher != address(0), ZeroAddress());
@@ -53,8 +49,9 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     }
 
     /// @inheritdoc IMemeverseOmnichainInteroperation
-    /// @dev Governance chain is `verse.omnichainIds[0]`. Same-chain routes return a zero fee but still need a
-    ///      deployed yield vault for the actual staking call; remote routes quote the exact LayerZero fee.
+    /// @dev Governance chain is the verse's first omnichain id (`omnichainIds[0]`, returned by
+    ///      `getStakingRouteByMemecoin`). Same-chain routes return a zero fee but still need a deployed yield vault
+    ///      for the actual staking call; remote routes quote the exact LayerZero fee.
     function quoteMemecoinStaking(address memecoin, address receiver, uint256 amount)
         external
         view
@@ -63,21 +60,20 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     {
         require(memecoin != address(0) && receiver != address(0) && amount != 0, ZeroInput());
 
-        IMemeverseLauncher.Memeverse memory verse =
-            IMemeverseLauncher(MEMEVERSE_LAUNCHER).getMemeverseByMemecoin(memecoin);
-        uint32 govChainId = verse.omnichainIds[0];
+        (uint32 govChainId, address yieldVault) =
+            IMemeverseLauncher(MEMEVERSE_LAUNCHER).getStakingRouteByMemecoin(memecoin);
         if (govChainId == block.chainid) return 0;
 
-        address yieldVault = verse.yieldVault;
         SendParam memory sendParam = _buildStakingSendParam(govChainId, receiver, yieldVault, amount);
         _requireNonZeroRemoteDelivery(memecoin, sendParam);
         lzFee = IOFT(memecoin).quoteSend(sendParam, false).nativeFee;
     }
 
     /// @inheritdoc IMemeverseOmnichainInteroperation
-    /// @dev Governance chain is `verse.omnichainIds[0]`. Same-chain: native fee must be 0, reverts `EmptyYieldVault`
-    ///      if the vault is missing. Remote: quotes and sends with the exact native fee; a successful source send may
-    ///      still leave destination `lzReceive`/`lzCompose` failures for LayerZero to retry.
+    /// @dev Governance chain is the verse's first omnichain id (`omnichainIds[0]`, returned by
+    ///      `getStakingRouteByMemecoin`). Same-chain: native fee must be 0, reverts `EmptyYieldVault` if the vault is
+    ///      missing. Remote: quotes and sends with the exact native fee; a successful source send may still leave
+    ///      destination `lzReceive`/`lzCompose` failures for LayerZero to retry.
     /// @dev Remote sends reject zero-collapsed dust amounts before `_transferIn` moves any token — full truncation
     ///      analysis: see `_requireNonZeroRemoteDelivery`'s dev note (authoritative).
     /// @dev Non-zero-remainder truncation (`amount >= decimalConversionRate` but not a clean multiple) is NOT
@@ -86,10 +82,8 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
     function memecoinStaking(address memecoin, address receiver, uint256 amount) external payable override {
         require(memecoin != address(0) && receiver != address(0) && amount != 0, ZeroInput());
 
-        IMemeverseLauncher.Memeverse memory verse =
-            IMemeverseLauncher(MEMEVERSE_LAUNCHER).getMemeverseByMemecoin(memecoin);
-        uint32 govChainId = verse.omnichainIds[0];
-        address yieldVault = verse.yieldVault;
+        (uint32 govChainId, address yieldVault) =
+            IMemeverseLauncher(MEMEVERSE_LAUNCHER).getStakingRouteByMemecoin(memecoin);
 
         SendParam memory sendParam;
         bool isRemote = govChainId != block.chainid;
@@ -181,12 +175,5 @@ contract MemeverseOmnichainInteroperation is IMemeverseOmnichainInteroperation, 
             composeMsg: abi.encode(receiver, yieldVault),
             oftCmd: abi.encode()
         });
-    }
-
-    /// @notice Ownership renunciation is permanently disabled.
-    /// @dev The OZ `Ownable` base exposes `renounceOwnership`; this override makes it always revert,
-    ///      keeping the repo-wide never-renounceable ownership invariant.
-    function renounceOwnership() public override {
-        revert OwnershipRenounceDisabled();
     }
 }

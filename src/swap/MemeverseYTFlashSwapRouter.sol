@@ -323,15 +323,16 @@ contract MemeverseYTFlashSwapRouter is SafeCallback, ReentrancyGuardTransient, I
         // Re-derive canonical hook/splitter from the hook's current launcher every call; the router caches nothing.
         address launcherAddr = hook.launcher();
         // Fail closed with a named error before the external read: a zero-address or no-code launcher would otherwise make
-        // the `getLauncherContracts()` call hit a non-contract (empty returndata) and revert opaquely with no selector.
-        // Mirrors the constructor's `HookCodeNotReady` and the verse-asset `InvalidCanonicalVerseAssets`
+        // the `getCanonicalSwapDependencies()` call hit a non-contract (empty returndata) and revert opaquely with no
+        // selector. Mirrors the constructor's `HookCodeNotReady` and the verse-asset `InvalidCanonicalVerseAssets`
         // code-length-first ordering.
         if (launcherAddr == address(0) || launcherAddr.code.length == 0) revert LauncherCodeNotReady(launcherAddr);
-        IMemeverseLauncher.LauncherContracts memory canonical = IMemeverseLauncher(launcherAddr).getLauncherContracts();
-        if (canonical.memeverseUniswapHook != address(hook) || canonical.polSplitter != address(splitter)) {
-            revert CanonicalDependencyMismatch(
-                address(hook), canonical.memeverseUniswapHook, address(splitter), canonical.polSplitter
-            );
+        // Targeted two-slot read: the validation consumes only the hook/splitter pair, so the per-swap hot path
+        // never pulls the off-chain-oriented full `LauncherContracts` bundle.
+        (address canonicalHook, address canonicalSplitter) =
+            IMemeverseLauncher(launcherAddr).getCanonicalSwapDependencies();
+        if (canonicalHook != address(hook) || canonicalSplitter != address(splitter)) {
+            revert CanonicalDependencyMismatch(address(hook), canonicalHook, address(splitter), canonicalSplitter);
         }
         (pt, yt, pol) = splitter.getPTAndYTAndPOL(verseId);
         if (pt == address(0) || yt == address(0) || pol == address(0) || pt == yt || pt == pol || yt == pol) {

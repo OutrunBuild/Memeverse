@@ -8,12 +8,13 @@ import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/Bala
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRouter.sol";
 import {RealisticSwapIntegrationBase} from "./helpers/RealisticSwapManagerHarness.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 
 contract MemeverseSwapRouterIntegrationTest is RealisticSwapIntegrationBase {
     using BalanceDeltaLibrary for BalanceDelta;
 
     function setUp() public {
-        _setUpIntegration(IPermit2(address(0)));
+        _setUpIntegration(IPermit2(address(new MockPermit2ForRouterTest())));
     }
 
     function testExactInput_InputFee_FullFill_Succeeds() external {

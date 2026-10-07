@@ -14,6 +14,7 @@ import {FeeMath} from "../../src/swap/libraries/FeeMath.sol";
 import {OutrunOwnable} from "../../src/common/access/OutrunOwnable.sol";
 
 import {RealisticSwapIntegrationBase} from "./helpers/RealisticSwapManagerHarness.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 
 /// @notice End-to-end coverage for the referral-rebate feature: rebate storage/setter/views, hook decode +
 ///         rebate routing, claim flow, 65/25/10 fee conservation, self-referral, and rebate solvency.
@@ -30,7 +31,7 @@ contract MemeverseReferralRebateTest is RealisticSwapIntegrationBase {
 
     function setUp() public {
         // Base owns no `setUp`; integration fixtures are wired through `_setUpIntegration`.
-        _setUpIntegration(IPermit2(address(0)));
+        _setUpIntegration(IPermit2(address(new MockPermit2ForRouterTest())));
         engine = IMemeverseUniswapHook(address(hook));
         // Charge the protocol fee on the input currency (currency0 for zeroForOne swaps) so a
         // single exact-input swap accrues rebate in token0.

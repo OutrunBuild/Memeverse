@@ -18,8 +18,9 @@ import {MemeverseSwapForkBase} from "./MemeverseSwapForkBase.sol";
 ///         always rejects an unachievable target first.
 contract MemeverseSwapForkPartialFillTest is MemeverseSwapForkBase {
     function setUp() public {
-        // No Permit2 needed: tests do not sign any EIP-3009 / Permit2 flow.
-        _setUpBase(IPermit2(address(0)));
+        // The router constructor requires a code-carrying Permit2; these tests never sign a Permit2
+        // flow, so the canonical mainnet deployment satisfies the check without touching behavior.
+        _setUpBase(IPermit2(V4_PERMIT2));
     }
 
     /// @dev Tighten sqrtPriceLimitX96 to just below 1.0 so a -100 ether input cannot fully fill:

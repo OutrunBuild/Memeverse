@@ -14,7 +14,7 @@ contract MemeverseSwapForkPreorderTest is MemeverseSwapForkBase {
     using BalanceDeltaLibrary for BalanceDelta;
 
     function setUp() public {
-        _setUpBase(IPermit2(address(0)));
+        _setUpBase(IPermit2(V4_PERMIT2));
         // executePreorderSettlement is launcher-only and pulls input via transferFrom(msg.sender);
         // the fork base deploys this contract as the launcher, so just approve the hook here.
         token0.approve(address(_hook()), type(uint256).max);

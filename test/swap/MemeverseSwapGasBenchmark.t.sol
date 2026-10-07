@@ -10,6 +10,8 @@ import {MemeverseYTFlashSwapRouter} from "../../src/swap/MemeverseYTFlashSwapRou
 import {MemeverseYTFlashSwapRouterIntegrationTest} from "./MemeverseYTFlashSwapRouterIntegration.t.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
+
 /// @title MemeverseSwapGasBenchmark
 /// @notice Measures the gas of one swap routed through a smart-account frame (`AtomicSessionAccount.executeSession`)
 ///         for the ordinary Swap Router and the YT Flash Swap Router, on the SAME PT/POL pool, SAME amount (1e18),
@@ -55,8 +57,11 @@ contract MemeverseSwapGasBenchmark is MemeverseYTFlashSwapRouterIntegrationTest 
     ///      price (see contract-level cold-access caveat #4). Identical warm-up happens in all three tests.
     function _ensureOrdinaryRouter() internal {
         if (_ordinaryReady) return;
-        ordinaryRouter =
-            new MemeverseSwapRouter(manager, IMemeverseUniswapHook(address(hook)), lens, IPermit2(address(0)));
+        // The router constructor requires a Permit2 address with deployed code. The ordinary swap path never calls
+        // Permit2, so a deployed test double preserves the benchmark's non-Permit2 semantics.
+        ordinaryRouter = new MemeverseSwapRouter(
+            manager, IMemeverseUniswapHook(address(hook)), lens, IPermit2(address(new MockPermit2ForRouterTest()))
+        );
         vm.startPrank(address(account));
         MockERC20Like(pt).approve(address(ordinaryRouter), type(uint256).max);
         MockERC20Like(address(pol)).approve(address(ordinaryRouter), type(uint256).max);

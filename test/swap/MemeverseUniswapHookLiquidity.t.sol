@@ -27,6 +27,7 @@ import {UniswapLP} from "../../src/swap/tokens/UniswapLP.sol";
 import {MockPoolManagerForHookLiquidity} from "../mocks/swap/HookLiquidityMocks.sol";
 import {PreorderSettlementReenterer} from "../mocks/swap/PreorderSettlementReenterer.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 
 /// @dev Test boundary:
 /// - These cases lock hook-side handling under the local hook-liquidity manager mock.
@@ -77,7 +78,10 @@ contract MemeverseUniswapHookLiquidityTest is Test, HookStorageHelper {
         hook = _deployHookProxyForManager(IPoolManager(address(mockManager)), address(this), address(this));
         lens = new MemeverseUniswapHookLens(IPoolManager(address(mockManager)));
         router = new MemeverseSwapRouter(
-            IPoolManager(address(mockManager)), IMemeverseUniswapHook(address(hook)), lens, IPermit2(address(0xBEEF))
+            IPoolManager(address(mockManager)),
+            IMemeverseUniswapHook(address(hook)),
+            lens,
+            IPermit2(address(new MockPermit2ForRouterTest()))
         );
 
         token0.approve(address(hook), type(uint256).max);

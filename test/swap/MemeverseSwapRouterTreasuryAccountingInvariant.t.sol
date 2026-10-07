@@ -157,7 +157,7 @@ contract MemeverseSwapRouterSettlementInvariantTest is StdInvariant, Test, HookS
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
             new MemeverseUniswapHookLens(IPoolManager(address(manager))),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(new MockPermit2ForRouterTest()))
         );
         hook.setPoolInitializer(address(router));
         accountingHandler.setRouter(router);

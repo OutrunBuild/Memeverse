@@ -85,17 +85,21 @@ interface IMemeverseUniswapHook is IImmutableState {
     function publicSwapResumeTime(PoolId poolId) external view returns (uint40);
 
     /// @notice Exposes when a hook-managed pool was initialized.
-    /// @dev The launch timestamp anchors the launch-fee decay schedule.
-    ///      UPGRADE INVARIANT: `quoteSwapFeeWithContext()` reads this getter for MemeverseUniswapHookLens.quoteSwap().
-    ///      Hook proxy implementation upgrades MUST preserve this function signature; a selector break silently disables off-chain quoting.
+    /// @dev The launch timestamp anchors the launch-fee decay schedule. The quote path reads this field
+    ///      directly from the shared ERC-7201 storage (inside `DynamicFeeFacet`, reached through
+    ///      `quoteSwapFeeWithContext`), never through this getter; the getter is a read-only window for
+    ///      off-chain consumers. UPGRADE INVARIANT: quoting depends on the shared storage layout staying
+    ///      frozen across hook proxy implementation upgrades, not on this getter's selector.
     /// @param poolId Pool being queried.
     /// @return Recorded launch timestamp.
     function poolLaunchTimestamp(PoolId poolId) external view returns (uint40);
 
     /// @notice Exposes the default launch-fee decay schedule.
     /// @dev New pools use this configuration unless a future implementation introduces pool-specific overrides.
-    ///      UPGRADE INVARIANT: `quoteSwapFeeWithContext()` reads this getter for MemeverseUniswapHookLens.quoteSwap().
-    ///      Hook proxy implementation upgrades MUST preserve this function signature; a selector break silently disables off-chain quoting.
+    ///      The quote path reads this field directly from the shared ERC-7201 storage (inside `DynamicFeeFacet`,
+    ///      reached through `quoteSwapFeeWithContext`), never through this getter; the getter is a read-only
+    ///      window for off-chain consumers. UPGRADE INVARIANT: quoting depends on the shared storage layout
+    ///      staying frozen across hook proxy implementation upgrades, not on this getter's selector.
     /// @return startFeeBps Launch fee applied immediately after pool initialization.
     /// @return minFeeBps Floor fee reached after decay completes.
     /// @return decayDurationSeconds Time required for the launch fee to decay to its floor.
@@ -148,8 +152,10 @@ interface IMemeverseUniswapHook is IImmutableState {
 
     /// @notice Updates the referral rebate rate (share of the total swap fee, in bps) on referral swaps.
     /// @dev Implementations are expected to restrict this to an admin or owner role.
-    ///      `bps` is the referrer's share of the *total* swap fee in bps (`rebate = totalFee * bps / 10_000`,
-    ///      equivalently `protocolFee * bps / FeeMath.PROTOCOL_FEE_SHARE_BPS` since the protocol share is 35%).
+    ///      `bps` is the referrer's share of the *total* swap fee in bps (approximately
+    ///      `totalFee * bps / 10_000`; exactly `protocolFee * bps / FeeMath.PROTOCOL_FEE_SHARE_BPS` rounded
+    ///      down, where `protocolFee` is the realized protocol fee amount produced by its own rounded
+    ///      fee-split derivation, so the two forms can differ by rounding).
     ///      Rebate is capped at `FeeMath.PROTOCOL_FEE_SHARE_BPS` (3500); larger values revert.
     /// @param bps New rebate rate in basis points.
     function setReferrerRebateBps(uint256 bps) external;

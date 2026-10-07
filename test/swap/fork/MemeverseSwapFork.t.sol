@@ -20,7 +20,7 @@ contract MemeverseSwapForkTest is MemeverseSwapForkBase {
     using BalanceDeltaLibrary for BalanceDelta;
 
     function setUp() public {
-        _setUpBase(IPermit2(address(0)));
+        _setUpBase(IPermit2(V4_PERMIT2));
     }
 
     function testExactInput_ZeroForOne_InputFee_QuoteMatchesActual() external {

@@ -328,9 +328,9 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     }
 
     /// @dev The hook's launcher binding points at the zero address (e.g. launcher never set, or `setLauncher(address(0))`
-    ///      would-be path) before the `getLauncherContracts()` external read, so the router fails with the named
-    ///      `LauncherCodeNotReady` instead of an opaque ABI-decode revert from the empty-return call. Fires inside
-    ///      `_validateAndResolve` before any fund action on both entries.
+    ///      would-be path) before the `getCanonicalSwapDependencies()` external read, so the router fails with the
+    ///      named `LauncherCodeNotReady` instead of an opaque ABI-decode revert from the empty-return call. Fires
+    ///      inside `_validateAndResolve` before any fund action on both entries.
     function test_RevertWhen_LauncherIsZeroOrNoCode() public {
         hook.setActivePrincipal(account);
 
@@ -370,9 +370,9 @@ contract MemeverseYTFlashSwapRouterTest is Test {
     /// @dev Mirrors `testConstructor_RevertsWhenHookMissingPoolManagerSelector` on the runtime path: the launcher has
     ///      deployed code, so it passes the zero-address and `code.length == 0` -> `LauncherCodeNotReady` guards at the
     ///      `_validateAndResolve` named-error check, then the runtime-cast STATICCALL
-    ///      `IMemeverseLauncher(address(launcherAddr)).getLauncherContracts()` hits an unknown selector with no fallback.
-    ///      The EVM dispatcher reverts with empty returndata and Solidity's high-level ABI-decode reverts opaquely (no
-    ///      named selector applies). This is the symmetric counterpart to the named-error
+    ///      `IMemeverseLauncher(address(launcherAddr)).getCanonicalSwapDependencies()` hits an unknown selector with no
+    ///      fallback. The EVM dispatcher reverts with empty returndata and Solidity's high-level ABI-decode reverts
+    ///      opaquely (no named selector applies). This is the symmetric counterpart to the named-error
     ///      `test_RevertWhen_LauncherIsZeroOrNoCode`, covering the launcher-resolution residual sub-path that the named
     ///      guard does not reach. It fires before any fund action, so the behavior is fail-closed. The revert form is
     ///      opaque, so a bare `vm.expectRevert()` locks the fail-closed behavior without over-coupling to the opaque

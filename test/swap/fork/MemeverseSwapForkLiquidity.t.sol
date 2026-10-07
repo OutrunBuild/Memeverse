@@ -15,7 +15,7 @@ import {MemeverseSwapForkBase} from "./MemeverseSwapForkBase.sol";
 
 contract MemeverseSwapForkLiquidityTest is MemeverseSwapForkBase {
     function setUp() public {
-        _setUpBase(IPermit2(address(0)));
+        _setUpBase(IPermit2(V4_PERMIT2));
     }
 
     function testAddLiquidity_RemoveLiquidity_ClaimFees() external {

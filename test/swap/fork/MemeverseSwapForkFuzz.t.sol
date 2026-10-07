@@ -18,7 +18,7 @@ contract MemeverseSwapForkFuzzLargeInputTest is MemeverseSwapForkBase {
     uint256 internal constant LARGE_INPUT_MAX = 1e22;
 
     function setUp() public {
-        _setUpBase(IPermit2(address(0)));
+        _setUpBase(IPermit2(V4_PERMIT2));
         _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
         _addHighLiquidity();
@@ -75,7 +75,7 @@ contract MemeverseSwapForkFuzzExactOutputTest is MemeverseSwapForkBase {
     uint256 internal constant EXACT_OUTPUT_MAX = 50 ether;
 
     function setUp() public {
-        _setUpBase(IPermit2(address(0)));
+        _setUpBase(IPermit2(V4_PERMIT2));
         _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
     }

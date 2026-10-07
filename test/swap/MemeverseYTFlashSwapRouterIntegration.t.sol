@@ -1440,6 +1440,10 @@ contract FakeLauncher {
         contracts.polSplitter = splitter;
     }
 
+    function getCanonicalSwapDependencies() external view returns (address memeverseUniswapHook, address polSplitter) {
+        return (hookProxy, splitter);
+    }
+
     /// @notice Minimal settle backing: pull the POL collateral the Splitter approved and mint 1:1 uAsset back so the
     ///         `settlementUAsset >= ptTotalSupply` invariant in `POLSplitterUpgradeable.settle` holds at a 1:1 backing ratio.
     function redeemMemecoinLiquidity(

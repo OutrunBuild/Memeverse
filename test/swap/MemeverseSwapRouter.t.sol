@@ -18,6 +18,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 import {LiquidityAmounts} from "../../src/swap/libraries/LiquidityAmounts.sol";
 import {LiquidityQuote} from "../../src/swap/libraries/LiquidityQuote.sol";
+import {MemeversePoolKeyLib} from "../../src/swap/libraries/MemeversePoolKeyLib.sol";
 import {OrdinarySwapMath} from "../../src/swap/libraries/OrdinarySwapMath.sol";
 import {SwapFeeMath} from "../../src/swap/libraries/SwapFeeMath.sol";
 
@@ -32,6 +33,7 @@ import {IMemeverseSwapRouter} from "../../src/swap/interfaces/IMemeverseSwapRout
 import {UniswapLP} from "../../src/swap/tokens/UniswapLP.sol";
 
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 import {StateWritingDynamicFeeFacetMock} from "../mocks/swap/StateWritingDynamicFeeFacetMock.sol";
 import {YTMockERC20} from "../mocks/swap/YTFlashSwapMocks.sol";
@@ -71,6 +73,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
     MockPoolManagerForRouterTest internal manager;
     MemeverseUniswapHookUpgradeable internal hook;
     MemeverseUniswapHookLens internal lens;
+    MockPermit2ForRouterTest internal mockPermit2;
     MemeverseSwapRouter internal router;
     MockERC20 internal token0;
     MockERC20 internal token1;
@@ -117,11 +120,12 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
         alice = vm.addr(ALICE_PK);
         hook = _deployHookProxyForManager(IPoolManager(address(manager)), address(this), treasury);
         lens = new MemeverseUniswapHookLens(IPoolManager(address(manager)));
+        mockPermit2 = new MockPermit2ForRouterTest();
         router = new MemeverseSwapRouter(
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
             IMemeverseUniswapHookLens(address(lens)),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(mockPermit2))
         );
 
         MockERC20 tokenA = new MockERC20("Token0", "TK0", 18);
@@ -239,7 +243,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
             IMemeverseUniswapHookLens(address(0xCAFE)),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(mockPermit2))
         );
     }
 
@@ -257,7 +261,77 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
             IMemeverseUniswapHookLens(address(wrongLens)),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(mockPermit2))
+        );
+    }
+
+    /// @notice Verifies the router constructor rejects a zero-address PoolManager binding.
+    function testConstructor_RevertsWhenManagerIsZeroAddress() external {
+        vm.expectRevert(IMemeverseSwapRouter.ZeroAddress.selector);
+        new MemeverseSwapRouter(
+            IPoolManager(address(0)),
+            IMemeverseUniswapHook(address(hook)),
+            IMemeverseUniswapHookLens(address(lens)),
+            IPermit2(address(mockPermit2))
+        );
+    }
+
+    /// @notice Verifies the router constructor rejects a zero-address hook binding.
+    function testConstructor_RevertsWhenHookIsZeroAddress() external {
+        vm.expectRevert(IMemeverseSwapRouter.ZeroAddress.selector);
+        new MemeverseSwapRouter(
+            IPoolManager(address(manager)),
+            IMemeverseUniswapHook(address(0)),
+            IMemeverseUniswapHookLens(address(lens)),
+            IPermit2(address(mockPermit2))
+        );
+    }
+
+    /// @notice Verifies the router constructor rejects a zero-address Permit2 binding.
+    function testConstructor_RevertsWhenPermit2IsZeroAddress() external {
+        vm.expectRevert(IMemeverseSwapRouter.ZeroAddress.selector);
+        new MemeverseSwapRouter(
+            IPoolManager(address(manager)),
+            IMemeverseUniswapHook(address(hook)),
+            IMemeverseUniswapHookLens(address(lens)),
+            IPermit2(address(0))
+        );
+    }
+
+    /// @notice Verifies the router constructor rejects a PoolManager address with no deployed code.
+    /// @dev The manager code check runs before the lens binding, so the real setUp lens stays valid.
+    function testConstructor_RevertsWhenManagerHasNoCode() external {
+        address codelessManager = makeAddr("codelessManager");
+        vm.expectRevert(abi.encodeWithSelector(IMemeverseSwapRouter.PoolManagerCodeNotReady.selector, codelessManager));
+        new MemeverseSwapRouter(
+            IPoolManager(codelessManager),
+            IMemeverseUniswapHook(address(hook)),
+            IMemeverseUniswapHookLens(address(lens)),
+            IPermit2(address(mockPermit2))
+        );
+    }
+
+    /// @notice Verifies the router constructor rejects a hook address with no deployed code.
+    function testConstructor_RevertsWhenHookHasNoCode() external {
+        address codelessHook = makeAddr("codelessHook");
+        vm.expectRevert(abi.encodeWithSelector(IMemeverseSwapRouter.HookCodeNotReady.selector, codelessHook));
+        new MemeverseSwapRouter(
+            IPoolManager(address(manager)),
+            IMemeverseUniswapHook(codelessHook),
+            IMemeverseUniswapHookLens(address(lens)),
+            IPermit2(address(mockPermit2))
+        );
+    }
+
+    /// @notice Verifies the router constructor rejects a Permit2 address with no deployed code.
+    function testConstructor_RevertsWhenPermit2HasNoCode() external {
+        address codelessPermit2 = makeAddr("codelessPermit2");
+        vm.expectRevert(abi.encodeWithSelector(IMemeverseSwapRouter.Permit2CodeNotReady.selector, codelessPermit2));
+        new MemeverseSwapRouter(
+            IPoolManager(address(manager)),
+            IMemeverseUniswapHook(address(hook)),
+            IMemeverseUniswapHookLens(address(lens)),
+            IPermit2(codelessPermit2)
         );
     }
 
@@ -562,7 +636,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             IPoolManager(address(guardedManager)),
             IMemeverseUniswapHook(address(guardedHook)),
             new MemeverseUniswapHookLens(IPoolManager(address(guardedManager))),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(mockPermit2))
         );
         MockERC20 otherToken = new MockERC20("Token2", "TK2", 18);
         otherToken.mint(address(this), 1_000_000 ether);
@@ -641,7 +715,7 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
             IPoolManager(address(guardedManager)),
             IMemeverseUniswapHook(address(guardedHook)),
             new MemeverseUniswapHookLens(IPoolManager(address(guardedManager))),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(mockPermit2))
         );
         PoolKey memory guardedKey = _dynamicPoolKeyForHook(
             address(guardedHook), Currency.wrap(address(token0)), Currency.wrap(address(token1))
@@ -1415,6 +1489,22 @@ contract MemeverseSwapRouterTest is Test, HookStorageHelper {
 
         (address poolLpToken,,) = hook.poolInfo(normalizedKey.toId());
         assertEq(router.lpToken(address(token0), address(token1)), poolLpToken, "lp token");
+    }
+
+    /// @notice Verifies the router's full-range quote constants equal the sqrt prices derived from the full-range ticks.
+    /// @dev LiquidityQuote's constants are hardcoded copies of the tick-derived boundary prices; this guard fails
+    ///      loudly if a tick-spacing retune updates one encoding but leaves the other behind.
+    function testRouterFullRangeQuoteConstants_MatchTickBoundaries() external {
+        assertEq(
+            uint256(LiquidityQuote.MIN_SQRT_PRICE_X96),
+            uint256(TickMath.getSqrtPriceAtTick(MemeversePoolKeyLib.FULL_RANGE_LOWER_TICK)),
+            "min sqrt price must match lower tick"
+        );
+        assertEq(
+            uint256(LiquidityQuote.MAX_SQRT_PRICE_X96),
+            uint256(TickMath.getSqrtPriceAtTick(MemeversePoolKeyLib.FULL_RANGE_UPPER_TICK)),
+            "max sqrt price must match upper tick"
+        );
     }
 
     /// @notice Verifies the router quotes enough pair amounts to mint at least the target liquidity.

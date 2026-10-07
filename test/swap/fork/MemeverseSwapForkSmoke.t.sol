@@ -8,7 +8,7 @@ contract MemeverseSwapForkSmokeTest is MemeverseSwapForkBase {
     function setUp() public {
         // Smoke only verifies fork + V4 pool init + hook flag; protocol-fee wiring belongs to
         // the dedicated swap tests (the setter is owner-only and not on the abstract interface).
-        _setUpBase(IPermit2(address(0)));
+        _setUpBase(IPermit2(V4_PERMIT2));
     }
 
     function testSmoke_ForkAndPoolInitialized() external view {

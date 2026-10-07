@@ -10,6 +10,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {OrdinarySwapMath} from "../../src/swap/libraries/OrdinarySwapMath.sol";
 import {RealisticSwapIntegrationBase} from "./helpers/RealisticSwapManagerHarness.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 
 /// @notice Regression coverage for non-zero quotes against a drained pool.
 /// @dev Ordinary swap quotes require active liquidity and must fail instead of returning an executable zero quote.
@@ -19,7 +20,7 @@ contract MemeverseUniswapHookDrainedPoolTest is RealisticSwapIntegrationBase {
     using StateLibrary for IPoolManager;
 
     function setUp() public {
-        _setUpIntegration(IPermit2(address(0)));
+        _setUpIntegration(IPermit2(address(new MockPermit2ForRouterTest())));
     }
 
     /// @dev Removes all LP liquidity so the pool reaches the drained state the bugs require:

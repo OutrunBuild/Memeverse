@@ -317,19 +317,24 @@ contract MockLauncher {
     function getLauncherContracts() external view returns (IMemeverseLauncher.LauncherContracts memory) {
         return _contracts;
     }
+
+    function getCanonicalSwapDependencies() external view returns (address memeverseUniswapHook, address polSplitter) {
+        return (_contracts.memeverseUniswapHook, _contracts.polSplitter);
+    }
 }
 
-/// @notice Test-only launcher that has deployed code but deliberately omits the `getLauncherContracts()` selector and
-///         has no `fallback`/`receive`.
+/// @notice Test-only launcher that has deployed code but deliberately omits the `getCanonicalSwapDependencies()`
+///         selector and has no `fallback`/`receive`.
 /// @dev Used to prove the router's runtime `_validateAndResolve` path is fail-closed when `launcherAddr` has deployed
-///      code but lacks the `getLauncherContracts()` selector. The address passes the zero-address guard and the
+///      code but lacks the `getCanonicalSwapDependencies()` selector. The address passes the zero-address guard and the
 ///      `code.length == 0` -> `LauncherCodeNotReady` guard (it has code), then the runtime-cast STATICCALL
-///      `IMemeverseLauncher(address(launcherAddr)).getLauncherContracts()` hits an unknown selector with no fallback ->
-///      the EVM dispatcher reverts with empty returndata -> Solidity's high-level ABI-decode reverts. This is the
-///      unguarded-by-named-error residual sub-path of the launcher resolution; it is still fail-closed (it fires before
-///      any fund action). This is the runtime analog of the constructor-side `MockYTHookMissingPoolManager`. The mock
-///      deliberately has no members: the failing path reverts before any are read, so a plain contract body is
-///      sufficient (it has deployed code, exposes no `getLauncherContracts()` selector, and has no fallback).
+///      `IMemeverseLauncher(address(launcherAddr)).getCanonicalSwapDependencies()` hits an unknown selector with no
+///      fallback -> the EVM dispatcher reverts with empty returndata -> Solidity's high-level ABI-decode reverts. This
+///      is the unguarded-by-named-error residual sub-path of the launcher resolution; it is still fail-closed (it
+///      fires before any fund action). This is the runtime analog of the constructor-side
+///      `MockYTHookMissingPoolManager`. The mock deliberately has no members: the failing path reverts before any are
+///      read, so a plain contract body is sufficient (it has deployed code, exposes no
+///      `getCanonicalSwapDependencies()` selector, and has no fallback).
 contract MockLauncherMissingSelector {}
 
 /// @notice Minimal `IPOLSplitter` subset for the YT Flash Swap suite: canonical verse-asset resolution plus

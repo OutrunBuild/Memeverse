@@ -12,7 +12,9 @@ library MemeversePoolKeyLib {
     // FULL_RANGE_LOWER_TICK / FULL_RANGE_UPPER_TICK bound full-range liquidity and must remain multiples of
     // DEFAULT_TICK_SPACING — V4 modifyLiquidity requires tickLower % tickSpacing == 0. If DEFAULT_TICK_SPACING
     // changes, update both to the largest multiples within V4's ±887272 tick bound, else full-range
-    // addLiquidity/removeLiquidity reverts and LP funds lock.
+    // addLiquidity/removeLiquidity reverts and LP funds lock. The sqrt-price encodings of this boundary must move
+    // in lockstep: LiquidityQuote.MIN/MAX_SQRT_PRICE_X96 (production quotes) plus the hardcoded copies in
+    // test/swap/MemeverseSwapRouter.t.sol, test/mocks/swap/SwapRouterMocks.sol, and test/mocks/swap/HookLiquidityMocks.sol.
     int24 internal constant FULL_RANGE_LOWER_TICK = -887200;
     int24 internal constant FULL_RANGE_UPPER_TICK = 887200;
 

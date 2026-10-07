@@ -84,6 +84,25 @@ interface IMemeverseSwapRouter {
     /// @param actualPoolManager PoolManager bound to the lens.
     error HookLensPoolManagerMismatch(address expectedPoolManager, address actualPoolManager);
 
+    /// @notice Reverts when the constructor is deployed with a zero-address `_manager`, `_hook`, or `_permit2`.
+    error ZeroAddress();
+
+    /// @notice Reverts when the constructor is deployed with a `_manager` that has no deployed code.
+    /// @dev `_manager` is already bound as the `SafeCallback`/`ImmutableState` immutable `poolManager` before the
+    ///      constructor body runs; this check cannot prevent that binding, but it prevents the misconfigured
+    ///      deployment from succeeding and surfacing later as an opaque revert at the first PoolManager call.
+    error PoolManagerCodeNotReady(address poolManager);
+
+    /// @notice Reverts when the constructor is deployed with a `_hook` that has no deployed code.
+    /// @dev A no-code hook would otherwise first fail as an opaque ABI-decode revert at runtime calls such as
+    ///      `launcher()` or `addLiquidityCore`.
+    error HookCodeNotReady(address hook);
+
+    /// @notice Reverts when the constructor is deployed with a `_permit2` that has no deployed code.
+    /// @dev A no-code Permit2 would otherwise first fail as an opaque ABI-decode revert at the runtime
+    ///      `permitWitnessTransferFrom` call on the Permit2 funding paths.
+    error Permit2CodeNotReady(address permit2);
+
     /// @notice Exposes the Memeverse hook wired into this router.
     /// @dev Integrations can use this to confirm they are quoting and routing against the expected deployment.
     /// @return memeverseHook Hook that owns fee logic and LP accounting.

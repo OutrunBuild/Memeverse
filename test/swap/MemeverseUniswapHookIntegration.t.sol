@@ -18,6 +18,7 @@ import {MemeversePoolKeyLib} from "../../src/swap/libraries/MemeversePoolKeyLib.
 import {OrdinarySwapMath} from "../../src/swap/libraries/OrdinarySwapMath.sol";
 import {RealisticSwapIntegrationBase} from "./helpers/RealisticSwapManagerHarness.sol";
 import {RealisticSwapManagerHarness} from "../mocks/swap/RealisticSwapMocks.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 
 contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     using BalanceDeltaLibrary for BalanceDelta;
@@ -80,7 +81,7 @@ contract MemeverseUniswapHookIntegrationTest is RealisticSwapIntegrationBase {
     }
 
     function setUp() public {
-        _setUpIntegration(IPermit2(address(0)));
+        _setUpIntegration(IPermit2(address(new MockPermit2ForRouterTest())));
     }
 
     function testDirectManager_ExactInput_InputFee_PartialFill_RevertsAndRollsBack() external {

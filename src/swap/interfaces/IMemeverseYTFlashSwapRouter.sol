@@ -69,8 +69,8 @@ interface IMemeverseYTFlashSwapRouter {
     );
 
     /// @notice Reverts when the hook's current launcher is the zero address or has no deployed code.
-    /// @dev Checked before the `getLauncherContracts()` external read so a no-code launcher fails with a named error
-    ///      instead of an opaque ABI-decode revert from the empty-return STATICCALL. Mirrors the constructor's
+    /// @dev Checked before the `getCanonicalSwapDependencies()` external read so a no-code launcher fails with a named
+    ///      error instead of an opaque ABI-decode revert from the empty-return STATICCALL. Mirrors the constructor's
     ///      `HookCodeNotReady` code-length-first ordering.
     error LauncherCodeNotReady(address launcher);
 

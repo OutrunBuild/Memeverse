@@ -76,6 +76,19 @@ contract MemeverseSwapRouter is SafeCallback, IMemeverseSwapRouter {
         IMemeverseUniswapHookLens _hookLens,
         IPermit2 _permit2
     ) SafeCallback(_manager) {
+        // Fail closed at deployment: a zero-address or codeless immutable dependency would otherwise deploy silently
+        // and only surface as an opaque revert at the first runtime external call (e.g. `launcher`/`addLiquidityCore`
+        // on the hook, `permitWitnessTransferFrom` on Permit2). Mirrors the zero-address/code-readiness fail-closed
+        // form of the facet/upgrade/lens and YT flash router constructor checks; the router<->hook PoolManager
+        // diagonal is deliberately not re-checked here — readiness wiring owns that invariant. `SafeCallback(_manager)`
+        // already bound `_manager` as the immutable `poolManager` before this body runs; these checks cannot undo that
+        // binding, they only turn a misconfigured deployment into a named revert.
+        if (address(_manager) == address(0) || address(_hook) == address(0) || address(_permit2) == address(0)) {
+            revert ZeroAddress();
+        }
+        if (address(_manager).code.length == 0) revert PoolManagerCodeNotReady(address(_manager));
+        if (address(_hook).code.length == 0) revert HookCodeNotReady(address(_hook));
+        if (address(_permit2).code.length == 0) revert Permit2CodeNotReady(address(_permit2));
         hook = _hook;
         _validateHookLens(_hookLens);
         hookLens = _hookLens;

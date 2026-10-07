@@ -27,6 +27,7 @@ import {
     UPDATE_AFTER_SWAP_POINT
 } from "../mocks/swap/RevertingDynamicFeeFacetMock.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 
 /// @notice Regression coverage for DynamicFeeFacet errors crossing public swap and settlement boundaries.
 contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelper {
@@ -49,7 +50,7 @@ contract MemeverseDynamicFeeFacetRevertPropagationTest is Test, HookStorageHelpe
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
             IMemeverseUniswapHookLens(address(new MemeverseUniswapHookLens(IPoolManager(address(manager))))),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(new MockPermit2ForRouterTest()))
         );
 
         MockERC20 tokenA = new MockERC20("Token0", "TK0", 18);

@@ -25,6 +25,7 @@ import {IDynamicFeeFacet} from "../../src/swap/interfaces/IDynamicFeeFacet.sol";
 import {IMemeverseUniswapHookLens} from "../../src/swap/interfaces/IMemeverseUniswapHookLens.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
 
 contract MemeversePreorderSettlementTest is Test, HookStorageHelper {
@@ -67,7 +68,7 @@ contract MemeversePreorderSettlementTest is Test, HookStorageHelper {
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
             IMemeverseUniswapHookLens(address(lens)),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(new MockPermit2ForRouterTest()))
         );
 
         MockERC20 tokenA = new MockERC20("Token0", "TK0", 18);

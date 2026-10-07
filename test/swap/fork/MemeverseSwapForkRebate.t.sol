@@ -19,7 +19,7 @@ contract MemeverseSwapForkRebateTest is MemeverseSwapForkBase {
     address internal referrer = makeAddr("referrer");
 
     function setUp() public {
-        _setUpBase(IPermit2(address(0)));
+        _setUpBase(IPermit2(V4_PERMIT2));
         _hook().setProtocolFeeCurrency(key.currency0, true);
         _matureLaunchWindow();
     }

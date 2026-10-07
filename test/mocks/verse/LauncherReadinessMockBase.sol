@@ -83,4 +83,10 @@ contract LauncherReadinessMockBase {
             liquidityImpl: liquidityImpl
         });
     }
+
+    /// @dev Unnamed return parameters: the named form would shadow the `memeverseUniswapHook` / `polSplitter`
+    ///      state vars backing this mock's view.
+    function getCanonicalSwapDependencies() external view returns (address, address) {
+        return (memeverseUniswapHook, polSplitter);
+    }
 }

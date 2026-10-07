@@ -202,7 +202,7 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
     }
 
     function _expectedLauncherSelectorSignatures() internal pure returns (string[] memory signatures) {
-        signatures = new string[](70);
+        signatures = new string[](72);
         signatures[0] = "BPS_BASE()";
         signatures[1] = "auxiliaryLiquidities(uint256)";
         signatures[2] = "bootstrapResidualClaims(uint256)";
@@ -215,65 +215,67 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         signatures[9] = "fundMetaDatas(address)";
         signatures[10] = "genesis(uint256,uint256,address)";
         signatures[11] = "genesisAndPreorder(uint256,uint256,uint256,address)";
-        signatures[12] = "getDebtCapBaseByVerseId(uint256)";
-        signatures[13] = "getGovernorByVerseId(uint256)";
-        signatures[14] = "getLauncherContracts()";
-        signatures[15] = "getLauncherParameters()";
-        signatures[16] = "getMemeverseByMemecoin(address)";
-        signatures[17] = "getMemeverseByVerseId(uint256)";
-        signatures[18] = "getStageByMemecoin(address)";
-        signatures[19] = "getStageByVerseId(uint256)";
-        signatures[20] = "getUAssetByVerseId(uint256)";
-        signatures[21] = "getVerseIdByMemecoin(address)";
-        signatures[22] = "getYieldVaultByVerseId(uint256)";
-        signatures[23] =
+        signatures[12] = "getCanonicalSwapDependencies()";
+        signatures[13] = "getDebtCapBaseByVerseId(uint256)";
+        signatures[14] = "getGovernorByVerseId(uint256)";
+        signatures[15] = "getLauncherContracts()";
+        signatures[16] = "getLauncherParameters()";
+        signatures[17] = "getMemeverseByMemecoin(address)";
+        signatures[18] = "getMemeverseByVerseId(uint256)";
+        signatures[19] = "getStageByMemecoin(address)";
+        signatures[20] = "getStageByVerseId(uint256)";
+        signatures[21] = "getStakingRouteByMemecoin(address)";
+        signatures[22] = "getUAssetByVerseId(uint256)";
+        signatures[23] = "getVerseIdByMemecoin(address)";
+        signatures[24] = "getYieldVaultByVerseId(uint256)";
+        signatures[25] =
             "initialize(address,address,address,address,address,address,address,address,uint256,uint128,uint128,uint256,uint256)";
-        signatures[24] = "memecoinToIds(address)";
-        signatures[25] = "mintPOLToken(uint256,uint256,uint256,uint256,uint256,uint256,uint256)";
-        signatures[26] = "normalFeeStates(uint256)";
-        signatures[27] = "normalYTClaimed(uint256,address)";
-        signatures[28] = "owner()";
-        signatures[29] = "pause()";
-        signatures[30] = "paused()";
-        signatures[31] = "pendingAuxiliaryGovFeeStates(uint256)";
-        signatures[32] = "polToIds(address)";
-        signatures[33] = "polend()";
-        signatures[34] = "preorder(uint256,uint256,address)";
-        signatures[35] = "previewPreorderCapacity(uint256)";
-        signatures[36] = "proxiableUUID()";
-        signatures[37] = "redeemAndDistributeFees(uint256,address)";
-        signatures[38] = "redeemAuxiliaryLiquidity(uint256)";
-        signatures[39] = "redeemMemecoinLiquidity(uint256,uint256,bool)";
-        signatures[40] = "redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256)";
-        signatures[41] = "refund(uint256)";
-        signatures[42] = "refundPreorder(uint256)";
-        signatures[43] = "registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool)";
-        signatures[44] = "remainingGenesisCapacity(uint256)";
-        signatures[45] = "removeGasDust(address)";
-        signatures[46] = "setLaunchImpl(address)";
-        signatures[47] = "setExecutorRewardRate(uint256)";
-        signatures[48] = "setExternalInfo(uint256,string,string,string[])";
-        signatures[49] = "setSettlementImpl(address)";
-        signatures[50] = "setFeePreviewReader(address)";
-        signatures[51] = "setFundMetaData(address,uint256,uint256)";
-        signatures[52] = "setGasLimits(uint128,uint128)";
-        signatures[53] = "setMemeverseProxyDeployer(address)";
-        signatures[54] = "setMemeverseRegistrar(address)";
-        signatures[55] = "setMemeverseSwapRouter(address)";
-        signatures[56] = "setMemeverseUniswapHook(address)";
-        signatures[57] = "setLiquidityImpl(address)";
-        signatures[58] = "setPreorderConfig(uint256,uint256)";
-        signatures[59] = "setYieldDispatcher(address)";
-        signatures[60] = "settleLeveragedAuxiliaryLiquidity(uint256)";
-        signatures[61] = "totalNormalClaimableYT(uint256)";
-        signatures[62] = "totalNormalFunds(uint256)";
-        signatures[63] = "transferOwnership(address)";
-        signatures[64] = "unpause()";
-        signatures[65] = "UPGRADE_INTERFACE_VERSION()";
-        signatures[66] = "upgradeToAndCall(address,bytes)";
-        signatures[67] = "userGenesisData(uint256,address)";
-        signatures[68] = "userNormalFeeClaims(uint256,address)";
-        signatures[69] = "userPreorderData(uint256,address)";
+        signatures[26] = "memecoinToIds(address)";
+        signatures[27] = "mintPOLToken(uint256,uint256,uint256,uint256,uint256,uint256,uint256)";
+        signatures[28] = "normalFeeStates(uint256)";
+        signatures[29] = "normalYTClaimed(uint256,address)";
+        signatures[30] = "owner()";
+        signatures[31] = "pause()";
+        signatures[32] = "paused()";
+        signatures[33] = "pendingAuxiliaryGovFeeStates(uint256)";
+        signatures[34] = "polToIds(address)";
+        signatures[35] = "polend()";
+        signatures[36] = "preorder(uint256,uint256,address)";
+        signatures[37] = "previewPreorderCapacity(uint256)";
+        signatures[38] = "proxiableUUID()";
+        signatures[39] = "redeemAndDistributeFees(uint256,address)";
+        signatures[40] = "redeemAuxiliaryLiquidity(uint256)";
+        signatures[41] = "redeemMemecoinLiquidity(uint256,uint256,bool)";
+        signatures[42] = "redeemMemecoinLiquidity(uint256,uint256,bool,uint256,uint256,uint256)";
+        signatures[43] = "refund(uint256)";
+        signatures[44] = "refundPreorder(uint256)";
+        signatures[45] = "registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool)";
+        signatures[46] = "remainingGenesisCapacity(uint256)";
+        signatures[47] = "removeGasDust(address)";
+        signatures[48] = "setLaunchImpl(address)";
+        signatures[49] = "setExecutorRewardRate(uint256)";
+        signatures[50] = "setExternalInfo(uint256,string,string,string[])";
+        signatures[51] = "setSettlementImpl(address)";
+        signatures[52] = "setFeePreviewReader(address)";
+        signatures[53] = "setFundMetaData(address,uint256,uint256)";
+        signatures[54] = "setGasLimits(uint128,uint128)";
+        signatures[55] = "setMemeverseProxyDeployer(address)";
+        signatures[56] = "setMemeverseRegistrar(address)";
+        signatures[57] = "setMemeverseSwapRouter(address)";
+        signatures[58] = "setMemeverseUniswapHook(address)";
+        signatures[59] = "setLiquidityImpl(address)";
+        signatures[60] = "setPreorderConfig(uint256,uint256)";
+        signatures[61] = "setYieldDispatcher(address)";
+        signatures[62] = "settleLeveragedAuxiliaryLiquidity(uint256)";
+        signatures[63] = "totalNormalClaimableYT(uint256)";
+        signatures[64] = "totalNormalFunds(uint256)";
+        signatures[65] = "transferOwnership(address)";
+        signatures[66] = "unpause()";
+        signatures[67] = "UPGRADE_INTERFACE_VERSION()";
+        signatures[68] = "upgradeToAndCall(address,bytes)";
+        signatures[69] = "userGenesisData(uint256,address)";
+        signatures[70] = "userNormalFeeClaims(uint256,address)";
+        signatures[71] = "userPreorderData(uint256,address)";
     }
 
     function _expectSelectorMissing(string memory signature) internal view {
@@ -284,9 +286,9 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
 
     function testExpectedSelectorBaselineIncludesRuntimeSurface() external {
         string[] memory signatures = _expectedLauncherSelectorSignatures();
-        assertEq(signatures.length, 70, "expected selector count");
+        assertEq(signatures.length, 72, "expected selector count");
         assertEq(signatures[0], "BPS_BASE()", "first selector");
-        assertEq(signatures[69], "userPreorderData(uint256,address)", "last selector");
+        assertEq(signatures[71], "userPreorderData(uint256,address)", "last selector");
 
         // Verify every expected selector actually exists on the proxy.
         // Pad calldata with 512 zero-bytes so the abi decoder does not revert
@@ -423,6 +425,8 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         launcher.getStageByVerseId(0);
         vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
         launcher.getStageByMemecoin(address(0));
+        vm.expectRevert(IMemeverseLauncher.ZeroInput.selector);
+        launcher.getStakingRouteByMemecoin(address(0));
         vm.expectRevert(IMemeverseLauncher.InvalidVerseId.selector);
         launcher.getYieldVaultByVerseId(0);
         vm.expectRevert(IMemeverseLauncher.InvalidVerseId.selector);
@@ -437,7 +441,13 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         vm.expectRevert(IMemeverseLauncher.InvalidVerseId.selector);
         launcher.getMemeverseByMemecoin(address(0x9999));
         vm.expectRevert(IMemeverseLauncher.InvalidVerseId.selector);
+        launcher.getStakingRouteByMemecoin(address(0x9999));
+        vm.expectRevert(IMemeverseLauncher.InvalidVerseId.selector);
         feePreviewReader.quoteDistributionLzFee(999);
+
+        uint32[] memory stakingRouteChainIds = new uint32[](1);
+        stakingRouteChainIds[0] = 202;
+        setOmnichainIdsForTest(launcherProxy, 1, stakingRouteChainIds);
 
         vm.startPrank(ALICE);
         assertEq(launcher.getVerseIdByMemecoin(MEMECOIN), 1);
@@ -446,6 +456,9 @@ contract MemeverseLauncherViewsTest is Test, MemeverseLauncherTestHelper {
         assertEq(uint256(launcher.getStageByVerseId(1)), uint256(IMemeverseLauncher.Stage.Locked));
         assertEq(launcher.getYieldVaultByVerseId(1), YIELD_VAULT);
         assertEq(launcher.getGovernorByVerseId(1), GOVERNOR);
+        (uint32 routeGovChainId, address routeYieldVault) = launcher.getStakingRouteByMemecoin(MEMECOIN);
+        assertEq(routeGovChainId, 202);
+        assertEq(routeYieldVault, YIELD_VAULT);
         vm.stopPrank();
     }
 

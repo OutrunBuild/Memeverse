@@ -20,6 +20,7 @@ import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswap
 import {IMemeverseLauncher} from "../../src/verse/interfaces/IMemeverseLauncher.sol";
 import {RealisticSwapManagerHarness} from "../swap/helpers/RealisticSwapManagerHarness.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 import {MemeverseLauncherUpgradeable} from "../../src/verse/MemeverseLauncherUpgradeable.sol";
 import {MemeverseLaunchImpl} from "../../src/verse/MemeverseLaunchImpl.sol";
 import {MemeverseSettlementImpl} from "../../src/verse/MemeverseSettlementImpl.sol";
@@ -123,7 +124,7 @@ contract MemeverseLauncherPOLendSettlementIntegrationTest is Test, MemeverseLaun
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
             new MemeverseUniswapHookLens(IPoolManager(address(manager))),
-            IPermit2(address(0))
+            IPermit2(address(new MockPermit2ForRouterTest()))
         );
 
         // 5. Real POLSplitterUpgradeable then real POLendUpgradeable. POLendUpgradeable's launcher reference is the Launcher proxy so

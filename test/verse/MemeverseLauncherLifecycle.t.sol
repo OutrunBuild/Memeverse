@@ -1628,10 +1628,15 @@ contract MemeverseLauncherLifecycleTest is Test, MemeverseLauncherTestHelper {
         assertEq(ptAmount, 1, "pt dust reported as still-pending entitlement");
         assertEq(uAsset.balanceOf(ALICE), 2 ether, "alice uAsset");
         (, uint256 claimedPTFee) = _concrete().userNormalFeeClaims(verseId, ALICE);
-        assertEq(claimedPTFee, 0, "pt entitlement stays pending for self-heal");
+        assertEq(claimedPTFee, 0, "pt entitlement stays pending, never extinguished");
 
-        // Self-heal retry: grow accPTFee so the still-pending entitlement becomes redeemable, and
-        // restore 1:1 PT backing so the preview is non-zero. entitledPT = mulDiv(505, 24e18, 120e18) = 101.
+        // Retry leg after the zero-backing claim. In production this branch only runs post-settlement,
+        // where accPTFee is frozen and the backing ratio is immutable, so the pending dust is permanent
+        // and every retry sees the same zero backing. The accPTFee growth and the 1:1 ratio below are
+        // harness-only injections (setNormalFeeStateForTest plus the mock preview override) with no
+        // production equivalent; the leg pins the non-extinguishment semantics: the zero-backing claim
+        // consumed nothing, and once the entitlement does grow the next claim redeems the whole pending
+        // PT delta in one call. entitledPT = mulDiv(505, 24e18, 120e18) = 101.
         setNormalFeeStateForTest(launcherProxy, verseId, 10 ether, 505);
         splitter.setPreviewPTToUAssetRatio(1, 1);
         pt.mint(address(launcher), 101);

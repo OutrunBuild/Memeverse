@@ -37,6 +37,7 @@ import {
 import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 
 contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHelper, HookStorageHelper {
     using PoolIdLibrary for PoolKey;
@@ -139,7 +140,7 @@ contract MemeverseLauncherUnlockProtectionTest is Test, MemeverseLauncherTestHel
             IPoolManager(address(guardedManager)),
             IMemeverseUniswapHook(address(guardedHook)),
             new MemeverseUniswapHookLens(IPoolManager(address(guardedManager))),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(new MockPermit2ForRouterTest()))
         );
         PoolKey memory key = _hookPoolKey(address(guardedHook));
         guardedHook.setPoolInitializer(address(this));

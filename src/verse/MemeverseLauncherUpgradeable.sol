@@ -123,6 +123,17 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
         contracts.liquidityImpl = memeverseLauncherStorage.liquidityImpl;
     }
 
+    /// @inheritdoc IMemeverseLauncher
+    function getCanonicalSwapDependencies()
+        external
+        view
+        override
+        returns (address memeverseUniswapHook, address polSplitter)
+    {
+        memeverseUniswapHook = memeverseLauncherStorage.memeverseUniswapHook;
+        polSplitter = memeverseLauncherStorage.polSplitter;
+    }
+
     function getLauncherParameters() external view returns (LauncherParameters memory parameters) {
         parameters.executorRewardRate = memeverseLauncherStorage.executorRewardRate;
         parameters.preorderCapRatio = memeverseLauncherStorage.preorderCapRatio;
@@ -268,6 +279,18 @@ contract MemeverseLauncherUpgradeable layout at erc7201("outrun.storage.Memevers
     function getYieldVaultByVerseId(uint256 verseId) external view override returns (address yieldVault) {
         _versIdValidate(verseId);
         yieldVault = memeverseLauncherStorage.memeverses[verseId].yieldVault;
+    }
+
+    /// @inheritdoc IMemeverseLauncher
+    function getStakingRouteByMemecoin(address memecoin)
+        external
+        view
+        override
+        returns (uint32 govChainId, address yieldVault)
+    {
+        Memeverse storage verse = memeverseLauncherStorage.memeverses[_verseIdOfRegisteredMemecoin(memecoin)];
+        govChainId = verse.omnichainIds[0];
+        yieldVault = verse.yieldVault;
     }
 
     /// @inheritdoc IMemeverseLauncher

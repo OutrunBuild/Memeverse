@@ -24,6 +24,7 @@ import {ConfigurableDebtPOLendStub} from "../mocks/verse/FundraisingBoundaryMock
 import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHookUpgradeable.sol";
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 import {MockLauncherIntegrationProxyDeployer} from "../mocks/verse/LauncherPreorderIntegrationMocks.sol";
 import {LzEndpointRegistryMock} from "../mocks/common/LzEndpointRegistryMock.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
@@ -95,7 +96,7 @@ contract MemeverseLauncherFundraisingBoundaryTest is Test, MemeverseLauncherTest
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
             new MemeverseUniswapHookLens(IPoolManager(address(manager))),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(new MockPermit2ForRouterTest()))
         );
         hook.setPoolInitializer(address(router));
 

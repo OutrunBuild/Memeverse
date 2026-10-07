@@ -6,7 +6,6 @@ pragma solidity ^0.8.35;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -14,6 +13,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {IMemeverseProxyDeployer} from "../interfaces/IMemeverseProxyDeployer.sol";
 import {IMemecoinDaoGovernor} from "../../governance/interfaces/IMemecoinDaoGovernor.sol";
 import {IGovernanceCycleIncentivizer} from "../../governance/interfaces/IGovernanceCycleIncentivizer.sol";
+import {NeverRenounceable} from "../../common/access/NeverRenounceable.sol";
 
 /**
  * @title Memeverse ERC1967 Proxy
@@ -34,7 +34,7 @@ contract MemeverseERC1967Proxy is ERC1967Proxy {
 /**
  * @title MemeverseProxyDeployer Contract
  */
-contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
+contract MemeverseProxyDeployer is IMemeverseProxyDeployer, NeverRenounceable {
     using Clones for address;
 
     address public immutable memeverseLauncher;
@@ -58,10 +58,6 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
     /// would be paralyzed.
     error InvalidMinQuorumNumerator();
 
-    /// @notice Reverts when ownership renunciation is attempted.
-    /// @dev Repo invariant: ownership is never renounceable.
-    error OwnershipRenounceDisabled();
-
     modifier onlyMemeverseLauncher() {
         require(msg.sender == memeverseLauncher, PermissionDenied());
         _;
@@ -80,7 +76,7 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         uint256 _bootstrapPeriod,
         uint256 _maxTreasurySpendRatio,
         uint256 _upgradeSupermajorityRatio
-    ) Ownable(_owner) {
+    ) NeverRenounceable(_owner) {
         require(
             _memeverseLauncher != address(0) && _memecoinImplementation != address(0)
                 && _polImplementation != address(0) && _vaultImplementation != address(0)
@@ -285,12 +281,5 @@ contract MemeverseProxyDeployer is IMemeverseProxyDeployer, Ownable {
         upgradeSupermajorityRatio = _upgradeSupermajorityRatio;
 
         emit SetUpgradeSupermajorityRatio(_upgradeSupermajorityRatio);
-    }
-
-    /// @notice Ownership renunciation is permanently disabled.
-    /// @dev The OZ `Ownable` base exposes `renounceOwnership`; this override makes it always revert,
-    ///      keeping the repo-wide never-renounceable ownership invariant.
-    function renounceOwnership() public override {
-        revert OwnershipRenounceDisabled();
     }
 }

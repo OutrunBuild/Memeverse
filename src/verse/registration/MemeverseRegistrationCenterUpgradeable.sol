@@ -24,7 +24,7 @@ import {MemeverseRegistrationLib} from "../libraries/MemeverseRegistrationLib.so
  *
  *      Deviation from the repo's `OutrunOwnableUpgradeable` convention: the LayerZero `OAppUpgradeable`
  *      base already inherits OZ `OwnableUpgradeable`, whose single owner lives in the shared
- *      `openzeppelin.storage.OwnableUpgradeable` namespace. Mixing in `OutrunOwnableUpgradeable` would
+ *      `openzeppelin.storage.Ownable` namespace. Mixing in `OutrunOwnableUpgradeable` would
  *      create a second owner slot (`outrun.storage.Ownable`) that nothing keeps in sync, so the OZ base's
  *      owner is used directly. The base's exposed `renounceOwnership` always reverts via the shared
  *      `OutrunOAppUpgradeable` base — repo invariant: ownership is never renounceable.
@@ -110,7 +110,9 @@ contract MemeverseRegistrationCenterUpgradeable layout at erc7201("outrun.storag
     /// @param symbol Symbol to check.
     /// @return available True when the symbol is unlocked and can be registered again.
     function previewRegistration(string calldata symbol) external view override returns (bool) {
-        if (bytes(symbol).length >= 32) return false;
+        // Mirror the execution gate's symbol length window (0 < length < 32) so this preview never
+        // reports an input that `registration` would reject as `InvalidLength`.
+        if (bytes(symbol).length == 0 || bytes(symbol).length >= 32) return false;
         SymbolRegistration storage currentRegistration = registrationCenterStorage.symbolRegistry[symbol];
         return block.timestamp > currentRegistration.endTime;
     }

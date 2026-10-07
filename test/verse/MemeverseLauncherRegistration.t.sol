@@ -267,6 +267,54 @@ contract MemeverseLauncherRegistrationTest is Test, MemeverseLauncherTestHelper 
         assertEq(proxyDeployer.deployPOLCount(), 0, "pol deployment skipped");
     }
 
+    /// @notice Test register memeverse rejects an already-expired Genesis end time.
+    /// @dev A cross-chain registration message can land after its fundraising window closed, so `endTime`
+    ///      must be strictly future: a past `endTime` and one equal to `block.timestamp` both revert with
+    ///      `RegistrationExpired`, while `block.timestamp + 1` still registers.
+    function testRegisterMemeverseRevertsOnExpiredEndTime() external {
+        vm.startPrank(REGISTRAR);
+
+        vm.expectRevert(IMemeverseLauncher.RegistrationExpired.selector);
+        launcher.registerMemeverse(
+            "Memeverse",
+            "MEME",
+            30,
+            uint128(block.timestamp - 1),
+            uint128(block.timestamp + 2 days),
+            _localOmnichainIds(),
+            address(0x7777),
+            true
+        );
+
+        vm.expectRevert(IMemeverseLauncher.RegistrationExpired.selector);
+        launcher.registerMemeverse(
+            "Memeverse",
+            "MEME",
+            31,
+            uint128(block.timestamp),
+            uint128(block.timestamp + 2 days),
+            _localOmnichainIds(),
+            address(0x7777),
+            true
+        );
+        vm.stopPrank();
+
+        // Strictly future by one second still registers, pinning the guard to `endTime > block.timestamp`.
+        vm.prank(REGISTRAR);
+        launcher.registerMemeverse(
+            "Memeverse",
+            "MEME",
+            32,
+            uint128(block.timestamp + 1),
+            uint128(block.timestamp + 2 days),
+            _localOmnichainIds(),
+            address(0x7777),
+            true
+        );
+
+        assertEq(launcher.getMemeverseByVerseId(32).endTime, uint128(block.timestamp + 1), "fresh endTime registers");
+    }
+
     /// @notice Test register memeverse reverts on invalid remote omnichain id.
     /// @dev Guards against registering remote peers that are not mapped in the registry.
     function testRegisterMemeverseRevertsOnInvalidRemoteOmnichainId() external {

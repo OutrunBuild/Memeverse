@@ -21,6 +21,7 @@ import {MemeverseUniswapHookUpgradeable} from "../../src/swap/MemeverseUniswapHo
 import {IMemeverseUniswapHook} from "../../src/swap/interfaces/IMemeverseUniswapHook.sol";
 import {MockPoolManagerForRouterTest} from "../mocks/swap/SwapRouterMocks.sol";
 import {HookStorageHelper} from "../mocks/swap/HookStorageHelper.sol";
+import {MockPermit2ForRouterTest} from "../mocks/swap/Permit2Mocks.sol";
 import {
     MockIntegrationLiquidProof,
     MockLauncherIntegrationProxyDeployer,
@@ -89,7 +90,7 @@ contract MemeverseLauncherPreorderIntegrationTest is Test, HookStorageHelper {
             IPoolManager(address(manager)),
             IMemeverseUniswapHook(address(hook)),
             new MemeverseUniswapHookLens(IPoolManager(address(manager))),
-            IPermit2(address(0xBEEF))
+            IPermit2(address(new MockPermit2ForRouterTest()))
         );
         hook.setPoolInitializer(address(router));
 

@@ -27,7 +27,8 @@ interface IMemeverseRegistrationCenter {
 
     /**
      * @notice Checks whether a symbol is currently eligible for registration.
-     * @dev Returns false while symbol lock window is active.
+     * @dev Returns false while symbol lock window is active, or when the symbol length is outside the
+     *      registrable window (0 < length < 32).
      * @param symbol Candidate ticker symbol.
      * @return True when the symbol can be registered at current state.
      */

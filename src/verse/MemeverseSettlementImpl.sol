@@ -153,8 +153,11 @@ contract MemeverseSettlementImpl layout at erc7201("outrun.storage.MemeverseLaun
                 } else {
                     // Dust rounding makes the PT redeemable for zero uAsset: no PT transfer or redeem
                     // occurred this call, so ptAmount keeps reporting the still-pending entitlement.
-                    // claimedPTFee is intentionally left untouched so the entitlement self-heals as
-                    // future fee accrual grows accPTFee.
+                    // claimedPTFee is intentionally left untouched so the dust entitlement is never
+                    // extinguished. That pending state is permanent, not self-healing: this branch only
+                    // runs after settlement, past which accPTFee has no growth path (post-unlock fee
+                    // redemption stops preserving the normal share) and the backing ratio is immutable,
+                    // so every retry deterministically sees the same zero backing.
                 }
             } else {
                 userClaim.claimedPTFee = entitledPT;

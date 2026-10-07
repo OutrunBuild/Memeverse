@@ -46,7 +46,8 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
 
     /// See `IMemeverseLaunchImpl.registerMemeverse` for the full facade-facing documentation.
     /// @dev The facade keeps the outer `whenNotPaused` guard; this sibling owns the registrar ACL,
-    ///      fund-metadata validation, token deploy, LayerZero peer wiring, verse storage, and emit.
+    ///      fund-metadata validation, endTime freshness validation, token deploy, LayerZero peer wiring,
+    ///      verse storage, and emit.
     function registerMemeverse(
         string calldata name,
         string calldata symbol,
@@ -66,6 +67,11 @@ contract MemeverseLaunchImpl layout at erc7201("outrun.storage.MemeverseLauncher
         require(omnichainIds.length != 0, IMemeverseLauncher.InvalidLength());
         IMemeverseLauncher.FundMetaData memory fundMetaData = memeverseLauncherStorage.fundMetaDatas[uAsset];
         require(fundMetaData.minTotalFund != 0 && fundMetaData.fundBasedAmount != 0, IMemeverseLauncher.ZeroInput());
+        // A cross-chain registration message can land arbitrarily late (failed delivery plus permissionless
+        // retry), so a delivery whose fundraising window is already closed must not create a verse born
+        // expired. The center chain registers in the same transaction `endTime` is derived, so only stale
+        // deliveries hit this check.
+        require(endTime > block.timestamp, IMemeverseLauncher.RegistrationExpired());
 
         (address memecoin, address pol) = _deployAndInitializeVerseTokens(uniqueId, name, symbol);
         _lzConfigure(memecoin, pol, omnichainIds);

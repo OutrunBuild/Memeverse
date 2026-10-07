@@ -13,8 +13,8 @@ import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOApp
 import {OAppReceiver} from "@layerzerolabs/oapp-evm/contracts/oapp/OAppReceiver.sol";
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 
-import {MemeverseRegistrarAbstract} from "../../../src/verse/registration/MemeverseRegistrarAbstract.sol";
 import {MemeverseRegistrarOmnichain} from "../../../src/verse/registration/MemeverseRegistrarOmnichain.sol";
+import {NeverRenounceable} from "../../../src/common/access/NeverRenounceable.sol";
 import {IMemeverseRegistrar} from "../../../src/verse/interfaces/IMemeverseRegistrar.sol";
 import {IMemeverseRegistrarOmnichain} from "../../../src/verse/interfaces/IMemeverseRegistrarOmnichain.sol";
 import {IMemeverseRegistrationCenter} from "../../../src/verse/interfaces/IMemeverseRegistrationCenter.sol";
@@ -289,11 +289,11 @@ contract MemeverseRegistrarOmnichainTest is Test {
     }
 
     /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
-    /// @dev The error is declared on the shared `MemeverseRegistrarAbstract` base, hence the
-    ///      base-qualified selector.
+    /// @dev The error is declared on the shared `NeverRenounceable` base inherited by
+    ///      `MemeverseRegistrarAbstract`, hence the base-qualified selector.
     function testRenounceOwnershipIsDisabled() external {
         vm.prank(OWNER);
-        vm.expectRevert(MemeverseRegistrarAbstract.OwnershipRenounceDisabled.selector);
+        vm.expectRevert(NeverRenounceable.OwnershipRenounceDisabled.selector);
         registrar.renounceOwnership();
     }
 

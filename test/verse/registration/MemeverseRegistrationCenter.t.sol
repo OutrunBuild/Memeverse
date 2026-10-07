@@ -237,6 +237,9 @@ contract MemeverseRegistrationCenterTest is Test {
         assertTrue(center.previewRegistration("NEW"));
         string memory longSymbol = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef";
         assertFalse(center.previewRegistration(longSymbol));
+        // An empty symbol always fails `registration`'s length gate (`InvalidLength`), so the preview
+        // must not report it as registrable.
+        assertFalse(center.previewRegistration(""));
         assertEq(center.minDurationDays(), 2);
         assertEq(center.maxDurationDays(), 12);
         assertEq(center.registerGasLimit(), 321);

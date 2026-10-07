@@ -452,6 +452,26 @@ contract MemeverseLauncherConfigTest is Test {
         launcher.setMemeverseUniswapHook(address(configuredHook));
     }
 
+    /// @notice Test the targeted canonical swap dependency getter tracks the initialize config and the hook binding.
+    /// @dev `polSplitter` is fixed at `initialize`; `memeverseUniswapHook` starts zero and is bound once via
+    ///      `setMemeverseUniswapHook`. Both returned fields must stay consistent with the corresponding
+    ///      `getLauncherContracts` bundle fields so per-swap validation and the bundle view cannot drift apart.
+    function testGetCanonicalSwapDependencies_MatchesBundleFieldsAndHookBinding() external {
+        (address hookBefore, address splitterBefore) = launcher.getCanonicalSwapDependencies();
+        assertEq(hookBefore, address(0), "hook unbound before setMemeverseUniswapHook");
+        assertEq(splitterBefore, address(0x11), "splitter fixed at initialize");
+
+        MockPreorderSettlementHookConfig configuredHook = new MockPreorderSettlementHookConfig(address(launcher));
+        launcher.setMemeverseUniswapHook(address(configuredHook));
+
+        (address canonicalHook, address canonicalSplitter) = launcher.getCanonicalSwapDependencies();
+        IMemeverseLauncher.LauncherContracts memory contracts = launcher.getLauncherContracts();
+        assertEq(canonicalHook, address(configuredHook), "hook reflects the bound value");
+        assertEq(canonicalHook, contracts.memeverseUniswapHook, "hook matches bundle field");
+        assertEq(canonicalSplitter, address(0x11), "splitter stays at the initialize value");
+        assertEq(canonicalSplitter, contracts.polSplitter, "splitter matches bundle field");
+    }
+
     /// @notice Test set memeverse registrar stores address and rejects zero.
     /// @dev Ensures the registrar setter rejects zero and persists valid values.
     function testSetMemeverseRegistrarStoresAddressAndRejectsZero() external {

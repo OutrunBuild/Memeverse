@@ -7,6 +7,7 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 
 import {MemeverseProxyDeployer} from "../../../src/verse/deployment/MemeverseProxyDeployer.sol";
 import {IMemeverseProxyDeployer} from "../../../src/verse/interfaces/IMemeverseProxyDeployer.sol";
+import {NeverRenounceable} from "../../../src/common/access/NeverRenounceable.sol";
 
 contract MockDeployerCloneable {
     uint256 public marker;
@@ -301,7 +302,7 @@ contract MemeverseProxyDeployerTest is Test {
     /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
     function testRenounceOwnershipIsDisabled() external {
         vm.prank(OWNER);
-        vm.expectRevert(MemeverseProxyDeployer.OwnershipRenounceDisabled.selector);
+        vm.expectRevert(NeverRenounceable.OwnershipRenounceDisabled.selector);
         deployer.renounceOwnership();
     }
 }

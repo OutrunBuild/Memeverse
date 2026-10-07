@@ -178,6 +178,14 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     /// @return fundBasedAmount Memecoin amount minted per raw unit of the fundraising token.
     function fundMetaDatas(address uAsset) external view returns (uint256 minTotalFund, uint256 fundBasedAmount);
 
+    /// @notice Returns the launcher's canonical swap dependency pair: the bound Uniswap v4 hook and the POL splitter.
+    /// @dev Targeted on-chain read for canonical-dependency validation: touches only the two storage slots that
+    ///      validation actually consumes. The full `LauncherContracts` bundle returned by `getLauncherContracts`
+    ///      remains the off-chain-oriented reader surface.
+    /// @return memeverseUniswapHook Configured canonical Uniswap v4 hook address.
+    /// @return polSplitter Configured canonical POL splitter address.
+    function getCanonicalSwapDependencies() external view returns (address memeverseUniswapHook, address polSplitter);
+
     /// @notice Returns the base amount POLendUpgradeable should use for verse debt capacity.
     /// @dev Reverts when the verse id does not map to a registered memeverse.
     /// @param verseId Verse id to inspect.
@@ -231,6 +239,15 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
     /// @param verseId Verse id to inspect.
     /// @return yieldVault Configured yield-vault address.
     function getYieldVaultByVerseId(uint256 verseId) external view returns (address yieldVault);
+
+    /// @notice Resolves the staking route fields for a registered memecoin.
+    /// @dev Reverts when `memecoin` is zero or does not belong to a registered verse. `govChainId` is
+    ///      `omnichainIds[0]`; an empty `omnichainIds` array reverts with an array-index panic, matching
+    ///      consumers that read the field from the full-struct getter.
+    /// @param memecoin Memecoin address to inspect.
+    /// @return govChainId Governance chain id (`omnichainIds[0]`).
+    /// @return yieldVault Configured yield-vault address.
+    function getStakingRouteByMemecoin(address memecoin) external view returns (uint32 govChainId, address yieldVault);
 
     /// @notice Resolves the governor configured for a verse id.
     /// @dev Reverts when the verse id is unknown.
@@ -570,6 +587,12 @@ interface IMemeverseLauncher is IMemeverseOFTEnum, ICrossChainSendErrors {
 
     /// @dev Reverted when the owner has not configured the liquidity sibling the facade delegatecalls into.
     error LiquidityImplNotSet();
+
+    /// @dev Reverted when a registration lands after its `endTime` has passed: cross-chain registration
+    ///      messages can be retried onto a chain arbitrarily late, and a verse whose fundraising window is
+    ///      already over must not be created there. The local same-transaction path derives a strictly
+    ///      future `endTime`, so only stale deliveries hit this.
+    error RegistrationExpired();
 
     event Genesis(uint256 indexed verseId, address indexed payer, address indexed depositer, uint256 amount);
 

@@ -7,6 +7,7 @@ import {MessagingFee} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfac
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {MemeverseRegistrarAbstract} from "./MemeverseRegistrarAbstract.sol";
+import {NeverRenounceable} from "../../common/access/NeverRenounceable.sol";
 import {IMemeverseRegistrationCenter} from "../interfaces/IMemeverseRegistrar.sol";
 import {IMemeverseRegistrarOmnichain} from "../interfaces/IMemeverseRegistrarOmnichain.sol";
 
@@ -42,10 +43,12 @@ contract MemeverseRegistrarOmnichain is IMemeverseRegistrarOmnichain, MemeverseR
     }
 
     /// @notice Ownership renunciation is permanently disabled.
-    /// @dev Shared-`Ownable` diamond: `MemeverseRegistrarAbstract` and the OApp stack both inherit
-    ///      the same OZ `Ownable`, so the leaf must disambiguate and re-pin the abstract's
-    ///      always-revert override, keeping the repo-wide never-renounceable ownership invariant.
-    function renounceOwnership() public override(Ownable, MemeverseRegistrarAbstract) {
+    /// @dev Shared-`Ownable` diamond: one path `MemeverseRegistrarAbstract` -> `NeverRenounceable`,
+    ///      the other `OApp` -> `OAppCore` -> `Ownable`, so Solidity forces this leaf-level
+    ///      merge-override. It reverts with the single `OwnershipRenounceDisabled` error declared
+    ///      once in `NeverRenounceable`, not an independent encoding, keeping the repo-wide
+    ///      never-renounceable ownership invariant.
+    function renounceOwnership() public override(NeverRenounceable, Ownable) {
         revert OwnershipRenounceDisabled();
     }
 

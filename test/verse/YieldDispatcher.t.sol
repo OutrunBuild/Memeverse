@@ -12,7 +12,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
 import {OFTComposeSettleVerify} from "../../src/common/omnichain/OFTComposeSettleVerify.sol";
-import {IBurnable} from "../../src/common/interfaces/IBurnable.sol";
 import {YieldDispatcherUpgradeable} from "../../src/verse/YieldDispatcherUpgradeable.sol";
 import {IYieldDispatcher} from "../../src/verse/interfaces/IYieldDispatcher.sol";
 import {IComposeState} from "../../src/common/types/IComposeState.sol";
@@ -35,7 +34,7 @@ import {GovernanceCycleIncentivizerUpgradeable} from "../../src/governance/Gover
 import {IGovernanceCycleIncentivizer} from "../../src/governance/interfaces/IGovernanceCycleIncentivizer.sol";
 import {MockGovernorVotesToken} from "../mocks/governance/GovernanceMocks.sol";
 
-contract MockDispatcherComposeToken is MockERC20, IBurnable {
+contract MockDispatcherComposeToken is MockERC20 {
     uint256 public lastBurnAmount;
 
     constructor(string memory name_, string memory symbol_) MockERC20(name_, symbol_, 18) {}

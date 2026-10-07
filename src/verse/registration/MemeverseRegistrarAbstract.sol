@@ -1,36 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-
 import {IMemeverseRegistrar} from "../interfaces/IMemeverseRegistrar.sol";
 import {IMemeverseLauncher} from "../interfaces/IMemeverseLauncher.sol";
 import {IMemeverseRegistrarAtLocal} from "../interfaces/IMemeverseRegistrarAtLocal.sol";
+import {NeverRenounceable} from "../../common/access/NeverRenounceable.sol";
 
 /**
  * @title MemeverseRegistrar Abstract Contract
  */
-abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, Ownable {
+abstract contract MemeverseRegistrarAbstract is IMemeverseRegistrar, NeverRenounceable {
     address public immutable MEMEVERSE_LAUNCHER;
 
-    /// @notice Reverts when ownership renunciation is attempted.
-    /// @dev Repo invariant: ownership is never renounceable.
-    error OwnershipRenounceDisabled();
-
-    constructor(address _owner, address _memeverseLauncher) Ownable(_owner) {
+    constructor(address _owner, address _memeverseLauncher) NeverRenounceable(_owner) {
         // Reuses the existing `IMemeverseRegistrarAtLocal.ZeroAddress()` declaration instead of declaring a
         // duplicate here: the local leaf inherits both this contract and that interface, and Solidity rejects
         // the same error name declared in two base contracts. Selector is identical to the repo-wide guards.
         require(_memeverseLauncher != address(0), IMemeverseRegistrarAtLocal.ZeroAddress());
         MEMEVERSE_LAUNCHER = _memeverseLauncher;
-    }
-
-    /// @notice Ownership renunciation is permanently disabled.
-    /// @dev The OZ `Ownable` base exposes `renounceOwnership`; this override makes it always revert,
-    ///      keeping the repo-wide never-renounceable ownership invariant. Marked `virtual` only so
-    ///      the omnichain leaf can re-pin it across the shared-`Ownable` diamond with the OApp stack.
-    function renounceOwnership() public virtual override {
-        revert OwnershipRenounceDisabled();
     }
 
     /**

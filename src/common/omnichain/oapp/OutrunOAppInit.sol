@@ -11,7 +11,8 @@ import {OutrunOAppSenderInit} from "./OutrunOAppSenderInit.sol";
  */
 abstract contract OutrunOAppInit is OutrunOAppSenderInit, OutrunOAppReceiverInit {
     /**
-     * @dev Constructor to initialize the OApp with the provided endpoint and owner.
+     * @dev Constructor storing the local LayerZero endpoint only.
+     * @dev Ownership is initialized in each clone's initialize() via __OutrunOwnable_init.
      * @param _endpoint The address of the LOCAL LayerZero endpoint.
      */
     constructor(address _endpoint) OutrunOAppCoreInit(_endpoint) {}

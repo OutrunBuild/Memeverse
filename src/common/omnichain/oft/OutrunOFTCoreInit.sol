@@ -345,9 +345,12 @@ abstract contract OutrunOFTCoreInit is
      * @dev eg. uint(123) with a conversion rate of 100 becomes uint(100).
      * @dev Dust boundary: if `_amountLD < decimalConversionRate` (e.g. < 1e12 for 18-decimal token with 6 shared decimals)
      *      this truncates to 0. A direct `IOFT::send` with such amount delivers 0 on the remote and still pays the full
-     *      LayerZero fee with no automatic refund; integrators must pre-check `amountLD >= decimalConversionRate` or
-     *      `quoteOFT(amountLD).amountReceivedLD != 0`. The `MemeverseOmnichainInteroperation` staking path pre-checks
-     *      this via `DustAmount()` and refunds non-zero remainders, but the generic OFT path does not.
+     *      LayerZero fee with no automatic refund. Both assume the default `minAmountLD = 0`: a non-zero
+     *      `minAmountLD` front-reverts `SlippageExceeded` in `_debitView` before the burn and before any fee is
+     *      charged. Integrators must pre-check `amountLD >= decimalConversionRate` or
+     *      `quoteOFT(amountLD).amountReceivedLD != 0` with `minAmountLD = 0` (a non-zero `minAmountLD` makes the
+     *      sub-dust quote itself revert). The `MemeverseOmnichainInteroperation` staking path pre-checks this via
+     *      `DustAmount()` and refunds non-zero remainders, but the generic OFT path does not.
      */
     function _removeDust(uint256 _amountLD) internal view virtual returns (uint256 amountLD) {
         return (_amountLD / decimalConversionRate) * decimalConversionRate;

@@ -156,10 +156,12 @@ abstract contract OutrunVotesInit is Context, OutrunEIP712Init, OutrunNoncesInit
         );
     }
 
-    /// @notice Reads total tracked voting units at a past timepoint.
-    /// @dev Reverts when querying the current/future timepoint.
+    /// @notice Reads the total voting supply at a past timepoint.
+    /// @dev Reverts when querying the current/future timepoint. Reads the total-supply checkpoint, then applies
+    ///      `_convertPastTotalSupply`.
     /// @param timepoint Past timestamp timepoint to query.
-    /// @return totalSupply Voting-unit supply recorded at `timepoint`.
+    /// @return totalSupply Total voting supply recorded at `timepoint`: asset-denominated when a subclass
+    ///      overrides `_convertPastTotalSupply`, raw voting-unit supply under the identity default.
     function getPastTotalSupply(uint256 timepoint) public view virtual returns (uint256) {
         VotesStorage storage $ = _getVotesStorage();
         uint48 validatedTimepoint = _validateTimepoint(timepoint);

@@ -13,6 +13,7 @@ abstract contract TokenHelper is ReentrancyGuardTransient {
 
     error NativeValueMismatch(uint256 expected, uint256 actual);
     error NativeTransferFailed();
+    error NativeTransferToZeroAddress();
     error SafeApproveFailed(address token, address spender, uint256 value);
     error TransferFromNotCaller(address from, address caller);
 
@@ -38,9 +39,13 @@ abstract contract TokenHelper is ReentrancyGuardTransient {
     ///      Note the lock is released when `_transferOut` returns, so the inter-call window between two
     ///      `_transferOut`s is NOT covered by this lock — defense across that gap relies on the caller's own
     ///      CEI ordering, not on this modifier.
+    ///      The native branch also rejects a zero-address recipient: a CALL to the codeless zero address
+    ///      always succeeds, so without that guard a sweep whose receiver was mistakenly set to the zero
+    ///      address would permanently send the contract's entire native balance there.
     function _transferOut(address token, address to, uint256 amount) internal nonReentrant {
         if (amount == 0) return;
         if (token == NATIVE) {
+            if (to == address(0)) revert NativeTransferToZeroAddress();
             (bool success,) = to.call{value: amount}("");
             require(success, NativeTransferFailed());
         } else {

@@ -24,7 +24,7 @@ contract MemePol is IPol, OutrunOFTInit {
     constructor(address _lzEndpoint) OutrunOFTInit(_lzEndpoint) {}
 
     /// @notice Initializes the liquid-proof token proxy.
-    /// @dev Sets OFT metadata, stores the paired memecoin address (init-only pointer, see `memecoin()`), and records the launcher that governs minting and pool setup.
+    /// @dev Sets OFT metadata, stores the paired memecoin address (init-only pointer, see `memecoin()`), and records the launcher that governs minting.
     /// @param name_ Human-readable token name.
     /// @param symbol_ Token ticker symbol.
     /// @param memecoin_ Paired memecoin address for this POL token.
@@ -41,7 +41,7 @@ contract MemePol is IPol, OutrunOFTInit {
         __OutrunOwnable_init(delegate_);
 
         // Defense in depth, mirroring the launcher facade's ZeroInput checks: a zero launcher would
-        // permanently freeze minting and pool setup (no setter exists), and a zero memecoin link
+        // permanently freeze minting (no setter exists), and a zero memecoin link
         // would leave the pairing getter permanently empty — reject both at initialization time.
         require(memecoin_ != address(0) && memeverseLauncher_ != address(0), ZeroInput());
         memecoin = memecoin_;

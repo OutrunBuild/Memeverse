@@ -37,7 +37,7 @@ abstract contract OutrunERC20Init is IERC20, Initializable, IERC20Metadata, IERC
      * @dev Sets the values for {name} and {symbol}.
      *
      * All two of these values are immutable: they can only be set once during
-     * construction.
+     * initialization.
      */
     function __OutrunERC20_init(string memory name_, string memory symbol_) internal onlyInitializing {
         __ERC20_init_unchained(name_, symbol_);
@@ -110,7 +110,7 @@ abstract contract OutrunERC20Init is IERC20, Initializable, IERC20Metadata, IERC
      *
      * Emits a {Transfer} event.
      *
-     * NOTE: This function is not virtual, {_update} should be overridden instead.
+     * NOTE: {_update} should be overridden instead for any customization.
      */
     function _transfer(address from, address to, uint256 value) internal virtual {
         if (from == address(0)) {

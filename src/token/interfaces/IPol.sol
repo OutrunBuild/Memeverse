@@ -9,7 +9,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 interface IPol is IERC20 {
     /**
      * @notice Get the memeverse launcher.
-     * @dev Launcher is the only authorized minter/burner coordinator for POL lifecycle actions.
+     * @dev Launcher is the only authorized minter; burning is permissionless (holder or approved spender).
      */
     function memeverseLauncher() external view returns (address);
 

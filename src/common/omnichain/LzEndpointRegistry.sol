@@ -1,21 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.35;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-
 import {ILzEndpointRegistry} from "./interfaces/ILzEndpointRegistry.sol";
+import {NeverRenounceable} from "../access/NeverRenounceable.sol";
 
 /**
  * @title LayerZero Endpoint Registry
  */
-contract LzEndpointRegistry is ILzEndpointRegistry, Ownable {
+contract LzEndpointRegistry is ILzEndpointRegistry, NeverRenounceable {
     mapping(uint32 chainId => uint32) public lzEndpointIdOfChain;
 
-    /// @notice Reverts when ownership renunciation is attempted.
-    /// @dev Repo invariant: ownership is never renounceable.
-    error OwnershipRenounceDisabled();
-
-    constructor(address _owner) Ownable(_owner) {}
+    constructor(address _owner) NeverRenounceable(_owner) {}
 
     /// @notice Batch-updates chain-to-endpoint mappings.
     /// @dev Reverts with `InvalidEndpointIdPair` if any pair has `chainId == 0`
@@ -50,12 +45,5 @@ contract LzEndpointRegistry is ILzEndpointRegistry, Ownable {
         }
 
         emit SetLzEndpointIds(pairs);
-    }
-
-    /// @notice Ownership renunciation is permanently disabled.
-    /// @dev The OZ `Ownable` base exposes `renounceOwnership`; this override makes it always revert,
-    ///      keeping the repo-wide never-renounceable ownership invariant.
-    function renounceOwnership() public override {
-        revert OwnershipRenounceDisabled();
     }
 }

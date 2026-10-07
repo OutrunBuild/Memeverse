@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {LzEndpointRegistry} from "../../../src/common/omnichain/LzEndpointRegistry.sol";
 import {ILzEndpointRegistry} from "../../../src/common/omnichain/interfaces/ILzEndpointRegistry.sol";
+import {NeverRenounceable} from "../../../src/common/access/NeverRenounceable.sol";
 
 contract LzEndpointRegistryTest is Test {
     address internal constant OWNER = address(0xABCD);
@@ -119,7 +120,7 @@ contract LzEndpointRegistryTest is Test {
     /// @notice Test renounceOwnership is permanently disabled (never-renounceable repo invariant).
     function testRenounceOwnershipIsDisabled() external {
         vm.prank(OWNER);
-        vm.expectRevert(LzEndpointRegistry.OwnershipRenounceDisabled.selector);
+        vm.expectRevert(NeverRenounceable.OwnershipRenounceDisabled.selector);
         registry.renounceOwnership();
     }
 }

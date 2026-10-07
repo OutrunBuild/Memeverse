@@ -73,6 +73,22 @@ contract TokenHelperTest is Test {
         assertEq(receiver.balance, amount);
     }
 
+    function test_RevertIf_TransferOutNativeToZeroAddress() external {
+        vm.deal(address(harness), 1 ether);
+
+        vm.expectRevert(TokenHelper.NativeTransferToZeroAddress.selector);
+        harness.transferOutNative(address(0), 1 ether);
+    }
+
+    function test_TransferOutNativeZeroAmountToZeroAddressIsNoOp() external {
+        // amount == 0 early-returns before the zero-address guard, so the call is a silent no-op.
+        uint256 startBalance = address(harness).balance;
+
+        harness.transferOutNative(address(0), 0);
+
+        assertEq(address(harness).balance, startBalance);
+    }
+
     function testTransferOutERC20MovesFunds() external {
         address recipient = makeAddr("recipient");
         uint256 amount = 1 ether;

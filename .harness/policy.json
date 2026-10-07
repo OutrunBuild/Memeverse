@@ -219,6 +219,24 @@
         },
         {
           "change_tests": [
+            "test/verse/MemeverseLauncherSwapIntegration.t.sol",
+            "test/verse/MemeverseLauncherPOLendSettlementIntegration.t.sol",
+            "test/verse/MemeverseLauncherTripleAbsentSettlement.t.sol"
+          ],
+          "evidence_tests": [
+            "test/verse/MemeverseLauncherSwapIntegration.t.sol",
+            "test/verse/MemeverseLauncherPOLendSettlementIntegration.t.sol",
+            "test/verse/MemeverseLauncherTripleAbsentSettlement.t.sol"
+          ],
+          "id": "launcher-integration",
+          "paths": [
+            "src/verse/MemeverseLaunchImpl.sol",
+            "src/verse/interfaces/IMemeverseLaunchImpl.sol",
+            "src/yield/interfaces/IMemecoinYieldVault.sol"
+          ]
+        },
+        {
+          "change_tests": [
             "test/verse/MemeverseLauncherLifecycle.t.sol",
             "test/verse/MemeverseLauncherAssetFlowInvariant.t.sol",
             "test/swap/MemeverseSwapRouter.t.sol",
@@ -813,7 +831,6 @@
         "enforcement": "residual-risk",
         "id": "common-foundations",
         "paths": [
-          "src/common/interfaces/IBurnable.sol",
           "src/common/omnichain/oapp/OutrunOAppPreCrimeSimulatorInit.sol",
           "src/common/token/TokenHelper.sol"
         ],

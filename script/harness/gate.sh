@@ -608,177 +608,60 @@ run_slither_with_baseline() {
     local id="$1"
     local reason="$2"
     local scope_json="$3"
-    local slither_filter_paths="$4"
-    local slither_exclude_detectors="$5"
+    local slither_filter_paths
+    local slither_exclude_detectors
     local baseline_file
     local command_string
-    local raw_output_file
-    local new_findings_file
-    local combined_file
-    local build_output_file
-    local raw_output_file_2
-    local run1_count
-    local run2_count
+    local stdout_capture
+    local stderr_capture
+    local exit_code
+    local status
+    local run
+    local run_suffix
+    local drift
     local run1_key_count
     local run2_key_count
-    local exit_code
+    local run1_count
+    local run2_count
     local baseline_count
     local current_count
     local new_count
+    local check_status
     local summary
 
     baseline_file="$(slither_baseline_path)"
-    command_string="slither src --filter-paths $(shell_join "$slither_filter_paths") --exclude-dependencies --exclude $(shell_join "$slither_exclude_detectors") --json - --json-types detectors --fail-none --disable-color"
-    record_command_run "$id" "$command_string | compare against $(shell_join "$baseline_file")" "$reason" "$scope_json"
+    slither_filter_paths="$(jq -r '.risk_rules.slither_filter_paths // empty' "$policy_file")"
+    slither_exclude_detectors="$(jq -r '.risk_rules.slither_exclude_detectors // empty' "$policy_file")"
+    command_string="bash script/harness/slither-baseline.sh check (serialized forge build; slither src --filter-paths $(shell_join "$slither_filter_paths") --exclude-dependencies --exclude $(shell_join "$slither_exclude_detectors") --json - --json-types detectors --fail-none --disable-color; compare against $(shell_join "$baseline_file"))"
+    record_command_run "$id" "$command_string" "$reason" "$scope_json"
 
-    if [ ! -f "$baseline_file" ]; then
-        verification_failed=1
-        record_command_result "$id" "failed" "1" "slither baseline file is missing" "verifier"
-        append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
-        echo "[gate] ERROR: slither baseline file is missing: $baseline_file" >&2
-        return
-    fi
-
-    if ! jq -e '.version == 1 and (.findings | type == "array")' "$baseline_file" >/dev/null 2>&1; then
-        verification_failed=1
-        record_command_result "$id" "failed" "1" "slither baseline file is invalid" "verifier"
-        append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
-        echo "[gate] ERROR: slither baseline file is invalid: $baseline_file" >&2
-        return
-    fi
-
-    build_output_file="$(mktemp "$repo_root/.harness/tmp/slither-build.XXXXXX.log")"
-    raw_output_file="$(mktemp "$repo_root/.harness/tmp/slither.XXXXXX.json")"
-    raw_output_file_2="$(mktemp "$repo_root/.harness/tmp/slither.XXXXXX.json")"
-    new_findings_file="$(mktemp "$repo_root/.harness/tmp/slither-new.XXXXXX.json")"
-    combined_file="$(mktemp "$repo_root/.harness/tmp/slither-combined.XXXXXX.json")"
-    register_cleanup "$build_output_file"
-    register_cleanup "$raw_output_file"
-    register_cleanup "$raw_output_file_2"
-    register_cleanup "$new_findings_file"
-    register_cleanup "$combined_file"
+    stdout_capture="$(mktemp "$repo_root/.harness/tmp/slither-check.XXXXXX.stdout")"
+    stderr_capture="$(mktemp "$repo_root/.harness/tmp/slither-check.XXXXXX.stderr")"
+    register_cleanup "$stdout_capture"
+    register_cleanup "$stderr_capture"
 
     set +e
-    bash "$repo_root/script/harness/forge-serialize.sh" build > "$build_output_file" 2>&1
+    bash "$repo_root/script/harness/slither-baseline.sh" check > "$stdout_capture" 2> "$stderr_capture"
     exit_code=$?
     set -e
 
-    if [ "$exit_code" -ne 0 ]; then
-        filter_command_output "$build_output_file" "$exit_code"
-        verification_failed=1
-        record_command_result "slither-prerequisite-build" "failed" "$exit_code" "serialized forge build failed" "verifier"
-        append_finding blocking_findings_json "verifier" "verification command failed: slither-prerequisite-build" "slither-prerequisite-build" "error"
-        return
+    # Both healthy outcomes (pass/new) report run drift diagnostics before the
+    # verdict branch, mirroring the original inline implementation.
+    if [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 1 ]; then
+        drift="$(jq -r '.drift' "$stdout_capture")"
+        run1_key_count="$(jq -r '.run1_key_count' "$stdout_capture")"
+        run2_key_count="$(jq -r '.run2_key_count' "$stdout_capture")"
+        run1_count="$(jq -r '.run1_count' "$stdout_capture")"
+        run2_count="$(jq -r '.run2_count' "$stdout_capture")"
+        current_count="$(jq -r '.stable_count' "$stdout_capture")"
+        if [ "$drift" = "true" ] \
+            && [ "$(resolved_output_format)" = "text" ] && [ "$quiet" -eq 0 ] && { [ "$log_level" = "info" ] || [ "$log_level" = "debug" ]; }; then
+            echo "[gate] slither drift: run1=$run1_key_count keys, run2=$run2_key_count keys; comparing $current_count stable findings (raw run1=$run1_count, run2=$run2_count)"
+        fi
     fi
 
-    set +e
-    slither src \
-        --filter-paths "$slither_filter_paths" \
-        --exclude-dependencies \
-        --exclude "$slither_exclude_detectors" \
-        --json - \
-        --json-types detectors \
-        --fail-none \
-        --disable-color > "$raw_output_file" 2>&1
-    exit_code=$?
-    set -e
-
-    if [ "$exit_code" -ne 0 ]; then
-        filter_command_output "$raw_output_file" "$exit_code"
-        verification_failed=1
-        record_command_result "$id" "failed" "$exit_code" "slither command failed" "verifier"
-        append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
-        return
-    fi
-
-    if ! jq -e '.success == true and (.results.detectors | type == "array")' "$raw_output_file" >/dev/null 2>&1; then
-        head -n 40 "$raw_output_file"
-        verification_failed=1
-        record_command_result "$id" "failed" "1" "slither did not emit valid detector JSON" "verifier"
-        append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
-        return
-    fi
-
-    set +e
-    slither src \
-        --filter-paths "$slither_filter_paths" \
-        --exclude-dependencies \
-        --exclude "$slither_exclude_detectors" \
-        --json - \
-        --json-types detectors \
-        --fail-none \
-        --disable-color > "$raw_output_file_2" 2>&1
-    exit_code=$?
-    set -e
-
-    if [ "$exit_code" -ne 0 ]; then
-        filter_command_output "$raw_output_file_2" "$exit_code"
-        verification_failed=1
-        record_command_result "$id" "failed" "$exit_code" "slither command failed (run 2)" "verifier"
-        append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
-        return
-    fi
-
-    if ! jq -e '.success == true and (.results.detectors | type == "array")' "$raw_output_file_2" >/dev/null 2>&1; then
-        head -n 40 "$raw_output_file_2"
-        verification_failed=1
-        record_command_result "$id" "failed" "1" "slither did not emit valid detector JSON (run 2)" "verifier"
-        append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
-        return
-    fi
-
-    jq --slurpfile baseline "$baseline_file" --slurpfile run2 "$raw_output_file_2" '
-        def norm_summary:
-            (.description // "")
-            | split("\n")[0]
-            | sub(" \\([^)]*#L?[0-9]+(-L?[0-9]+)?\\)"; "")
-            | sub(" \\([^)]*#[0-9]+(-[0-9]+)?\\)"; "");
-        def normalize:
-            {
-                id: (.id // ""),
-                check: (.check // ""),
-                impact: (.impact // ""),
-                confidence: (.confidence // ""),
-                location: (.first_markdown_element // ""),
-                summary: norm_summary,
-                key: (
-                    (.check // "") + "|" +
-                    ((.first_markdown_element // "") | split("#")[0]) + "|" +
-                    norm_summary
-                )
-            };
-        ($baseline[0].findings | map(.key // .id) | unique) as $baseline_keys
-        | ([.results.detectors[] | normalize]) as $run1_normalized
-        | ($run1_normalized | map(.key) | unique) as $run1_keys
-        | ($run2[0].results.detectors | map(normalize.key) | unique) as $run2_keys
-        | ([$run1_normalized[] | select(.key as $key | $run2_keys | index($key))]) as $stable
-        | {
-            drift: (($run1_keys | length) != ($run2_keys | length) or ($run1_keys - $run2_keys | length) > 0 or ($run2_keys - $run1_keys | length) > 0),
-            run1_key_count: ($run1_keys | length),
-            run2_key_count: ($run2_keys | length),
-            stable_count: ($stable | length),
-            new: [
-                $stable[]
-                | select((.key // .id) as $key | $key == "" or ($baseline_keys | index($key) | not))
-            ]
-        }
-    ' "$raw_output_file" > "$combined_file"
-
-    baseline_count="$(jq '.findings | length' "$baseline_file")"
-    run1_count="$(jq '.results.detectors | length' "$raw_output_file")"
-    run2_count="$(jq '.results.detectors | length' "$raw_output_file_2")"
-    run1_key_count="$(jq '.run1_key_count' "$combined_file")"
-    run2_key_count="$(jq '.run2_key_count' "$combined_file")"
-    current_count="$(jq '.stable_count' "$combined_file")"
-    new_count="$(jq '.new | length' "$combined_file")"
-    jq '.new' "$combined_file" > "$new_findings_file"
-
-    if [ "$(jq '.drift' "$combined_file")" = "true" ] \
-        && [ "$(resolved_output_format)" = "text" ] && [ "$quiet" -eq 0 ] && { [ "$log_level" = "info" ] || [ "$log_level" = "debug" ]; }; then
-        echo "[gate] slither drift: run1=$run1_key_count keys, run2=$run2_key_count keys; comparing $current_count stable findings (raw run1=$run1_count, run2=$run2_count)"
-    fi
-
-    if [ "$new_count" -eq 0 ]; then
+    if [ "$exit_code" -eq 0 ]; then
+        baseline_count="$(jq -r '.baseline_count' "$stdout_capture")"
         summary="all $current_count slither findings matched baseline ($baseline_count entries)"
         if [ "$(resolved_output_format)" = "text" ] && [ "$quiet" -eq 0 ] && { [ "$log_level" = "info" ] || [ "$log_level" = "debug" ]; }; then
             echo "[gate] slither baseline: $summary"
@@ -787,14 +670,78 @@ run_slither_with_baseline() {
         return
     fi
 
-    if [ "$(resolved_output_format)" = "text" ]; then
-        echo "[gate] slither baseline: detected $new_count new finding(s) beyond baseline"
-        jq -r '.[] | "- [\(.impact)/\(.confidence)] \(.check) \(.location) :: \(.summary)"' "$new_findings_file"
+    if [ "$exit_code" -eq 1 ]; then
+        # Discriminate on the subcheck status BEFORE the new-findings echo:
+        # no-findings reports new_count 0, so "detected 0 new" would be wrong.
+        check_status="$(jq -r '.status // "new"' "$stdout_capture")"
+        if [ "$check_status" = "no-findings" ]; then
+            summary="$(jq -r '.error // "slither produced no findings while the baseline is non-empty"' "$stdout_capture")"
+            if [ "$(resolved_output_format)" = "text" ]; then
+                echo "[gate] slither baseline: $summary"
+            fi
+            verification_failed=1
+            record_command_result "$id" "failed" "1" "$summary" "verifier"
+            append_finding blocking_findings_json "verifier" "$summary" "$id" "error"
+            return
+        fi
+        new_count="$(jq -r '.new_count' "$stdout_capture")"
+        if [ "$(resolved_output_format)" = "text" ]; then
+            echo "[gate] slither baseline: detected $new_count new finding(s) beyond baseline"
+            jq -r '.new[] | "- [\(.impact)/\(.confidence)] \(.check) \(.location) :: \(.summary)"' "$stdout_capture"
+        fi
+        verification_failed=1
+        summary="$new_count new slither finding(s) beyond baseline"
+        record_command_result "$id" "failed" "1" "$summary" "verifier"
+        append_finding blocking_findings_json "verifier" "$summary" "$id" "error"
+        return
     fi
-    verification_failed=1
-    summary="$new_count new slither finding(s) beyond baseline"
-    record_command_result "$id" "failed" "1" "$summary" "verifier"
-    append_finding blocking_findings_json "verifier" "$summary" "$id" "error"
+
+    # Exit 2 (and any unexpected exit code) fails closed; the subcheck's status
+    # object picks the evidence shape, unreadable stdout maps to slither-failed.
+    set +e
+    status="$(jq -r '.status // "slither-failed"' "$stdout_capture" 2>/dev/null)"
+    run="$(jq -r '.run // empty' "$stdout_capture" 2>/dev/null)"
+    set -e
+    [ -n "$status" ] || status="slither-failed"
+    # HEAD-form run suffix: run 1 (or no run reported) carries no suffix.
+    if [ -n "$run" ] && [ "$run" != "1" ]; then
+        run_suffix=" (run $run)"
+    else
+        run_suffix=""
+    fi
+
+    case "$status" in
+        baseline-missing)
+            verification_failed=1
+            record_command_result "$id" "failed" "$exit_code" "slither baseline file is missing" "verifier"
+            append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
+            echo "[gate] ERROR: slither baseline file is missing: $baseline_file" >&2
+            ;;
+        baseline-invalid)
+            verification_failed=1
+            record_command_result "$id" "failed" "$exit_code" "slither baseline file is invalid" "verifier"
+            append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
+            echo "[gate] ERROR: slither baseline file is invalid: $baseline_file" >&2
+            ;;
+        build-failed)
+            filter_command_output "$stderr_capture" "1"
+            verification_failed=1
+            record_command_result "slither-prerequisite-build" "failed" "$exit_code" "serialized forge build failed" "verifier"
+            append_finding blocking_findings_json "verifier" "verification command failed: slither-prerequisite-build" "slither-prerequisite-build" "error"
+            ;;
+        invalid-json)
+            head -n 40 "$stderr_capture"
+            verification_failed=1
+            record_command_result "$id" "failed" "$exit_code" "slither did not emit valid detector JSON$run_suffix" "verifier"
+            append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
+            ;;
+        *)
+            filter_command_output "$stderr_capture" "$exit_code"
+            verification_failed=1
+            record_command_result "$id" "failed" "$exit_code" "slither command failed$run_suffix" "verifier"
+            append_finding blocking_findings_json "verifier" "verification command failed: $id" "$id" "error"
+            ;;
+    esac
 }
 
 match_path_against_patterns() {
@@ -1119,7 +1066,7 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 # Sweep stale scratch output files from gate runs killed with SIGKILL: INT/TERM
 # exit through the cleanup trap, but SIGKILL runs no trap, so those files would
 # otherwise accumulate forever. Recent files are kept for debugging.
-find "$repo_root/.harness/tmp" -maxdepth 1 -type f \( -name 'cmd.*' -o -name 'gate.*' -o -name 'sync-docs.*' -o -name 'slither.*.json' \) -mtime +7 -delete 2>/dev/null || true
+find "$repo_root/.harness/tmp" -maxdepth 1 -type f \( -name 'cmd.*' -o -name 'gate.*' -o -name 'sync-docs.*' -o -name 'slither.*.json' -o -name 'slither-check.*' \) -mtime +7 -delete 2>/dev/null || true
 cd "$repo_root"
 
 harness_schema_root="$(resolve_harness_schema_root)"
@@ -2054,7 +2001,7 @@ if [ "${#changed_files[@]}" -gt 0 ]; then
                 if [ "$hard_blocked" -eq 1 ]; then
                     record_blocked_command "$command_id" "slither src --filter-paths \"$slither_filter_paths\" --exclude-dependencies --exclude \"$slither_exclude_detectors\"" "run slither for changed src Solidity production scope" "$src_scope_json" "command blocked before execution by policy hard-block"
                 elif [ "$slither_required_full_ci" = true ]; then
-                    run_slither_with_baseline "$command_id" "run slither for changed src Solidity production scope" "$src_scope_json" "$slither_filter_paths" "$slither_exclude_detectors"
+                    run_slither_with_baseline "$command_id" "run slither for changed src Solidity production scope" "$src_scope_json"
                 else
                     record_not_applicable_command "$command_id" "slither src --filter-paths \"$slither_filter_paths\" --exclude-dependencies --exclude \"$slither_exclude_detectors\"" "run slither for changed src Solidity production scope" "$src_scope_json" "no changed src Solidity files require slither"
                 fi

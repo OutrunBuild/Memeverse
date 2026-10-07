@@ -28,7 +28,7 @@ EOF
 
 die() {
     local exit_code="${2:-1}"
-    echo "forge-lint-baseline: ERROR: $*" >&2
+    echo "forge-lint-baseline: ERROR: $1" >&2
     exit "$exit_code"
 }
 

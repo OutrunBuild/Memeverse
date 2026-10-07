@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_at": "2026-10-05T05:31:51Z",
-  "finding_count": 359,
+  "finding_count": 361,
   "notes": "Snapshot of forge-lint findings verified site-by-site as false positives or accepted patterns: encode-packed-collision hits are creationCode||abi.encode initcode assembly (fixed-length tail, injective); missing-events-access-control cannot associate erc7201 namespaced-struct writes with the emit in the same function or public caller; uninitialized-local hits are intentional zero-default idiom; reentrancy-events misfires on namespaced-storage setters with no external call; reentrancy-no-eth keys only direct namespaced-struct writes and is blind to member writes through a local storage-pointer alias; boolean-cst hits are early-return constant defaults; unused-return hits are deliberate void protocol calls (transfer return-value enforcement lives in OutrunSafeERC20). Any NEW finding beyond this set fails the gate. Regenerate: bash script/harness/forge-lint-baseline.sh regen. Style detectors (unsafe-typecast, block-timestamp) were re-enabled from exclude_lints; their pre-existing hits were snapshotted here so only new occurrences are reported. Regen intentionally re-snapshots: it is an explicit, git-reviewed acceptance decision.",
   "findings": [
     {
@@ -80,6 +80,9 @@
       "key": "block-timestamp|src/verse/MemeverseLaunchImpl.sol|b10ab547bb298c97"
     },
     {
+      "key": "block-timestamp|src/verse/MemeverseLaunchImpl.sol|e66e4386adf8d65a"
+    },
+    {
       "key": "block-timestamp|src/verse/libraries/MemeverseLauncherLib.sol|8988cdb35e6e4f55"
     },
     {
@@ -102,6 +105,9 @@
     },
     {
       "key": "block-timestamp|src/yield/MemecoinYieldVault.sol|0cde1afc2da7dbb9"
+    },
+    {
+      "key": "block-timestamp|src/yield/MemecoinYieldVault.sol|63350fe6e0b55985"
     },
     {
       "key": "block-timestamp|src/yield/MemecoinYieldVault.sol|63cbfb9c1f0647d7"
@@ -176,7 +182,7 @@
       "key": "encode-packed-collision|src/verse/deployment/MemeverseProxyDeployer.sol|e48a8dc5c4883ea6"
     },
     {
-      "key": "locked-ether|src/verse/registration/MemeverseRegistrarAbstract.sol|f629e8034021531b"
+      "key": "locked-ether|src/verse/registration/MemeverseRegistrarAbstract.sol|970b8d9875701bfd"
     },
     {
       "key": "missing-events-access-control|src/governance/GovernanceCycleIncentivizerUpgradeable.sol|4bb71874f96da89b"

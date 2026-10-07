@@ -111,6 +111,21 @@ jobs:
           RUN_RECORD_PATH: ${{ runner.temp }}/memeverse-gate-ci.json
         run: bash script/harness/ci-gate-entrypoint.sh
 
+      - name: Run dual Initializable inheritance check
+        # AST inheritance-closure assertion over forge build-info: a src/ contract
+        # must not transitively inherit both Initializable families. gate:ci above
+        # already produced fresh out/ artifacts; the script rebuilds only if stale.
+        run: bash script/harness/check-no-dual-initializable.sh
+
+      - name: Run implementation initializer lock check
+        # AST assertion over forge build-info: a deployable src/ contract that
+        # exposes an initialize entrypoint under the OpenZeppelin Initializable
+        # family must call _disableInitializers from a constructor in its
+        # inheritance closure (the custom src/common/access/Initializable family
+        # locks structurally in its base constructor). gate:ci above already
+        # produced fresh out/ artifacts; the script rebuilds only if stale.
+        run: bash script/harness/check-impl-initializer-lock.sh
+
       - name: Run orchestration regression tests
         run: bash script/harness/test-orchestration.sh
 

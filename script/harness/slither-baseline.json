@@ -338,6 +338,15 @@
       "key": "dead-code|src/governance/MemecoinDaoGovernorUpgradeable.sol|MemecoinDaoGovernorUpgradeable._isRegisteredTreasuryToken(address[],address) is never used and should be removed"
     },
     {
+      "id": "f29fe34b0033cf3e9f1ef0d93b5a18a968ede52c809e0892f5a55aeda1fd0300",
+      "check": "dead-code",
+      "impact": "Informational",
+      "confidence": "Medium",
+      "location": "src/swap/DynamicFeeFacet.sol#L224-L243",
+      "summary": "DynamicFeeFacet._updateVolatilityDeviationAccumulatorAfterSwap(IDynamicFeeFacet.DynamicFeeState,uint160) is never used and should be removed",
+      "key": "dead-code|src/swap/DynamicFeeFacet.sol|DynamicFeeFacet._updateVolatilityDeviationAccumulatorAfterSwap(IDynamicFeeFacet.DynamicFeeState,uint160) is never used and should be removed"
+    },
+    {
       "id": "c0ece285f1c8a6826dd4e8961cadc2f1bad637957a68974a429361a834ea100b",
       "check": "divide-before-multiply",
       "impact": "Medium",
@@ -444,15 +453,6 @@
       "location": "src/common/token/TokenHelper.sol#L41-L49",
       "summary": "Low level call in TokenHelper._transferOut(address,address,uint256):",
       "key": "low-level-calls|src/common/token/TokenHelper.sol|Low level call in TokenHelper._transferOut(address,address,uint256):"
-    },
-    {
-      "id": "377d662cfa1418fb2d4d8173ad889530403b8fbdbab390ab7106cfe54e087c69",
-      "check": "missing-inheritance",
-      "impact": "Informational",
-      "confidence": "High",
-      "location": "src/token/MemePol.sol#L12-L83",
-      "summary": "MemePol should inherit from IBurnable",
-      "key": "missing-inheritance|src/token/MemePol.sol|MemePol should inherit from IBurnable"
     },
     {
       "id": "d8a3f059b9ebd0c3483f694e084675918645bc770ce1e84f502570f4f94b507a",
@@ -1400,6 +1400,15 @@
       "key": "timestamp|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl.changeStage(uint256) uses timestamp for comparisons"
     },
     {
+      "id": "dd0e4ce384681ea511d5cc8378d464e5a6957bc1169305dc3be881bcb398babc",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/verse/MemeverseLaunchImpl.sol#L51-L87",
+      "summary": "MemeverseLaunchImpl.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool) uses timestamp for comparisons",
+      "key": "timestamp|src/verse/MemeverseLaunchImpl.sol|MemeverseLaunchImpl.registerMemeverse(string,string,uint256,uint128,uint128,uint32[],address,bool) uses timestamp for comparisons"
+    },
+    {
       "id": "5a95f6fc69441f4f7515101262a416004e0e6f4b92a336703628133047734aa9",
       "check": "timestamp",
       "impact": "Low",
@@ -1616,6 +1625,15 @@
       "key": "timestamp|src/yield/MemecoinYieldVault.sol|MemecoinYieldVault.redeem(uint256,address,address) uses timestamp for comparisons"
     },
     {
+      "id": "971b2d91a28278a9393285ae6649286b175a0cf670cd4b7befb7e2b0efb194ad",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "location": "src/yield/MemecoinYieldVault.sol#L37-L39",
+      "summary": "WithdrawPlanner._matured(uint64) uses timestamp for comparisons",
+      "key": "timestamp|src/yield/MemecoinYieldVault.sol|WithdrawPlanner._matured(uint64) uses timestamp for comparisons"
+    },
+    {
       "id": "c764eb4b878d0b4f8cc98fa326dbaef7d667c495b6750eb1543945c51a209c08",
       "check": "timestamp",
       "impact": "Low",
@@ -1623,6 +1641,15 @@
       "location": "src/yield/MemecoinYieldVault.sol#L41-L92",
       "summary": "WithdrawPlanner.plan(uint256[5],uint192[5],uint64[5],uint256,uint256) uses timestamp for comparisons",
       "key": "timestamp|src/yield/MemecoinYieldVault.sol|WithdrawPlanner.plan(uint256[5],uint192[5],uint64[5],uint256,uint256) uses timestamp for comparisons"
+    },
+    {
+      "id": "c0a18232c20e7c98baad0d5630038f72f13ae9ae92e0a283e5fde9f64e7dcf02",
+      "check": "uninitialized-state",
+      "impact": "High",
+      "confidence": "High",
+      "location": "src/swap/FacetGuard.sol#L17",
+      "summary": "FacetGuard._memeverseUniswapHookStorage is never initialized. It is used in:",
+      "key": "uninitialized-state|src/swap/FacetGuard.sol|FacetGuard._memeverseUniswapHookStorage is never initialized. It is used in:"
     },
     {
       "id": "87cbe0a04ef12d5dc4d1304cd654645f026f8410b7fd96e8b101ad23ab47b889",

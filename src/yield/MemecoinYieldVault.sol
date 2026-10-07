@@ -29,6 +29,15 @@ library WithdrawPlanner {
     ///      vault re-exports the same value as its public `REDEEM_DELAY` constant.
     uint256 public constant REDEEM_DELAY = 1 days;
 
+    /// @dev Single source of the redeem-maturity predicate: a queued entry's locked assets become
+    ///      claimable exactly when `REDEEM_DELAY` has fully elapsed since its request time (endpoint
+    ///      inclusive). Every maturity consumer — this planner's scan, the vault's claim loop, and the
+    ///      vault's maturity views — routes through this predicate so the boundary cannot drift
+    ///      between the view family and the claim path.
+    function _matured(uint64 requestTime) internal view returns (bool) {
+        return block.timestamp >= uint256(requestTime) + REDEEM_DELAY;
+    }
+
     /// @dev Plans the assets-first FIFO claim scan. Mutates the passed memory arrays in place:
     ///      matured entries are consumed in queue (FIFO) order — the scan index only moves forward
     ///      and swap-pop moves the tail entry into the current slot — with each entry contributing
@@ -49,7 +58,7 @@ library WithdrawPlanner {
         remainingAssets = assets;
         uint256 j = 0;
         while (j < len && remainingAssets > 0) {
-            if (block.timestamp < uint256(requestTimes[j]) + REDEEM_DELAY) {
+            if (!_matured(requestTimes[j])) {
                 unchecked {
                     ++j;
                 }
@@ -196,7 +205,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         uint256 queueLength = queue.length;
         for (uint256 i = 0; i < queueLength; ++i) {
             // Only entries past REDEEM_DELAY are claimable; immature ones remain pending.
-            if (block.timestamp >= uint256(queue[i].requestTime) + REDEEM_DELAY) {
+            if (WithdrawPlanner._matured(queue[i].requestTime)) {
                 total += queue[i].lockedAssets;
             }
         }
@@ -369,7 +378,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         while (i < requestQueue.length && remaining > 0) {
             RedeemRequestEntry storage entry = requestQueue[i];
             // Skip entries still inside the REDEEM_DELAY maturity window.
-            if (block.timestamp < uint256(entry.requestTime) + REDEEM_DELAY) {
+            if (!WithdrawPlanner._matured(entry.requestTime)) {
                 unchecked {
                     ++i;
                 }
@@ -464,7 +473,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         // Read-only scan: queue is not mutated here, so caching length once saves the per-iteration storage read.
         uint256 queueLength = queue.length;
         for (uint256 i = 0; i < queueLength; ++i) {
-            if (block.timestamp < uint256(queue[i].requestTime) + REDEEM_DELAY) {
+            if (!WithdrawPlanner._matured(queue[i].requestTime)) {
                 shares += queue[i].shares;
             }
         }
@@ -506,7 +515,7 @@ contract MemecoinYieldVault is IMemecoinYieldVault, OutrunERC20PermitInit, Outru
         // Read-only scan: queue is not mutated here, so caching length once saves the per-iteration storage read.
         uint256 queueLength = queue.length;
         for (uint256 i = 0; i < queueLength; ++i) {
-            if (block.timestamp >= uint256(queue[i].requestTime) + REDEEM_DELAY) {
+            if (WithdrawPlanner._matured(queue[i].requestTime)) {
                 total += queue[i].shares;
             }
         }

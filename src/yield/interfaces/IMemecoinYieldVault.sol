@@ -20,7 +20,15 @@ interface IMemecoinYieldVault is IERC20 {
     function asset() external view returns (address assetTokenAddress);
 
     /// @notice Exposes the total amount of managed underlying assets.
-    /// @dev Includes deposited principal plus any accumulated yield that has not been redeemed yet.
+    /// @dev Claim-mode semantics: assets locked by `requestRedeem` are deducted from totalAssets at request
+    ///      time (they stop earning yield immediately), so while any redemption-queue entry is outstanding —
+    ///      pending or already matured but unclaimed — totalAssets is below the vault's physical asset
+    ///      balance by at least the sum of queued `lockedAssets` (direct donations widen the gap further).
+    ///      A full-exit request drives totalAssets to 0 only when totalAssets equals totalSupply (no
+    ///      absorbed-yield wedge); otherwise a non-claimable virtual-buffer residual stays (totalSupply == 0
+    ///      with totalAssets > 0), while the vault still physically holds the locked payout throughout the
+    ///      `REDEEM_DELAY` window. Includes deposited principal plus accumulated yield only for positions
+    ///      that have not requested redemption.
     /// @return totalManagedAssets Total managed asset amount.
     function totalAssets() external view returns (uint256 totalManagedAssets);
 

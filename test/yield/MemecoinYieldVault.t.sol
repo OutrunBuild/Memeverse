@@ -2363,6 +2363,22 @@ contract MemecoinYieldVaultTest is Test {
         assertEq(vault.maxRedeem(ATTACKER), shares / 2, "maxRedeem tracks claimable shares");
     }
 
+    /// @notice All four maturity views stay fully immature exactly one second before the maturity
+    ///         endpoint, pinning the early direction of the boundary for the view family.
+    function test_MaturityViewsFullyImmatureOneSecondBeforeEndpoint() external {
+        vm.prank(ATTACKER);
+        uint256 shares = vault.deposit(20 ether, ATTACKER);
+
+        vm.prank(ATTACKER);
+        vault.requestRedeem(shares, ATTACKER, ATTACKER);
+
+        vm.warp(block.timestamp + vault.REDEEM_DELAY() - 1);
+        assertEq(vault.pendingRedeemRequest(ATTACKER), shares, "pending still full one second before endpoint");
+        assertEq(vault.claimableRedeemRequest(ATTACKER), 0, "claimable still zero one second before endpoint");
+        assertEq(vault.maxRedeem(ATTACKER), 0, "maxRedeem still zero one second before endpoint");
+        assertEq(vault.maxWithdraw(ATTACKER), 0, "maxWithdraw still zero one second before endpoint");
+    }
+
     /// @notice FIFO partial claim across entries locked at different rates decrements shares and
     ///         lockedAssets in lockstep, so the summed payout equals the total locked (no drift).
     function test_RedeemFifoPartialClaimAcrossDifferentRatesNoDrift() external {

@@ -47,7 +47,6 @@ contract YieldVaultHandler is Test {
 
     uint256 internal constant ACTORS = 3;
     uint256 internal constant UINT208_MAX = type(uint208).max;
-    uint256 internal constant REDEEM_DELAY = 1 days;
 
     constructor(MemecoinYieldVault _vault, MockComposeAsset _asset, address _sentinel) {
         vault = _vault;
@@ -189,7 +188,7 @@ contract YieldVaultHandler is Test {
 
     /// Advance time past REDEEM_DELAY with jitter on both sides of the boundary.
     function warp(uint256 extra) external {
-        vm.warp(block.timestamp + REDEEM_DELAY + bound(extra, 0, 3 days));
+        vm.warp(block.timestamp + vault.REDEEM_DELAY() + bound(extra, 0, 3 days));
     }
 
     /// shares-first claim of matured entries.

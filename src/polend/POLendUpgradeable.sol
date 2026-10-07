@@ -12,6 +12,7 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
 import {IPOLend} from "./interfaces/IPOLend.sol";
 import {IPOLSplitter} from "./interfaces/IPOLSplitter.sol";
+import {POLRedeemLib} from "./POLRedeemLib.sol";
 import {IUniversalAssets} from "./interfaces/IUniversalAssets.sol";
 import {IMemeverseLauncher} from "../verse/interfaces/IMemeverseLauncher.sol";
 import {IGenesisCreditFactory} from "../credit/interfaces/IGenesisCreditFactory.sol";
@@ -53,7 +54,8 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         address treasury;
         address launcher;
         address splitter;
-        // Credit-factory-written interest per user; added on top of leveragedInterestPaid.
+        // GenesisCredit interest per user, recorded by leveragedGenesisWithCredit; added on top
+        // of leveragedInterestPaid.
         mapping(uint256 => mapping(address => uint256)) creditInterestPaid;
         address creditFactory;
         mapping(uint256 => LendMarket) lendMarkets;
@@ -574,6 +576,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         if (interestPaid == 0 || totalLeveragedInterest == 0) revert InvalidClaim();
 
         _consumeClaimFlag(verseId, msg.sender, CLAIM_LEVERAGED_YT);
+        // Floor (mulDiv default) is deliberate — same rationale as POLSplitterUpgradeable._ptToUAsset (authoritative).
         amount = Math.mulDiv(market.totalLeveragedYT, interestPaid, totalLeveragedInterest);
         IERC20(market.yt).safeTransfer(to, amount);
         emit ClaimLeveragedYT(verseId, msg.sender, to, amount);
@@ -604,6 +607,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         _consumeClaimFlag(verseId, msg.sender, CLAIM_RESIDUAL);
 
         ResidualState storage residual = polendStorage.residualStates[verseId];
+        // Floor (mulDiv default) is deliberate — same rationale as POLSplitterUpgradeable._ptToUAsset (authoritative).
         uAssetAmount = Math.mulDiv(residual.residualUAsset, interestPaid, totalLeveragedInterest);
         memecoinAmount = Math.mulDiv(residual.residualMemecoin, interestPaid, totalLeveragedInterest);
 
@@ -646,7 +650,7 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         return polendStorage.splitter;
     }
 
-    /// @notice Address of the credit factory registered to write per-user credit interest.
+    /// @notice Address of the credit factory used to resolve per-uAsset GenesisCredit tokens.
     /// @return Registered credit factory address.
     function creditFactory() external view returns (address) {
         return polendStorage.creditFactory;
@@ -854,9 +858,11 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
         polendStorage.claimFlags[verseId][account] = flags | mask;
     }
 
-    /// Burns settled POL through the launcher, measuring recovered tokens by balance delta —
-    /// rationale identical to POLSplitterUpgradeable._settlePOLCollateral (authoritative). The
-    /// caller (settlement flow) guarantees this contract holds the POL being burned.
+    /// @notice Burns settled POL through the launcher and measures the recovered uAsset/memecoin
+    ///         by balance delta via the shared `POLRedeemLib.redeemAndMeasure`. The zero-amount
+    ///         short-circuit stays at this call site on purpose: a zero free-POL burn is a valid
+    ///         no-op here, while the splitter's settle must fail loudly on zero collateral. The
+    ///         caller (settlement flow) guarantees this contract holds the POL being burned.
     function _burnSettledPol(uint256 verseId, uint256 polAmount)
         internal
         returns (uint256 uAssetAmount, uint256 memecoinAmount)
@@ -865,16 +871,9 @@ contract POLendUpgradeable layout at erc7201("outrun.storage.POLend")
 
         LendMarket storage market = polendStorage.lendMarkets[verseId];
         (address pol, address memecoin) = IPOLSplitter(polendStorage.splitter).getPOLAndMemecoin(verseId);
-        address marketUAsset_ = market.uAsset;
-        address launcher_ = polendStorage.launcher;
-        uint256 beforeUAsset = IERC20(marketUAsset_).balanceOf(address(this));
-        uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
 
-        IERC20(pol).safeApprove(launcher_, polAmount);
-        IMemeverseLauncher(launcher_).redeemMemecoinLiquidity(verseId, polAmount, true, 0, 0, block.timestamp);
-
-        uAssetAmount = IERC20(marketUAsset_).balanceOf(address(this)) - beforeUAsset;
-        memecoinAmount = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;
+        (uAssetAmount, memecoinAmount) =
+            POLRedeemLib.redeemAndMeasure(polendStorage.launcher, pol, market.uAsset, memecoin, verseId, polAmount);
     }
 
     /// @notice Pause leveraged-genesis entry (onlyOwner). Blocks `leveragedGenesis` and

@@ -59,7 +59,7 @@ abstract contract POLendStorageHelper is StorageSlotPrimitives {
         _writeSlot(proxy, _nestedMappingSlot(OFF_LEVERAGED_INTEREST_PAID, verseId, account), bytes32(interestPaid));
     }
 
-    /// @notice Write $.creditInterestPaid[verseId][account] = interestPaid (credit-factory path).
+    /// @notice Write $.creditInterestPaid[verseId][account] = interestPaid.
     function seedCreditPositionForTest(address proxy, uint256 verseId, address account, uint256 interestPaid) internal {
         _writeSlot(proxy, _nestedMappingSlot(OFF_CREDIT_INTEREST_PAID, verseId, account), bytes32(interestPaid));
     }

@@ -11,6 +11,7 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 import {OutrunSafeERC20} from "../common/token/OutrunSafeERC20.sol";
 import {IPOLend} from "./interfaces/IPOLend.sol";
 import {IPOLSplitter} from "./interfaces/IPOLSplitter.sol";
+import {POLRedeemLib} from "./POLRedeemLib.sol";
 import {PrincipalToken} from "./tokens/PrincipalToken.sol";
 import {YieldToken} from "./tokens/YieldToken.sol";
 import {IMemeverseLauncher} from "../verse/interfaces/IMemeverseLauncher.sol";
@@ -298,7 +299,10 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
         // (total supply) at the recorded backing ratio, so all PT holders can always redeem in full.
         if (settlementUAsset < _ptReservedUAsset(info)) revert InvalidClaim();
         // Reverse the earlier `preRedeemPTFee` accrual: repay the pre-redeemed uAsset to POLendUpgradeable so
-        // its global debt ledger stays consistent, then clear the pre-redeemed record.
+        // its global debt ledger stays consistent, then clear the pre-redeemed record. The repay triggered by
+        // `burnPreRedeemedBacking` burns this contract's uAsset with burnFrom semantics, spending this
+        // contract's allowance for POLendUpgradeable, so the exact-amount approve below is the precondition
+        // that authorizes the burn; without it the repay reverts and settlement fails.
         if (preRedeemedUAssetBacking != 0) {
             address _polend = polSplitterStorage.polend;
             IERC20(info.uAsset).safeApprove(_polend, preRedeemedUAssetBacking);
@@ -432,26 +436,18 @@ contract POLSplitterUpgradeable layout at erc7201("outrun.storage.POLSplitter")
                 == IMemeverseLauncher.Stage.Unlocked;
     }
 
-    /// Redeems the verse's POL collateral through the launcher and measures the recovered uAsset
-    /// and memecoin by balance delta: `redeemMemecoinLiquidity` returns the burned LP amount, not
-    /// the recovered tokens, so the before/after balance diff is the only reliable measurement.
-    /// Precondition: this splitter must already hold the POL collateral (transferred in by `split`).
+    /// @notice Redeems the verse's POL collateral through the launcher and measures the recovered
+    ///         uAsset and memecoin by balance delta via the shared `POLRedeemLib.redeemAndMeasure`.
+    /// @dev Deliberately no zero-amount guard: settling a verse with zero POL collateral must fail
+    ///      loudly inside the launcher, not silently record an empty settlement.
+    ///      Precondition: this splitter must already hold the POL collateral (transferred in by `split`).
     function _settlePOLCollateral(uint256 verseId, SplitInfo storage info)
         internal
         returns (uint256 settlementUAsset, uint256 settlementMemecoin)
     {
-        uint256 polAmount = info.totalPOLCollateral;
-        address memecoin = info.memecoin;
-        address uAsset = info.uAsset;
-        address launcher_ = polSplitterStorage.launcher;
-        uint256 beforeUAsset = IERC20(uAsset).balanceOf(address(this));
-        uint256 beforeMemecoin = IERC20(memecoin).balanceOf(address(this));
-
-        IERC20(info.pol).safeApprove(launcher_, polAmount);
-        IMemeverseLauncher(launcher_).redeemMemecoinLiquidity(verseId, polAmount, true, 0, 0, block.timestamp);
-
-        settlementUAsset = IERC20(uAsset).balanceOf(address(this)) - beforeUAsset;
-        settlementMemecoin = IERC20(memecoin).balanceOf(address(this)) - beforeMemecoin;
+        (settlementUAsset, settlementMemecoin) = POLRedeemLib.redeemAndMeasure(
+            polSplitterStorage.launcher, info.pol, info.uAsset, info.memecoin, verseId, info.totalPOLCollateral
+        );
     }
 
     /// @notice Converts PT to uAsset at the recorded backing ratio. Reverts
